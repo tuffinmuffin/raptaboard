@@ -1,0 +1,16 @@
+[package]
+name = "raptaboard"
+description = "raptaboard: an FRC driver dashboard with WASM widget plugins"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+eframe = "0.37.0"
+raptaboard-layout.workspace = true
+raptaboard-nt4.workspace = true
+
+[lints]
+workspace = true
