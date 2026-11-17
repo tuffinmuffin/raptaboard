@@ -26,13 +26,15 @@ On Linux you also need the windowing libraries:
 
 | Path | What it is |
 | --- | --- |
-| `crates/nt4` | NetworkTables 4.1 protocol: type strings, JSON control messages, MessagePack values, topic paths |
 | `crates/layout` | Layout model; reads and writes Elastic `version 1.0` JSON without losing fields |
-| `crates/plugin-host` | Plugin manifests (`plugin.toml`) and matching plugins to NT tables |
+| `crates/plugin-host` | Plugin manifests (`plugin.toml`), matching plugins to NT tables, topic path helpers |
 | `crates/app` | The eframe/egui desktop app (binary `raptaboard`) |
 | `wit/dashboard.wit` | The plugin interface: what a WASM widget imports and exports |
 | `plugins/arm` | Example plugin manifest for an arm table tagged `.type = "Arm"` |
 | `docs/spec.md` | The spec: Elastic feature list, requirements, plugin design, milestones |
+
+NetworkTables comes from the [`nt4`](https://crates.io/crates/nt4) crate: client, typed topics,
+structs, time sync and reconnect.
 
 ## Writing a plugin (preview)
 

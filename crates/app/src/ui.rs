@@ -70,7 +70,7 @@ impl DashboardApp {
             }
             let target = resolve(self.mode, self.team, &self.custom_address)
                 .map(|host| {
-                    raptaboard_nt4::server_url(&host, raptaboard_nt4::ROBOT_CODE_PORT, "raptaboard")
+                    nt4::proto::client_url(&host, nt4::proto::ROBOT_CODE_PORT, "raptaboard")
                 })
                 .unwrap_or_else(|| "waiting for Driver Station".into());
             ui.label(format!("Target: {target} (not connected yet)"));

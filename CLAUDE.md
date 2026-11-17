@@ -10,9 +10,10 @@ Elastic layout compatibility, and WebAssembly widget plugins bound to NetworkTab
 The spec is `docs/spec.md` (also a Claude Doc: https://claude.ai/artifact/ExMFgLUirHFxwjPBW5wEdb).
 Read its "Goal and decisions" and "Milestones" sections before starting work.
 
-Decisions already made (don't reopen without asking the user): egui/eframe UI; our own NT4.1 client;
-plugins are WASM components only (wasmtime + `wit/dashboard.wit`), no dynamic libraries, no
-scripting tier; Elastic layout JSON v1 must round-trip unchanged.
+Decisions already made (don't reopen without asking the user): egui/eframe UI; our own NT4.1 client
+(the published `nt4` crate, from `tuffinmuffin/nt4-rs`); plugins are WASM components only
+(wasmtime + `wit/dashboard.wit`), no dynamic libraries, no scripting tier; Elastic layout JSON v1
+must round-trip unchanged.
 
 ## Commands
 
@@ -29,10 +30,11 @@ macOS. Run the same locally before pushing.
 
 ## Layout
 
-- `crates/nt4`: NT4 protocol only, no sockets yet. Next: the websocket client (tokio +
-  tokio-tungstenite), RTT time sync, subscriptions, value store.
+- NetworkTables: the `nt4` crate from crates.io (`nt4::Client`, typed subscribers, `nt4::proto` for
+  ports and URLs). Fix protocol bugs upstream in `nt4-rs`, not here. Next: connect the app to it.
 - `crates/layout`: Elastic v1 model. Unknown fields go in `extra` maps so files round-trip.
-- `crates/plugin-host`: manifest parsing and matching. wasmtime hosting comes in milestone 4.
+- `crates/plugin-host`: manifest parsing and matching; `path` has topic path helpers
+  (`.type` tables). wasmtime hosting comes in milestone 4.
 - `crates/app`: the eframe app. `ui.rs` holds the window, `connection.rs` the robot address modes.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.
 - `plugins/arm`: example plugin; its `plugin.toml` is a test fixture.

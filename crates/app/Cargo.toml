@@ -10,7 +10,7 @@ rust-version.workspace = true
 [dependencies]
 eframe = "0.37.0"
 raptaboard-layout.workspace = true
-raptaboard-nt4.workspace = true
+nt4.workspace = true
 
 [lints]
 workspace = true

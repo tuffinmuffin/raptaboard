@@ -18,6 +18,8 @@
 //! assert!(manifest.matches(&table).is_some());
 //! ```
 
+pub mod path;
+
 use std::collections::BTreeMap;
 
 use serde::Deserialize;
