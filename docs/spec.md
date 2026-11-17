@@ -170,7 +170,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    tree, Text Display and Boolean Box, 30-widget CPU test. **Started**: workspace, Elastic layout
    import/export, plugin manifests, WIT file, layout viewer window, CI, live NT connection with
    status and topic count, read-only NT tree with live values for open folders and generic struct decoding from
-   `/.schema/`.
+   `/.schema/`, Text Display and Boolean Box widgets (read-only) with List Layout children.
 2. Grid and layouts: tabs, snap grid, drag from tree, List Layout, lock, layout save, settings,
    hotkeys.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.

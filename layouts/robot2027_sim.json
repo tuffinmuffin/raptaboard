@@ -1,0 +1,235 @@
+{
+  "version": 1.0,
+  "grid_size": 128,
+  "tabs": [
+    {
+      "name": "Widgets",
+      "grid_layout": {
+        "layouts": [
+          {
+            "title": "Module CAN",
+            "x": 640,
+            "y": 0,
+            "width": 256,
+            "height": 640,
+            "type": "List Layout",
+            "properties": {
+              "label_position": "TOP"
+            },
+            "children": [
+              {
+                "title": "frontLeft",
+                "x": 0,
+                "y": 0,
+                "width": 256,
+                "height": 128,
+                "type": "Boolean Box",
+                "properties": {
+                  "topic": "/Drive/Module/frontLeft/drive_connected",
+                  "period": 0.06,
+                  "data_type": "boolean"
+                }
+              },
+              {
+                "title": "frontRight",
+                "x": 0,
+                "y": 0,
+                "width": 256,
+                "height": 128,
+                "type": "Boolean Box",
+                "properties": {
+                  "topic": "/Drive/Module/frontRight/drive_connected",
+                  "period": 0.06,
+                  "data_type": "boolean"
+                }
+              },
+              {
+                "title": "backLeft",
+                "x": 0,
+                "y": 0,
+                "width": 256,
+                "height": 128,
+                "type": "Boolean Box",
+                "properties": {
+                  "topic": "/Drive/Module/backLeft/drive_connected",
+                  "period": 0.06,
+                  "data_type": "boolean"
+                }
+              },
+              {
+                "title": "backRight",
+                "x": 0,
+                "y": 0,
+                "width": 256,
+                "height": 128,
+                "type": "Boolean Box",
+                "properties": {
+                  "topic": "/Drive/Module/backRight/drive_connected",
+                  "period": 0.06,
+                  "data_type": "boolean"
+                }
+              }
+            ]
+          }
+        ],
+        "containers": [
+          {
+            "title": "Blink",
+            "x": 0,
+            "y": 0,
+            "width": 128,
+            "height": 128,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/DashTest/Blink",
+              "period": 0.06,
+              "data_type": "boolean",
+              "true_color": 4283215696,
+              "false_color": 4294198070
+            }
+          },
+          {
+            "title": "All modules healthy",
+            "x": 128,
+            "y": 0,
+            "width": 256,
+            "height": 128,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/Drive/Health/allModulesHealthy",
+              "period": 0.06,
+              "data_type": "boolean"
+            }
+          },
+          {
+            "title": "Red alliance",
+            "x": 384,
+            "y": 0,
+            "width": 128,
+            "height": 128,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/FMSInfo/IsRedAlliance",
+              "period": 0.06,
+              "data_type": "boolean",
+              "true_color": 4294198070,
+              "false_color": 4280391411
+            }
+          },
+          {
+            "title": "Seconds",
+            "x": 0,
+            "y": 128,
+            "width": 128,
+            "height": 128,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/DashTest/Seconds",
+              "period": 0.06,
+              "data_type": "int"
+            }
+          },
+          {
+            "title": "Sine",
+            "x": 128,
+            "y": 128,
+            "width": 128,
+            "height": 128,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/DashTest/Sine",
+              "period": 0.06,
+              "data_type": "double"
+            }
+          },
+          {
+            "title": "Mode",
+            "x": 256,
+            "y": 128,
+            "width": 256,
+            "height": 128,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/DashTest/ModeName",
+              "period": 0.06,
+              "data_type": "string"
+            }
+          },
+          {
+            "title": "Loop ms",
+            "x": 0,
+            "y": 256,
+            "width": 128,
+            "height": 128,
+            "type": "Text View",
+            "properties": {
+              "topic": "/FrameTiming/totalMs",
+              "period": 0.06,
+              "data_type": "double"
+            }
+          },
+          {
+            "title": "Gyro yaw (rad)",
+            "x": 128,
+            "y": 256,
+            "width": 256,
+            "height": 128,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Drive/Gyro/yaw_rad",
+              "period": 0.06,
+              "data_type": "double"
+            }
+          },
+          {
+            "title": "Orbit pose (struct)",
+            "x": 384,
+            "y": 256,
+            "width": 256,
+            "height": 128,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/DashTest/OrbitPose",
+              "period": 0.06,
+              "data_type": "struct:Pose2d"
+            }
+          },
+          {
+            "title": "Loop time",
+            "x": 0,
+            "y": 384,
+            "width": 384,
+            "height": 256,
+            "type": "Graph",
+            "properties": {
+              "topic": "/FrameTiming/totalMs",
+              "period": 0.033,
+              "data_type": "double",
+              "time_displayed": 5.0
+            }
+          },
+          {
+            "title": "Never published",
+            "x": 384,
+            "y": 384,
+            "width": 128,
+            "height": 128,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/DashTest/Missing",
+              "period": 0.06,
+              "data_type": "boolean"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Empty",
+      "grid_layout": {
+        "layouts": [],
+        "containers": []
+      }
+    }
+  ]
+}
