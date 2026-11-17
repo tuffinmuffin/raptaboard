@@ -13,14 +13,13 @@ plugins that load at runtime and bind to a NetworkTables table.
 | Decision | Choice | Date |
 | --- | --- | --- |
 | UI framework | egui / eframe | 2026-11-14 |
-| NT client | our own NT4.1 client (`crates/nt4`) | 2026-11-14 |
+| NT client | our own NT4.1 client, published as the [`nt4`](https://crates.io/crates/nt4) crate (`tuffinmuffin/nt4-rs`) | 2026-11-17 |
 | Plugins | WebAssembly components only, run by wasmtime, interface in `wit/dashboard.wit` | 2026-11-14 |
 | Dynamic-library plugins | rejected: a crash would take down the dashboard during a match | 2026-11-14 |
 | Layout files | read and write Elastic `version 1.0` JSON unchanged; native v2 later | 2026-11-14 |
 | Repo | `tuffinmuffin/raptaboard` | 2026-11-14 |
 
-Open: should the robot serve plugins from port 5800 along with layouts? Evaluate existing Rust NT4
-crates before growing our own client much further. Stream Deck hooks are a later interest.
+Open: should the robot serve plugins from port 5800 along with layouts? Stream Deck hooks are a later interest.
 
 ## Part 1: what Elastic does (source: main at 7c548c1, 2027.0.0-alpha10)
 
@@ -167,8 +166,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
 
 ## Milestones
 
-1. Spike: egui window, NT4.1 client connected to the robot-2027 sim, NT tree, Text Display and
-   Boolean Box, 30-widget CPU test. **Started**: workspace, NT4 protocol types, Elastic layout
+1. Spike: egui window, NT4.1 client connected to the robot-2027 sim (via the `nt4` crate), NT
+   tree, Text Display and Boolean Box, 30-widget CPU test. **Started**: workspace, Elastic layout
    import/export, plugin manifests, WIT file, layout viewer window, CI.
 2. Grid and layouts: tabs, snap grid, drag from tree, List Layout, lock, layout save, settings,
    hotkeys.

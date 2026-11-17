@@ -10,7 +10,7 @@ pub const TYPE_KEY: &str = ".type";
 /// Split a topic name into its parts, ignoring empty segments.
 ///
 /// ```
-/// use raptaboard_nt4::path::segments;
+/// use raptaboard_plugin_host::path::segments;
 /// assert_eq!(segments("/Drive/Module/frontLeft/"), vec!["Drive", "Module", "frontLeft"]);
 /// ```
 pub fn segments(name: &str) -> Vec<&str> {
@@ -20,7 +20,7 @@ pub fn segments(name: &str) -> Vec<&str> {
 /// Join a table path and a relative key with exactly one slash.
 ///
 /// ```
-/// use raptaboard_nt4::path::join;
+/// use raptaboard_plugin_host::path::join;
 /// assert_eq!(join("/Arm/", "angle_rad"), "/Arm/angle_rad");
 /// assert_eq!(join("/Arm", "/angle_rad"), "/Arm/angle_rad");
 /// ```
@@ -35,7 +35,7 @@ pub fn join(table: &str, key: &str) -> String {
 /// The table a topic sits in, or `None` for a topic at the root.
 ///
 /// ```
-/// use raptaboard_nt4::path::parent;
+/// use raptaboard_plugin_host::path::parent;
 /// assert_eq!(parent("/Arm/angle_rad"), Some("/Arm"));
 /// assert_eq!(parent("/angle"), None);
 /// ```
@@ -52,7 +52,7 @@ pub fn parent(name: &str) -> Option<&str> {
 /// If `name` is a `.type` topic, return the table it tags.
 ///
 /// ```
-/// use raptaboard_nt4::path::typed_table;
+/// use raptaboard_plugin_host::path::typed_table;
 /// assert_eq!(typed_table("/Telemetry/Arm/.type"), Some("/Telemetry/Arm"));
 /// assert_eq!(typed_table("/Telemetry/Arm/angle"), None);
 /// ```

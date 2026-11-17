@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/nt4", "crates/layout", "crates/plugin-host", "crates/app"]
+members = ["crates/layout", "crates/plugin-host", "crates/app"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,9 +14,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
 toml = "0.8"
-rmpv = "1"
 glob = "0.3"
-raptaboard-nt4 = { path = "crates/nt4" }
+nt4 = "0.2"
 raptaboard-layout = { path = "crates/layout" }
 
 [workspace.lints.rust]
