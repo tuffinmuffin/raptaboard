@@ -7,7 +7,7 @@ a NetworkTables table, such as an arm subsystem.
 
 Status: **milestone 1 in progress.** The app opens an Elastic layout and shows its tabs and widget
 boxes on the grid, and connects to the robot over NetworkTables (status and topic count in the
-settings bar). Widgets don't show live values yet.
+settings bar) with a NetworkTables tree of live values, including WPILib structs such as Pose2d. Widgets don't show live values yet.
 
 ![raptaboard connected to the robot sim with an Elastic layout open](docs/images/m1-connected.png)
 

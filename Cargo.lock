@@ -2811,6 +2811,7 @@ dependencies = [
  "eframe",
  "nt4",
  "raptaboard-layout",
+ "raptaboard-plugin-host",
  "tokio",
 ]
 

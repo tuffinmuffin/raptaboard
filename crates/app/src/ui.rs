@@ -6,6 +6,8 @@ use raptaboard_layout::{ElasticLayout, Rect as LayoutRect};
 use crate::cli::StartupOptions;
 use crate::connection::{AddressMode, resolve};
 use crate::nt::{ConnectionStatus, NtConnection};
+use crate::tree::{Folder, TopicEntry};
+use nt4::proto::structs::StructDatabase;
 
 /// Top-level app state.
 pub struct DashboardApp {
@@ -17,6 +19,8 @@ pub struct DashboardApp {
     mode: AddressMode,
     custom_address: String,
     nt: NtConnection,
+    tree_filter: String,
+    show_metadata: bool,
 }
 
 impl DashboardApp {
@@ -34,6 +38,8 @@ impl DashboardApp {
             mode: options.mode,
             custom_address: options.custom_address,
             nt: NtConnection::new()?,
+            tree_filter: String::new(),
+            show_metadata: false,
         };
         if layout_path.is_some() {
             app.load_layout();
@@ -89,6 +95,75 @@ impl DashboardApp {
             }
             ui.label(&self.status);
         });
+    }
+
+    /// The NetworkTables tree in the left panel. Read-only: values are
+    /// changed through widgets, not here.
+    fn tree_panel(&mut self, ui: &mut egui::Ui) {
+        ui.heading("NetworkTables");
+        // A plain row: a right-to-left layout here would fill the rest of the
+        // panel's height and push the tree out of view.
+        ui.horizontal(|ui| {
+            let clear_width = 48.0;
+            let filter_width = ui.available_width() - clear_width - ui.spacing().item_spacing.x;
+            ui.add(
+                egui::TextEdit::singleline(&mut self.tree_filter)
+                    .hint_text("Filter topics")
+                    .desired_width(filter_width),
+            );
+            if ui
+                .add_enabled(
+                    !self.tree_filter.is_empty(),
+                    egui::Button::new("Clear").min_size(egui::vec2(clear_width, 0.0)),
+                )
+                .clicked()
+            {
+                self.tree_filter.clear();
+            }
+        });
+        ui.checkbox(&mut self.show_metadata, "Show metadata (.type, /.schema)");
+        ui.separator();
+        let topics = self.nt.topics();
+        if topics.is_empty() {
+            ui.weak(match self.nt.status() {
+                ConnectionStatus::Connected { .. } => "No topics yet",
+                _ => "Not connected",
+            });
+            self.nt.watch_values(Vec::new());
+            return;
+        }
+        self.nt.update_structs(&topics);
+        let total = topics.len();
+        let tree = Folder::build(
+            topics.into_iter().map(TopicEntry::from),
+            self.show_metadata,
+            &self.tree_filter,
+        );
+        let filtering = !self.tree_filter.trim().is_empty();
+        // Say when topics are hidden, so a forgotten filter isn't mistaken
+        // for missing data.
+        let shown = tree.topic_count();
+        if shown < total {
+            let why = if filtering {
+                "filter and hidden metadata"
+            } else {
+                "hidden metadata"
+            };
+            let why = if filtering && self.show_metadata {
+                "filter"
+            } else {
+                why
+            };
+            ui.weak(format!("Showing {shown} of {total} topics ({why})"));
+        }
+        let visible = egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| match self.nt.structs() {
+                Some(structs) => tree.show(ui, "", filtering, structs),
+                None => tree.show(ui, "", filtering, &StructDatabase::new()),
+            })
+            .inner;
+        self.nt.watch_values(visible);
     }
 
     fn tab_bar(&mut self, ui: &mut egui::Ui) {
@@ -233,6 +308,10 @@ impl eframe::App for DashboardApp {
             self.settings_bar(ui);
             self.tab_bar(ui);
         });
+        egui::Panel::left("nt_tree")
+            .resizable(true)
+            .default_size(300.0)
+            .show(ui, |ui| self.tree_panel(ui));
         egui::CentralPanel::default().show(ui, |ui| self.grid(ui));
         // The client runs on its own thread; redraw a few times a second so
         // connection changes show without waiting for mouse movement.

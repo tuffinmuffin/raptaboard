@@ -54,6 +54,25 @@ fn connects_and_counts_announced_topics() {
     };
     assert_eq!((host.as_str(), p), ("127.0.0.1", port));
 
+    // The topics-only subscription brings names and types but no values.
+    let angle_value = |nt: &NtConnection| {
+        nt.topics()
+            .into_iter()
+            .find(|t| &*t.name == "/Telemetry/Arm/angle_rad")
+            .and_then(|t| t.value)
+            .map(|v| v.value)
+    };
+    assert_eq!(angle_value(&nt), None);
+
+    // Asking for one topic's value brings it.
+    nt.watch_values(vec!["/Telemetry/Arm/angle_rad".into()]);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while angle_value(&nt).is_none() {
+        assert!(Instant::now() < deadline, "value never arrived");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(angle_value(&nt), Some(nt4::Value::Double(0.5)));
+
     // Calling again with the same address keeps the same connection.
     nt.set_target(Some("127.0.0.1"), port);
     assert!(matches!(nt.status(), ConnectionStatus::Connected { .. }));
@@ -79,4 +98,60 @@ fn unreachable_server_stays_connecting() {
     // A blank custom address counts as no address.
     nt.set_target(Some("  "), 5810);
     assert_eq!(nt.status(), ConnectionStatus::NoTarget);
+}
+
+#[test]
+fn struct_schemas_arrive_and_decode() {
+    use raptaboard::struct_view::{Shown, decode};
+
+    let server_rt = tokio::runtime::Runtime::new().unwrap();
+    let server = server_rt
+        .block_on(Server::start(ServerConfig {
+            listen_address: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            port: 0,
+            persist_file: None,
+        }))
+        .unwrap();
+    let port = server.local_addr().port();
+    // What robot code publishes for a Rotation2d topic: its schema, then bytes.
+    server.add_schema("struct:Rotation2d", "structschema", b"double value");
+    let heading = server.publish_generic(
+        "/Drive/heading",
+        "struct:Rotation2d".parse().unwrap(),
+        nt4::Properties::new(),
+    );
+    heading
+        .set(nt4::Value::Raw(1.25f64.to_le_bytes().to_vec()))
+        .unwrap();
+
+    let mut nt = NtConnection::new().unwrap();
+    nt.set_target(Some("127.0.0.1"), port);
+    nt.watch_values(vec!["/Drive/heading".into()]);
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let shown = loop {
+        let topics = nt.topics();
+        nt.update_structs(&topics);
+        let bytes = topics
+            .iter()
+            .find(|t| &*t.name == "/Drive/heading")
+            .and_then(|t| match t.value.as_ref().map(|v| &v.value) {
+                Some(nt4::Value::Raw(b)) => Some(b.clone()),
+                _ => None,
+            });
+        if let (Some(structs), Some(bytes)) = (nt.structs(), bytes)
+            && let Some(shown) = decode(structs, "struct:Rotation2d", &bytes)
+        {
+            break shown;
+        }
+        assert!(Instant::now() < deadline, "struct never decoded");
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(
+        shown,
+        Shown::Node {
+            summary: "Rotation2d".into(),
+            children: vec![("value".into(), Shown::Leaf("1.25".into()))],
+        }
+    );
 }
