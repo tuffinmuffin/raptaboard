@@ -2,9 +2,9 @@
 //! into labelled fields the tree can show.
 //!
 //! A struct topic's value is packed bytes. The layout comes from a schema
-//! the robot publishes on `/.schema/struct:<Name>`; [`StructDatabase`] holds
+//! a publisher sends on `/.schema/struct:<Name>`; [`StructDatabase`] holds
 //! the schemas and [`DynamicStruct`] reads a value with one. This module only
-//! decides how the result is labelled, so it can be tested without a robot.
+//! decides how the result is labelled, so it can be tested without a server.
 
 use nt4::proto::structs::{Declaration, DynamicStruct, FieldValue, StructDatabase, parse_schema};
 
@@ -183,7 +183,7 @@ fn describe_field(db: &StructDatabase, d: &Declaration, depth: usize) -> Shown {
                 .collect(),
         };
     }
-    // A nested struct opens into its own schema, if the robot sent it.
+    // A nested struct opens into its own schema, if the server has sent it.
     let nested = (depth < MAX_SCHEMA_DEPTH)
         .then(|| db.find(&d.type_name))
         .flatten()

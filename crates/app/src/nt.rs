@@ -11,10 +11,10 @@ use std::time::Duration;
 use nt4::proto::structs::StructDatabase;
 use nt4::{Client, ClientConfig, SubscriptionHandle, SubscriptionOptions, Topic, Value};
 
-/// Client name sent to the server, so robot code sees `/nt/raptaboard`.
+/// Client name sent to the server, so the server lists us as `/nt/raptaboard`.
 pub const CLIENT_NAME: &str = "raptaboard";
 
-/// Where robot code publishes struct schemas: `/.schema/struct:Pose2d` holds
+/// Where publishers put struct schemas: `/.schema/struct:Pose2d` holds
 /// the text `Translation2d translation;Rotation2d rotation`.
 pub const SCHEMA_PREFIX: &str = "/.schema/";
 
@@ -44,7 +44,7 @@ struct Running {
     values: Option<(Vec<String>, SubscriptionHandle)>,
     // Keeps the `/.schema/` values coming; struct topics need them to decode.
     _schemas: SubscriptionHandle,
-    // Struct schemas from this robot, and the bytes each was added from.
+    // Struct schemas from this server, and the bytes each was added from.
     structs: StructDatabase,
     schema_bytes: HashMap<String, Vec<u8>>,
 }
@@ -158,7 +158,7 @@ impl NtConnection {
             .map_or_else(Vec::new, |r| r.client.topics())
     }
 
-    /// Ask the robot for the values of exactly these topics (full names),
+    /// Ask the server for the values of exactly these topics (full names),
     /// replacing the previous request. Cheap to call every frame: it only
     /// resubscribes when the list changes. An empty list stops all values.
     ///
@@ -206,7 +206,7 @@ impl NtConnection {
         }
     }
 
-    /// Struct schemas received from this robot so far.
+    /// Struct schemas received from this server so far.
     pub fn structs(&self) -> Option<&StructDatabase> {
         self.running.as_ref().map(|r| &r.structs)
     }

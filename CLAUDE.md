@@ -42,7 +42,7 @@ macOS. Run the same locally before pushing.
   `nt.rs` the live connection (`NtConnection`: a 1-thread tokio runtime that owns the `nt4::Client`
   and restarts it when the address changes; the UI only makes non-blocking calls), `tree.rs` the
   read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),
-  `struct_view.rs` struct values decoded with the robot's `/.schema/` topics
+  `struct_view.rs` struct values decoded with the server's `/.schema/` topics
   (`nt4::proto::structs::StructDatabase` + `DynamicStruct`).
   Next: Text Display and Boolean Box.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.
@@ -54,6 +54,8 @@ macOS. Run the same locally before pushing.
 - Readers include students new to programming: every public item gets a doc comment in plain
   language with units, and a short doctest where a student would call it.
 - Mark tests written by Claude with a `// Tests written by Claude.` comment.
+- NetworkTables is client/server: in code and comments say "server" for the NT side (the robot is
+  only the default server; it can be the sim or another host), and keep "robot" for robot code itself.
 - Match Elastic names exactly where robot code depends on them (`.type` strings, `/Elastic/` topics,
   layout keys).
 - egui 0.37 API: implement `eframe::App::ui(&mut self, ui, frame)`; panels are `egui::Panel::top(..)`

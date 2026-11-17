@@ -100,11 +100,11 @@ impl Folder {
 
     /// Draw this folder's contents. `path` is the folder's own path (`""` for
     /// the root); `expand_all` opens every folder, used while filtering.
-    /// `structs` holds the robot's struct schemas, used to open struct topics
+    /// `structs` holds the struct schemas the server has sent, used to open struct topics
     /// such as `Pose2d` into their fields.
     ///
     /// Returns the full names of the topics that were drawn, that is, those
-    /// in open folders, so their values can be requested from the robot.
+    /// in open folders, so their values can be requested from the server.
     pub fn show(
         &self,
         ui: &mut egui::Ui,
