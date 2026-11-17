@@ -2812,6 +2812,7 @@ dependencies = [
  "nt4",
  "raptaboard-layout",
  "raptaboard-plugin-host",
+ "serde_json",
  "tokio",
 ]
 

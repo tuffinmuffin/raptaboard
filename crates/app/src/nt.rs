@@ -33,6 +33,38 @@ pub enum ConnectionStatus {
     },
 }
 
+/// One value subscription and what it was made for, so it is only redone
+/// when the topic list or period changes.
+#[derive(Default)]
+struct Watch {
+    names: Vec<String>,
+    period_s: Option<f64>,
+    handle: Option<SubscriptionHandle>,
+}
+
+impl Watch {
+    fn set(&mut self, client: &Client, mut names: Vec<String>, period_s: Option<f64>) {
+        names.sort();
+        names.dedup();
+        if self.names == names && self.period_s == period_s {
+            return;
+        }
+        // Drop the old subscription first; the new one replaces it.
+        self.handle = None;
+        if !names.is_empty() {
+            self.handle = Some(client.subscribe_multiple(
+                names.clone(),
+                SubscriptionOptions {
+                    periodic: period_s,
+                    ..Default::default()
+                },
+            ));
+        }
+        self.names = names;
+        self.period_s = period_s;
+    }
+}
+
 /// A running client and the address it was started for.
 struct Running {
     host: String,
@@ -40,8 +72,10 @@ struct Running {
     client: Client,
     // Keeps the "announce every topic" subscription open; dropping it unsubscribes.
     _all_topics: SubscriptionHandle,
-    // Values for the topics the UI shows right now, and their names.
-    values: Option<(Vec<String>, SubscriptionHandle)>,
+    // Values for the topics the tree shows right now.
+    tree_values: Watch,
+    // Values for the widgets on the open tab, at the widgets' update period.
+    widget_values: Watch,
     // Keeps the `/.schema/` values coming; struct topics need them to decode.
     _schemas: SubscriptionHandle,
     // Struct schemas from this server, and the bytes each was added from.
@@ -125,7 +159,8 @@ impl NtConnection {
                 port,
                 client,
                 _all_topics: all_topics,
-                values: None,
+                tree_values: Watch::default(),
+                widget_values: Watch::default(),
                 _schemas: schemas,
                 structs: StructDatabase::new(),
                 schema_bytes: HashMap::new(),
@@ -159,25 +194,22 @@ impl NtConnection {
     }
 
     /// Ask the server for the values of exactly these topics (full names),
-    /// replacing the previous request. Cheap to call every frame: it only
-    /// resubscribes when the list changes. An empty list stops all values.
+    /// replacing the tree's previous request. Cheap to call every frame: it
+    /// only resubscribes when the list changes. An empty list stops them.
     ///
     /// The tree uses this so only topics in open folders use bandwidth.
-    pub fn watch_values(&mut self, mut names: Vec<String>) {
+    pub fn watch_values(&mut self, names: Vec<String>) {
         let Some(r) = &mut self.running else { return };
-        names.sort();
-        names.dedup();
-        if r.values.as_ref().map(|(n, _)| n) == Some(&names) {
-            return;
-        }
-        r.values = if names.is_empty() {
-            None
-        } else {
-            let handle = r
-                .client
-                .subscribe_multiple(names.clone(), SubscriptionOptions::default());
-            Some((names, handle))
-        };
+        r.tree_values.set(&r.client, names, None);
+    }
+
+    /// Like [`watch_values`](Self::watch_values), for the widgets on the open
+    /// tab: `period_s` is how often the server should send each value, in
+    /// seconds (Elastic's default is 0.06). Kept apart from the tree's
+    /// request so opening a folder doesn't slow a widget down.
+    pub fn watch_widget_values(&mut self, names: Vec<String>, period_s: f64) {
+        let Some(r) = &mut self.running else { return };
+        r.widget_values.set(&r.client, names, Some(period_s));
     }
 
     /// Add any struct schemas in `topics` that are new or changed, so struct

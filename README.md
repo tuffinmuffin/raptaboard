@@ -5,11 +5,12 @@ An FRC driver dashboard written in Rust, from FRC Team 3200 (Raptacon). The goal
 add **widget plugins**: small WebAssembly modules that load without rebuilding the dashboard and draw
 a NetworkTables table, such as an arm subsystem.
 
-Status: **milestone 1 in progress.** The app opens an Elastic layout and shows its tabs and widget
-boxes on the grid, and connects to the robot over NetworkTables (status and topic count in the
-settings bar) with a NetworkTables tree of live values, including WPILib structs such as Pose2d. Widgets don't show live values yet.
+Status: **milestone 1 in progress.** The app opens an Elastic layout and shows its tabs and widgets
+on the grid, and connects to the robot over NetworkTables (status and topic count in the settings
+bar) with a NetworkTables tree of live values, including WPILib structs such as Pose2d. Text
+Display and Boolean Box widgets show live values; other widget types are placeholders for now.
 
-![raptaboard connected to the robot sim with an Elastic layout open](docs/images/m1-connected.png)
+![raptaboard connected to the robot sim, showing Text Display and Boolean Box widgets](docs/images/m1-widgets.png)
 
 ## Quick start
 
@@ -20,7 +21,8 @@ cargo run -p raptaboard -- crates/layout/tests/data/elastic_sample.json
 cargo test --workspace
 ```
 
-To connect to robot code running in simulation on this computer, add `--address sim`. Use
+To connect to robot code running in simulation on this computer, add `--address sim`
+(`layouts/robot2027_sim.json` is a layout made for the robot-2027 sim). Use
 `--team N` for another team's robot and `--help` for every option.
 
 On Linux you also need the windowing libraries:

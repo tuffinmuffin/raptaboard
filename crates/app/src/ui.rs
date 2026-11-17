@@ -1,13 +1,23 @@
 //! The main window: settings bar, tab bar and the widget grid.
 
-use eframe::egui::{self, Color32, CornerRadius, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
+use std::collections::HashMap;
+use std::time::Duration;
+
+use eframe::egui::{self, Color32, Rect, Sense, Stroke, Vec2};
+use nt4::{Topic, Value};
 use raptaboard_layout::{ElasticLayout, Rect as LayoutRect};
 
 use crate::cli::StartupOptions;
 use crate::connection::{AddressMode, resolve};
 use crate::nt::{ConnectionStatus, NtConnection};
 use crate::tree::{Folder, TopicEntry};
+use crate::widgets::{self, WidgetKind};
 use nt4::proto::structs::StructDatabase;
+
+/// Elastic's default widget update period, in seconds.
+const DEFAULT_PERIOD_S: f64 = 0.06;
+/// Space between List Layout children, in points.
+const LIST_GAP: f32 = 6.0;
 
 /// Top-level app state.
 pub struct DashboardApp {
@@ -99,7 +109,9 @@ impl DashboardApp {
 
     /// The NetworkTables tree in the left panel. Read-only: values are
     /// changed through widgets, not here.
-    fn tree_panel(&mut self, ui: &mut egui::Ui) {
+    ///
+    /// Returns the topics drawn, whose values the tree needs.
+    fn tree_panel(&mut self, ui: &mut egui::Ui, topics: &[Topic]) -> Vec<String> {
         ui.heading("NetworkTables");
         // A plain row: a right-to-left layout here would fill the rest of the
         // panel's height and push the tree out of view.
@@ -123,19 +135,16 @@ impl DashboardApp {
         });
         ui.checkbox(&mut self.show_metadata, "Show metadata (.type, /.schema)");
         ui.separator();
-        let topics = self.nt.topics();
         if topics.is_empty() {
             ui.weak(match self.nt.status() {
                 ConnectionStatus::Connected { .. } => "No topics yet",
                 _ => "Not connected",
             });
-            self.nt.watch_values(Vec::new());
-            return;
+            return Vec::new();
         }
-        self.nt.update_structs(&topics);
         let total = topics.len();
         let tree = Folder::build(
-            topics.into_iter().map(TopicEntry::from),
+            topics.iter().cloned().map(TopicEntry::from),
             self.show_metadata,
             &self.tree_filter,
         );
@@ -156,14 +165,48 @@ impl DashboardApp {
             };
             ui.weak(format!("Showing {shown} of {total} topics ({why})"));
         }
-        let visible = egui::ScrollArea::vertical()
+        egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| match self.nt.structs() {
                 Some(structs) => tree.show(ui, "", filtering, structs),
                 None => tree.show(ui, "", filtering, &StructDatabase::new()),
             })
-            .inner;
-        self.nt.watch_values(visible);
+            .inner
+    }
+
+    /// The topics the widgets on the open tab are bound to, and how often
+    /// they want updates (the shortest `period` of them, in seconds).
+    /// Only widgets raptaboard can draw are counted.
+    fn tab_topics(&self) -> (Vec<String>, f64) {
+        let Some(tab) = self
+            .layout
+            .as_ref()
+            .and_then(|l| l.tabs.get(self.current_tab))
+        else {
+            return (Vec::new(), DEFAULT_PERIOD_S);
+        };
+        let grid = &tab.grid_layout;
+        let drawn = grid
+            .containers
+            .iter()
+            .chain(grid.layouts.iter().flat_map(|l| &l.children))
+            .filter(|w| WidgetKind::from_type(&w.widget_type).is_some());
+        let mut names = Vec::new();
+        let mut period = f64::INFINITY;
+        for w in drawn {
+            if let Some(topic) = w.topic() {
+                names.push(topic.to_owned());
+                period = period.min(w.period().unwrap_or(DEFAULT_PERIOD_S));
+            }
+        }
+        // A period of 0 or less would ask for every change; Elastic's floor is
+        // a few milliseconds, so keep it sane.
+        let period = if period.is_finite() {
+            period.max(0.01)
+        } else {
+            DEFAULT_PERIOD_S
+        };
+        (names, period)
     }
 
     fn tab_bar(&mut self, ui: &mut egui::Ui) {
@@ -180,7 +223,7 @@ impl DashboardApp {
         });
     }
 
-    fn grid(&self, ui: &mut egui::Ui) {
+    fn grid(&self, ui: &mut egui::Ui, values: &HashMap<&str, &Value>) {
         let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::hover());
         let origin = response.rect.min;
         let grid =
@@ -214,39 +257,28 @@ impl DashboardApp {
                 Vec2::new(r.width as f32, r.height as f32),
             )
         };
-        let fill = visuals.extreme_bg_color;
-        let text = visuals.text_color();
-        let accent = visuals.selection.bg_fill;
+        let value_of = |topic: Option<&str>| topic.and_then(|t| values.get(t).copied());
 
         for w in &tab.grid_layout.containers {
             let rect = to_screen(&w.rect).shrink(4.0);
-            painter.rect(
-                rect,
-                CornerRadius::same(12),
-                fill,
-                Stroke::new(1.0, accent),
-                StrokeKind::Inside,
-            );
-            card_text(&painter, rect, &w.title, &w.widget_type, w.topic(), text);
+            widgets::draw(&painter, visuals, rect, w, value_of(w.topic()));
         }
+        // A List Layout stacks its children top to bottom, each at its own
+        // height and the layout's full width; children that don't fit are cut off.
         for l in &tab.grid_layout.layouts {
             let rect = to_screen(&l.rect).shrink(4.0);
-            painter.rect(
-                rect,
-                CornerRadius::same(12),
-                Color32::TRANSPARENT,
-                Stroke::new(1.5, accent),
-                StrokeKind::Inside,
-            );
-            let detail = format!("{} widgets", l.children.len());
-            card_text(
-                &painter,
-                rect,
-                &l.title,
-                &l.layout_type,
-                Some(&detail),
-                text,
-            );
+            let body = widgets::draw_card(&painter, visuals, rect, &l.title).shrink(LIST_GAP);
+            let inside = painter.with_clip_rect(body.intersect(painter.clip_rect()));
+            let mut top = body.min.y;
+            for child in &l.children {
+                let height = child.rect.height as f32;
+                let child_rect = Rect::from_min_size(
+                    egui::pos2(body.min.x, top),
+                    Vec2::new(body.width(), height),
+                );
+                widgets::draw(&inside, visuals, child_rect, child, value_of(child.topic()));
+                top += height + LIST_GAP;
+            }
         }
     }
 }
@@ -268,54 +300,40 @@ fn status_label(ui: &mut egui::Ui, status: &ConnectionStatus) {
     ui.label(text);
 }
 
-fn card_text(
-    painter: &egui::Painter,
-    rect: Rect,
-    title: &str,
-    kind: &str,
-    detail: Option<&str>,
-    color: Color32,
-) {
-    let left = rect.min.x + 10.0;
-    painter.text(
-        Pos2::new(left, rect.min.y + 8.0),
-        egui::Align2::LEFT_TOP,
-        title,
-        egui::FontId::proportional(15.0),
-        color,
-    );
-    painter.text(
-        Pos2::new(left, rect.min.y + 28.0),
-        egui::Align2::LEFT_TOP,
-        kind,
-        egui::FontId::proportional(12.0),
-        color.gamma_multiply(0.7),
-    );
-    if let Some(detail) = detail {
-        painter.text(
-            Pos2::new(left, rect.min.y + 44.0),
-            egui::Align2::LEFT_TOP,
-            detail,
-            egui::FontId::monospace(11.0),
-            color.gamma_multiply(0.6),
-        );
-    }
-}
-
 impl eframe::App for DashboardApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::Panel::top("settings").show(ui, |ui| {
             self.settings_bar(ui);
             self.tab_bar(ui);
         });
-        egui::Panel::left("nt_tree")
+        // One copy of every topic per frame, shared by the tree and the grid.
+        let topics = self.nt.topics();
+        self.nt.update_structs(&topics);
+        let values: HashMap<&str, &Value> = topics
+            .iter()
+            .filter_map(|t| Some((&*t.name, &t.value.as_ref()?.value)))
+            .collect();
+        let tree_topics = egui::Panel::left("nt_tree")
             .resizable(true)
             .default_size(300.0)
-            .show(ui, |ui| self.tree_panel(ui));
-        egui::CentralPanel::default().show(ui, |ui| self.grid(ui));
-        // The client runs on its own thread; redraw a few times a second so
-        // connection changes show without waiting for mouse movement.
-        ui.ctx()
-            .request_repaint_after(std::time::Duration::from_millis(250));
+            .show(ui, |ui| self.tree_panel(ui, &topics))
+            .inner;
+        egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values));
+
+        self.nt.watch_values(tree_topics);
+        let (widget_topics, period_s) = self.tab_topics();
+        let has_widgets = !widget_topics.is_empty();
+        self.nt.watch_widget_values(widget_topics, period_s);
+
+        // The client runs on its own thread, so egui doesn't know when values
+        // change. Redraw at the widgets' period while widgets are showing, and
+        // a few times a second otherwise so connection changes still show.
+        let connected = matches!(self.nt.status(), ConnectionStatus::Connected { .. });
+        let wait = if has_widgets && connected {
+            Duration::from_secs_f64(period_s)
+        } else {
+            Duration::from_millis(250)
+        };
+        ui.ctx().request_repaint_after(wait);
     }
 }

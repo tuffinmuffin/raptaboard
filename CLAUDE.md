@@ -43,8 +43,13 @@ macOS. Run the same locally before pushing.
   and restarts it when the address changes; the UI only makes non-blocking calls), `tree.rs` the
   read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),
   `struct_view.rs` struct values decoded with the server's `/.schema/` topics
-  (`nt4::proto::structs::StructDatabase` + `DynamicStruct`).
-  Next: Text Display and Boolean Box.
+  (`nt4::proto::structs::StructDatabase` + `DynamicStruct`), `widgets.rs` the grid widgets
+  (Text Display, Boolean Box; other types draw as placeholders). Widget values come from a
+  second subscription (`NtConnection::watch_widget_values`) at the open tab's shortest `period`.
+  Next: the 30-widget CPU test.
+- `layouts/robot2027_sim.json`: a layout for trying widgets against the robot-2027 sim
+  (`cargo run -p raptaboard -- --address sim layouts/robot2027_sim.json`). Its `/DashTest/`
+  topics come from robot-2027's `utils/dashboard_test_topics.py` (sim only).
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.
 - `plugins/arm`: example plugin; its `plugin.toml` is a test fixture.
 

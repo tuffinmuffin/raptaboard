@@ -155,3 +155,49 @@ fn struct_schemas_arrive_and_decode() {
         }
     );
 }
+
+#[test]
+fn widget_values_keep_coming_when_the_tree_closes() {
+    let server_rt = tokio::runtime::Runtime::new().unwrap();
+    let server = server_rt
+        .block_on(Server::start(ServerConfig {
+            listen_address: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            port: 0,
+            persist_file: None,
+        }))
+        .unwrap();
+    let healthy = server.publish::<bool>("/Drive/Health/allModulesHealthy");
+    healthy.set(true);
+
+    let mut nt = NtConnection::new().unwrap();
+    nt.set_target(Some("127.0.0.1"), server.local_addr().port());
+    wait_for(&nt, |s| matches!(s, ConnectionStatus::Connected { .. }));
+    let value = |nt: &NtConnection| {
+        nt.topics()
+            .into_iter()
+            .find(|t| &*t.name == "/Drive/Health/allModulesHealthy")
+            .and_then(|t| t.value)
+            .map(|v| v.value)
+    };
+    let wait_value = |nt: &NtConnection, want: bool| {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while value(nt) != Some(nt4::Value::Boolean(want)) {
+            assert!(
+                Instant::now() < deadline,
+                "never saw {want}, last {:?}",
+                value(nt)
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+
+    // The tree and a widget both want the topic.
+    nt.watch_values(vec!["/Drive/Health/allModulesHealthy".into()]);
+    nt.watch_widget_values(vec!["/Drive/Health/allModulesHealthy".into()], 0.06);
+    wait_value(&nt, true);
+
+    // Closing the tree folder must not stop the widget's updates.
+    nt.watch_values(Vec::new());
+    healthy.set(false);
+    wait_value(&nt, false);
+}

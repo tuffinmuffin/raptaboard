@@ -9,6 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 eframe = "0.37.0"
+serde_json.workspace = true
 raptaboard-layout.workspace = true
 raptaboard-plugin-host.workspace = true
 nt4.workspace = true
