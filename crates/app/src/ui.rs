@@ -82,8 +82,14 @@ impl DashboardApp {
     fn settings_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.strong("raptaboard");
-            ui.toggle_value(&mut self.show_tree, "NT tree")
-                .on_hover_text("Show or hide the NetworkTables tree");
+            let (label, hint) = if self.show_tree {
+                ("◀ Tree", "Hide the NetworkTables tree")
+            } else {
+                ("▶ Tree", "Show the NetworkTables tree")
+            };
+            if ui.button(label).on_hover_text(hint).clicked() {
+                self.show_tree = !self.show_tree;
+            }
             ui.separator();
             ui.label("Team");
             ui.add(egui::DragValue::new(&mut self.team).range(1..=99999));
@@ -117,7 +123,18 @@ impl DashboardApp {
     ///
     /// Returns the topics drawn, whose values the tree needs.
     fn tree_panel(&mut self, ui: &mut egui::Ui, topics: &[Topic]) -> Vec<String> {
-        ui.heading("NetworkTables");
+        ui.horizontal(|ui| {
+            ui.heading("NetworkTables");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .small_button("◀")
+                    .on_hover_text("Hide the tree")
+                    .clicked()
+                {
+                    self.show_tree = false;
+                }
+            });
+        });
         // A plain row: a right-to-left layout here would fill the rest of the
         // panel's height and push the tree out of view.
         ui.horizontal(|ui| {
