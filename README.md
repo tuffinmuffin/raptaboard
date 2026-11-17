@@ -6,9 +6,10 @@ add **widget plugins**: small WebAssembly modules that load without rebuilding t
 a NetworkTables table, such as an arm subsystem.
 
 Status: **milestone 1 in progress.** The app opens an Elastic layout and shows its tabs and widget
-boxes on the grid. It does not connect to a robot yet.
+boxes on the grid, and connects to the robot over NetworkTables (status and topic count in the
+settings bar). Widgets don't show live values yet.
 
-![Layout viewer showing an Elastic layout](docs/images/m1-layout-viewer.png)
+![raptaboard connected to the robot sim with an Elastic layout open](docs/images/m1-connected.png)
 
 ## Quick start
 
@@ -18,6 +19,9 @@ Install Rust with [rustup](https://rustup.rs) (stable, 1.95 or newer), then:
 cargo run -p raptaboard -- crates/layout/tests/data/elastic_sample.json
 cargo test --workspace
 ```
+
+To connect to robot code running in simulation on this computer, add `--address sim`. Use
+`--team N` for another team's robot and `--help` for every option.
 
 On Linux you also need the windowing libraries:
 `sudo apt install libxkbcommon-x11-0 libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev`.

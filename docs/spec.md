@@ -168,7 +168,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
 
 1. Spike: egui window, NT4.1 client connected to the robot-2027 sim (via the `nt4` crate), NT
    tree, Text Display and Boolean Box, 30-widget CPU test. **Started**: workspace, Elastic layout
-   import/export, plugin manifests, WIT file, layout viewer window, CI.
+   import/export, plugin manifests, WIT file, layout viewer window, CI, live NT connection with
+   status and topic count.
 2. Grid and layouts: tabs, snap grid, drag from tree, List Layout, lock, layout save, settings,
    hotkeys.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.

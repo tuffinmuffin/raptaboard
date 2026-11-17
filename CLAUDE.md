@@ -23,6 +23,8 @@ cargo test --workspace            # unit tests, integration tests and doctests
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p raptaboard -- crates/layout/tests/data/elastic_sample.json
+cargo run -p raptaboard -- --address sim crates/layout/tests/data/elastic_sample.json  # robot sim
+cargo run -p raptaboard -- --help
 ```
 
 CI (`.github/workflows/ci.yml`) runs fmt, clippy with `-D warnings` and tests on Linux, Windows and
@@ -31,11 +33,15 @@ macOS. Run the same locally before pushing.
 ## Layout
 
 - NetworkTables: the `nt4` crate from crates.io (`nt4::Client`, typed subscribers, `nt4::proto` for
-  ports and URLs). Fix protocol bugs upstream in `nt4-rs`, not here. Next: connect the app to it.
+  ports and URLs). Fix protocol bugs upstream in `nt4-rs`, not here.
 - `crates/layout`: Elastic v1 model. Unknown fields go in `extra` maps so files round-trip.
 - `crates/plugin-host`: manifest parsing and matching; `path` has topic path helpers
   (`.type` tables). wasmtime hosting comes in milestone 4.
-- `crates/app`: the eframe app. `ui.rs` holds the window, `connection.rs` the robot address modes.
+- `crates/app`: the eframe app. `ui.rs` holds the window, `connection.rs` the robot address modes,
+  `cli.rs` the startup flags (`--team`, `--address`; stand-ins until settings persist),
+  `nt.rs` the live connection (`NtConnection`: a 1-thread tokio runtime that owns the `nt4::Client`
+  and restarts it when the address changes; the UI only makes non-blocking calls). Next: NT tree,
+  then Text Display and Boolean Box.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.
 - `plugins/arm`: example plugin; its `plugin.toml` is a test fixture.
 

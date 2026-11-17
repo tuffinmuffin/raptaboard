@@ -54,7 +54,7 @@ pub fn team_address(team: u32) -> String {
 }
 
 /// The host to connect to, or `None` while the Driver Station mode has not
-/// reported an address yet (that lookup arrives with the NT client).
+/// reported an address yet (that lookup is not built yet).
 pub fn resolve(mode: AddressMode, team: u32, custom: &str) -> Option<String> {
     match mode {
         AddressMode::DriverStation => None,

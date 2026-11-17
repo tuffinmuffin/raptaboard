@@ -3,7 +3,9 @@
 use eframe::egui::{self, Color32, CornerRadius, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
 use raptaboard_layout::{ElasticLayout, Rect as LayoutRect};
 
+use crate::cli::StartupOptions;
 use crate::connection::{AddressMode, resolve};
+use crate::nt::{ConnectionStatus, NtConnection};
 
 /// Top-level app state.
 pub struct DashboardApp {
@@ -14,24 +16,29 @@ pub struct DashboardApp {
     team: u32,
     mode: AddressMode,
     custom_address: String,
+    nt: NtConnection,
 }
 
 impl DashboardApp {
-    /// Create the app, loading a layout file if a path is given.
-    pub fn new(layout_path: Option<String>) -> Self {
+    /// Create the app from the startup options, loading the layout file if one is given.
+    ///
+    /// Fails only if the tokio runtime for the NT client cannot start.
+    pub fn new(options: StartupOptions) -> std::io::Result<Self> {
+        let layout_path = options.layout_path;
         let mut app = DashboardApp {
             layout: None,
             layout_path: layout_path.clone().unwrap_or_default(),
             status: "No layout loaded".into(),
             current_tab: 0,
-            team: 3200,
-            mode: AddressMode::TeamNumber,
-            custom_address: String::new(),
+            team: options.team,
+            mode: options.mode,
+            custom_address: options.custom_address,
+            nt: NtConnection::new()?,
         };
         if layout_path.is_some() {
             app.load_layout();
         }
-        app
+        Ok(app)
     }
 
     fn load_layout(&mut self) {
@@ -68,12 +75,11 @@ impl DashboardApp {
             if self.mode == AddressMode::Custom {
                 ui.text_edit_singleline(&mut self.custom_address);
             }
-            let target = resolve(self.mode, self.team, &self.custom_address)
-                .map(|host| {
-                    nt4::proto::client_url(&host, nt4::proto::ROBOT_CODE_PORT, "raptaboard")
-                })
-                .unwrap_or_else(|| "waiting for Driver Station".into());
-            ui.label(format!("Target: {target} (not connected yet)"));
+            let host = resolve(self.mode, self.team, &self.custom_address);
+            self.nt
+                .set_target(host.as_deref(), nt4::proto::ROBOT_CODE_PORT);
+            ui.separator();
+            status_label(ui, &self.nt.status());
         });
         ui.horizontal(|ui| {
             ui.label("Layout");
@@ -170,6 +176,23 @@ impl DashboardApp {
     }
 }
 
+/// Show the connection state as a colored dot and a line of text.
+fn status_label(ui: &mut egui::Ui, status: &ConnectionStatus) {
+    let (color, text) = match status {
+        ConnectionStatus::NoTarget => (Color32::GRAY, "Waiting for Driver Station".to_owned()),
+        ConnectionStatus::Connecting { host, port } => (
+            Color32::from_rgb(230, 160, 40),
+            format!("Connecting to {host}:{port}..."),
+        ),
+        ConnectionStatus::Connected { host, port, topics } => (
+            Color32::from_rgb(60, 180, 90),
+            format!("Connected to {host}:{port}, {topics} topics"),
+        ),
+    };
+    ui.label(egui::RichText::new("●").color(color));
+    ui.label(text);
+}
+
 fn card_text(
     painter: &egui::Painter,
     rect: Rect,
@@ -211,5 +234,9 @@ impl eframe::App for DashboardApp {
             self.tab_bar(ui);
         });
         egui::CentralPanel::default().show(ui, |ui| self.grid(ui));
+        // The client runs on its own thread; redraw a few times a second so
+        // connection changes show without waiting for mouse movement.
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(250));
     }
 }
