@@ -101,18 +101,25 @@ impl DashboardApp {
     /// changed through widgets, not here.
     fn tree_panel(&mut self, ui: &mut egui::Ui) {
         ui.heading("NetworkTables");
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        // A plain row: a right-to-left layout here would fill the rest of the
+        // panel's height and push the tree out of view.
+        ui.horizontal(|ui| {
+            let clear_width = 48.0;
+            let filter_width = ui.available_width() - clear_width - ui.spacing().item_spacing.x;
+            ui.add(
+                egui::TextEdit::singleline(&mut self.tree_filter)
+                    .hint_text("Filter topics")
+                    .desired_width(filter_width),
+            );
             if ui
-                .add_enabled(!self.tree_filter.is_empty(), egui::Button::new("Clear"))
+                .add_enabled(
+                    !self.tree_filter.is_empty(),
+                    egui::Button::new("Clear").min_size(egui::vec2(clear_width, 0.0)),
+                )
                 .clicked()
             {
                 self.tree_filter.clear();
             }
-            ui.add(
-                egui::TextEdit::singleline(&mut self.tree_filter)
-                    .hint_text("Filter topics")
-                    .desired_width(f32::INFINITY),
-            );
         });
         ui.checkbox(&mut self.show_metadata, "Show metadata (.type, /.schema)");
         ui.separator();
