@@ -40,8 +40,11 @@ macOS. Run the same locally before pushing.
 - `crates/app`: the eframe app. `ui.rs` holds the window, `connection.rs` the robot address modes,
   `cli.rs` the startup flags (`--team`, `--address`; stand-ins until settings persist),
   `nt.rs` the live connection (`NtConnection`: a 1-thread tokio runtime that owns the `nt4::Client`
-  and restarts it when the address changes; the UI only makes non-blocking calls). Next: NT tree,
-  then Text Display and Boolean Box.
+  and restarts it when the address changes; the UI only makes non-blocking calls), `tree.rs` the
+  read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),
+  `struct_view.rs` struct values decoded with the robot's `/.schema/` topics
+  (`nt4::proto::structs::StructDatabase` + `DynamicStruct`).
+  Next: Text Display and Boolean Box.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.
 - `plugins/arm`: example plugin; its `plugin.toml` is a test fixture.
 
