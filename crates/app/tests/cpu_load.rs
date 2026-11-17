@@ -6,7 +6,8 @@
 //! release app on a layout of 30 widgets bound to them (each with a 0.02 s
 //! period), and measures the app's CPU time over a window.
 //!
-//! It opens a real window and takes about 40 s, so it is ignored by default.
+//! It opens a real window, once with the NT tree shown and once hidden, and
+//! takes about 80 s, so it is ignored by default.
 //! Run it by hand with the window visible (a hidden window may not redraw):
 //!
 //! ```text
@@ -210,18 +211,19 @@ fn report(app: &str, of_one_core: f64) -> f64 {
     of_machine
 }
 
-#[test]
-#[ignore = "opens a window and takes about 40 s; see the file comment"]
-fn thirty_widgets_at_50_hz() {
+/// Run the load against raptaboard, with extra command-line `flags`, and
+/// return the CPU used as a percent of one core.
+fn measure_raptaboard(flags: &[&str]) -> f64 {
     let layout = write_layout();
     let mut app = None;
     let pid = std::cell::Cell::new(None);
-    let of_one_core = run_load(
+    run_load(
         0,
         |port| {
             let child = Command::new(env!("CARGO_BIN_EXE_raptaboard"))
                 .args(["--address", "localhost", "--port"])
                 .arg(port.to_string())
+                .args(flags)
                 .arg(&layout)
                 .spawn()
                 .expect("start the app");
@@ -229,11 +231,22 @@ fn thirty_widgets_at_50_hz() {
             app = Some(KillOnDrop(child));
         },
         &|p| Some(p.pid()) == pid.get(),
+    )
+}
+
+/// Both runs happen in one test so the two windows never run at once.
+#[test]
+#[ignore = "opens a window twice and takes about 80 s; see the file comment"]
+fn thirty_widgets_at_50_hz() {
+    let shown = report("raptaboard, tree shown", measure_raptaboard(&[]));
+    report(
+        "raptaboard, tree hidden",
+        measure_raptaboard(&["--hide-tree"]),
     );
-    let of_machine = report("raptaboard", of_one_core);
+    // The target applies to the heavier case.
     assert!(
-        of_machine < TARGET_PCT_OF_MACHINE,
-        "over the CPU target: {of_machine:.2}%"
+        shown < TARGET_PCT_OF_MACHINE,
+        "over the CPU target: {shown:.2}%"
     );
 }
 

@@ -23,8 +23,8 @@ cargo test --workspace
 
 To connect to robot code running in simulation on this computer, add `--address sim`
 (`layouts/robot2027_sim.json` is a layout made for the robot-2027 sim). Use
-`--team N` for another team's robot, `--port N` for a server on another port, and `--help` for
-every option.
+`--team N` for another team's robot, `--port N` for a server on another port, `--hide-tree` to start
+with the NT tree hidden (the "NT tree" button toggles it), and `--help` for every option.
 
 On Linux you also need the windowing libraries:
 `sudo apt install libxkbcommon-x11-0 libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev`.

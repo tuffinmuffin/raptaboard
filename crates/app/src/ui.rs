@@ -30,6 +30,7 @@ pub struct DashboardApp {
     custom_address: String,
     port: u16,
     nt: NtConnection,
+    show_tree: bool,
     tree_filter: String,
     show_metadata: bool,
 }
@@ -50,6 +51,7 @@ impl DashboardApp {
             custom_address: options.custom_address,
             port: options.port,
             nt: NtConnection::new()?,
+            show_tree: options.show_tree,
             tree_filter: String::new(),
             show_metadata: false,
         };
@@ -80,6 +82,8 @@ impl DashboardApp {
     fn settings_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.strong("raptaboard");
+            ui.toggle_value(&mut self.show_tree, "NT tree")
+                .on_hover_text("Show or hide the NetworkTables tree");
             ui.separator();
             ui.label("Team");
             ui.add(egui::DragValue::new(&mut self.team).range(1..=99999));
@@ -314,11 +318,16 @@ impl eframe::App for DashboardApp {
             .iter()
             .filter_map(|t| Some((&*t.name, &t.value.as_ref()?.value)))
             .collect();
-        let tree_topics = egui::Panel::left("nt_tree")
-            .resizable(true)
-            .default_size(300.0)
-            .show(ui, |ui| self.tree_panel(ui, &topics))
-            .inner;
+        // A hidden tree costs nothing: it isn't built and asks for no values.
+        let tree_topics = if self.show_tree {
+            egui::Panel::left("nt_tree")
+                .resizable(true)
+                .default_size(300.0)
+                .show(ui, |ui| self.tree_panel(ui, &topics))
+                .inner
+        } else {
+            Vec::new()
+        };
         egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values));
 
         self.nt.watch_values(tree_topics);
