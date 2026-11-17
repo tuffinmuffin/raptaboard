@@ -1,7 +1,7 @@
 //! Command-line options, used until settings are saved between runs.
 //!
 //! ```text
-//! raptaboard [--team N] [--address ds|team|mdns|wifi|sim|<host>] [layout.json]
+//! raptaboard [--team N] [--address ds|team|mdns|wifi|sim|<host>] [--port N] [layout.json]
 //! ```
 
 use crate::connection::AddressMode;
@@ -19,6 +19,8 @@ Options:
                       wifi   SystemCore's own WiFi (172.30.0.1)
                       sim    the simulator on this computer (localhost)
                       any other value is used as a host name or IP
+  --port N          NetworkTables server port (default 5810, robot code;
+                    SystemCore's own server is 6810)
   -h, --help        Show this help";
 
 /// What the app starts with.
@@ -32,16 +34,19 @@ pub struct StartupOptions {
     pub mode: AddressMode,
     /// Host for [`AddressMode::Custom`]; empty otherwise.
     pub custom_address: String,
+    /// NetworkTables server port.
+    pub port: u16,
 }
 
 impl Default for StartupOptions {
-    /// No layout, team 3200, robot found by team number.
+    /// No layout, team 3200, robot found by team number, port 5810.
     fn default() -> Self {
         StartupOptions {
             layout_path: None,
             team: 3200,
             mode: AddressMode::TeamNumber,
             custom_address: String::new(),
+            port: nt4::proto::ROBOT_CODE_PORT,
         }
     }
 }
@@ -96,6 +101,14 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<StartupOptions, C
                     }
                 };
             }
+            "--port" => {
+                let v = value("--port")?;
+                opts.port = v
+                    .parse()
+                    .ok()
+                    .filter(|p| *p != 0)
+                    .ok_or_else(|| CliError::Invalid(format!("bad port '{v}'")))?;
+            }
             flag if flag.starts_with('-') => {
                 return Err(CliError::Invalid(format!("unknown option '{flag}'")));
             }
@@ -122,6 +135,18 @@ mod tests {
     #[test]
     fn no_arguments_gives_the_defaults() {
         assert_eq!(parse(args(&[])).unwrap(), StartupOptions::default());
+    }
+
+    #[test]
+    fn port_is_checked() {
+        assert_eq!(parse(args(&["--port", "6810"])).unwrap().port, 6810);
+        assert_eq!(parse(args(&[])).unwrap().port, 5810);
+        for bad in ["0", "70000", "x"] {
+            assert!(matches!(
+                parse(args(&["--port", bad])),
+                Err(CliError::Invalid(_))
+            ));
+        }
     }
 
     #[test]

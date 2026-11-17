@@ -20,3 +20,4 @@ workspace = true
 
 [dev-dependencies]
 nt4 = { workspace = true, features = ["server"] }
+sysinfo = { version = "0.40.4", default-features = false, features = ["system"] }

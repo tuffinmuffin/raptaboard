@@ -28,6 +28,7 @@ pub struct DashboardApp {
     team: u32,
     mode: AddressMode,
     custom_address: String,
+    port: u16,
     nt: NtConnection,
     tree_filter: String,
     show_metadata: bool,
@@ -47,6 +48,7 @@ impl DashboardApp {
             team: options.team,
             mode: options.mode,
             custom_address: options.custom_address,
+            port: options.port,
             nt: NtConnection::new()?,
             tree_filter: String::new(),
             show_metadata: false,
@@ -92,8 +94,7 @@ impl DashboardApp {
                 ui.text_edit_singleline(&mut self.custom_address);
             }
             let host = resolve(self.mode, self.team, &self.custom_address);
-            self.nt
-                .set_target(host.as_deref(), nt4::proto::ROBOT_CODE_PORT);
+            self.nt.set_target(host.as_deref(), self.port);
             ui.separator();
             status_label(ui, &self.nt.status());
         });
