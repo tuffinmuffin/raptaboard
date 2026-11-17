@@ -155,8 +155,21 @@ fn show_topic(ui: &mut egui::Ui, key: &str, topic: &TopicEntry, structs: &Struct
             .on_hover_text(hover);
         return;
     }
+    // A schema topic opens into its fields, enum lists and nested structs.
+    if topic.ty == "structschema"
+        && let Some(text) = bytes.map(String::from_utf8_lossy)
+        && let Ok(Shown::Node { summary, children }) = struct_view::describe_schema(structs, &text)
+    {
+        egui::CollapsingHeader::new(format!("{key}  schema, {summary}"))
+            .id_salt(&topic.name)
+            .default_open(false)
+            .show(ui, |ui| show_children(ui, &topic.name, &children))
+            .header_response
+            .on_hover_text(format!("{}\n{text}", topic.name));
+        return;
+    }
     let value = match (&topic.value, bytes) {
-        // Schema topics hold text, such as "double x;double y".
+        // Schema text that didn't parse is shown as it is, such as "double x;double y".
         (_, Some(b)) if topic.ty == "structschema" => {
             format!("\"{}\"", shorten(&String::from_utf8_lossy(b)))
         }
@@ -174,6 +187,7 @@ fn show_topic(ui: &mut egui::Ui, key: &str, topic: &TopicEntry, structs: &Struct
 
 /// The fields of a decoded struct; nested structs and arrays open in turn.
 fn show_children(ui: &mut egui::Ui, id: &str, children: &[(String, Shown)]) {
+    // Used for decoded values and for schemas; nested parts start open.
     for (name, shown) in children {
         match shown {
             Shown::Leaf(text) => {

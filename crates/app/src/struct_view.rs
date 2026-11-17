@@ -6,7 +6,7 @@
 //! the schemas and [`DynamicStruct`] reads a value with one. This module only
 //! decides how the result is labelled, so it can be tested without a robot.
 
-use nt4::proto::structs::{DynamicStruct, FieldValue, StructDatabase};
+use nt4::proto::structs::{Declaration, DynamicStruct, FieldValue, StructDatabase, parse_schema};
 
 use crate::tree::format_number;
 
@@ -126,6 +126,77 @@ fn show_field(value: FieldValue<'_>) -> Shown {
     }
 }
 
+/// How deep nested struct types are opened in a schema, to stop a schema
+/// that names itself from going on forever.
+const MAX_SCHEMA_DEPTH: usize = 8;
+
+/// Describe a struct schema field by field, for reviewing it in the tree.
+///
+/// Each field shows its type (`double`, `uint8[4]`, `int32:3` for a bit
+/// field). Enum fields open into their `name = value` list. Fields whose type
+/// is another struct open into that struct's schema when `db` has it.
+///
+/// ```
+/// use nt4::proto::structs::StructDatabase;
+/// use raptaboard::struct_view::{describe_schema, Shown};
+/// let db = StructDatabase::new();
+/// let Shown::Node { summary, children } =
+///     describe_schema(&db, "enum {kOff=0, kOn=1} uint8 mode;double x").unwrap()
+/// else {
+///     panic!()
+/// };
+/// assert_eq!(summary, "2 fields");
+/// assert_eq!(children[1], ("x".to_string(), Shown::Leaf("double".into())));
+/// ```
+pub fn describe_schema(db: &StructDatabase, schema: &str) -> Result<Shown, String> {
+    describe_at_depth(db, schema, 0)
+}
+
+fn describe_at_depth(db: &StructDatabase, schema: &str, depth: usize) -> Result<Shown, String> {
+    let decls = parse_schema(schema)?;
+    let summary = match decls.len() {
+        1 => "1 field".to_owned(),
+        n => format!("{n} fields"),
+    };
+    let children = decls
+        .iter()
+        .map(|d| (d.name.clone(), describe_field(db, d, depth)))
+        .collect();
+    Ok(Shown::Node { summary, children })
+}
+
+fn describe_field(db: &StructDatabase, d: &Declaration, depth: usize) -> Shown {
+    let mut ty = d.type_name.clone();
+    if d.array_size != 1 {
+        ty.push_str(&format!("[{}]", d.array_size));
+    }
+    if d.bit_width != 0 {
+        ty.push_str(&format!(":{}", d.bit_width));
+    }
+    if !d.enum_values.is_empty() {
+        return Shown::Node {
+            summary: format!("{ty} enum ({} values)", d.enum_values.len()),
+            children: d
+                .enum_values
+                .iter()
+                .map(|(name, value)| (name.clone(), Shown::Leaf(value.to_string())))
+                .collect(),
+        };
+    }
+    // A nested struct opens into its own schema, if the robot sent it.
+    let nested = (depth < MAX_SCHEMA_DEPTH)
+        .then(|| db.find(&d.type_name))
+        .flatten()
+        .and_then(|desc| describe_at_depth(db, desc.schema(), depth + 1).ok());
+    match nested {
+        Some(Shown::Node { children, .. }) => Shown::Node {
+            summary: ty,
+            children,
+        },
+        _ => Shown::Leaf(ty),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // Tests written by Claude.
@@ -239,6 +310,36 @@ mod tests {
                 ]
             )
         );
+    }
+
+    #[test]
+    fn schema_lists_enum_values_and_opens_nested_structs() {
+        let db = wpilib_db();
+        assert_eq!(
+            describe_schema(
+                &db,
+                "enum {kIdle=0, kFault=-1} int8 health;double t[2];uint8 flags:3;Rotation2d heading",
+            )
+            .unwrap(),
+            node(
+                "4 fields",
+                vec![
+                    (
+                        "health",
+                        node("int8 enum (2 values)", vec![("kIdle", leaf("0")), ("kFault", leaf("-1"))])
+                    ),
+                    ("t", leaf("double[2]")),
+                    ("flags", leaf("uint8:3")),
+                    ("heading", node("Rotation2d", vec![("value", leaf("double"))])),
+                ]
+            )
+        );
+        // A struct type whose schema hasn't arrived stays a plain type name.
+        assert_eq!(
+            describe_schema(&db, "Unknown thing").unwrap(),
+            node("1 field", vec![("thing", leaf("Unknown"))])
+        );
+        assert!(describe_schema(&db, "int32 a[]").is_err());
     }
 
     #[test]
