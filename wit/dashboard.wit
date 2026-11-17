@@ -1,0 +1,110 @@
+// raptaboard plugin interface (host API 0.1).
+//
+// A widget plugin is a WebAssembly component that exports the `widget` world.
+// The dashboard calls `render` when a bound value changes; the plugin reads
+// values with `host.get` and returns shapes in widget-local pixels
+// (0,0 is the top-left corner, y grows down).
+//
+// Plugins cannot open files, sockets or windows. They can only publish NT
+// values under their own table, and only if plugin.toml grants `publish`.
+
+package raptaboard:dashboard@0.1.0;
+
+interface types {
+    /// A plain NetworkTables value.
+    variant scalar-value {
+        boolean(bool),
+        int(s64),
+        double(f64),
+        str(string),
+        bool-array(list<bool>),
+        int-array(list<s64>),
+        double-array(list<f64>),
+        str-array(list<string>),
+    }
+
+    /// One field of a decoded struct. WIT types can't nest themselves, so nested
+    /// structs are flattened with dotted names: a Pose2d arrives as
+    /// "translation.x", "translation.y" and "rotation.value".
+    record field {
+        name: string,
+        value: scalar-value,
+    }
+
+    /// A value read from NetworkTables. Struct topics arrive decoded as records.
+    variant nt-value {
+        boolean(bool),
+        int(s64),
+        double(f64),
+        str(string),
+        bool-array(list<bool>),
+        int-array(list<s64>),
+        double-array(list<f64>),
+        str-array(list<string>),
+        %record(list<field>),
+    }
+
+    record point { x: f32, y: f32 }
+    record size { width: f32, height: f32 }
+
+    /// RGBA, 0-255 each.
+    record color { r: u8, g: u8, b: u8, a: u8 }
+
+    record stroke { width: f32, color: color }
+
+    record line { start: point, end: point, stroke: stroke }
+    record polyline { points: list<point>, closed: bool, stroke: stroke, fill: option<color> }
+    /// Angles in radians, counter-clockwise from +x as seen on screen.
+    record arc { center: point, radius: f32, start-rad: f32, end-rad: f32, stroke: stroke }
+    record rect { min: point, max: point, corner-radius: f32, stroke: option<stroke>, fill: option<color> }
+    record circle { center: point, radius: f32, stroke: option<stroke>, fill: option<color> }
+
+    enum align { left, center, right }
+    record text { pos: point, text: string, size: f32, color: color, align: align }
+
+    /// An image from the plugin's own folder, like "arm.png".
+    record image { path: string, min: point, max: point }
+
+    variant shape {
+        line(line),
+        polyline(polyline),
+        arc(arc),
+        rect(rect),
+        circle(circle),
+        text(text),
+        image(image),
+    }
+
+    variant input {
+        click(point),
+        drag(point),
+        key(string),
+    }
+}
+
+interface host {
+    use types.{nt-value};
+
+    /// Latest value of a key relative to the bound table, like "angle_rad".
+    get: func(key: string) -> option<nt-value>;
+    /// The key's `unit` topic property, like "rad" or "m", if the robot set one.
+    unit: func(key: string) -> option<string>;
+    /// Write a value under the bound table. Needs `publish = true` in plugin.toml.
+    publish: func(key: string, value: nt-value) -> result<_, string>;
+    /// A widget property set in the edit dialog (declared in plugin.toml).
+    property: func(name: string) -> option<nt-value>;
+    /// Write a line to the dashboard log.
+    log: func(message: string);
+}
+
+world widget {
+    import host;
+    use types.{size, shape, input};
+
+    /// Keys (relative to the bound table) this widget wants values for.
+    export subscriptions: func() -> list<string>;
+    /// Draw the widget. `time-s` is seconds since the widget was created.
+    export render: func(size: size, time-s: f64) -> list<shape>;
+    /// A click, drag or key press inside the widget.
+    export on-input: func(event: input);
+}

@@ -1,0 +1,19 @@
+# Example plugin from the spec: draws an arm table tagged .type = "Arm".
+# The robot publishes angle_rad, setpoint_rad, extension_m and at_goal under it.
+name = "arm"
+version = "0.1.0"
+api = "0.1"
+
+[match]
+type = "Arm"
+
+[size]
+default = [2, 2]   # grid cells
+min = [1, 1]
+
+[properties]
+length_m = { type = "number", default = 0.8 }
+show_setpoint = { type = "bool", default = true }
+
+[permissions]
+publish = false
