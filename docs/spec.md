@@ -171,9 +171,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    import/export, plugin manifests, WIT file, layout viewer window, CI, live NT connection with
    status and topic count, read-only NT tree with live values for open folders and generic struct decoding from
    `/.schema/`, Text Display and Boolean Box widgets (read-only) with List Layout children, and the CPU test
-   (`crates/app/tests/cpu_load.rs`). First result, 2026-11-17 on an 18-core Mac: 9 to 16% of one
-   core, 0.5 to 0.9% of the machine, with 30 widgets at 50 Hz and 280 topics in the tree. Still to
-   do: measure on a Windows Driver Station laptop.
+   (`crates/app/tests/cpu_load.rs`). First results, 2026-11-17 on an 18-core Mac, 30 widgets at
+   50 Hz with 280 topics on the server: raptaboard 9 to 17% of one core (0.5 to 0.95% of the
+   machine); Elastic 2027.0.0-alpha10 on the same load and layout 36.5 to 37.1% of one core (2.0%),
+   about 2 to 4 times as much. Still to do: measure both on a Windows Driver Station laptop.
 2. Grid and layouts: tabs, snap grid, drag from tree, List Layout, lock, layout save, settings,
    hotkeys.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.

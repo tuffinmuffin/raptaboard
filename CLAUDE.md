@@ -49,7 +49,9 @@ macOS. Run the same locally before pushing.
   (Text Display, Boolean Box; other types draw as placeholders). Widget values come from a
   second subscription (`NtConnection::watch_widget_values`) at the open tab's shortest `period`.
   `tests/cpu_load.rs` is the ignored 30-widgets-at-50-Hz CPU test (prints % of one core and of
-  the machine). Next: run it on a Driver Station laptop, then milestone 2.
+  the machine); its `other_dashboard` test runs the same load against Elastic for comparison
+  (set `RAPTABOARD_CPU_OTHER=elastic_dashboard`, Elastic on localhost, port 5810 free).
+  Next: run it on a Driver Station laptop, then milestone 2.
 - `layouts/robot2027_sim.json`: a layout for trying widgets against the robot-2027 sim
   (`cargo run -p raptaboard -- --address sim layouts/robot2027_sim.json`). Its `/DashTest/`
   topics come from robot-2027's `utils/dashboard_test_topics.py` (sim only).

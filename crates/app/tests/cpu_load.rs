@@ -14,6 +14,8 @@
 //! ```
 //!
 //! `RAPTABOARD_CPU_SECS` sets the measurement time (default 30 s).
+//! [`other_dashboard`] runs the same load against another dashboard, such
+//! as Elastic, for comparison.
 
 // Tests written by Claude.
 
@@ -99,62 +101,68 @@ fn layout_json() -> String {
     .to_string()
 }
 
-/// The app's total CPU time so far, in milliseconds (all threads, all cores).
-fn cpu_ms(sys: &mut System, pid: Pid) -> u64 {
+/// The total CPU time so far of every process `pick` chooses, in
+/// milliseconds (all threads, all cores). `None` if none are running.
+fn cpu_ms(sys: &mut System, pick: &dyn Fn(&sysinfo::Process) -> bool) -> Option<u64> {
     sys.refresh_processes_specifics(
-        ProcessesToUpdate::Some(&[pid]),
+        ProcessesToUpdate::All,
         true,
         ProcessRefreshKind::nothing().with_cpu(),
     );
-    sys.process(pid)
-        .expect("the app exited early; run with --nocapture to see why")
-        .accumulated_cpu_time()
+    let picked: Vec<u64> = sys
+        .processes()
+        .values()
+        .filter(|p| pick(p))
+        .map(|p| p.accumulated_cpu_time())
+        .collect();
+    (!picked.is_empty()).then(|| picked.iter().sum())
 }
 
-#[test]
-#[ignore = "opens a window and takes about 40 s; see the file comment"]
-fn thirty_widgets_at_50_hz() {
-    let measure = Duration::from_secs(
+fn measure_time() -> Duration {
+    Duration::from_secs(
         std::env::var("RAPTABOARD_CPU_SECS")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(30),
-    );
+    )
+}
 
+/// Write the test layout where both apps can open it, and return its path.
+fn write_layout() -> std::path::PathBuf {
+    let layout = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("cpu_test_layout.json");
+    std::fs::write(&layout, layout_json()).unwrap();
+    layout
+}
+
+/// Serve the test topics on `port` (0 picks a free one), call `started`
+/// with the real port, then change every value at [`RATE_HZ`] while
+/// measuring the processes `pick` chooses. Returns the CPU used as a percent
+/// of one core.
+fn run_load(port: u16, started: impl FnOnce(u16), pick: &dyn Fn(&sysinfo::Process) -> bool) -> f64 {
     let server_rt = tokio::runtime::Runtime::new().unwrap();
     let server = server_rt
         .block_on(Server::start(ServerConfig {
             listen_address: IpAddr::V4(Ipv4Addr::LOCALHOST),
-            port: 0,
+            port,
             persist_file: None,
         }))
-        .unwrap();
+        .expect("start the NT server (is something else on the port?)");
     let numbers: Vec<_> = (0..NUMBERS)
         .map(|i| server.publish::<f64>(&number_topic(i)))
         .collect();
     let flags: Vec<_> = (0..BOOLEANS)
         .map(|i| server.publish::<bool>(&boolean_topic(i)))
         .collect();
-    let background: Vec<_> = (0..BACKGROUND)
+    let _background: Vec<_> = (0..BACKGROUND)
         .map(|i| {
             let p = server.publish::<f64>(&format!("/Background/group{}/value{i:03}", i / 25));
             p.set(i as f64);
             p
         })
         .collect();
+    started(server.local_addr().port());
 
-    let layout = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("cpu_test_layout.json");
-    std::fs::write(&layout, layout_json()).unwrap();
-    let app = Command::new(env!("CARGO_BIN_EXE_raptaboard"))
-        .args(["--address", "localhost", "--port"])
-        .arg(server.local_addr().port().to_string())
-        .arg(&layout)
-        .spawn()
-        .expect("start the app");
-    let pid = Pid::from_u32(app.id());
-    let _app = KillOnDrop(app);
-    let _keep = background;
-
+    let measure = measure_time();
     let mut sys = System::new().expect("read process info");
     let tick = Duration::from_secs_f64(1.0 / RATE_HZ);
     let start = Instant::now();
@@ -174,30 +182,79 @@ fn thirty_widgets_at_50_hz() {
 
         let now = Instant::now();
         if measuring.is_none() && now - start >= WARM_UP {
-            measuring = Some((now, cpu_ms(&mut sys, pid)));
+            let cpu = cpu_ms(&mut sys, pick).expect("the app isn't running");
+            measuring = Some((now, cpu));
         }
         if let Some((from, cpu_from)) = measuring
             && now - from >= measure
         {
-            let cpu = cpu_ms(&mut sys, pid) - cpu_from;
-            let wall_ms = (now - from).as_secs_f64() * 1000.0;
-            let of_one_core = cpu as f64 / wall_ms * 100.0;
-            let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
-            let of_machine = of_one_core / cores as f64;
-            println!(
-                "{} widgets at {RATE_HZ} Hz for {:.0} s: {of_one_core:.1}% of one core, \
-                 {of_machine:.2}% of this machine ({cores} cores); target under \
-                 {TARGET_PCT_OF_MACHINE}% of the machine",
-                NUMBERS + BOOLEANS,
-                wall_ms / 1000.0,
-            );
-            assert!(
-                of_machine < TARGET_PCT_OF_MACHINE,
-                "over the CPU target: {of_machine:.2}%"
-            );
-            return;
+            let cpu = cpu_ms(&mut sys, pick).expect("the app exited during the test") - cpu_from;
+            return cpu as f64 / ((now - from).as_secs_f64() * 1000.0) * 100.0;
         }
         next += tick;
         std::thread::sleep(next.saturating_duration_since(Instant::now()));
     }
+}
+
+/// Print a result and return it as a percent of the whole machine.
+fn report(app: &str, of_one_core: f64) -> f64 {
+    let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+    let of_machine = of_one_core / cores as f64;
+    println!(
+        "{app}: {} widgets at {RATE_HZ} Hz for {} s: {of_one_core:.1}% of one core, \
+         {of_machine:.2}% of this machine ({cores} cores); target under \
+         {TARGET_PCT_OF_MACHINE}% of the machine",
+        NUMBERS + BOOLEANS,
+        measure_time().as_secs(),
+    );
+    of_machine
+}
+
+#[test]
+#[ignore = "opens a window and takes about 40 s; see the file comment"]
+fn thirty_widgets_at_50_hz() {
+    let layout = write_layout();
+    let mut app = None;
+    let pid = std::cell::Cell::new(None);
+    let of_one_core = run_load(
+        0,
+        |port| {
+            let child = Command::new(env!("CARGO_BIN_EXE_raptaboard"))
+                .args(["--address", "localhost", "--port"])
+                .arg(port.to_string())
+                .arg(&layout)
+                .spawn()
+                .expect("start the app");
+            pid.set(Some(Pid::from_u32(child.id())));
+            app = Some(KillOnDrop(child));
+        },
+        &|p| Some(p.pid()) == pid.get(),
+    );
+    let of_machine = report("raptaboard", of_one_core);
+    assert!(
+        of_machine < TARGET_PCT_OF_MACHINE,
+        "over the CPU target: {of_machine:.2}%"
+    );
+}
+
+/// The same load, measured on another dashboard that is already running,
+/// such as Elastic, for comparison. Elastic only connects on port 5810, so
+/// stop any robot sim first. Set `RAPTABOARD_CPU_OTHER` to part of the
+/// other app's process name and point it at localhost, then import the
+/// layout this prints (Elastic: Ctrl+O):
+///
+/// ```text
+/// RAPTABOARD_CPU_OTHER=elastic_dashboard cargo test -p raptaboard --release \
+///     --test cpu_load other_dashboard -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore = "needs another dashboard running; see the doc comment"]
+fn other_dashboard() {
+    let name = std::env::var("RAPTABOARD_CPU_OTHER")
+        .expect("set RAPTABOARD_CPU_OTHER to the other app's process name");
+    println!("layout to open: {}", write_layout().display());
+    let of_one_core = run_load(nt4::proto::ROBOT_CODE_PORT, |_| {}, &|p| {
+        p.name().to_string_lossy().contains(name.as_str())
+    });
+    report(&name, of_one_core);
 }
