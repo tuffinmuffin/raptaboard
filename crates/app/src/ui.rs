@@ -939,7 +939,7 @@ impl DashboardApp {
                     bytes,
                     &meta.path,
                     widgets::enum_display(&w.properties),
-                    widgets::int_format(&w.properties),
+                    widgets::int_style(&w.properties),
                 ),
                 (Some(_), _) => None,
             }

@@ -213,7 +213,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    colors (Elastic's `true_color`/`false_color`), and raptaboard-only settings for Text Display,
    offered by the value's type (`data_type`, else the struct field's or the topic's type): fixed
    `decimal_places` for double/float, `int_format` (`decimal`, `hex` as `0x1A`, `binary` as
-   `0b11010`) for int and enum numbers, `enum_display` (`name`, `number` or `both`) for enum
+   `0b11010`) and `int_digits` (zero padding, like `%08X`) for int and enum numbers, `enum_display` (`name`, `number` or `both`) for enum
    struct fields, and `font_size` for any value. Changes show on the grid as they're made; Cancel or Esc undoes
    them, and one visit to the dialog is one undo step. Settings at their default are left out of
    the file. Next:

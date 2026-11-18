@@ -50,6 +50,9 @@ pub mod keys {
     pub const ENUM_DISPLAY: &str = "enum_display";
     /// Text Display: whole numbers as `"decimal"`, `"hex"` or `"binary"`.
     pub const INT_FORMAT: &str = "int_format";
+    /// Text Display: write whole numbers with at least this many digits,
+    /// padded with zeros (`0x001A` for 4).
+    pub const INT_DIGITS: &str = "int_digits";
     /// The NT type of the value shown, such as `"double"` (Elastic).
     pub const DATA_TYPE: &str = "data_type";
 }
@@ -93,23 +96,75 @@ impl IntFormat {
         }
     }
 
-    /// Write `n` this way. Negative numbers keep their minus sign:
-    /// `-0x1A`.
+    /// Write `n` this way, with at least `digits` digits (padded with
+    /// zeros, like C's `%08X`; 0 for no padding). Negative numbers keep
+    /// their minus sign: `-0x1A`.
     ///
     /// ```
     /// use raptaboard::widgets::IntFormat;
-    /// assert_eq!(IntFormat::Decimal.format(26), "26");
-    /// assert_eq!(IntFormat::Hex.format(26), "0x1A");
-    /// assert_eq!(IntFormat::Binary.format(-5), "-0b101");
+    /// assert_eq!(IntFormat::Decimal.format(26, 0), "26");
+    /// assert_eq!(IntFormat::Hex.format(26, 0), "0x1A");
+    /// assert_eq!(IntFormat::Hex.format(26, 8), "0x0000001A");
+    /// assert_eq!(IntFormat::Binary.format(-5, 4), "-0b0101");
     /// ```
-    pub fn format(self, n: i64) -> String {
+    pub fn format(self, n: i64, digits: usize) -> String {
         let sign = if n < 0 { "-" } else { "" };
         let m = n.unsigned_abs();
         match self {
-            IntFormat::Decimal => n.to_string(),
-            IntFormat::Hex => format!("{sign}0x{m:X}"),
-            IntFormat::Binary => format!("{sign}0b{m:b}"),
+            IntFormat::Decimal => format!("{sign}{m:0digits$}"),
+            IntFormat::Hex => format!("{sign}0x{m:0digits$X}"),
+            IntFormat::Binary => format!("{sign}0b{m:0digits$b}"),
         }
+    }
+}
+
+/// The most digits `int_digits` pads to (a 64-bit number in binary).
+pub const MAX_INT_DIGITS: usize = 64;
+
+/// How a Text Display writes whole numbers: the `int_format` and
+/// `int_digits` settings together.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct IntStyle {
+    /// Decimal, hex or binary.
+    pub format: IntFormat,
+    /// At least this many digits, padded with zeros; 0 for no padding.
+    pub digits: usize,
+}
+
+impl IntStyle {
+    /// Write `n` in this style.
+    ///
+    /// ```
+    /// use raptaboard::widgets::{IntFormat, IntStyle};
+    /// let style = IntStyle { format: IntFormat::Hex, digits: 2 };
+    /// assert_eq!(style.write(10), "0x0A");
+    /// assert_eq!(style.write(4096), "0x1000");
+    /// ```
+    pub fn write(self, n: i64) -> String {
+        self.format.format(n, self.digits)
+    }
+}
+
+/// The `int_digits` setting, at most [`MAX_INT_DIGITS`]; 0 if not set.
+pub fn int_digits(properties: &serde_json::Map<String, Json>) -> usize {
+    properties
+        .get(keys::INT_DIGITS)
+        .and_then(Json::as_u64)
+        .map_or(0, |n| (n as usize).min(MAX_INT_DIGITS))
+}
+
+/// The `int_format` and `int_digits` settings together.
+///
+/// ```
+/// use raptaboard::widgets::{int_style, IntFormat};
+/// let props = serde_json::json!({"int_format": "hex", "int_digits": 8});
+/// let style = int_style(props.as_object().unwrap());
+/// assert_eq!((style.format, style.digits), (IntFormat::Hex, 8));
+/// ```
+pub fn int_style(properties: &serde_json::Map<String, Json>) -> IntStyle {
+    IntStyle {
+        format: int_format(properties),
+        digits: int_digits(properties),
     }
 }
 
@@ -385,7 +440,7 @@ pub fn body(
     };
     match kind {
         WidgetKind::TextDisplay => {
-            match text_of(value, decimal_places(properties), int_format(properties)) {
+            match text_of(value, decimal_places(properties), int_style(properties)) {
                 Some(text) => Body::Text(text),
                 None => Body::NoData("not text"),
             }
@@ -406,7 +461,7 @@ pub fn body(
 /// `[a, b, c]`, whole numbers as `ints` says, and other numbers with
 /// exactly `decimals` places, or up to 4 without trailing zeros if `None`.
 /// Raw bytes (such as struct values) have no text form.
-fn text_of(value: &Value, decimals: Option<usize>, ints: IntFormat) -> Option<String> {
+fn text_of(value: &Value, decimals: Option<usize>, ints: IntStyle) -> Option<String> {
     fn list<T>(items: &[T], one: impl Fn(&T) -> String) -> String {
         format!("[{}]", items.iter().map(one).collect::<Vec<_>>().join(", "))
     }
@@ -418,12 +473,12 @@ fn text_of(value: &Value, decimals: Option<usize>, ints: IntFormat) -> Option<St
         Value::Boolean(b) => b.to_string(),
         Value::Double(d) => number(*d),
         Value::Float(f) => number(f64::from(*f)),
-        Value::Int(i) => ints.format(*i),
+        Value::Int(i) => ints.write(*i),
         Value::String(s) => s.clone(),
         Value::BooleanArray(a) => list(a, |b| b.to_string()),
         Value::DoubleArray(a) => list(a, |d| number(*d)),
         Value::FloatArray(a) => list(a, |f| number(f64::from(*f))),
-        Value::IntArray(a) => list(a, |i| ints.format(*i)),
+        Value::IntArray(a) => list(a, |i| ints.write(*i)),
         Value::StringArray(a) => list(a, |s| s.clone()),
         Value::Raw(_) => return None,
     })
@@ -726,7 +781,24 @@ mod tests {
             body(WidgetKind::TextDisplay, &bin, Some(&Value::Int(5))),
             Body::Text("0b101".into())
         );
-        assert_eq!(IntFormat::Hex.format(i64::MIN), "-0x8000000000000000");
+        assert_eq!(IntFormat::Hex.format(i64::MIN, 0), "-0x8000000000000000");
+        // Padding, like %08X; numbers wider than it aren't cut.
+        let padded = props(serde_json::json!({"int_format": "hex", "int_digits": 4}));
+        assert_eq!(
+            body(
+                WidgetKind::TextDisplay,
+                &padded,
+                Some(&Value::IntArray(vec![26, 0x12345]))
+            ),
+            Body::Text("[0x001A, 0x12345]".into())
+        );
+        let decimal = props(serde_json::json!({"int_digits": 3}));
+        assert_eq!(
+            body(WidgetKind::TextDisplay, &decimal, Some(&Value::Int(-7))),
+            Body::Text("-007".into())
+        );
+        let huge = props(serde_json::json!({"int_digits": 1000}));
+        assert_eq!(int_digits(&huge), MAX_INT_DIGITS);
         let bad = props(serde_json::json!({"int_format": 16}));
         assert_eq!(int_format(&bad), IntFormat::Decimal);
     }

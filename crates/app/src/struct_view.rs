@@ -12,7 +12,7 @@ use nt4::proto::structs::{
 };
 
 use crate::tree::format_number;
-use crate::widgets::IntFormat;
+use crate::widgets::IntStyle;
 
 /// A decoded value, ready to draw.
 #[derive(Debug, Clone, PartialEq)]
@@ -155,20 +155,21 @@ impl EnumDisplay {
 /// use nt4::Value;
 /// use nt4::proto::structs::StructDatabase;
 /// use raptaboard::struct_view::{field_value, field_value_shown, EnumDisplay};
-/// use raptaboard::widgets::IntFormat;
+/// use raptaboard::widgets::{IntFormat, IntStyle};
 /// let mut db = StructDatabase::new();
 /// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode").unwrap();
 /// let mode = vec!["mode".to_string()];
 /// let shown = |bytes: &[u8], how| {
-///     field_value_shown(&db, "Arm", bytes, &mode, how, IntFormat::Decimal)
+///     field_value_shown(&db, "Arm", bytes, &mode, how, IntStyle::default())
 /// };
 /// assert_eq!(field_value(&db, "Arm", &[3], &mode), Some(Value::Int(3)));
 /// assert_eq!(shown(&[3], EnumDisplay::Name), Some(Value::String("kIntake".into())));
 /// assert_eq!(shown(&[3], EnumDisplay::Both), Some(Value::String("kIntake (3)".into())));
 /// assert_eq!(shown(&[3], EnumDisplay::Number), Some(Value::Int(3)));
 /// assert_eq!(shown(&[9], EnumDisplay::Name), Some(Value::Int(9)));
-/// let hex = field_value_shown(&db, "Arm", &[3], &mode, EnumDisplay::Both, IntFormat::Hex);
-/// assert_eq!(hex, Some(Value::String("kIntake (0x3)".into())));
+/// let hex = IntStyle { format: IntFormat::Hex, digits: 2 };
+/// let both = field_value_shown(&db, "Arm", &[3], &mode, EnumDisplay::Both, hex);
+/// assert_eq!(both, Some(Value::String("kIntake (0x03)".into())));
 /// ```
 pub fn field_value_shown(
     db: &StructDatabase,
@@ -176,7 +177,7 @@ pub fn field_value_shown(
     bytes: &[u8],
     path: &[String],
     display: EnumDisplay,
-    ints: IntFormat,
+    ints: IntStyle,
 ) -> Option<Value> {
     let (s, field) = find_field(db, schema, bytes, path)?;
     let value = as_nt_value(s.value(field)?)?;
@@ -186,7 +187,7 @@ pub fn field_value_shown(
     Some(match value {
         Value::Int(n) => match field.enum_name(n) {
             Some(name) if display == EnumDisplay::Both => {
-                Value::String(format!("{name} ({})", ints.format(n)))
+                Value::String(format!("{name} ({})", ints.write(n)))
             }
             Some(name) => Value::String(name.to_owned()),
             None => Value::Int(n),
@@ -662,7 +663,7 @@ mod tests {
         // Values two levels down show by name, number or both.
         let bytes = [3u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         let mode = path(&["arm", "mode"]);
-        let shown = |how| field_value_shown(&db, "Robot", &bytes, &mode, how, IntFormat::Decimal);
+        let shown = |how| field_value_shown(&db, "Robot", &bytes, &mode, how, IntStyle::default());
         assert_eq!(
             shown(EnumDisplay::Name),
             Some(Value::String("kIntake".into()))

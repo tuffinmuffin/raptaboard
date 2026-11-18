@@ -13,7 +13,8 @@ use serde_json::Value as Json;
 use crate::struct_view::EnumDisplay;
 use crate::widgets::{
     self, DEFAULT_FALSE_COLOR, DEFAULT_FONT_SIZE, DEFAULT_TRUE_COLOR, IntFormat,
-    MAX_DECIMAL_PLACES, MAX_FONT_SIZE, MIN_FONT_SIZE, MIN_PERIOD_S, ValueKind, WidgetKind, keys,
+    MAX_DECIMAL_PLACES, MAX_FONT_SIZE, MAX_INT_DIGITS, MIN_FONT_SIZE, MIN_PERIOD_S, ValueKind,
+    WidgetKind, keys,
 };
 
 /// The longest update period the dialog allows, in seconds.
@@ -169,6 +170,26 @@ fn text_display(
             let value = (format != IntFormat::default()).then(|| format.key().into());
             set_property(props, keys::INT_FORMAT, value);
         }
+        ui.end_row();
+
+        ui.label("Digits");
+        ui.horizontal(|ui| {
+            let saved = widgets::int_digits(props);
+            let mut padded = saved > 0;
+            let mut digits = if padded { saved } else { 2 };
+            let ticked = ui
+                .checkbox(&mut padded, "Pad with zeros")
+                .on_hover_text("Show at least this many digits, like %08X: 0x0000001A.")
+                .changed();
+            let moved = padded
+                && ui
+                    .add(egui::DragValue::new(&mut digits).range(1..=MAX_INT_DIGITS))
+                    .changed();
+            if ticked || moved {
+                let value = padded.then(|| digits.into());
+                set_property(props, keys::INT_DIGITS, value);
+            }
+        });
         ui.end_row();
     }
 
@@ -328,22 +349,31 @@ mod tests {
     fn number_settings_match_the_value_type() {
         let rows = |nt_type: Option<&str>, is_enum: bool| {
             let labels = draw(&mut widget("Text Display", is_enum), nt_type, is_enum);
-            ["Decimal places", "Whole numbers", "Enum shows", "Text size"]
-                .into_iter()
-                .filter(|row| labels.iter().any(|l| l == row))
-                .collect::<Vec<_>>()
+            [
+                "Decimal places",
+                "Whole numbers",
+                "Digits",
+                "Enum shows",
+                "Text size",
+            ]
+            .into_iter()
+            .filter(|row| labels.iter().any(|l| l == row))
+            .collect::<Vec<_>>()
         };
         assert_eq!(rows(Some("double"), false), ["Decimal places", "Text size"]);
-        assert_eq!(rows(Some("int[]"), false), ["Whole numbers", "Text size"]);
+        assert_eq!(
+            rows(Some("int[]"), false),
+            ["Whole numbers", "Digits", "Text size"]
+        );
         assert_eq!(rows(Some("string"), false), ["Text size"]);
         assert_eq!(
             rows(Some("int"), true),
-            ["Whole numbers", "Enum shows", "Text size"]
+            ["Whole numbers", "Digits", "Enum shows", "Text size"]
         );
         // Not known yet: offer both kinds of number setting.
         assert_eq!(
             rows(None, false),
-            ["Decimal places", "Whole numbers", "Text size"]
+            ["Decimal places", "Whole numbers", "Digits", "Text size"]
         );
     }
 
