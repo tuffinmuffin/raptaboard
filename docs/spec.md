@@ -248,6 +248,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Color by value for number widgets (ints and floats): a background color chosen by thresholds
      (below 10 red, 10 to 20 yellow, above green), or a gradient between colors across a range.
      raptaboard-only settings in the widget dialog.
+   - Text style: a font dialog (from the widget dialog's Text size row) for the value text and the
+     title: font family, size, color, bold, italic. Saved as raptaboard keys (`font_family`,
+     `font_color`, `font_bold`, ...; `font_size` exists), with a layout-wide default style later.
    - Find a topic's widgets: selecting a topic (or struct field) in the NT tree highlights every
      widget on the open tab bound to it, and marks other tabs that have one, so it's easy to see
      where a value is already shown before adding another.
