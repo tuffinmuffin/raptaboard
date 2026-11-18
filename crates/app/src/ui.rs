@@ -557,7 +557,12 @@ impl DashboardApp {
         let drawn = grid
             .containers
             .iter()
-            .chain(grid.layouts.iter().flat_map(|l| &l.children))
+            .chain(
+                grid.layouts
+                    .iter()
+                    .flat_map(|l| &l.children)
+                    .filter(|w| !list_layout::is_hidden(w)),
+            )
             .filter(|w| widgets::find(&w.widget_type).is_some());
         let mut groups: Vec<(f64, Vec<String>)> = Vec::new();
         for w in drawn {

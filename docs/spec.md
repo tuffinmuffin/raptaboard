@@ -143,6 +143,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `show_text` | `builtin/boolean_box.rs` | Boolean Box | write the text below over the color | false |
 | `true_text`, `false_text` | `builtin/boolean_box.rs` | Boolean Box | text when true / false; empty for none | none |
 | `label_position` (Elastic) | `list_layout.rs` | List Layout | `TOP`, `LEFT`, `RIGHT`, `BOTTOM`, `HIDDEN` (any case read) | `TOP`; always written |
+| `hidden` | `list_layout.rs` | a List Layout's child | `true`: kept in the list but not shown or subscribed | shown |
 
 Adding a setting: a key constant and a reader in the file that owns it, its row in that widget's
 `WidgetType::settings` (shared rows: `props::text_size_row`, `props::color_row`, `format::rows`),
@@ -275,7 +276,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - List Layout editing. Done: lists draw like Elastic's (children compact with no card each:
      a label placed by `label_position` and the child's body, each row its saved height less 48
      and at least 32), and Edit… or double-click on a list opens its settings (title, label
-     position, children in order with ↑/↓, Edit… for a child's widget settings, Remove). Next:
+     position, children in order with a Shown checkbox (unticked: kept in the list but not drawn or
+     subscribed), ↑/↓, Edit… for a child's widget settings, and Delete). Next:
      drag widgets and tree topics into a list and children back out (PR B), then "New List
      Layout" and "Put in a new list" (PR C).
    - Color by value for number widgets (ints and floats): a background color chosen by thresholds

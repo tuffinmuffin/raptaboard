@@ -23,6 +23,9 @@ pub const TYPE_NAME: &str = "List Layout";
 /// Where each child's title goes (Elastic): `"TOP"`, `"LEFT"`, `"RIGHT"`,
 /// `"BOTTOM"` or `"HIDDEN"`.
 pub const LABEL_POSITION: &str = "label_position";
+/// On a child: `true` keeps it in the list without showing it (raptaboard;
+/// Elastic ignores it and shows the child). Left out when shown.
+pub const HIDDEN: &str = "hidden";
 
 // Sizes, in screen points.
 
@@ -115,9 +118,20 @@ pub fn label_position(props: &Map<String, Json>) -> LabelPosition {
         .unwrap_or_default()
 }
 
+/// Whether `child` is kept in its list without being shown (`hidden`).
+pub fn is_hidden(child: &WidgetContainer) -> bool {
+    child
+        .properties
+        .get(HIDDEN)
+        .and_then(Json::as_bool)
+        .unwrap_or(false)
+}
+
 /// Where one child goes in a list's body, in screen points.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ChildRow {
+    /// Which child this is, by its index in the list's `children`.
+    pub index: usize,
     /// The whole row: label and value.
     pub row: Rect,
     /// Where the child's value is drawn.
@@ -133,10 +147,10 @@ pub fn content_height(child: &WidgetContainer) -> f32 {
     (child.rect.height as f32 - CHILD_CHROME).max(MIN_CHILD_CONTENT)
 }
 
-/// Lay the children out top to bottom in `body`. `label_width` gives each
-/// child's title width, for labels at the side (they take at most half the
-/// row). Rows past the bottom of `body` are still returned; drawing cuts
-/// them off.
+/// Lay the shown children out top to bottom in `body`; hidden ones take no
+/// space. `label_width` gives a child's title width (by its index), for
+/// labels at the side (they take at most half the row). Rows past the
+/// bottom of `body` are still returned; drawing cuts them off.
 pub fn rows(
     body: Rect,
     children: &[WidgetContainer],
@@ -147,6 +161,7 @@ pub fn rows(
     children
         .iter()
         .enumerate()
+        .filter(|(_, child)| !is_hidden(child))
         .map(|(i, child)| {
             let content_height = content_height(child);
             let height = match position {
@@ -179,6 +194,7 @@ pub fn rows(
                 LabelPosition::Hidden => (row, None),
             };
             ChildRow {
+                index: i,
                 row,
                 content,
                 label,
@@ -207,11 +223,8 @@ pub fn draw(
                 .size()
                 .x
         };
-        for (child, place) in list
-            .children
-            .iter()
-            .zip(rows(body, &list.children, position, width))
-        {
+        for place in rows(body, &list.children, position, width) {
+            let child = &list.children[place.index];
             if let Some(label) = place.label {
                 painter
                     .with_clip_rect(label.intersect(painter.clip_rect()))
@@ -267,9 +280,9 @@ pub enum ListAction {
 }
 
 /// Draw the settings for `list` and apply changes at once: its title, the
-/// label position, and its children in order, each with buttons to move it
-/// up or down, edit it, or take it out of the list. Returns
-/// [`ListAction::EditChild`] when a child's Edit… is clicked.
+/// label position, and its children in order, each with a Shown checkbox
+/// and buttons to move it up or down, edit it, or delete it. Edit… is
+/// returned as [`ListAction::EditChild`] for the window to carry out.
 pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAction> {
     let mut action = None;
     egui::Grid::new("list_settings")
@@ -309,11 +322,23 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
     let count = list.children.len();
     let mut change = None;
     egui::Grid::new("list_children")
-        .num_columns(3)
+        .num_columns(4)
         .spacing([8.0, 4.0])
         .show(ui, |ui| {
             for (i, child) in list.children.iter().enumerate() {
-                ui.label(&child.title);
+                let mut shown = !is_hidden(child);
+                if ui
+                    .checkbox(&mut shown, "")
+                    .on_hover_text("Shown in the list. Unticked, it stays in the list, hidden.")
+                    .changed()
+                {
+                    change = Some((i, Change::Show(shown)));
+                }
+                if shown {
+                    ui.label(&child.title);
+                } else {
+                    ui.weak(&child.title);
+                }
                 ui.weak(&child.widget_type);
                 ui.horizontal(|ui| {
                     if ui
@@ -334,11 +359,11 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
                         action = Some(ListAction::EditChild(i));
                     }
                     if ui
-                        .button("Remove")
-                        .on_hover_text("Take it out of the list. Cancel or undo brings it back.")
+                        .button("Delete")
+                        .on_hover_text("Delete it. Cancel or undo brings it back.")
                         .clicked()
                     {
-                        change = Some((i, Change::Remove));
+                        change = Some((i, Change::Delete));
                     }
                 });
                 ui.end_row();
@@ -346,7 +371,14 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
         });
     match change {
         Some((i, Change::Move(to))) => move_child(list, i, to),
-        Some((i, Change::Remove)) => {
+        Some((i, Change::Show(shown))) => {
+            set_property(
+                &mut list.children[i].properties,
+                HIDDEN,
+                (!shown).then_some(true.into()),
+            );
+        }
+        Some((i, Change::Delete)) => {
             list.children.remove(i);
         }
         None => {}
@@ -357,7 +389,8 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
 /// A change to the children list, made after drawing it.
 enum Change {
     Move(usize),
-    Remove,
+    Show(bool),
+    Delete,
 }
 
 #[cfg(test)]
@@ -485,12 +518,24 @@ mod tests {
         let text = draw_settings(&mut l);
         assert_eq!(l, before);
         for expected in [
-            "Labels", "Top", "Children", "speed", "angle", "Edit…", "Remove",
+            "Labels", "Top", "Children", "speed", "angle", "Edit…", "Delete",
         ] {
             assert!(text.iter().any(|t| t == expected), "{expected} in {text:?}");
         }
         // An empty list says so.
         let mut empty = list(vec![], None);
         assert!(draw_settings(&mut empty).iter().any(|t| t == "None yet."));
+    }
+
+    #[test]
+    fn hidden_children_take_no_space() {
+        let mut children = vec![child("a", 128.0), child("b", 128.0), child("c", 128.0)];
+        children[1].properties.insert(HIDDEN.into(), true.into());
+        assert!(is_hidden(&children[1]));
+        assert!(!is_hidden(&children[0]));
+        let placed = rows(body(), &children, LabelPosition::Hidden, |_| 0.0);
+        // "b" is skipped, and "c" moves up into its place.
+        assert_eq!(placed.iter().map(|r| r.index).collect::<Vec<_>>(), [0, 2]);
+        assert_eq!(placed[1].row.min.y, 80.0 + CHILD_GAP);
     }
 }
