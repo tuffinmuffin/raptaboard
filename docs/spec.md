@@ -201,10 +201,13 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    struct topic (Pose2d → translation → x) drag too: the widget keeps the struct topic and saves
    Elastic's `struct_meta` (`path`, `schema_name`, `type`); fields inside struct arrays don't, as in
    Elastic. Whole structs wait for their widgets. Dragging folders
-   (tables with `.type`) waits for the widgets that draw tables in milestone 3. Next:
-   - Widget menu (right-click, unlocked): Edit…, Duplicate, Delete; the Delete key for a selected
-     widget; Ctrl+Z undo for layout edits, so deleting needs no confirmation.
-   - Widget settings dialog: title (rename, reset to the source name, source still shown), period,
+   (tables with `.type`) waits for the widgets that draw tables in milestone 3. Editing widgets
+   (unlocked): click to select (outlined), right-click for Duplicate and Delete; Delete or
+   Backspace deletes, Ctrl+D duplicates into the nearest free spot, Esc deselects. Undo and redo
+   (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y, and buttons in the settings bar) cover every layout edit,
+   tabs included, up to 100 steps, so deleting needs no confirmation; opening a file starts a new
+   history. Next:
+   - Widget settings dialog, opened by Edit… in the widget menu: title (rename, reset to the source name, source still shown), period,
      Boolean Box true/false colors (Elastic's `true_color`/`false_color`), and raptaboard-only
      settings: decimal places for numbers, enum fields as name, number or both, and font size.
    - List Layout editing (drop into a list, create one).

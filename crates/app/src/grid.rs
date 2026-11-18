@@ -44,6 +44,114 @@ impl Item {
     }
 }
 
+impl Item {
+    /// The item's title, or `None` if it doesn't exist.
+    pub fn title(self, grid: &GridLayout) -> Option<&str> {
+        match self {
+            Item::Widget(i) => grid.containers.get(i).map(|w| &*w.title),
+            Item::List(i) => grid.layouts.get(i).map(|l| &*l.title),
+        }
+    }
+
+    /// Take this item off `grid`. Other items of the same kind after it
+    /// move down one index. Does nothing if it doesn't exist.
+    pub fn remove(self, grid: &mut GridLayout) {
+        match self {
+            Item::Widget(i) if i < grid.containers.len() => {
+                grid.containers.remove(i);
+            }
+            Item::List(i) if i < grid.layouts.len() => {
+                grid.layouts.remove(i);
+            }
+            _ => {}
+        }
+    }
+
+    /// Put a copy of this item (a List Layout with its children) in the
+    /// free spot nearest to it, within `area` (the visible grid's width and
+    /// height in pixels). Returns the copy, or `None` if there's no room or
+    /// the item doesn't exist.
+    ///
+    /// ```
+    /// use raptaboard::grid::Item;
+    /// use raptaboard_layout::GridLayout;
+    /// let mut grid: GridLayout = serde_json::from_str(r#"{"containers": [
+    ///     {"title": "a", "x": 0.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "Text Display"}
+    /// ]}"#).unwrap();
+    /// let copy = Item::Widget(0).duplicate(&mut grid, 128.0, (512.0, 512.0)).unwrap();
+    /// assert_eq!(copy, Item::Widget(1));
+    /// assert_eq!(grid.containers[1].rect.x, 128.0);
+    /// ```
+    pub fn duplicate(self, grid: &mut GridLayout, cell: f64, area: (f64, f64)) -> Option<Item> {
+        let rect = free_spot_near(grid, self.rect(grid)?, cell, area)?;
+        match self {
+            Item::Widget(i) => {
+                let mut copy = grid.containers[i].clone();
+                copy.rect = rect;
+                grid.containers.push(copy);
+                Some(Item::Widget(grid.containers.len() - 1))
+            }
+            Item::List(i) => {
+                let mut copy = grid.layouts[i].clone();
+                copy.rect = rect;
+                grid.layouts.push(copy);
+                Some(Item::List(grid.layouts.len() - 1))
+            }
+        }
+    }
+}
+
+/// The free spot for something `rect`'s size closest to `rect`, on whole
+/// cells inside `area` (the visible grid's width and height in pixels,
+/// counting a part-shown last row or column). Ties go to the spot higher
+/// up, then further left. `None` if nowhere is free.
+///
+/// ```
+/// use raptaboard::grid::free_spot_near;
+/// use raptaboard_layout::{GridLayout, Rect};
+/// let empty = GridLayout::default();
+/// let at = Rect { x: 256.0, y: 0.0, width: 128.0, height: 128.0 };
+/// assert_eq!(free_spot_near(&empty, at, 128.0, (512.0, 512.0)), Some(at));
+/// ```
+pub fn free_spot_near(grid: &GridLayout, rect: Rect, cell: f64, area: (f64, f64)) -> Option<Rect> {
+    let cells = |size: f64| (size / cell).ceil().max(1.0) as i64;
+    let (w, h) = (cells(rect.width), cells(rect.height));
+    let (cols, rows) = (cells(area.0), cells(area.1));
+    let (from_col, from_row) = (
+        (rect.x / cell).round() as i64,
+        (rect.y / cell).round() as i64,
+    );
+    (0..=rows - h)
+        .flat_map(|row| (0..=cols - w).map(move |col| (col, row)))
+        .min_by_key(|&(col, row)| {
+            let (dc, dr) = (col - from_col, row - from_row);
+            (
+                !is_free_at(grid, rect, cell, col, row),
+                dc * dc + dr * dr,
+                row,
+                col,
+            )
+        })
+        .filter(|&(col, row)| is_free_at(grid, rect, cell, col, row))
+        .map(|(col, row)| Rect {
+            x: col as f64 * cell,
+            y: row as f64 * cell,
+            ..rect
+        })
+}
+
+/// [`is_free`] for `rect`'s size with its corner at cell `(col, row)`.
+fn is_free_at(grid: &GridLayout, rect: Rect, cell: f64, col: i64, row: i64) -> bool {
+    is_free(
+        grid,
+        Rect {
+            x: col as f64 * cell,
+            y: row as f64 * cell,
+            ..rect
+        },
+    )
+}
+
 /// Every item on `grid` with its place: widgets first, then List Layouts.
 pub fn items(grid: &GridLayout) -> Vec<(Item, Rect)> {
     let widgets = grid
@@ -241,5 +349,65 @@ mod tests {
             Some(rect(512.0, 0.0, 128.0, 128.0))
         );
         assert_eq!(Item::Widget(5).rect(&grid), None);
+    }
+
+    #[test]
+    fn copies_go_to_the_nearest_free_spot() {
+        let mut grid: GridLayout = serde_json::from_str(
+            r#"{"containers": [
+                {"title": "a", "x": 128.0, "y": 128.0, "width": 256.0, "height": 128.0, "type": "Text Display"},
+                {"title": "b", "x": 384.0, "y": 128.0, "width": 128.0, "height": 128.0, "type": "Text Display"}
+            ]}"#,
+        )
+        .unwrap();
+        let area = (512.0, 384.0);
+        // Right of "a" is taken by "b", so the copy goes just above "a".
+        let copy = Item::Widget(0).duplicate(&mut grid, 128.0, area).unwrap();
+        assert_eq!(
+            Item::Widget(2).rect(&grid),
+            Some(rect(128.0, 0.0, 256.0, 128.0))
+        );
+        assert_eq!(copy.title(&grid), Some("a"));
+        // Then just below it.
+        Item::Widget(0).duplicate(&mut grid, 128.0, area).unwrap();
+        assert_eq!(
+            Item::Widget(3).rect(&grid),
+            Some(rect(128.0, 256.0, 256.0, 128.0))
+        );
+        // Fill the rest; then there's no room left.
+        while Item::Widget(1).duplicate(&mut grid, 128.0, area).is_some() {}
+        assert_eq!(grid.containers.len(), 4 + 5); // 12 cells, 7 used
+        assert_eq!(Item::Widget(0).duplicate(&mut grid, 128.0, area), None);
+        // Too big for the window at all.
+        let huge = rect(0.0, 0.0, 1024.0, 128.0);
+        assert_eq!(
+            free_spot_near(&GridLayout::default(), huge, 128.0, area),
+            None
+        );
+    }
+
+    #[test]
+    fn removing_shifts_later_items() {
+        let mut grid: GridLayout = serde_json::from_str(
+            r#"{"containers": [
+                {"title": "a", "x": 0.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "Text Display"},
+                {"title": "b", "x": 128.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "Text Display"}
+            ], "layouts": [
+                {"title": "list", "x": 256.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "List Layout",
+                 "children": [{"title": "c", "x": 0.0, "y": 0.0, "width": 128.0, "height": 64.0, "type": "Text Display"}]}
+            ]}"#,
+        )
+        .unwrap();
+        Item::Widget(0).remove(&mut grid);
+        assert_eq!(Item::Widget(0).title(&grid), Some("b"));
+        Item::Widget(7).remove(&mut grid);
+        assert_eq!(grid.containers.len(), 1);
+        let copy = Item::List(0)
+            .duplicate(&mut grid, 128.0, (512.0, 128.0))
+            .unwrap();
+        assert_eq!(grid.layouts[1].children.len(), 1);
+        Item::List(0).remove(&mut grid);
+        assert_eq!(copy.title(&grid), None);
+        assert_eq!(Item::List(0).title(&grid), Some("list"));
     }
 }
