@@ -8,6 +8,8 @@
 
 use raptaboard_layout::{GridLayout, MAX_GRID_CELLS, Rect};
 
+use crate::widgets::list_layout::{NEW_LIST_CELLS, new_list};
+
 /// Something on a tab's grid: a single widget or a List Layout, by its index
 /// in [`GridLayout::containers`] or [`GridLayout::layouts`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -184,6 +186,71 @@ pub fn child_out_of_list(
     widget.rect = rect;
     grid.containers.push(widget);
     Some(grid.containers.len() - 1)
+}
+
+/// Add an empty List Layout ([`NEW_LIST_CELLS`] cells each way) in the
+/// free spot nearest the cell at (`x`, `y`) grid pixels, within `area` (the
+/// visible grid's width and height in pixels). Returns its index in
+/// `layouts`, or `None` if there's no room.
+///
+/// ```
+/// use raptaboard::grid::add_list;
+/// use raptaboard_layout::GridLayout;
+/// let mut grid = GridLayout::default();
+/// assert_eq!(add_list(&mut grid, (300.0, 10.0), 128.0, (1024.0, 512.0)), Some(0));
+/// let r = grid.layouts[0].rect;
+/// assert_eq!((r.x, r.y, r.width, r.height), (256.0, 0.0, 256.0, 256.0));
+/// ```
+pub fn add_list(
+    grid: &mut GridLayout,
+    (x, y): (f64, f64),
+    cell: f64,
+    area: (f64, f64),
+) -> Option<usize> {
+    let at = Rect {
+        x: (x / cell).floor() * cell,
+        y: (y / cell).floor() * cell,
+        width: NEW_LIST_CELLS * cell,
+        height: NEW_LIST_CELLS * cell,
+    };
+    let spot = free_spot_near(grid, at, cell, area)?;
+    grid.layouts.push(new_list(spot, Vec::new()));
+    Some(grid.layouts.len() - 1)
+}
+
+/// Put widget `widget` (an index in `containers`) into a new List Layout of
+/// its own, in its place: as wide as the widget and a cell taller (room for
+/// the label), at least [`NEW_LIST_CELLS`] cells each way. If that isn't
+/// free, the list goes to the nearest free spot within `area`. Returns the
+/// list's index in `layouts`, or `None` (changing nothing) if there's no
+/// room or no such widget.
+///
+/// Removing the widget shifts later widgets' indexes down by one.
+pub fn wrap_in_list(
+    grid: &mut GridLayout,
+    widget: usize,
+    cell: f64,
+    area: (f64, f64),
+) -> Option<usize> {
+    let w = grid.containers.get(widget)?.rect;
+    let min = NEW_LIST_CELLS * cell;
+    let wanted = Rect {
+        width: w.width.max(min),
+        height: (w.height + cell).max(min),
+        ..w
+    };
+    let child = grid.containers.remove(widget);
+    let spot = if is_free(grid, wanted) {
+        Some(wanted)
+    } else {
+        free_spot_near(grid, wanted, cell, area)
+    };
+    let Some(spot) = spot else {
+        grid.containers.insert(widget, child);
+        return None;
+    };
+    grid.layouts.push(new_list(spot, vec![child]));
+    Some(grid.layouts.len() - 1)
 }
 
 /// The free spot for something `rect`'s size closest to `rect`, on whole
@@ -601,6 +668,65 @@ mod tests {
             assert_eq!(child_to_list(&mut grid, 0, 0, 1, 0), Some(0));
             assert!(grid.layouts[0].children.is_empty());
             assert_eq!(grid.layouts[1].children.len(), 2);
+        });
+    }
+
+    #[test]
+    fn new_lists_go_near_the_click() {
+        each_size(|g| {
+            let mut grid = g.grid(&[("a", g.at(0.0, 0.0, 1.0, 1.0))], &[]);
+            let window = g.window(5.0, 3.0);
+            // Clicked in cell (0, 0), which is taken: the nearest free 2 x 2.
+            let list = add_list(&mut grid, (0.5 * g.cell, 0.5 * g.cell), g.cell, window).unwrap();
+            assert_eq!(grid.layouts[list].rect, g.at(1.0, 0.0, 2.0, 2.0));
+            assert!(grid.layouts[list].children.is_empty());
+            // Clicked in free cell (3, 1): it starts there.
+            let next = add_list(&mut grid, (3.2 * g.cell, 1.9 * g.cell), g.cell, window).unwrap();
+            assert_eq!(grid.layouts[next].rect, g.at(3.0, 1.0, 2.0, 2.0));
+            // The window is full now.
+            assert_eq!(add_list(&mut grid, (0.0, 0.0), g.cell, window), None);
+        });
+    }
+
+    #[test]
+    fn widgets_wrap_into_a_list_in_their_place() {
+        each_size(|g| {
+            let mut grid = g.grid(
+                &[
+                    ("small", g.at(0.0, 0.0, 1.0, 1.0)),
+                    ("wide", g.at(2.0, 0.0, 3.0, 1.0)),
+                ],
+                &[],
+            );
+            let window = g.window(6.0, 4.0);
+            // 1 x 1 becomes a 2 x 2 list where it was.
+            let list = wrap_in_list(&mut grid, 0, g.cell, window).unwrap();
+            assert_eq!(grid.layouts[list].rect, g.at(0.0, 0.0, 2.0, 2.0));
+            assert_eq!(grid.layouts[list].children[0].title, "small");
+            // "wide" is now widget 0: 3 wide, and a cell taller.
+            let list = wrap_in_list(&mut grid, 0, g.cell, window).unwrap();
+            assert_eq!(grid.layouts[list].rect, g.at(2.0, 0.0, 3.0, 2.0));
+            assert!(grid.containers.is_empty());
+            assert_eq!(wrap_in_list(&mut grid, 0, g.cell, window), None);
+        });
+    }
+
+    #[test]
+    fn wrapping_with_no_room_changes_nothing() {
+        each_size(|g| {
+            // Neighbours on two sides block its own spot growing to 2 x 2, and
+            // a 2 x 2 window has nowhere else.
+            let mut grid = g.grid(
+                &[
+                    ("a", g.at(0.0, 0.0, 1.0, 1.0)),
+                    ("right", g.at(1.0, 0.0, 1.0, 1.0)),
+                    ("below", g.at(0.0, 1.0, 1.0, 1.0)),
+                ],
+                &[],
+            );
+            let before = grid.clone();
+            assert_eq!(wrap_in_list(&mut grid, 0, g.cell, g.window(2.0, 2.0)), None);
+            assert_eq!(grid, before);
         });
     }
 }

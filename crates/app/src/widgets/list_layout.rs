@@ -161,6 +161,34 @@ pub fn is_hidden(child: &WidgetContainer) -> bool {
         .unwrap_or(false)
 }
 
+/// How big a new List Layout is, in grid cells each way (Elastic's 2 x 2).
+pub const NEW_LIST_CELLS: f64 = 2.0;
+/// The title a new List Layout gets (Elastic's).
+pub const NEW_LIST_TITLE: &str = "List Layout";
+
+/// A new List Layout at `rect` holding `children`, as Elastic makes one:
+/// titled "List Layout", labels on top.
+///
+/// ```
+/// use raptaboard::widgets::list_layout::{new_list, TYPE_NAME};
+/// use raptaboard_layout::Rect;
+/// let list = new_list(Rect { x: 0.0, y: 0.0, width: 256.0, height: 256.0 }, vec![]);
+/// assert_eq!((list.title.as_str(), list.layout_type.as_str()), ("List Layout", TYPE_NAME));
+/// assert_eq!(list.properties["label_position"], "TOP");
+/// ```
+pub fn new_list(rect: raptaboard_layout::Rect, children: Vec<WidgetContainer>) -> LayoutContainer {
+    let mut properties = Map::new();
+    properties.insert(LABEL_POSITION.into(), LabelPosition::Top.key().into());
+    LayoutContainer {
+        title: NEW_LIST_TITLE.into(),
+        rect,
+        layout_type: TYPE_NAME.into(),
+        properties,
+        children,
+        extra: Map::new(),
+    }
+}
+
 /// Where one child goes in a list's body, in screen points.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ChildRow {

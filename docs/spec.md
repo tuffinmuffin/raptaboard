@@ -282,7 +282,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      Edit…, Delete); double-clicking a child opens its own settings. Dragging: a grid widget or a
      tree topic dropped over a list goes into it, where the green line shows; a child dragged
      within its list reorders, into another list moves there, and onto free grid becomes a widget
-     again (its saved size, in whole cells). Next: "New List Layout" and "Put in a new list" (PR C).
+     again (its saved size, in whole cells). New lists: right-click empty grid → "New List
+     Layout" (an empty 2 x 2 list, titled "List Layout", nearest the click), or right-click a
+     widget → "Put in a new list" (a list in its place, at least 2 x 2 and a cell taller than the
+     widget, holding it).
    - Color by value for number widgets (ints and floats): a background color chosen by thresholds
      (below 10 red, 10 to 20 yellow, above green), or a gradient between colors across a range.
      raptaboard-only settings in the widget dialog.
@@ -304,6 +307,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Boolean Box text: an option for a backing behind the true/false text (like inside list
      labels: a see-through rounded box, so it reads over any color), and a text color per state
      instead of only the automatic black or white.
+   - Group widget: a card holding its own small grid, so widgets inside can sit side by side and
+     be any size (a List Layout only stacks them). Same dragging in and out as lists; saved as a
+     raptaboard-only container type (Elastic would show a placeholder).
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      A built-in library of standard images (Elastic's `true_icon`/`false_icon` set: Checkmark, X,
      Exclamation Point, so its layouts keep their icons, plus more), and any PNG/SVG the team
