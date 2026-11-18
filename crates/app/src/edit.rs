@@ -106,6 +106,8 @@ pub enum EditAction {
     Duplicate,
     /// Stop selecting the selected widget (Esc).
     Deselect,
+    /// Open the selected widget's settings (Enter).
+    Edit,
 }
 
 impl EditAction {
@@ -118,6 +120,7 @@ impl EditAction {
             EditAction::Delete => KeyboardShortcut::new(Modifiers::NONE, Key::Delete),
             EditAction::Duplicate => KeyboardShortcut::new(cmd, Key::D),
             EditAction::Deselect => KeyboardShortcut::new(Modifiers::NONE, Key::Escape),
+            EditAction::Edit => KeyboardShortcut::new(Modifiers::NONE, Key::Enter),
         }
     }
 }
@@ -145,6 +148,8 @@ pub fn shortcut(ctx: &egui::Context) -> Option<EditAction> {
             Some(EditAction::Duplicate)
         } else if pressed(EditAction::Deselect.shortcut()) {
             Some(EditAction::Deselect)
+        } else if pressed(EditAction::Edit.shortcut()) {
+            Some(EditAction::Edit)
         } else {
             None
         }

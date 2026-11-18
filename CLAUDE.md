@@ -58,7 +58,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),
   `struct_view.rs` struct values decoded with the server's `/.schema/` topics
   (`nt4::proto::structs::StructDatabase` + `DynamicStruct`), `widgets.rs` the grid widgets
-  (Text Display, Boolean Box; other types draw as placeholders), `layout_file.rs` opening and saving layout files (atomic
+  (Text Display, Boolean Box; other types draw as placeholders; setting keys in `widgets::keys`),
+  `widget_settings.rs` the widget settings dialog's controls (the dialog window is in `ui.rs`), `layout_file.rs` opening and saving layout files (atomic
   writes, Ctrl+O/S/Shift+S), `grid.rs` the snap-grid rules
   (snapping, overlap) and `tabs.rs` tab actions and their shortcuts, `edit.rs` undo/redo (`History`, which
   notices any layout change once a frame) and the widget editing shortcuts; the drag handling and lock live
@@ -71,8 +72,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   don't count. Milestone 2 has tabs, the snap grid, the lock and layout open/save
   (`layout_file.rs`, native dialogs via `rfd`); topics and struct fields drag from the tree onto the grid (`tree::DraggedTopic`,
   `widgets::for_topic`; struct fields use Elastic's `struct_meta`, read with
-  `struct_view::field_value`); widgets can be selected, duplicated and deleted, with undo; next is the
-  widget settings dialog, then List Layout editing.
+  `struct_view::field_value`); widgets can be selected, duplicated, deleted and edited (settings dialog),
+  with undo; next is List Layout editing.
 - `layouts/robot2027_sim.json`: a layout for trying widgets against the robot-2027 sim
   (`cargo run -p raptaboard -- --address sim layouts/robot2027_sim.json`). Its `/DashTest/`
   topics come from robot-2027's `utils/dashboard_test_topics.py` (sim only).

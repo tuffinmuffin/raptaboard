@@ -105,38 +105,107 @@ pub fn field_value(
     as_nt_value(s.value(field)?)
 }
 
-/// Like [`field_value`], but an enum field gives its name from the schema
-/// (`kIntake`) as a string instead of its number, for showing to a person.
-/// Numbers the enum doesn't name stay numbers.
+/// How a widget shows an enum field's value.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum EnumDisplay {
+    /// The name from the schema: `kIntake`.
+    #[default]
+    Name,
+    /// The number: `3`.
+    Number,
+    /// Both: `kIntake (3)`.
+    Both,
+}
+
+impl EnumDisplay {
+    /// All choices, in the order a menu lists them.
+    pub const ALL: [EnumDisplay; 3] = [EnumDisplay::Name, EnumDisplay::Number, EnumDisplay::Both];
+
+    /// The word saved in a layout's `enum_display` setting.
+    pub fn key(self) -> &'static str {
+        match self {
+            EnumDisplay::Name => "name",
+            EnumDisplay::Number => "number",
+            EnumDisplay::Both => "both",
+        }
+    }
+
+    /// The choice saved as `key`, if it's one of [`EnumDisplay::key`]'s words.
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|d| d.key() == key)
+    }
+
+    /// Words for a menu.
+    pub fn label(self) -> &'static str {
+        match self {
+            EnumDisplay::Name => "Name (kIntake)",
+            EnumDisplay::Number => "Number (3)",
+            EnumDisplay::Both => "Both (kIntake (3))",
+        }
+    }
+}
+
+/// Like [`field_value`], but an enum field is shown as `display` says: by
+/// its name from the schema (`kIntake`, as a string), its number, or both
+/// (`kIntake (3)`). Numbers the enum doesn't name stay numbers.
 ///
 /// ```
 /// use nt4::Value;
 /// use nt4::proto::structs::StructDatabase;
-/// use raptaboard::struct_view::{field_value, field_value_shown};
+/// use raptaboard::struct_view::{field_value, field_value_shown, EnumDisplay};
 /// let mut db = StructDatabase::new();
 /// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode").unwrap();
 /// let mode = vec!["mode".to_string()];
+/// let shown = |bytes: &[u8], how| field_value_shown(&db, "Arm", bytes, &mode, how);
 /// assert_eq!(field_value(&db, "Arm", &[3], &mode), Some(Value::Int(3)));
-/// assert_eq!(field_value_shown(&db, "Arm", &[3], &mode), Some(Value::String("kIntake".into())));
-/// assert_eq!(field_value_shown(&db, "Arm", &[9], &mode), Some(Value::Int(9)));
+/// assert_eq!(shown(&[3], EnumDisplay::Name), Some(Value::String("kIntake".into())));
+/// assert_eq!(shown(&[3], EnumDisplay::Both), Some(Value::String("kIntake (3)".into())));
+/// assert_eq!(shown(&[3], EnumDisplay::Number), Some(Value::Int(3)));
+/// assert_eq!(shown(&[9], EnumDisplay::Name), Some(Value::Int(9)));
 /// ```
 pub fn field_value_shown(
     db: &StructDatabase,
     schema: &str,
     bytes: &[u8],
     path: &[String],
+    display: EnumDisplay,
 ) -> Option<Value> {
     let (s, field) = find_field(db, schema, bytes, path)?;
     let value = as_nt_value(s.value(field)?)?;
-    if field.enum_values().is_empty() {
+    if field.enum_values().is_empty() || display == EnumDisplay::Number {
         return Some(value);
     }
     Some(match value {
-        Value::Int(n) => field
-            .enum_name(n)
-            .map_or(Value::Int(n), |name| Value::String(name.to_owned())),
+        Value::Int(n) => match field.enum_name(n) {
+            Some(name) if display == EnumDisplay::Both => Value::String(format!("{name} ({n})")),
+            Some(name) => Value::String(name.to_owned()),
+            None => Value::Int(n),
+        },
         other => other,
     })
+}
+
+/// Whether the field `path` names in the struct `schema` is an enum. Needs
+/// only the schemas, not a value.
+///
+/// ```
+/// use nt4::proto::structs::StructDatabase;
+/// use raptaboard::struct_view::is_enum_field;
+/// let mut db = StructDatabase::new();
+/// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode; double angle").unwrap();
+/// assert!(is_enum_field(&db, "Arm", &["mode".to_string()]));
+/// assert!(!is_enum_field(&db, "Arm", &["angle".to_string()]));
+/// ```
+pub fn is_enum_field(db: &StructDatabase, schema: &str, path: &[String]) -> bool {
+    let Some((last, parents)) = path.split_last() else {
+        return false;
+    };
+    let mut s = db.find(schema);
+    for name in parents {
+        s = s.and_then(|s| s.field(name)).and_then(|f| db.nested(f));
+    }
+    s.and_then(|s| s.field(last))
+        .is_some_and(|f| !f.enum_values().is_empty())
 }
 
 /// The struct holding the field `path` names, and that field.
@@ -566,5 +635,28 @@ mod tests {
         assert_eq!(decode(&db, "struct:Pose2d", &[0; 8]), None);
         assert_eq!(decode(&db, "struct:SwerveModuleState[]", &[0; 17]), None);
         assert_eq!(decode(&db, "double", &[0; 8]), None);
+    }
+
+    #[test]
+    fn enum_fields_are_found_inside_nested_structs() {
+        let mut db = StructDatabase::new();
+        db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode; double angle")
+            .unwrap();
+        db.add("Robot", "Arm arm; double speed").unwrap();
+        let path = |p: &[&str]| p.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(is_enum_field(&db, "Robot", &path(&["arm", "mode"])));
+        assert!(!is_enum_field(&db, "Robot", &path(&["arm", "angle"])));
+        assert!(!is_enum_field(&db, "Robot", &path(&["speed", "mode"])));
+        assert!(!is_enum_field(&db, "Robot", &path(&[])));
+        assert!(!is_enum_field(&db, "Unknown", &path(&["mode"])));
+        // Values two levels down show by name, number or both.
+        let bytes = [3u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let mode = path(&["arm", "mode"]);
+        let shown = |how| field_value_shown(&db, "Robot", &bytes, &mode, how);
+        assert_eq!(
+            shown(EnumDisplay::Name),
+            Some(Value::String("kIntake".into()))
+        );
+        assert_eq!(shown(EnumDisplay::Number), Some(Value::Int(3)));
     }
 }

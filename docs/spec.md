@@ -206,10 +206,13 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    Backspace deletes, Ctrl+D duplicates into the nearest free spot, Esc deselects. Undo and redo
    (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y, and buttons in the settings bar) cover every layout edit,
    tabs included, up to 100 steps, so deleting needs no confirmation; opening a file starts a new
-   history. Next:
-   - Widget settings dialog, opened by Edit… in the widget menu: title (rename, reset to the source name, source still shown), period,
-     Boolean Box true/false colors (Elastic's `true_color`/`false_color`), and raptaboard-only
-     settings: decimal places for numbers, enum fields as name, number or both, and font size.
+   history. Widget settings (Edit… in the widget menu, double-click, or Enter): title (rename, or
+   reset to the name from the source, which is shown), update period, Boolean Box true and false
+   colors (Elastic's `true_color`/`false_color`), and raptaboard-only settings for Text Display:
+   fixed `decimal_places`, `font_size` for the value, and `enum_display` (`name`, `number` or
+   `both`) for enum struct fields. Changes show on the grid as they're made; Cancel or Esc undoes
+   them, and one visit to the dialog is one undo step. Settings at their default are left out of
+   the file. Next:
    - List Layout editing (drop into a list, create one).
    - Find a topic's widgets: selecting a topic (or struct field) in the NT tree highlights every
      widget on the open tab bound to it, and marks other tabs that have one, so it's easy to see

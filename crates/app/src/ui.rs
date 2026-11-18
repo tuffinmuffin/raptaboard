@@ -17,6 +17,7 @@ use crate::nt::{ConnectionStatus, NtConnection};
 use crate::struct_view;
 use crate::tabs::{self, TabAction};
 use crate::tree::{DraggedTopic, Folder, TopicEntry};
+use crate::widget_settings;
 use crate::widgets::{self, DEFAULT_PERIOD_S, WidgetKind};
 use nt4::proto::structs::StructDatabase;
 
@@ -72,6 +73,16 @@ impl Drag {
     }
 }
 
+/// A widget whose settings dialog is open.
+#[derive(Debug, Clone)]
+struct Editing {
+    tab: usize,
+    /// Its index in the tab's `containers`.
+    index: usize,
+    /// The widget as it was when the dialog opened, for Cancel.
+    original: WidgetContainer,
+}
+
 /// What to do once the user has answered "save changes?".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AfterSaving {
@@ -123,6 +134,8 @@ pub struct DashboardApp {
     /// The visible grid's width and height last frame, in pixels, for
     /// finding room for a duplicate.
     grid_room: (f64, f64),
+    /// The widget whose settings dialog is open, if any.
+    editing: Option<Editing>,
 }
 
 impl DashboardApp {
@@ -155,6 +168,7 @@ impl DashboardApp {
             selected: None,
             history: History::new(&ElasticLayout::default()),
             grid_room: (0.0, 0.0),
+            editing: None,
         };
         if let Some(path) = options.layout_path {
             let path = PathBuf::from(path);
@@ -669,6 +683,84 @@ impl DashboardApp {
                 }
             }
             EditAction::Deselect => self.selected = None,
+            EditAction::Edit => {
+                // List Layouts get settings with List Layout editing.
+                if let Some(Item::Widget(index)) = self.selected
+                    && let Some(w) = self
+                        .layout
+                        .tabs
+                        .get(self.current_tab)
+                        .and_then(|t| t.grid_layout.containers.get(index))
+                {
+                    self.editing = Some(Editing {
+                        tab: self.current_tab,
+                        index,
+                        original: w.clone(),
+                    });
+                    self.drag = None;
+                }
+            }
+        }
+    }
+
+    /// The widget settings dialog, while one is open. Changes show on the
+    /// grid as they're made; Cancel or Esc puts the widget back as it was,
+    /// and the whole visit is one step for undo.
+    fn widget_dialog(&mut self, ctx: &egui::Context) {
+        let Some(editing) = &self.editing else { return };
+        let is_enum = |w: &WidgetContainer| {
+            let (Some(db), Some(meta)) = (self.nt.structs(), w.struct_meta()) else {
+                return false;
+            };
+            struct_view::is_enum_field(db, &meta.schema_name, &meta.path)
+        };
+        let Some(widget) = self
+            .layout
+            .tabs
+            .get(editing.tab)
+            .and_then(|t| t.grid_layout.containers.get(editing.index))
+        else {
+            self.editing = None;
+            return;
+        };
+        let is_enum = is_enum(widget);
+        let Some(widget) = self
+            .layout
+            .tabs
+            .get_mut(editing.tab)
+            .and_then(|t| t.grid_layout.containers.get_mut(editing.index))
+        else {
+            return;
+        };
+        let mut close = None;
+        egui::Modal::new(egui::Id::unique("widget_settings")).show(ctx, |ui| {
+            ui.heading("Widget settings");
+            ui.add_space(4.0);
+            widget_settings::show(ui, widget, is_enum);
+            ui.add_space(4.0);
+            ui.separator();
+            ui.horizontal(|ui| {
+                if ui.button("Done").clicked() {
+                    close = Some(true);
+                }
+                if ui.button("Cancel").on_hover_text("Esc").clicked() {
+                    close = Some(false);
+                }
+            });
+        });
+        // Esc cancels. A click outside does nothing, so a stray click
+        // doesn't throw away the changes.
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            close = Some(false);
+        }
+        match close {
+            Some(true) => self.editing = None,
+            Some(false) => {
+                if let Some(editing) = self.editing.take() {
+                    *widget = editing.original;
+                }
+            }
+            None => {}
         }
     }
 
@@ -777,14 +869,23 @@ impl DashboardApp {
                 if body.clicked() || body.secondary_clicked() || body.drag_started() {
                     self.selected = Some(item);
                 }
+                let is_widget = matches!(item, Item::Widget(_));
+                if is_widget && body.double_clicked() {
+                    menu_action = Some((item, EditAction::Edit));
+                }
                 body.context_menu(|ui| {
                     let ctx = ui.ctx().clone();
-                    for (label, action, key) in [
-                        ("Duplicate", EditAction::Duplicate, EditAction::Duplicate),
-                        ("Delete", EditAction::Delete, EditAction::Delete),
-                    ] {
+                    let actions = [
+                        ("Edit…", EditAction::Edit),
+                        ("Duplicate", EditAction::Duplicate),
+                        ("Delete", EditAction::Delete),
+                    ];
+                    for (label, action) in actions {
+                        if action == EditAction::Edit && !is_widget {
+                            continue;
+                        }
                         let button = egui::Button::new(label)
-                            .shortcut_text(ctx.format_shortcut(&key.shortcut()));
+                            .shortcut_text(ctx.format_shortcut(&action.shortcut()));
                         if ui.add(button).clicked() {
                             menu_action = Some((item, action));
                         }
@@ -808,7 +909,14 @@ impl DashboardApp {
             match (w.struct_meta(), value) {
                 (None, value) => Some((*value).clone()),
                 (Some(meta), Value::Raw(bytes)) => {
-                    struct_view::field_value_shown(structs?, &meta.schema_name, bytes, &meta.path)
+                    let display = widgets::enum_display(&w.properties);
+                    struct_view::field_value_shown(
+                        structs?,
+                        &meta.schema_name,
+                        bytes,
+                        &meta.path,
+                        display,
+                    )
                 }
                 (Some(_), _) => None,
             }
@@ -998,7 +1106,8 @@ impl eframe::App for DashboardApp {
             })
             .inner;
         let ctx = ui.ctx().clone();
-        let dialog_open = self.confirm_close.is_some() || self.unsaved_prompt.is_some();
+        let dialog_open =
+            self.confirm_close.is_some() || self.unsaved_prompt.is_some() || self.editing.is_some();
         let pressed = if dialog_open {
             None
         } else {
@@ -1020,6 +1129,7 @@ impl eframe::App for DashboardApp {
         }
         self.close_dialog(&ctx);
         self.unsaved_dialog(&ctx);
+        self.widget_dialog(&ctx);
         let title = format!(
             "{}{} - raptaboard",
             layout_file::display_name(self.layout_path.as_deref()),
@@ -1047,8 +1157,11 @@ impl eframe::App for DashboardApp {
             Vec::new()
         };
         egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values));
-        // Whatever changed the layout this frame can be undone.
-        self.history.record(&self.layout);
+        // Whatever changed the layout this frame can be undone. Changes in
+        // the settings dialog are recorded once, when it closes.
+        if self.editing.is_none() {
+            self.history.record(&self.layout);
+        }
 
         self.nt.watch_values(tree_topics);
         let (widget_topics, period_s) = self.tab_topics();
