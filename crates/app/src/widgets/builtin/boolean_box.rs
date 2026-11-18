@@ -8,8 +8,9 @@ use eframe::egui::{self, Color32, CornerRadius, Rect};
 use nt4::Value;
 use serde_json::{Map, Value as Json};
 
-use super::props::{self, set_property};
-use super::{ValueInfo, WidgetType, card};
+use crate::widgets::shared::card;
+use crate::widgets::shared::props::{self, set_property};
+use crate::widgets::{ValueInfo, WidgetType};
 
 /// Color when true, as an ARGB number (Elastic).
 pub const TRUE_COLOR: &str = "true_color";
@@ -45,7 +46,7 @@ pub fn show_text(props: &Map<String, Json>) -> bool {
 ///
 /// ```
 /// use nt4::Value;
-/// use raptaboard::widgets::boolean_box::{fill, DEFAULT_TRUE_COLOR};
+/// use raptaboard::widgets::builtin::boolean_box::{fill, DEFAULT_TRUE_COLOR};
 /// let props = serde_json::Map::new();
 /// assert_eq!(fill(&props, Some(&Value::Boolean(true))), Ok((DEFAULT_TRUE_COLOR, None)));
 /// assert_eq!(fill(&props, Some(&Value::Double(1.0))), Err("not a boolean"));

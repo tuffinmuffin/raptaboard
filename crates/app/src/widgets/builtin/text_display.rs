@@ -1,13 +1,14 @@
 //! Text Display: shows any number, string or array as text.
 //!
-//! Settings: the number and enum settings in [`format`](super::format), and
+//! Settings: the number and enum settings in [`format`](mod@crate::widgets::shared::format), and
 //! `font_size`.
 
 use eframe::egui::{self, Rect};
 use nt4::Value;
 use serde_json::{Map, Value as Json};
 
-use super::{ValueInfo, WidgetType, card, format, props};
+use crate::widgets::shared::{card, format, props};
+use crate::widgets::{ValueInfo, WidgetType};
 
 /// The Text Display widget (Elastic's `"Text Display"`, also saved as
 /// `"Text View"`).
@@ -18,7 +19,7 @@ pub struct TextDisplay;
 ///
 /// ```
 /// use nt4::Value;
-/// use raptaboard::widgets::text_display::text;
+/// use raptaboard::widgets::builtin::text_display::text;
 /// let props = serde_json::Map::new();
 /// assert_eq!(text(&props, Some(&Value::Double(2.5))), Ok("2.5".into()));
 /// assert_eq!(text(&props, None), Err("no value"));

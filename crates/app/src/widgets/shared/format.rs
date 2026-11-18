@@ -7,10 +7,10 @@ use eframe::egui;
 use nt4::Value;
 use serde_json::{Map, Value as Json};
 
-use super::ValueInfo;
 use super::props::set_property;
 use crate::struct_view::EnumDisplay;
 use crate::tree::format_number;
+use crate::widgets::ValueInfo;
 
 /// Show numbers with exactly this many decimal places (raptaboard).
 pub const DECIMAL_PLACES: &str = "decimal_places";
@@ -23,7 +23,7 @@ pub const INT_DIGITS: &str = "int_digits";
 pub const ENUM_DISPLAY: &str = "enum_display";
 
 /// Every setting key in this file, for a widget's
-/// [`setting_keys`](super::WidgetType::setting_keys).
+/// [`setting_keys`](crate::widgets::WidgetType::setting_keys).
 pub const KEYS: [&str; 4] = [DECIMAL_PLACES, INT_FORMAT, INT_DIGITS, ENUM_DISPLAY];
 
 /// The most `decimal_places` used.
@@ -77,7 +77,7 @@ impl IntFormat {
     /// their minus sign: `-0x1A`.
     ///
     /// ```
-    /// use raptaboard::widgets::format::IntFormat;
+    /// use raptaboard::widgets::shared::format::IntFormat;
     /// assert_eq!(IntFormat::Decimal.format(26, 0), "26");
     /// assert_eq!(IntFormat::Hex.format(26, 0), "0x1A");
     /// assert_eq!(IntFormat::Hex.format(26, 8), "0x0000001A");
@@ -108,7 +108,7 @@ impl IntStyle {
     /// Write `n` in this style.
     ///
     /// ```
-    /// use raptaboard::widgets::format::{IntFormat, IntStyle};
+    /// use raptaboard::widgets::shared::format::{IntFormat, IntStyle};
     /// let style = IntStyle { format: IntFormat::Hex, digits: 2 };
     /// assert_eq!(style.write(10), "0x0A");
     /// assert_eq!(style.write(4096), "0x1000");
@@ -133,7 +133,7 @@ impl ValueKind {
     /// The kind for an NT type string.
     ///
     /// ```
-    /// use raptaboard::widgets::format::ValueKind;
+    /// use raptaboard::widgets::shared::format::ValueKind;
     /// assert_eq!(ValueKind::of("double[]"), ValueKind::Decimal);
     /// assert_eq!(ValueKind::of("int"), ValueKind::Whole);
     /// assert_eq!(ValueKind::of("string"), ValueKind::Other);
@@ -152,7 +152,7 @@ impl ValueKind {
 /// places without trailing zeros.
 ///
 /// ```
-/// use raptaboard::widgets::format::decimal_places;
+/// use raptaboard::widgets::shared::format::decimal_places;
 /// let props = serde_json::json!({"decimal_places": 2});
 /// assert_eq!(decimal_places(props.as_object().unwrap()), Some(2));
 /// assert_eq!(decimal_places(&serde_json::Map::new()), None);
@@ -165,7 +165,7 @@ pub fn decimal_places(props: &Map<String, Json>) -> Option<usize> {
 /// The `int_format` setting; [`IntFormat::Decimal`] if not set.
 ///
 /// ```
-/// use raptaboard::widgets::format::{int_format, IntFormat};
+/// use raptaboard::widgets::shared::format::{int_format, IntFormat};
 /// let props = serde_json::json!({"int_format": "hex"});
 /// assert_eq!(int_format(props.as_object().unwrap()), IntFormat::Hex);
 /// ```
@@ -188,7 +188,7 @@ pub fn int_digits(props: &Map<String, Json>) -> usize {
 /// The `int_format` and `int_digits` settings together.
 ///
 /// ```
-/// use raptaboard::widgets::format::{int_style, IntFormat};
+/// use raptaboard::widgets::shared::format::{int_style, IntFormat};
 /// let props = serde_json::json!({"int_format": "hex", "int_digits": 8});
 /// let style = int_style(props.as_object().unwrap());
 /// assert_eq!((style.format, style.digits), (IntFormat::Hex, 8));
@@ -204,7 +204,7 @@ pub fn int_style(props: &Map<String, Json>) -> IntStyle {
 ///
 /// ```
 /// use raptaboard::struct_view::EnumDisplay;
-/// use raptaboard::widgets::format::enum_display;
+/// use raptaboard::widgets::shared::format::enum_display;
 /// let props = serde_json::json!({"enum_display": "both"});
 /// assert_eq!(enum_display(props.as_object().unwrap()), EnumDisplay::Both);
 /// ```
@@ -224,7 +224,7 @@ pub fn enum_display(props: &Map<String, Json>) -> EnumDisplay {
 ///
 /// ```
 /// use nt4::Value;
-/// use raptaboard::widgets::format::value_text;
+/// use raptaboard::widgets::shared::format::value_text;
 /// let props = serde_json::json!({"decimal_places": 2, "int_format": "hex"});
 /// let props = props.as_object().unwrap();
 /// assert_eq!(value_text(&Value::Double(1.0), props).unwrap(), "1.00");

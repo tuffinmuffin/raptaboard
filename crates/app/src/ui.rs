@@ -19,7 +19,8 @@ use crate::sampling::Sampler;
 use crate::struct_view;
 use crate::tabs::{self, TabAction};
 use crate::tree::{DraggedTopic, Folder, TopicEntry};
-use crate::widgets::{self, card, format, props, settings};
+use crate::widgets;
+use crate::widgets::shared::{card, format, props, settings};
 use nt4::proto::structs::StructDatabase;
 
 /// Space between List Layout children, in points.

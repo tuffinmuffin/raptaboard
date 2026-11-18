@@ -59,11 +59,12 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `struct_view.rs` struct values decoded with the server's `/.schema/` topics
   (`nt4::proto::structs::StructDatabase` + `DynamicStruct`), `widgets/` the grid widgets,
   one file per type implementing `widgets::WidgetType` and listed in `widgets::TYPES` (Text Display,
-  Boolean Box; other types draw as placeholders), with shared `card.rs`, `format.rs` (number and
+  Boolean Box; other types draw as placeholders), widget files in `widgets/builtin/`, helpers in `widgets/shared/`:
+  `card.rs`, `format.rs` (number and
   enum text), `props.rs` (period, font size, colors) and `settings.rs` (the settings dialog's shared
   rows; the dialog window is in `ui.rs`); setting keys are constants in the file that owns them,
   listed in `docs/spec.md` under "raptaboard widget settings" (keep that table in step); adding a
-  widget is a new file plus one line in `TYPES`, `layout_file.rs` opening and saving layout files (atomic
+  widget is a new file in `builtin/` (listed in `builtin/mod.rs`) plus one line in `TYPES`, `layout_file.rs` opening and saving layout files (atomic
   writes, Ctrl+O/S/Shift+S), `grid.rs` the snap-grid rules
   (snapping, overlap) and `tabs.rs` tab actions and their shortcuts, `edit.rs` undo/redo (`History`, which
   notices any layout change once a frame) and the widget editing shortcuts; the drag handling and lock live

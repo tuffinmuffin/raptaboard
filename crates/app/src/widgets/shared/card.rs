@@ -1,6 +1,6 @@
 //! The card most widgets are drawn in: a rounded box with the title in a
 //! strip along the top. [`draw`] draws a whole widget through its
-//! [`WidgetType`](super::WidgetType), whose default `draw` uses this card;
+//! [`WidgetType`](crate::widgets::WidgetType), whose default `draw` uses this card;
 //! a widget with its own frame uses the pieces here as it needs.
 
 use eframe::egui::{self, CornerRadius, Rect, Stroke, StrokeKind};
@@ -57,7 +57,7 @@ pub fn draw_clipped(painter: &egui::Painter, body: Rect, draw: impl FnOnce(&egui
     draw(&inside, body.shrink(BODY_MARGIN));
 }
 
-/// Draw a widget in `rect` with its type's [`draw`](super::WidgetType::draw)
+/// Draw a widget in `rect` with its type's [`draw`](crate::widgets::WidgetType::draw)
 /// (the standard card unless the type has its own). `value` is the newest
 /// value of the widget's topic, if any. Types that aren't built yet get a
 /// card saying what they are and what they're bound to.
@@ -68,7 +68,7 @@ pub fn draw(
     widget: &WidgetContainer,
     value: Option<&Value>,
 ) {
-    if let Some(ty) = super::find(&widget.widget_type) {
+    if let Some(ty) = crate::widgets::find(&widget.widget_type) {
         ty.draw(painter, visuals, rect, widget, value);
         return;
     }

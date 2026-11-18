@@ -10,27 +10,25 @@
 //! a widget's drawing, settings and setting keys all live in its own file.
 //! Plugin widgets (milestone 4) will implement the same trait.
 //!
+//! Folders: [`builtin`] holds the widget types themselves, one file each;
+//! [`shared`] holds what they share: [`card`] draws the card around a body,
+//! [`format`](shared::format) writes numbers and enums as text (with their
+//! settings), [`props`] reads and writes the settings many widgets have,
+//! and [`settings`](shared::settings) is the settings dialog's shared rows.
+//!
 //! Adding a widget type:
-//! 1. Make `widgets/my_widget.rs` with a unit struct implementing
-//!    [`WidgetType`], and its setting keys as constants.
+//! 1. Make `widgets/builtin/my_widget.rs` with a unit struct implementing
+//!    [`WidgetType`], and its setting keys as constants, and list the file
+//!    in `builtin/mod.rs`.
 //! 2. Add it to [`TYPES`].
 //! 3. Add its settings to the table in `docs/spec.md`
 //!    ("raptaboard widget settings").
 //!
-//! Shared pieces: [`card`] draws the card around a body, [`format`] writes
-//! numbers and enums as text (with their settings), [`props`] reads and
-//! writes the settings every widget has, and [`settings`] is the settings
-//! dialog's shared rows.
-//!
 //! Widgets are read-only for now: typing into a Text Display to publish a
 //! value comes later.
 
-pub mod boolean_box;
-pub mod card;
-pub mod format;
-pub mod props;
-pub mod settings;
-pub mod text_display;
+pub mod builtin;
+pub mod shared;
 
 use eframe::egui::{self, Rect};
 use nt4::Value;
@@ -38,6 +36,7 @@ use raptaboard_layout::{Rect as LayoutRect, StructMeta, WidgetContainer};
 use serde_json::{Map, Value as Json};
 
 use crate::struct_view::FieldInfo;
+use shared::{card, props};
 
 /// What the settings dialog knows about the value a widget shows, so a
 /// widget offers only the settings that fit it.
@@ -116,7 +115,10 @@ pub trait WidgetType: Sync {
 
 /// Every widget type raptaboard can draw. Types earlier in the list win
 /// when more than one accepts a dropped topic.
-pub static TYPES: &[&dyn WidgetType] = &[&boolean_box::BooleanBox, &text_display::TextDisplay];
+pub static TYPES: &[&dyn WidgetType] = &[
+    &builtin::boolean_box::BooleanBox,
+    &builtin::text_display::TextDisplay,
+];
 
 /// The widget type saved as `type_name` (including Elastic's other names
 /// for it), or `None` if it isn't built yet.
@@ -339,7 +341,10 @@ mod tests {
     #[test]
     fn widgets_can_replace_the_card() {
         // The default draw is the card: title, then the body.
-        assert_eq!(drawn_text(&text_display::TextDisplay), ["Sine", "0.5"]);
+        assert_eq!(
+            drawn_text(&builtin::text_display::TextDisplay),
+            ["Sine", "0.5"]
+        );
         // An override draws instead, with no card or title.
         assert!(drawn_text(&Frameless).is_empty());
     }

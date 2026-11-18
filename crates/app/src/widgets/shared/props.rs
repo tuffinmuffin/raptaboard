@@ -34,7 +34,7 @@ pub const MAX_FONT_SIZE: f32 = 96.0;
 /// Set the property `key` to `value`, or remove it if `value` is `None`.
 ///
 /// ```
-/// use raptaboard::widgets::props::set_property;
+/// use raptaboard::widgets::shared::props::set_property;
 /// let mut props = serde_json::Map::new();
 /// set_property(&mut props, "font_size", Some(20.0.into()));
 /// assert_eq!(props["font_size"], 20.0);
@@ -57,7 +57,7 @@ pub fn set_property(props: &mut Map<String, Json>, key: &str, value: Option<Json
 ///
 /// ```
 /// use raptaboard::widgets::for_topic;
-/// use raptaboard::widgets::props::period_s;
+/// use raptaboard::widgets::shared::props::period_s;
 /// use raptaboard_layout::Rect;
 /// let at = Rect { x: 0.0, y: 0.0, width: 128.0, height: 128.0 };
 /// let mut w = for_topic("/Sine", "double", None, at).unwrap();
@@ -78,7 +78,7 @@ pub fn period_s(widget: &WidgetContainer) -> f64 {
 /// [`MAX_FONT_SIZE`]; [`DEFAULT_FONT_SIZE`] if not set.
 ///
 /// ```
-/// use raptaboard::widgets::props::{font_size, DEFAULT_FONT_SIZE};
+/// use raptaboard::widgets::shared::props::{font_size, DEFAULT_FONT_SIZE};
 /// let props = serde_json::json!({"font_size": 30.0});
 /// assert_eq!(font_size(props.as_object().unwrap()), 30.0);
 /// assert_eq!(font_size(&serde_json::Map::new()), DEFAULT_FONT_SIZE);
@@ -126,7 +126,7 @@ pub fn text_size_row(ui: &mut egui::Ui, props: &mut Map<String, Json>) {
 ///
 /// ```
 /// use eframe::egui::Color32;
-/// use raptaboard::widgets::props::color_property;
+/// use raptaboard::widgets::shared::props::color_property;
 /// let props = serde_json::json!({"true_color": 4283215696u32});
 /// let props = props.as_object().unwrap();
 /// assert_eq!(color_property(props, "true_color"), Some(Color32::from_rgb(0x4C, 0xAF, 0x50)));
@@ -143,7 +143,7 @@ pub fn color_property(props: &Map<String, Json>, key: &str) -> Option<Color32> {
 ///
 /// ```
 /// use eframe::egui::Color32;
-/// use raptaboard::widgets::props::color_json;
+/// use raptaboard::widgets::shared::props::color_json;
 /// assert_eq!(color_json(Color32::from_rgb(0x4C, 0xAF, 0x50)), serde_json::json!(4283215696u32));
 /// ```
 pub fn color_json(color: Color32) -> Json {
@@ -184,7 +184,7 @@ pub fn color_row(
 ///
 /// ```
 /// use eframe::egui::Color32;
-/// use raptaboard::widgets::props::text_color_on;
+/// use raptaboard::widgets::shared::props::text_color_on;
 /// assert_eq!(text_color_on(Color32::YELLOW), Color32::BLACK);
 /// assert_eq!(text_color_on(Color32::from_rgb(0x8B, 0x00, 0x00)), Color32::WHITE);
 /// ```

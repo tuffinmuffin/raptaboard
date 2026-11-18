@@ -1,6 +1,6 @@
 //! The widget settings dialog's contents: title, what it shows, update
 //! period, then the rows the widget's own type adds
-//! ([`WidgetType::settings`](super::WidgetType::settings)).
+//! ([`WidgetType::settings`](crate::widgets::WidgetType::settings)).
 //!
 //! Settings are edited in the widget's `properties` as they change, so the
 //! grid shows them right away. A setting at its default value is removed
@@ -12,8 +12,8 @@ use raptaboard_layout::WidgetContainer;
 use serde_json::Value as Json;
 
 use super::props::{self, DEFAULT_PERIOD_S, MAX_PERIOD_S, MIN_PERIOD_S, PERIOD, set_property};
-use super::{ValueInfo, find, source_title};
 use crate::struct_view::FieldInfo;
+use crate::widgets::{ValueInfo, find, source_title};
 
 /// Whether any of `widget`'s settings differ from the defaults, so
 /// [`reset_settings`] would change something. The title doesn't count.
@@ -25,14 +25,14 @@ pub fn has_custom_settings(widget: &WidgetContainer) -> bool {
 
 /// Put `widget`'s settings back to their defaults: update period 0.06 s,
 /// and its type's settings
-/// ([`setting_keys`](super::WidgetType::setting_keys) removed,
-/// [`reset`](super::WidgetType::reset) for the rest). The title and what
+/// ([`setting_keys`](crate::widgets::WidgetType::setting_keys) removed,
+/// [`reset`](crate::widgets::WidgetType::reset) for the rest). The title and what
 /// the widget shows (`topic`, `struct_meta`, `data_type`) are kept, as are
 /// settings raptaboard doesn't know.
 ///
 /// ```
 /// use raptaboard::widgets::for_topic;
-/// use raptaboard::widgets::settings::{has_custom_settings, reset_settings};
+/// use raptaboard::widgets::shared::settings::{has_custom_settings, reset_settings};
 /// use raptaboard_layout::Rect;
 /// let at = Rect { x: 0.0, y: 0.0, width: 128.0, height: 128.0 };
 /// let mut w = for_topic("/Sine", "double", None, at).unwrap();
@@ -162,9 +162,10 @@ pub fn show(
 mod tests {
     // Tests written by Claude.
     use super::*;
-    use crate::widgets::boolean_box::{FALSE_COLOR, TRUE_COLOR};
-    use crate::widgets::format::ENUM_DISPLAY;
-    use crate::widgets::{for_topic, props::DATA_TYPE};
+    use crate::widgets::builtin::boolean_box::{FALSE_COLOR, TRUE_COLOR};
+    use crate::widgets::for_topic;
+    use crate::widgets::shared::format::ENUM_DISPLAY;
+    use crate::widgets::shared::props::DATA_TYPE;
     use raptaboard_layout::Rect;
 
     fn widget(ty: &str, field: bool) -> WidgetContainer {
