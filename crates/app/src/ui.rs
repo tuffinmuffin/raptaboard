@@ -355,14 +355,28 @@ impl DashboardApp {
             ui.weak(&self.status);
             if !self.fixes.is_empty() {
                 let n = self.fixes.len();
-                ui.label(
-                    egui::RichText::new(format!(
-                        "⚠ fixed {n} problem{}",
-                        if n == 1 { "" } else { "s" }
-                    ))
-                    .color(Color32::from_rgb(230, 160, 40)),
-                )
-                .on_hover_text(self.fixes.join("\n"));
+                let list = self.fixes.join("\n");
+                let badge = ui
+                    .add(
+                        egui::Label::new(
+                            egui::RichText::new(format!(
+                                "⚠ fixed {n} problem{}",
+                                if n == 1 { "" } else { "s" }
+                            ))
+                            .color(Color32::from_rgb(230, 160, 40)),
+                        )
+                        .sense(Sense::click()),
+                    )
+                    .on_hover_cursor(CursorIcon::PointingHand)
+                    .on_hover_text(format!("{list}\n\nClick to copy this list"));
+                // Copy the list so it can be pasted into a bug report or chat.
+                if badge.clicked() {
+                    ui.ctx().copy_text(list);
+                    self.status = format!(
+                        "Copied {n} fix{} to the clipboard",
+                        if n == 1 { "" } else { "es" }
+                    );
+                }
             }
         });
     }
