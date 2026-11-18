@@ -182,19 +182,25 @@ pub const NEW_LIST_CELLS: f64 = 2.0;
 /// The title a new List Layout gets (Elastic's).
 pub const NEW_LIST_TITLE: &str = "List Layout";
 
-/// A new List Layout at `rect` holding `children`, as Elastic makes one:
-/// titled "List Layout", labels on top.
+/// A new List Layout at `rect` holding `children`: titled "List Layout"
+/// like Elastic's, but with raptaboard's more compact look: labels inside
+/// at the top, and dividers between children. Lists opened from a file
+/// keep their own settings.
 ///
 /// ```
-/// use raptaboard::widgets::list_layout::{new_list, TYPE_NAME};
+/// use raptaboard::widgets::list_layout::{dividers, labels, new_list, LabelPosition, TYPE_NAME};
 /// use raptaboard_layout::Rect;
 /// let list = new_list(Rect { x: 0.0, y: 0.0, width: 256.0, height: 256.0 }, vec![]);
 /// assert_eq!((list.title.as_str(), list.layout_type.as_str()), ("List Layout", TYPE_NAME));
-/// assert_eq!(list.properties["label_position"], "TOP");
+/// let l = labels(&list.properties);
+/// assert_eq!((l.position, l.inside), (LabelPosition::Top, true));
+/// assert!(dividers(&list.properties));
 /// ```
 pub fn new_list(rect: raptaboard_layout::Rect, children: Vec<WidgetContainer>) -> LayoutContainer {
     let mut properties = Map::new();
     properties.insert(LABEL_POSITION.into(), LabelPosition::Top.key().into());
+    properties.insert(LABEL_INSIDE.into(), true.into());
+    properties.insert(DIVIDERS.into(), true.into());
     LayoutContainer {
         title: NEW_LIST_TITLE.into(),
         rect,

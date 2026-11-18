@@ -284,7 +284,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      tree topic dropped over a list goes into it, where the green line shows; a child dragged
      within its list reorders, into another list moves there, and onto free grid becomes a widget
      again (its saved size, in whole cells). New lists: right-click empty grid → "New List
-     Layout" (an empty 2 x 2 list, titled "List Layout", nearest the click), or right-click a
+     Layout" (an empty 2 x 2 list, titled "List Layout", nearest the click; new lists start with
+     labels inside at the top and dividers on, raptaboard's more compact look, while lists from
+     files keep their own settings), or right-click a
      widget → "Put in a new list" (a list in its place, at least 2 x 2 and a cell taller than the
      widget, holding it).
    - Color by value for number widgets (ints and floats): a background color chosen by thresholds
