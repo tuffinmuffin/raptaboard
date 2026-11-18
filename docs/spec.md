@@ -267,9 +267,12 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      `font_color`, `font_bold`, ...; `font_size` exists), with a layout-wide default style later.
    - Reflow while dragging: widgets in the way slide aside (to the nearest free spot) as a widget is
      dragged or resized over them, instead of the drop being refused.
-   - Allow overlap: a per-widget setting (this widget may sit on top of, or under, others, such as
-     a label over a camera view) and a layout-wide setting allowing overlap everywhere. Needs a
-     draw order (front/back) and must skip the overlap fix when opening a layout.
+   - Allow partial overlap: a per-widget setting (this widget may partly overlap others, such as a
+     label over a corner of a camera view) and a layout-wide setting allowing it everywhere.
+     Partial only: no widget may be completely covered, so every widget keeps some part visible to
+     see and grab. A 1x1 on top of a 1x2 is fine (part of the 1x2 still shows); two 1x1s on the same
+     cell, or a big widget over a smaller one, are not. Needs a draw order (front/back), and the
+     overlap fix when opening a layout must allow the same partial overlaps.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      A built-in library of standard images (Elastic's `true_icon`/`false_icon` set: Checkmark, X,
      Exclamation Point, so its layouts keep their icons, plus more), and any PNG/SVG the team
