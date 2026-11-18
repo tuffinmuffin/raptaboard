@@ -87,8 +87,9 @@ pub struct DashboardApp {
     /// When locked, widgets and tabs can't be moved, resized or edited.
     locked: bool,
     drag: Option<Drag>,
-    /// The tab being renamed and the name typed so far.
-    renaming: Option<(usize, String)>,
+    /// The tab being renamed, the name typed so far, and whether its text
+    /// box has been given the keyboard yet.
+    renaming: Option<(usize, String, bool)>,
     /// A tab with widgets on it, waiting for the user to confirm closing it.
     confirm_close: Option<usize>,
 }
@@ -316,11 +317,17 @@ impl DashboardApp {
         let count = names.len();
         ui.horizontal(|ui| {
             for (i, name) in names.iter().enumerate() {
-                if let Some((renaming, text)) = &mut self.renaming
+                if let Some((renaming, text, focused)) = &mut self.renaming
                     && *renaming == i
                 {
                     let edit = ui.add(egui::TextEdit::singleline(text).desired_width(120.0));
-                    edit.request_focus();
+                    // Focus the box once, when renaming starts. Asking every
+                    // frame would keep it from ever losing focus, so Enter
+                    // and clicking away would do nothing.
+                    if !*focused {
+                        edit.request_focus();
+                        *focused = true;
+                    }
                     if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
                         self.renaming = None;
                     } else if edit.lost_focus() {
@@ -337,11 +344,11 @@ impl DashboardApp {
                     continue;
                 }
                 if tab.double_clicked() {
-                    self.renaming = Some((i, name.clone()));
+                    self.renaming = Some((i, name.clone(), false));
                 }
                 tab.context_menu(|ui| {
                     if ui.button("Rename").clicked() {
-                        self.renaming = Some((i, name.clone()));
+                        self.renaming = Some((i, name.clone(), false));
                     }
                     if ui
                         .add_enabled(i > 0, egui::Button::new("Move left"))
