@@ -8,10 +8,10 @@
         "layouts": [
           {
             "title": "Module CAN",
-            "x": 640,
-            "y": 0,
-            "width": 256,
-            "height": 640,
+            "x": 768.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 640.0,
             "type": "List Layout",
             "properties": {
               "label_position": "TOP"
@@ -19,10 +19,10 @@
             "children": [
               {
                 "title": "frontLeft",
-                "x": 0,
-                "y": 0,
-                "width": 256,
-                "height": 128,
+                "x": 0.0,
+                "y": 0.0,
+                "width": 256.0,
+                "height": 128.0,
                 "type": "Boolean Box",
                 "properties": {
                   "topic": "/Drive/Module/frontLeft/drive_connected",
@@ -32,10 +32,10 @@
               },
               {
                 "title": "frontRight",
-                "x": 0,
-                "y": 0,
-                "width": 256,
-                "height": 128,
+                "x": 0.0,
+                "y": 0.0,
+                "width": 256.0,
+                "height": 128.0,
                 "type": "Boolean Box",
                 "properties": {
                   "topic": "/Drive/Module/frontRight/drive_connected",
@@ -45,10 +45,10 @@
               },
               {
                 "title": "backLeft",
-                "x": 0,
-                "y": 0,
-                "width": 256,
-                "height": 128,
+                "x": 0.0,
+                "y": 0.0,
+                "width": 256.0,
+                "height": 128.0,
                 "type": "Boolean Box",
                 "properties": {
                   "topic": "/Drive/Module/backLeft/drive_connected",
@@ -58,10 +58,10 @@
               },
               {
                 "title": "backRight",
-                "x": 0,
-                "y": 0,
-                "width": 256,
-                "height": 128,
+                "x": 0.0,
+                "y": 0.0,
+                "width": 256.0,
+                "height": 128.0,
                 "type": "Boolean Box",
                 "properties": {
                   "topic": "/Drive/Module/backRight/drive_connected",
@@ -75,10 +75,10 @@
         "containers": [
           {
             "title": "Blink",
-            "x": 0,
-            "y": 0,
-            "width": 128,
-            "height": 128,
+            "x": 0.0,
+            "y": 0.0,
+            "width": 128.0,
+            "height": 128.0,
             "type": "Boolean Box",
             "properties": {
               "topic": "/DashTest/Blink",
@@ -90,10 +90,10 @@
           },
           {
             "title": "All modules healthy",
-            "x": 128,
-            "y": 0,
-            "width": 256,
-            "height": 128,
+            "x": 128.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 128.0,
             "type": "Boolean Box",
             "properties": {
               "topic": "/Drive/Health/allModulesHealthy",
@@ -103,10 +103,10 @@
           },
           {
             "title": "Red alliance",
-            "x": 384,
-            "y": 0,
-            "width": 128,
-            "height": 128,
+            "x": 384.0,
+            "y": 0.0,
+            "width": 128.0,
+            "height": 128.0,
             "type": "Boolean Box",
             "properties": {
               "topic": "/FMSInfo/IsRedAlliance",
@@ -118,10 +118,10 @@
           },
           {
             "title": "Seconds",
-            "x": 0,
-            "y": 128,
-            "width": 128,
-            "height": 128,
+            "x": 0.0,
+            "y": 128.0,
+            "width": 128.0,
+            "height": 128.0,
             "type": "Text Display",
             "properties": {
               "topic": "/DashTest/Seconds",
@@ -131,10 +131,10 @@
           },
           {
             "title": "Sine",
-            "x": 128,
-            "y": 128,
-            "width": 128,
-            "height": 128,
+            "x": 128.0,
+            "y": 128.0,
+            "width": 128.0,
+            "height": 128.0,
             "type": "Text Display",
             "properties": {
               "topic": "/DashTest/Sine",
@@ -144,10 +144,10 @@
           },
           {
             "title": "Mode name (string)",
-            "x": 256,
-            "y": 128,
-            "width": 256,
-            "height": 128,
+            "x": 256.0,
+            "y": 128.0,
+            "width": 256.0,
+            "height": 128.0,
             "type": "Text Display",
             "properties": {
               "topic": "/DashTest/ModeName",
@@ -157,10 +157,10 @@
           },
           {
             "title": "Loop ms",
-            "x": 0,
-            "y": 256,
-            "width": 128,
-            "height": 128,
+            "x": 0.0,
+            "y": 256.0,
+            "width": 128.0,
+            "height": 128.0,
             "type": "Text View",
             "properties": {
               "topic": "/FrameTiming/totalMs",
@@ -170,10 +170,10 @@
           },
           {
             "title": "Gyro yaw (rad)",
-            "x": 128,
-            "y": 256,
-            "width": 256,
-            "height": 128,
+            "x": 128.0,
+            "y": 256.0,
+            "width": 256.0,
+            "height": 128.0,
             "type": "Text Display",
             "properties": {
               "topic": "/Drive/Gyro/yaw_rad",
@@ -183,10 +183,10 @@
           },
           {
             "title": "Orbit pose (struct)",
-            "x": 384,
-            "y": 256,
-            "width": 256,
-            "height": 128,
+            "x": 384.0,
+            "y": 256.0,
+            "width": 256.0,
+            "height": 128.0,
             "type": "Text Display",
             "properties": {
               "topic": "/DashTest/OrbitPose",
@@ -196,10 +196,10 @@
           },
           {
             "title": "Loop time",
-            "x": 0,
-            "y": 384,
-            "width": 384,
-            "height": 256,
+            "x": 0.0,
+            "y": 384.0,
+            "width": 384.0,
+            "height": 256.0,
             "type": "Graph",
             "properties": {
               "topic": "/FrameTiming/totalMs",
@@ -210,10 +210,10 @@
           },
           {
             "title": "Never published",
-            "x": 384,
-            "y": 384,
-            "width": 128,
-            "height": 128,
+            "x": 384.0,
+            "y": 384.0,
+            "width": 128.0,
+            "height": 128.0,
             "type": "Boolean Box",
             "properties": {
               "topic": "/DashTest/Missing",
@@ -223,7 +223,7 @@
           },
           {
             "title": "Mode (enum)",
-            "x": 896.0,
+            "x": 512.0,
             "y": 0.0,
             "width": 256.0,
             "height": 128.0,
@@ -243,7 +243,7 @@
           },
           {
             "title": "Health (enum, both)",
-            "x": 896.0,
+            "x": 512.0,
             "y": 128.0,
             "width": 256.0,
             "height": 128.0,
