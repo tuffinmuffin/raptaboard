@@ -10,7 +10,7 @@
 
 use eframe::egui::{self, Color32, CornerRadius, Rect, Stroke, StrokeKind};
 use nt4::Value;
-use raptaboard_layout::{Rect as LayoutRect, WidgetContainer};
+use raptaboard_layout::{Rect as LayoutRect, StructMeta, WidgetContainer};
 use serde_json::Value as Json;
 
 use crate::tree::format_number;
@@ -79,29 +79,45 @@ pub fn type_for_topic(nt_type: &str) -> Option<&'static str> {
 /// saves widgets: `topic`, `period` and `data_type` properties. `None` if
 /// [`type_for_topic`] has no widget for the type.
 ///
+/// With `field`, the widget shows one field of the struct topic `name`, and
+/// `nt_type` is the field's type. It's saved with Elastic's `struct_meta`
+/// and titled like `pose.translation.x`.
+///
 /// ```
 /// use raptaboard::widgets::for_topic;
 /// use raptaboard_layout::Rect;
 /// let at = Rect { x: 128.0, y: 0.0, width: 128.0, height: 128.0 };
-/// let w = for_topic("/Drive/Health/allModulesHealthy", "boolean", at).unwrap();
+/// let w = for_topic("/Drive/Health/allModulesHealthy", "boolean", None, at).unwrap();
 /// assert_eq!(w.title, "allModulesHealthy");
 /// assert_eq!(w.widget_type, "Boolean Box");
 /// assert_eq!(w.topic(), Some("/Drive/Health/allModulesHealthy"));
 /// assert_eq!(w.period(), Some(0.06));
-/// assert!(for_topic("/Drive/pose", "struct:Pose2d", at).is_none());
+/// assert!(for_topic("/Drive/pose", "struct:Pose2d", None, at).is_none());
 /// ```
-pub fn for_topic(name: &str, nt_type: &str, rect: LayoutRect) -> Option<WidgetContainer> {
+pub fn for_topic(
+    name: &str,
+    nt_type: &str,
+    field: Option<&StructMeta>,
+    rect: LayoutRect,
+) -> Option<WidgetContainer> {
     let widget_type = type_for_topic(nt_type)?;
-    let title = name
+    let last = name
         .rsplit('/')
         .find(|part| !part.is_empty())
         .unwrap_or(name);
+    let title = match field {
+        Some(field) => format!("{last}.{}", field.path.join(".")),
+        None => last.to_owned(),
+    };
     let mut properties = serde_json::Map::new();
     properties.insert("topic".into(), name.into());
     properties.insert("period".into(), DEFAULT_PERIOD_S.into());
     properties.insert("data_type".into(), nt_type.into());
+    if let Some(field) = field {
+        properties.insert("struct_meta".into(), field.to_json(nt_type));
+    }
     Some(WidgetContainer {
-        title: title.to_owned(),
+        title,
         rect,
         widget_type: widget_type.to_owned(),
         properties,
@@ -358,7 +374,7 @@ mod tests {
             width: 128.0,
             height: 128.0,
         };
-        let w = for_topic("/DashTest/ModeName", "string", at).unwrap();
+        let w = for_topic("/DashTest/ModeName", "string", None, at).unwrap();
         assert_eq!(
             (w.title.as_str(), w.widget_type.as_str()),
             ("ModeName", "Text Display")
@@ -371,7 +387,20 @@ mod tests {
             Some(WidgetKind::TextDisplay)
         );
         // A name ending in a slash still gets a title.
-        assert_eq!(for_topic("/odd/", "double", at).unwrap().title, "odd");
+        assert_eq!(for_topic("/odd/", "double", None, at).unwrap().title, "odd");
+        // A struct field keeps the struct topic and says which field.
+        let field = StructMeta {
+            path: vec!["translation".into(), "x".into()],
+            schema_name: "Pose2d".into(),
+        };
+        let x = for_topic("/Drive/pose", "double", Some(&field), at).unwrap();
+        assert_eq!(x.title, "pose.translation.x");
+        assert_eq!(x.topic(), Some("/Drive/pose"));
+        assert_eq!(x.struct_meta(), Some(field));
+        assert_eq!(
+            x.properties["struct_meta"],
+            serde_json::json!({"path": ["translation", "x"], "schema_name": "Pose2d", "type": "double"})
+        );
         // Arrays go in a Text Display; raw bytes and schemas have no widget.
         assert_eq!(type_for_topic("int[]"), Some("Text Display"));
         assert_eq!(type_for_topic("raw"), None);

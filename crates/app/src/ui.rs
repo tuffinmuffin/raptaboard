@@ -6,13 +6,14 @@ use std::time::Duration;
 
 use eframe::egui::{self, Color32, CursorIcon, Rect, Sense, Stroke, Vec2};
 use nt4::{Topic, Value};
-use raptaboard_layout::{ElasticLayout, GridLayout, Rect as LayoutRect};
+use raptaboard_layout::{ElasticLayout, GridLayout, Rect as LayoutRect, WidgetContainer};
 
 use crate::cli::StartupOptions;
 use crate::connection::{AddressMode, resolve};
 use crate::grid::{self, Item};
 use crate::layout_file::{self, FileAction, LoadError};
 use crate::nt::{ConnectionStatus, NtConnection};
+use crate::struct_view;
 use crate::tabs::{self, TabAction};
 use crate::tree::{DraggedTopic, Folder, TopicEntry};
 use crate::widgets::{self, DEFAULT_PERIOD_S, WidgetKind};
@@ -688,7 +689,19 @@ impl DashboardApp {
             }
         }
 
-        let value_of = |topic: Option<&str>| topic.and_then(|t| values.get(t).copied());
+        // A widget's value: its topic's, or one field of it for widgets bound
+        // to a struct field.
+        let structs = self.nt.structs();
+        let value_of = |w: &WidgetContainer| -> Option<Value> {
+            let value = values.get(w.topic()?)?;
+            match (w.struct_meta(), value) {
+                (None, value) => Some((*value).clone()),
+                (Some(meta), Value::Raw(bytes)) => {
+                    struct_view::field_value(structs?, &meta.schema_name, bytes, &meta.path)
+                }
+                (Some(_), _) => None,
+            }
+        };
         let dragging = self.drag.map(|d| d.item);
         for &(item, r) in &placed {
             if Some(item) != dragging {
@@ -739,7 +752,8 @@ impl DashboardApp {
             draw_landing(&painter, to_screen(&target), free);
             if free
                 && ui.input(|i| i.pointer.any_released())
-                && let Some(widget) = widgets::for_topic(&topic.name, &topic.ty, target)
+                && let Some(widget) =
+                    widgets::for_topic(&topic.name, &topic.ty, topic.field.as_ref(), target)
                 && let Some(tab) = self.layout.tabs.get_mut(self.current_tab)
             {
                 tab.grid_layout.containers.push(widget);
@@ -759,13 +773,13 @@ impl DashboardApp {
 
 /// Draw one grid item (a widget, or a List Layout with its children) in
 /// `rect`, in screen points.
-fn draw_item<'v>(
+fn draw_item(
     painter: &egui::Painter,
     visuals: &egui::Visuals,
     rect: Rect,
     grid: &GridLayout,
     item: Item,
-    value_of: &dyn Fn(Option<&str>) -> Option<&'v Value>,
+    value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
 ) {
     let rect = rect.shrink(4.0);
     match item {
@@ -773,7 +787,7 @@ fn draw_item<'v>(
             let Some(w) = grid.containers.get(i) else {
                 return;
             };
-            widgets::draw(painter, visuals, rect, w, value_of(w.topic()));
+            widgets::draw(painter, visuals, rect, w, value_of(w).as_ref());
         }
         // A List Layout stacks its children top to bottom, each at its own
         // height and the layout's full width; children that don't fit are cut off.
@@ -788,7 +802,13 @@ fn draw_item<'v>(
                     egui::pos2(body.min.x, top),
                     Vec2::new(body.width(), height),
                 );
-                widgets::draw(&inside, visuals, child_rect, child, value_of(child.topic()));
+                widgets::draw(
+                    &inside,
+                    visuals,
+                    child_rect,
+                    child,
+                    value_of(child).as_ref(),
+                );
                 top += height + LIST_GAP;
             }
         }

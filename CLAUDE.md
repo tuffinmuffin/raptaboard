@@ -58,7 +58,9 @@ macOS. Run the same locally before pushing.
   (set `RAPTABOARD_CPU_OTHER=elastic_dashboard`, Elastic on localhost, port 5810 free).
   Results are in `docs/spec.md`; VMs without hardware DX12 render in software, so their numbers
   don't count. Milestone 2 has tabs, the snap grid, the lock and layout open/save
-  (`layout_file.rs`, native dialogs via `rfd`); topics drag from the tree onto the grid (`tree::DraggedTopic`, `widgets::for_topic`); next is List
+  (`layout_file.rs`, native dialogs via `rfd`); topics and struct fields drag from the tree onto the grid (`tree::DraggedTopic`,
+  `widgets::for_topic`; struct fields use Elastic's `struct_meta`, read with
+  `struct_view::field_value`); next is List
   Layout editing.
 - `layouts/robot2027_sim.json`: a layout for trying widgets against the robot-2027 sim
   (`cargo run -p raptaboard -- --address sim layouts/robot2027_sim.json`). Its `/DashTest/`

@@ -195,7 +195,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    negative positions and widgets past 100 cells are fixed and listed ("fixed N problems"), and
    files over 10 MB are refused; normal Elastic layouts come through unchanged. Drag from tree:
    dragging a topic onto the grid makes a one-cell widget there (Boolean Box for booleans, Text
-   Display for the rest; saved with `topic`, `period` and `data_type` like Elastic). Dragging folders
+   Display for the rest; saved with `topic`, `period` and `data_type` like Elastic). Fields inside a
+   struct topic (Pose2d → translation → x) drag too: the widget keeps the struct topic and saves
+   Elastic's `struct_meta` (`path`, `schema_name`, `type`); fields inside struct arrays don't, as in
+   Elastic. Whole structs wait for their widgets (Field). Dragging folders
    (tables with `.type`) waits for the widgets that draw tables in milestone 3. Next: List Layout
    editing (drop into a list, create one).
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
