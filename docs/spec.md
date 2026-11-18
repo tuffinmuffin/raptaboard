@@ -123,6 +123,29 @@ Not in Elastic: Mechanism2d, any display of the 2027 `unit` topic property.
 Pixels at the saved grid size. `properties` always has `topic` and `period`; single-topic widgets add
 `data_type` and `struct_meta`. Unknown types load as empty placeholders.
 
+### raptaboard widget settings
+
+raptaboard adds its own keys to a widget's `properties`, next to Elastic's. Elastic ignores keys it
+doesn't know, so these files still open there (without these settings). A key at its default is
+left out of the file. The names are `widgets::keys` in `crates/app`; readers there clamp
+out-of-range values and ignore wrong types.
+
+| Key | Widgets | Value | Default |
+| --- | --- | --- | --- |
+| `period` (Elastic) | all | update period, seconds (0.01–5) | 0.06 |
+| `true_color`, `false_color` (Elastic) | Boolean Box | ARGB number | green, red |
+| `show_text` | Boolean Box | write the text below over the color | false |
+| `true_text`, `false_text` | Boolean Box | text when true / false; empty for none | none |
+| `decimal_places` | Text Display (double, float) | fixed places, 0–10 | up to 4, trailing zeros cut |
+| `int_format` | Text Display (int, enum numbers) | `decimal`, `hex` (`0x1A`), `binary` (`0b11010`) | `decimal` |
+| `int_digits` | Text Display (int, enum numbers) | at least this many digits, zero-padded, 1–64 | no padding |
+| `enum_display` | Text Display (enum struct field) | `name`, `number`, `both` | `name` |
+| `font_size` | Text Display; Boolean Box text | points, 8–96 | 16 |
+
+Adding a setting: add its key to `widgets::keys`, a reader in `widgets.rs`, its control in
+`widget_settings.rs` (and its key in `RESETTABLE` if "Reset settings" should clear it), and a row
+here.
+
 ### Remote layouts
 
 `GET http://<robot>:5800/?format=json` lists `files`; then `GET http://<robot>:5800/<name>.json`.
@@ -215,7 +238,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    `decimal_places` for double/float, `int_format` (`decimal`, `hex` as `0x1A`, `binary` as
    `0b11010`) and `int_digits` (zero padding, like `%08X`) for int and enum numbers, `enum_display` (`name`, `number` or `both`) for enum
    struct fields, and `font_size` for any value. Changes show on the grid as they're made; Cancel or Esc undoes
-   them, and one visit to the dialog is one undo step. "Reset settings" puts every setting back
+   them, and one visit to the dialog is one undo step. Boolean Box can also write text over its
+   color (`show_text`, `true_text`, `false_text`; black or white, whichever reads better). The
+   setting keys are listed under "raptaboard widget settings". "Reset settings" puts every setting back
    to its default (period 0.06 s, default colors, no raptaboard settings) but keeps the title and
    the topic or field. Settings at their default are left out of
    the file. Next:

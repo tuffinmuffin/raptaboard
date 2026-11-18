@@ -58,7 +58,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),
   `struct_view.rs` struct values decoded with the server's `/.schema/` topics
   (`nt4::proto::structs::StructDatabase` + `DynamicStruct`), `widgets.rs` the grid widgets
-  (Text Display, Boolean Box; other types draw as placeholders; setting keys in `widgets::keys`),
+  (Text Display, Boolean Box; other types draw as placeholders; setting keys in `widgets::keys`, listed in
+  `docs/spec.md` under "raptaboard widget settings"; keep that table in step),
   `widget_settings.rs` the widget settings dialog's controls (the dialog window is in `ui.rs`), `layout_file.rs` opening and saving layout files (atomic
   writes, Ctrl+O/S/Shift+S), `grid.rs` the snap-grid rules
   (snapping, overlap) and `tabs.rs` tab actions and their shortcuts, `edit.rs` undo/redo (`History`, which

@@ -45,7 +45,10 @@ pub fn set_property(props: &mut serde_json::Map<String, Json>, key: &str, value:
 
 /// Settings [`reset_settings`] removes when they're set: raptaboard's own,
 /// which all default to "not set".
-const RESETTABLE: [&str; 5] = [
+const RESETTABLE: [&str; 8] = [
+    keys::SHOW_TEXT,
+    keys::TRUE_TEXT,
+    keys::FALSE_TEXT,
     keys::DECIMAL_PLACES,
     keys::FONT_SIZE,
     keys::ENUM_DISPLAY,
@@ -361,6 +364,43 @@ fn boolean_box(ui: &mut egui::Ui, widget: &mut WidgetContainer) {
             }
         });
         ui.end_row();
+    }
+
+    ui.label("Text");
+    let mut shown = widgets::show_text(props);
+    if ui
+        .checkbox(&mut shown, "Write text over the color")
+        .changed()
+    {
+        set_property(props, keys::SHOW_TEXT, shown.then_some(true.into()));
+        // Start with something visible the first time.
+        for (key, first) in [(keys::TRUE_TEXT, "True"), (keys::FALSE_TEXT, "False")] {
+            if shown && !props.contains_key(key) {
+                set_property(props, key, Some(first.into()));
+            }
+        }
+    }
+    ui.end_row();
+    if shown {
+        for (label, key) in [
+            ("Text when true", keys::TRUE_TEXT),
+            ("Text when false", keys::FALSE_TEXT),
+        ] {
+            ui.label(label);
+            let mut text = props
+                .get(key)
+                .and_then(Json::as_str)
+                .unwrap_or_default()
+                .to_owned();
+            let edit = egui::TextEdit::singleline(&mut text)
+                .hint_text("none")
+                .desired_width(180.0);
+            if ui.add(edit).changed() {
+                set_property(props, key, Some(text.into()));
+            }
+            ui.end_row();
+        }
+        text_size(ui, props);
     }
 }
 

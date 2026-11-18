@@ -53,6 +53,12 @@ pub mod keys {
     /// Text Display: write whole numbers with at least this many digits,
     /// padded with zeros (`0x001A` for 4).
     pub const INT_DIGITS: &str = "int_digits";
+    /// Boolean Box: whether to write `true_text` or `false_text` over the color.
+    pub const SHOW_TEXT: &str = "show_text";
+    /// Boolean Box: text over the color when true, such as `"Good"`.
+    pub const TRUE_TEXT: &str = "true_text";
+    /// Boolean Box: text over the color when false; empty for none.
+    pub const FALSE_TEXT: &str = "false_text";
     /// The NT type of the value shown, such as `"double"` (Elastic).
     pub const DATA_TYPE: &str = "data_type";
 }
@@ -408,8 +414,8 @@ pub fn enum_display(properties: &serde_json::Map<String, Json>) -> EnumDisplay {
 pub enum Body {
     /// Text, as in a Text Display.
     Text(String),
-    /// A solid color, as in a Boolean Box.
-    Fill(Color32),
+    /// A solid color, as in a Boolean Box, with text over it if set.
+    Fill(Color32, Option<String>),
     /// No value yet, or a value of the wrong type: says why in grey.
     NoData(&'static str),
 }
@@ -426,7 +432,7 @@ pub enum Body {
 /// );
 /// assert_eq!(
 ///     body(WidgetKind::BooleanBox, &props, Some(&Value::Boolean(true))),
-///     Body::Fill(DEFAULT_TRUE_COLOR)
+///     Body::Fill(DEFAULT_TRUE_COLOR, None)
 /// );
 /// assert_eq!(body(WidgetKind::BooleanBox, &props, None), Body::NoData("no value"));
 /// ```
@@ -445,15 +451,22 @@ pub fn body(
                 None => Body::NoData("not text"),
             }
         }
-        WidgetKind::BooleanBox => match value {
-            Value::Boolean(true) => {
-                Body::Fill(color_property(properties, "true_color").unwrap_or(DEFAULT_TRUE_COLOR))
-            }
-            Value::Boolean(false) => {
-                Body::Fill(color_property(properties, "false_color").unwrap_or(DEFAULT_FALSE_COLOR))
-            }
-            _ => Body::NoData("not a boolean"),
-        },
+        WidgetKind::BooleanBox => {
+            let Value::Boolean(on) = value else {
+                return Body::NoData("not a boolean");
+            };
+            let (color, text, default) = if *on {
+                (keys::TRUE_COLOR, keys::TRUE_TEXT, DEFAULT_TRUE_COLOR)
+            } else {
+                (keys::FALSE_COLOR, keys::FALSE_TEXT, DEFAULT_FALSE_COLOR)
+            };
+            let text = show_text(properties)
+                .then(|| properties.get(text).and_then(Json::as_str))
+                .flatten()
+                .filter(|t| !t.is_empty())
+                .map(str::to_owned);
+            Body::Fill(color_property(properties, color).unwrap_or(default), text)
+        }
     }
 }
 
@@ -499,6 +512,34 @@ pub fn color_property(properties: &serde_json::Map<String, Json>, key: &str) -> 
     let argb = u32::try_from(properties.get(key)?.as_u64()?).ok()?;
     let [a, r, g, b] = argb.to_be_bytes();
     Some(Color32::from_rgba_unmultiplied(r, g, b, a))
+}
+
+/// The `show_text` setting: whether a Boolean Box writes its true or false
+/// text over the color. Off if not set.
+pub fn show_text(properties: &serde_json::Map<String, Json>) -> bool {
+    properties
+        .get(keys::SHOW_TEXT)
+        .and_then(Json::as_bool)
+        .unwrap_or(false)
+}
+
+/// Black or white, whichever is easier to read on `background`.
+///
+/// ```
+/// use eframe::egui::Color32;
+/// use raptaboard::widgets::text_color_on;
+/// assert_eq!(text_color_on(Color32::YELLOW), Color32::BLACK);
+/// assert_eq!(text_color_on(Color32::from_rgb(0x8B, 0x00, 0x00)), Color32::WHITE);
+/// ```
+pub fn text_color_on(background: Color32) -> Color32 {
+    // Relative luminance from sRGB, roughly: green looks brightest.
+    let [r, g, b, _] = background.to_srgba_unmultiplied();
+    let luminance = 0.299 * f32::from(r) + 0.587 * f32::from(g) + 0.114 * f32::from(b);
+    if luminance > 150.0 {
+        Color32::BLACK
+    } else {
+        Color32::WHITE
+    }
 }
 
 /// A color as Elastic saves it: a 32-bit ARGB number. The opposite of
@@ -593,8 +634,17 @@ pub fn draw(
                 visuals.text_color(),
             );
         }
-        Body::Fill(color) => {
+        Body::Fill(color, text) => {
             painter.rect_filled(body_rect, CornerRadius::same(6), color);
+            if let Some(text) = text {
+                painter.text(
+                    body_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    text,
+                    egui::FontId::proportional(font_size(&widget.properties)),
+                    text_color_on(color),
+                );
+            }
         }
         Body::NoData(why) => {
             painter.text(
@@ -646,16 +696,16 @@ mod tests {
             props(serde_json::json!({"true_color": 4283215696u32, "false_color": 4294198070u32}));
         assert_eq!(
             body(WidgetKind::BooleanBox, &saved, Some(&Value::Boolean(true))),
-            Body::Fill(DEFAULT_TRUE_COLOR)
+            Body::Fill(DEFAULT_TRUE_COLOR, None)
         );
         assert_eq!(
             body(WidgetKind::BooleanBox, &saved, Some(&Value::Boolean(false))),
-            Body::Fill(DEFAULT_FALSE_COLOR)
+            Body::Fill(DEFAULT_FALSE_COLOR, None)
         );
         let blue = props(serde_json::json!({"true_color": 0xFF2196F3u32}));
         assert_eq!(
             body(WidgetKind::BooleanBox, &blue, Some(&Value::Boolean(true))),
-            Body::Fill(Color32::from_rgb(0x21, 0x96, 0xF3))
+            Body::Fill(Color32::from_rgb(0x21, 0x96, 0xF3), None)
         );
         assert_eq!(
             body(WidgetKind::BooleanBox, &blue, Some(&Value::Double(1.0))),
@@ -717,7 +767,7 @@ mod tests {
         assert_eq!(color_property(&bad, "false_color"), None);
         assert_eq!(
             body(WidgetKind::BooleanBox, &bad, Some(&Value::Boolean(false))),
-            Body::Fill(DEFAULT_FALSE_COLOR)
+            Body::Fill(DEFAULT_FALSE_COLOR, None)
         );
     }
 
@@ -801,5 +851,38 @@ mod tests {
         assert_eq!(int_digits(&huge), MAX_INT_DIGITS);
         let bad = props(serde_json::json!({"int_format": 16}));
         assert_eq!(int_format(&bad), IntFormat::Decimal);
+    }
+
+    #[test]
+    fn boolean_box_text() {
+        let both = props(serde_json::json!({
+            "show_text": true, "true_text": "Good", "false_text": "Bad"}));
+        let fill = |p: &serde_json::Map<String, Json>, on: bool| {
+            body(WidgetKind::BooleanBox, p, Some(&Value::Boolean(on)))
+        };
+        assert_eq!(
+            fill(&both, true),
+            Body::Fill(DEFAULT_TRUE_COLOR, Some("Good".into()))
+        );
+        assert_eq!(
+            fill(&both, false),
+            Body::Fill(DEFAULT_FALSE_COLOR, Some("Bad".into()))
+        );
+        // Text only when true, grey when false.
+        let one = props(serde_json::json!({
+            "show_text": true, "true_text": "Elevator moving", "false_text": "",
+            "false_color": 0xFF9E9E9Eu32}));
+        assert_eq!(
+            fill(&one, false),
+            Body::Fill(Color32::from_rgb(0x9E, 0x9E, 0x9E), None)
+        );
+        // Turned off: the text is kept in the file but not shown.
+        let off = props(serde_json::json!({"show_text": false, "true_text": "Good"}));
+        assert_eq!(fill(&off, true), Body::Fill(DEFAULT_TRUE_COLOR, None));
+        let bad = props(serde_json::json!({"show_text": "yes", "true_text": 5}));
+        assert_eq!(fill(&bad, true), Body::Fill(DEFAULT_TRUE_COLOR, None));
+        // The default colors get white text.
+        assert_eq!(text_color_on(DEFAULT_TRUE_COLOR), Color32::WHITE);
+        assert_eq!(text_color_on(DEFAULT_FALSE_COLOR), Color32::WHITE);
     }
 }
