@@ -3,13 +3,15 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use eframe::egui::{self, Color32, Rect, Sense, Stroke, Vec2};
+use eframe::egui::{self, Color32, CursorIcon, Rect, Sense, Stroke, Vec2};
 use nt4::{Topic, Value};
-use raptaboard_layout::{ElasticLayout, Rect as LayoutRect};
+use raptaboard_layout::{ElasticLayout, GridLayout, Rect as LayoutRect};
 
 use crate::cli::StartupOptions;
 use crate::connection::{AddressMode, resolve};
+use crate::grid::{self, Item};
 use crate::nt::{ConnectionStatus, NtConnection};
+use crate::tabs::{self, TabAction};
 use crate::tree::{Folder, TopicEntry};
 use crate::widgets::{self, WidgetKind};
 use nt4::proto::structs::StructDatabase;
@@ -18,10 +20,59 @@ use nt4::proto::structs::StructDatabase;
 const DEFAULT_PERIOD_S: f64 = 0.06;
 /// Space between List Layout children, in points.
 const LIST_GAP: f32 = 6.0;
+/// Size of the resize corner at the bottom right of each widget, in points.
+const RESIZE_HANDLE: f32 = 14.0;
+
+/// What a drag on the grid is doing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DragMode {
+    /// Moving the whole item.
+    Move,
+    /// Changing its size from the bottom-right corner.
+    Resize,
+}
+
+/// A widget or List Layout being dragged.
+#[derive(Debug, Clone, Copy)]
+struct Drag {
+    item: Item,
+    mode: DragMode,
+    /// Where the item was when the drag started.
+    start: LayoutRect,
+    /// How far the pointer has moved since then, in points.
+    moved: Vec2,
+}
+
+impl Drag {
+    /// Where the item is while it follows the pointer, before snapping.
+    fn following(&self) -> LayoutRect {
+        let (dx, dy) = (f64::from(self.moved.x), f64::from(self.moved.y));
+        match self.mode {
+            DragMode::Move => LayoutRect {
+                x: self.start.x + dx,
+                y: self.start.y + dy,
+                ..self.start
+            },
+            DragMode::Resize => LayoutRect {
+                width: (self.start.width + dx).max(1.0),
+                height: (self.start.height + dy).max(1.0),
+                ..self.start
+            },
+        }
+    }
+
+    /// Where the item lands if dropped now: snapped to the grid.
+    fn target(&self, cell: f64, area: (f64, f64)) -> LayoutRect {
+        match self.mode {
+            DragMode::Move => grid::snap_move(self.following(), cell, area),
+            DragMode::Resize => grid::snap_resize(self.following(), cell),
+        }
+    }
+}
 
 /// Top-level app state.
 pub struct DashboardApp {
-    layout: Option<ElasticLayout>,
+    layout: ElasticLayout,
     layout_path: String,
     status: String,
     current_tab: usize,
@@ -33,6 +84,14 @@ pub struct DashboardApp {
     show_tree: bool,
     tree_filter: String,
     show_metadata: bool,
+    /// When locked, widgets and tabs can't be moved, resized or edited.
+    locked: bool,
+    drag: Option<Drag>,
+    /// The tab being renamed, the name typed so far, and whether its text
+    /// box has been given the keyboard yet.
+    renaming: Option<(usize, String, bool)>,
+    /// A tab with widgets on it, waiting for the user to confirm closing it.
+    confirm_close: Option<usize>,
 }
 
 impl DashboardApp {
@@ -42,9 +101,9 @@ impl DashboardApp {
     pub fn new(options: StartupOptions) -> std::io::Result<Self> {
         let layout_path = options.layout_path;
         let mut app = DashboardApp {
-            layout: None,
+            layout: ElasticLayout::default(),
             layout_path: layout_path.clone().unwrap_or_default(),
-            status: "No layout loaded".into(),
+            status: "New layout".into(),
             current_tab: 0,
             team: options.team,
             mode: options.mode,
@@ -54,6 +113,10 @@ impl DashboardApp {
             show_tree: options.show_tree,
             tree_filter: String::new(),
             show_metadata: false,
+            locked: false,
+            drag: None,
+            renaming: None,
+            confirm_close: None,
         };
         if layout_path.is_some() {
             app.load_layout();
@@ -72,8 +135,11 @@ impl DashboardApp {
                     layout.tabs.len(),
                     layout.widgets().count()
                 );
-                self.layout = Some(layout);
+                self.layout = layout;
                 self.current_tab = 0;
+                self.drag = None;
+                self.renaming = None;
+                self.confirm_close = None;
             }
             Err(e) => self.status = format!("Could not load layout: {e}"),
         }
@@ -89,6 +155,22 @@ impl DashboardApp {
             };
             if ui.button(label).on_hover_text(hint).clicked() {
                 self.show_tree = !self.show_tree;
+            }
+            let (label, hint) = if self.locked {
+                (
+                    "🔒 Locked",
+                    "Unlock to move, resize and edit widgets and tabs",
+                )
+            } else {
+                (
+                    "🔓 Unlocked",
+                    "Lock the layout so nothing moves by accident",
+                )
+            };
+            if ui.button(label).on_hover_text(hint).clicked() {
+                self.locked = !self.locked;
+                self.drag = None;
+                self.renaming = None;
             }
             ui.separator();
             ui.label("Team");
@@ -200,11 +282,7 @@ impl DashboardApp {
     /// they want updates (the shortest `period` of them, in seconds).
     /// Only widgets raptaboard can draw are counted.
     fn tab_topics(&self) -> (Vec<String>, f64) {
-        let Some(tab) = self
-            .layout
-            .as_ref()
-            .and_then(|l| l.tabs.get(self.current_tab))
-        else {
+        let Some(tab) = self.layout.tabs.get(self.current_tab) else {
             return (Vec::new(), DEFAULT_PERIOD_S);
         };
         let grid = &tab.grid_layout;
@@ -231,46 +309,155 @@ impl DashboardApp {
         (names, period)
     }
 
-    fn tab_bar(&mut self, ui: &mut egui::Ui) {
-        let Some(layout) = &self.layout else { return };
+    /// The row of tabs. Click to switch; when unlocked, double-click to
+    /// rename, right-click for more, and "+" adds a tab.
+    fn tab_bar(&mut self, ui: &mut egui::Ui) -> Option<TabAction> {
+        let mut action = None;
+        let names: Vec<String> = self.layout.tabs.iter().map(|t| t.name.clone()).collect();
+        let count = names.len();
         ui.horizontal(|ui| {
-            for (i, tab) in layout.tabs.iter().enumerate() {
-                if ui
-                    .selectable_label(self.current_tab == i, &tab.name)
-                    .clicked()
+            for (i, name) in names.iter().enumerate() {
+                if let Some((renaming, text, focused)) = &mut self.renaming
+                    && *renaming == i
                 {
-                    self.current_tab = i;
+                    let edit = ui.add(egui::TextEdit::singleline(text).desired_width(120.0));
+                    // Focus the box once, when renaming starts. Asking every
+                    // frame would keep it from ever losing focus, so Enter
+                    // and clicking away would do nothing.
+                    if !*focused {
+                        edit.request_focus();
+                        *focused = true;
+                    }
+                    if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                        self.renaming = None;
+                    } else if edit.lost_focus() {
+                        action = Some(TabAction::Rename(i, text.clone()));
+                        self.renaming = None;
+                    }
+                    continue;
                 }
+                let tab = ui
+                    .selectable_label(self.current_tab == i, name)
+                    .on_hover_text(tabs::tab_hint(ui.ctx(), i, self.locked));
+                if tab.clicked() {
+                    action = Some(TabAction::Select(i));
+                }
+                if self.locked {
+                    continue;
+                }
+                if tab.double_clicked() {
+                    self.renaming = Some((i, name.clone(), false));
+                }
+                tab.context_menu(|ui| {
+                    if ui.button("Rename").clicked() {
+                        self.renaming = Some((i, name.clone(), false));
+                    }
+                    if ui
+                        .add_enabled(i > 0, egui::Button::new("Move left"))
+                        .clicked()
+                    {
+                        // Moves act on the open tab, so open this one first.
+                        self.current_tab = i;
+                        action = Some(TabAction::MoveLeft);
+                    }
+                    if ui
+                        .add_enabled(i + 1 < count, egui::Button::new("Move right"))
+                        .clicked()
+                    {
+                        self.current_tab = i;
+                        action = Some(TabAction::MoveRight);
+                    }
+                    if ui
+                        .add_enabled(count > 1, egui::Button::new("Close"))
+                        .clicked()
+                    {
+                        action = Some(TabAction::Close(i));
+                    }
+                });
+            }
+            if !self.locked && ui.small_button("+").on_hover_text("New tab").clicked() {
+                action = Some(TabAction::New);
             }
         });
+        action
     }
 
-    fn grid(&self, ui: &mut egui::Ui, values: &HashMap<&str, &Value>) {
+    /// Carry out a tab action from the tab bar or a shortcut. Edits are
+    /// ignored while locked, and closing a tab that has widgets asks first.
+    fn run_tab_action(&mut self, action: TabAction) {
+        if self.locked && action.edits_layout() {
+            return;
+        }
+        if let TabAction::Close(i) = action
+            && self.confirm_close != Some(i)
+            && self.layout.tabs.get(i).is_some_and(|t| {
+                !t.grid_layout.containers.is_empty() || !t.grid_layout.layouts.is_empty()
+            })
+        {
+            self.confirm_close = Some(i);
+            return;
+        }
+        self.confirm_close = None;
+        self.drag = None;
+        self.current_tab = tabs::apply(&mut self.layout, self.current_tab, action);
+    }
+
+    /// The "close this tab?" question, while one is open.
+    fn close_dialog(&mut self, ctx: &egui::Context) {
+        let Some(i) = self.confirm_close else { return };
+        let Some(tab) = self.layout.tabs.get(i) else {
+            self.confirm_close = None;
+            return;
+        };
+        let name = tab.name.clone();
+        let widgets = tab.grid_layout.containers.len() + tab.grid_layout.layouts.len();
+        let mut answer = None;
+        let modal = egui::Modal::new(egui::Id::unique("confirm_close_tab")).show(ctx, |ui| {
+            ui.heading(format!("Close \"{name}\"?"));
+            ui.label(format!(
+                "Its {widgets} widget{} will be removed.",
+                if widgets == 1 { "" } else { "s" }
+            ));
+            ui.horizontal(|ui| {
+                if ui.button("Close tab").clicked() {
+                    answer = Some(true);
+                }
+                if ui.button("Cancel").clicked() {
+                    answer = Some(false);
+                }
+            });
+        });
+        match answer {
+            Some(true) => self.run_tab_action(TabAction::Close(i)),
+            Some(false) => self.confirm_close = None,
+            None if modal.should_close() => self.confirm_close = None,
+            None => {}
+        }
+    }
+
+    /// The open tab's grid: lines, widgets, and (when unlocked) dragging to
+    /// move widgets and their bottom-right corner to resize them. Drops snap
+    /// to the grid and are refused if they would cover another widget.
+    fn grid(&mut self, ui: &mut egui::Ui, values: &HashMap<&str, &Value>) {
         let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::hover());
-        let origin = response.rect.min;
-        let grid =
-            self.layout
-                .as_ref()
-                .map_or(raptaboard_layout::DEFAULT_GRID_SIZE, |l| l.grid_size()) as f32;
-        let visuals = ui.visuals();
+        let area = response.rect;
+        let origin = area.min;
+        let cell = f64::from(self.layout.grid_size());
+        let visuals = ui.visuals().clone();
         let line = Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3));
 
         let mut x = 0.0;
-        while x <= response.rect.width() {
-            painter.vline(origin.x + x, response.rect.y_range(), line);
-            x += grid;
+        while x <= area.width() {
+            painter.vline(origin.x + x, area.y_range(), line);
+            x += cell as f32;
         }
         let mut y = 0.0;
-        while y <= response.rect.height() {
-            painter.hline(response.rect.x_range(), origin.y + y, line);
-            y += grid;
+        while y <= area.height() {
+            painter.hline(area.x_range(), origin.y + y, line);
+            y += cell as f32;
         }
 
-        let Some(tab) = self
-            .layout
-            .as_ref()
-            .and_then(|l| l.tabs.get(self.current_tab))
-        else {
+        let Some(tab) = self.layout.tabs.get(self.current_tab) else {
             return;
         };
         let to_screen = |r: &LayoutRect| {
@@ -279,17 +466,125 @@ impl DashboardApp {
                 Vec2::new(r.width as f32, r.height as f32),
             )
         };
-        let value_of = |topic: Option<&str>| topic.and_then(|t| values.get(t).copied());
+        let room = (f64::from(area.width()), f64::from(area.height()));
+        let placed = grid::items(&tab.grid_layout);
 
-        for w in &tab.grid_layout.containers {
-            let rect = to_screen(&w.rect).shrink(4.0);
-            widgets::draw(&painter, visuals, rect, w, value_of(w.topic()));
+        // Dragging. Each item's corner is registered after its body so the
+        // corner wins where they overlap.
+        let mut dropped = None;
+        if !self.locked {
+            for &(item, r) in &placed {
+                let rect = to_screen(&r);
+                let id = ui.scope_id().with(("grid_item", self.current_tab, item));
+                let corner = Rect::from_min_max(rect.max - Vec2::splat(RESIZE_HANDLE), rect.max);
+                let body = ui.interact(rect, id, Sense::drag());
+                let corner = ui.interact(corner, id.with("resize"), Sense::drag());
+                for (handle, mode) in [(&body, DragMode::Move), (&corner, DragMode::Resize)] {
+                    if handle.drag_started() {
+                        self.drag = Some(Drag {
+                            item,
+                            mode,
+                            start: r,
+                            moved: Vec2::ZERO,
+                        });
+                    }
+                    if let Some(drag) = &mut self.drag
+                        && drag.item == item
+                        && drag.mode == mode
+                    {
+                        drag.moved += handle.drag_delta();
+                        if handle.drag_stopped() {
+                            dropped = self.drag.take();
+                        }
+                    }
+                }
+                if corner.hovered() || corner.dragged() {
+                    ui.ctx().set_cursor_icon(CursorIcon::ResizeNwSe);
+                } else if body.dragged() {
+                    ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+                } else if body.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::Grab);
+                }
+            }
+        }
+
+        let value_of = |topic: Option<&str>| topic.and_then(|t| values.get(t).copied());
+        let dragging = self.drag.map(|d| d.item);
+        for &(item, r) in &placed {
+            if Some(item) != dragging {
+                draw_item(
+                    &painter,
+                    &visuals,
+                    to_screen(&r),
+                    &tab.grid_layout,
+                    item,
+                    &value_of,
+                );
+                if !self.locked {
+                    draw_resize_handle(&painter, &visuals, to_screen(&r));
+                }
+            }
+        }
+        // The dragged item follows the pointer on top of everything, with an
+        // outline where it will land: green if it fits, red if not.
+        if let Some(drag) = self.drag {
+            let target = drag.target(cell, room);
+            let ok = grid::fits(&tab.grid_layout, drag.item, target);
+            let color = if ok {
+                Color32::from_rgb(60, 180, 90)
+            } else {
+                Color32::from_rgb(220, 60, 60)
+            };
+            painter.rect_stroke(
+                to_screen(&target).shrink(2.0),
+                egui::CornerRadius::same(10),
+                Stroke::new(2.0, color),
+                egui::StrokeKind::Inside,
+            );
+            draw_item(
+                &painter,
+                &visuals,
+                to_screen(&drag.following()),
+                &tab.grid_layout,
+                drag.item,
+                &value_of,
+            );
+        }
+
+        if let Some(drag) = dropped {
+            let target = drag.target(cell, room);
+            if let Some(tab) = self.layout.tabs.get_mut(self.current_tab)
+                && grid::fits(&tab.grid_layout, drag.item, target)
+            {
+                drag.item.set_rect(&mut tab.grid_layout, target);
+            }
+        }
+    }
+}
+
+/// Draw one grid item (a widget, or a List Layout with its children) in
+/// `rect`, in screen points.
+fn draw_item<'v>(
+    painter: &egui::Painter,
+    visuals: &egui::Visuals,
+    rect: Rect,
+    grid: &GridLayout,
+    item: Item,
+    value_of: &dyn Fn(Option<&str>) -> Option<&'v Value>,
+) {
+    let rect = rect.shrink(4.0);
+    match item {
+        Item::Widget(i) => {
+            let Some(w) = grid.containers.get(i) else {
+                return;
+            };
+            widgets::draw(painter, visuals, rect, w, value_of(w.topic()));
         }
         // A List Layout stacks its children top to bottom, each at its own
         // height and the layout's full width; children that don't fit are cut off.
-        for l in &tab.grid_layout.layouts {
-            let rect = to_screen(&l.rect).shrink(4.0);
-            let body = widgets::draw_card(&painter, visuals, rect, &l.title).shrink(LIST_GAP);
+        Item::List(i) => {
+            let Some(l) = grid.layouts.get(i) else { return };
+            let body = widgets::draw_card(painter, visuals, rect, &l.title).shrink(LIST_GAP);
             let inside = painter.with_clip_rect(body.intersect(painter.clip_rect()));
             let mut top = body.min.y;
             for child in &l.children {
@@ -302,6 +597,19 @@ impl DashboardApp {
                 top += height + LIST_GAP;
             }
         }
+    }
+}
+
+/// Two short diagonal lines in a widget's bottom-right corner, showing
+/// where to drag to resize it.
+fn draw_resize_handle(painter: &egui::Painter, visuals: &egui::Visuals, rect: Rect) {
+    let corner = rect.shrink(4.0).max - Vec2::splat(4.0);
+    let stroke = Stroke::new(1.5, visuals.weak_text_color());
+    for size in [5.0, 9.0] {
+        painter.line_segment(
+            [corner - Vec2::new(size, 0.0), corner - Vec2::new(0.0, size)],
+            stroke,
+        );
     }
 }
 
@@ -324,10 +632,22 @@ fn status_label(ui: &mut egui::Ui, status: &ConnectionStatus) {
 
 impl eframe::App for DashboardApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        egui::Panel::top("settings").show(ui, |ui| {
-            self.settings_bar(ui);
-            self.tab_bar(ui);
-        });
+        let clicked = egui::Panel::top("settings")
+            .show(ui, |ui| {
+                self.settings_bar(ui);
+                self.tab_bar(ui)
+            })
+            .inner;
+        let ctx = ui.ctx().clone();
+        let pressed = if self.confirm_close.is_none() {
+            tabs::shortcut(&ctx)
+        } else {
+            None
+        };
+        if let Some(action) = clicked.or(pressed) {
+            self.run_tab_action(action);
+        }
+        self.close_dialog(&ctx);
         // One copy of every topic per frame, shared by the tree and the grid.
         let topics = self.nt.topics();
         self.nt.update_structs(&topics);
