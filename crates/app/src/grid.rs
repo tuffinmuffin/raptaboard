@@ -258,185 +258,198 @@ pub fn fits(grid: &GridLayout, item: Item, rect: Rect) -> bool {
 #[cfg(test)]
 mod tests {
     // Tests written by Claude.
+    //
+    // Everything here is written in grid cells and run at several grid
+    // sizes, so the rules are checked to scale with the cell size rather
+    // than only at Elastic's default of 128 pixels.
     use super::*;
+    use raptaboard_layout::{LayoutContainer, WidgetContainer};
+    use serde_json::Map;
 
-    fn rect(x: f64, y: f64, width: f64, height: f64) -> Rect {
-        Rect {
-            x,
-            y,
-            width,
-            height,
+    /// Grid sizes every test runs at, in pixels.
+    const SIZES: [f64; 4] = [16.0, 64.0, 128.0, 256.0];
+
+    /// A grid of one cell size, for writing positions in cells.
+    #[derive(Clone, Copy)]
+    struct G {
+        cell: f64,
+    }
+
+    impl G {
+        /// A rectangle at cell (`col`, `row`), `wide` by `high` cells.
+        /// Fractions are allowed, for "dropped part way into a cell".
+        fn at(self, col: f64, row: f64, wide: f64, high: f64) -> Rect {
+            Rect {
+                x: col * self.cell,
+                y: row * self.cell,
+                width: wide * self.cell,
+                height: high * self.cell,
+            }
+        }
+
+        /// A window `cols` by `rows` cells big, in pixels.
+        fn window(self, cols: f64, rows: f64) -> (f64, f64) {
+            (cols * self.cell, rows * self.cell)
+        }
+
+        /// A tab with these widgets, then these List Layouts (one child each).
+        fn grid(self, widgets: &[(&str, Rect)], lists: &[(&str, Rect)]) -> GridLayout {
+            let widget = |title: &str, rect: Rect| WidgetContainer {
+                title: title.into(),
+                rect,
+                widget_type: "Text Display".into(),
+                properties: Map::new(),
+                extra: Map::new(),
+            };
+            GridLayout {
+                containers: widgets.iter().map(|&(t, r)| widget(t, r)).collect(),
+                layouts: lists
+                    .iter()
+                    .map(|&(t, r)| LayoutContainer {
+                        title: t.into(),
+                        rect: r,
+                        layout_type: "List Layout".into(),
+                        properties: Map::new(),
+                        children: vec![widget("child", self.at(0.0, 0.0, 1.0, 0.5))],
+                        extra: Map::new(),
+                    })
+                    .collect(),
+                extra: Map::new(),
+            }
+        }
+    }
+
+    /// Run `test` once for each grid size in [`SIZES`].
+    fn each_size(test: impl Fn(G)) {
+        for cell in SIZES {
+            test(G { cell });
         }
     }
 
     #[test]
     fn moves_snap_to_the_nearest_cell_and_stay_on_screen() {
-        let area = (640.0, 384.0);
-        // Just under half a cell rounds down, just over rounds up.
-        assert_eq!(
-            snap_move(rect(63.0, 65.0, 128.0, 128.0), 128.0, area).x,
-            0.0
-        );
-        assert_eq!(
-            snap_move(rect(63.0, 65.0, 128.0, 128.0), 128.0, area).y,
-            128.0
-        );
-        // Dropped past the right edge: its first column stays in the last
-        // column that shows, the rest off the window.
-        assert_eq!(
-            snap_move(rect(600.0, 0.0, 256.0, 128.0), 128.0, area).x,
-            512.0
-        );
-        assert_eq!(
-            snap_move(rect(5000.0, 0.0, 256.0, 128.0), 128.0, area).x,
-            512.0
-        );
-        // Taller than the window: it can still move down; only its top shows.
-        assert_eq!(
-            snap_move(rect(0.0, 200.0, 128.0, 512.0), 128.0, area).y,
-            256.0
-        );
-        // Never left of or above the grid.
-        assert_eq!(
-            snap_move(rect(-300.0, -300.0, 128.0, 128.0), 128.0, area),
-            rect(0.0, 0.0, 128.0, 128.0)
-        );
-        // A window 1000 tall shows 7 full rows and part of an 8th; widgets
-        // can go in that last row.
-        let area = (1024.0, 1000.0);
-        assert_eq!(
-            snap_move(rect(0.0, 950.0, 128.0, 128.0), 128.0, area).y,
-            896.0
-        );
-        assert_eq!(
-            snap_move(rect(0.0, 950.0, 128.0, 256.0), 128.0, area).y,
-            896.0
-        );
-        // A huge window can't push a widget past the layout's 100-cell
-        // limit: a 100-cell-wide widget stays at the left edge.
-        let huge = (128.0 * 200.0, 1000.0);
-        assert_eq!(
-            snap_move(rect(640.0, 0.0, 12800.0, 128.0), 128.0, huge).x,
-            0.0
-        );
-        assert_eq!(
-            snap_move(rect(99999.0, 0.0, 256.0, 128.0), 128.0, huge).x,
-            12544.0
-        );
+        each_size(|g| {
+            let window = g.window(5.0, 3.0);
+            let snap = |r: Rect| snap_move(r, g.cell, window);
+            // Just under half a cell rounds down, just over rounds up.
+            let dropped = snap(g.at(0.49, 0.51, 1.0, 1.0));
+            assert_eq!((dropped.x, dropped.y), (0.0, g.cell));
+            // Dropped past the right edge: its first column stays in the
+            // last column that shows, the rest off the window.
+            assert_eq!(snap(g.at(4.7, 0.0, 2.0, 1.0)), g.at(4.0, 0.0, 2.0, 1.0));
+            assert_eq!(snap(g.at(40.0, 0.0, 2.0, 1.0)), g.at(4.0, 0.0, 2.0, 1.0));
+            // Taller than the window: it can still move down; only its top shows.
+            assert_eq!(snap(g.at(0.0, 1.6, 1.0, 4.0)), g.at(0.0, 2.0, 1.0, 4.0));
+            // Never left of or above the grid.
+            assert_eq!(snap(g.at(-2.3, -2.3, 1.0, 1.0)), g.at(0.0, 0.0, 1.0, 1.0));
+
+            // A window 7.8 cells tall shows 7 full rows and part of an 8th;
+            // widgets can go in that last row.
+            let window = g.window(8.0, 7.8);
+            let low = snap_move(g.at(0.0, 7.4, 1.0, 1.0), g.cell, window);
+            assert_eq!(low.y, 7.0 * g.cell);
+            let low = snap_move(g.at(0.0, 7.4, 1.0, 2.0), g.cell, window);
+            assert_eq!(low.y, 7.0 * g.cell);
+
+            // A huge window can't push a widget past the layout's 100-cell
+            // limit: a 100-cell-wide widget stays at the left edge, and a
+            // 2-cell one stops with its right side on the limit.
+            let huge = g.window(200.0, 8.0);
+            let full = g.at(5.0, 0.0, MAX_GRID_CELLS, 1.0);
+            assert_eq!(snap_move(full, g.cell, huge).x, 0.0);
+            let far = snap_move(g.at(150.0, 0.0, 2.0, 1.0), g.cell, huge);
+            assert_eq!(far.x, (MAX_GRID_CELLS - 2.0) * g.cell);
+        });
     }
 
     #[test]
     fn resizes_snap_to_whole_cells() {
-        assert_eq!(
-            snap_resize(rect(128.0, 0.0, 450.0, 130.0), 128.0),
-            rect(128.0, 0.0, 512.0, 128.0)
-        );
-        // A widget can't shrink below one cell.
-        assert_eq!(
-            snap_resize(rect(0.0, 0.0, -50.0, 10.0), 128.0),
-            rect(0.0, 0.0, 128.0, 128.0)
-        );
-        // Other grid sizes work the same way.
-        assert_eq!(
-            snap_resize(rect(0.0, 0.0, 100.0, 140.0), 64.0),
-            rect(0.0, 0.0, 128.0, 128.0)
-        );
+        each_size(|g| {
+            let resize = |r: Rect| snap_resize(r, g.cell);
+            // Rounded to the nearest whole cells; the corner doesn't move.
+            assert_eq!(resize(g.at(1.0, 0.0, 3.52, 1.02)), g.at(1.0, 0.0, 4.0, 1.0));
+            // A widget can't shrink below one cell.
+            assert_eq!(resize(g.at(0.0, 0.0, -0.4, 0.08)), g.at(0.0, 0.0, 1.0, 1.0));
+        });
     }
 
     #[test]
     fn list_layouts_block_widgets_too() {
-        let grid: GridLayout = serde_json::from_str(
-            r#"{"containers": [
-                {"title": "a", "x": 0.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "Text Display"}
-            ], "layouts": [
-                {"title": "list", "x": 256.0, "y": 0.0, "width": 256.0, "height": 384.0, "type": "List Layout"}
-            ]}"#,
-        )
-        .unwrap();
-        assert_eq!(
-            items(&grid),
-            vec![
-                (Item::Widget(0), rect(0.0, 0.0, 128.0, 128.0)),
-                (Item::List(0), rect(256.0, 0.0, 256.0, 384.0)),
-            ]
-        );
-        assert!(!fits(
-            &grid,
-            Item::Widget(0),
-            rect(384.0, 128.0, 128.0, 128.0)
-        ));
-        // Something new can't go on the list, but can go beside it.
-        assert!(!is_free(&grid, rect(256.0, 128.0, 128.0, 128.0)));
-        assert!(is_free(&grid, rect(128.0, 0.0, 128.0, 128.0)));
-        // An item never blocks itself: growing in place is fine.
-        assert!(fits(&grid, Item::List(0), rect(256.0, 0.0, 384.0, 384.0)));
+        each_size(|g| {
+            let a = g.at(0.0, 0.0, 1.0, 1.0);
+            let list = g.at(2.0, 0.0, 2.0, 3.0);
+            let mut grid = g.grid(&[("a", a)], &[("list", list)]);
+            assert_eq!(
+                items(&grid),
+                vec![(Item::Widget(0), a), (Item::List(0), list)]
+            );
+            assert!(!fits(&grid, Item::Widget(0), g.at(3.0, 1.0, 1.0, 1.0)));
+            // Something new can't go on the list, but can go beside it.
+            assert!(!is_free(&grid, g.at(2.0, 1.0, 1.0, 1.0)));
+            assert!(is_free(&grid, g.at(1.0, 0.0, 1.0, 1.0)));
+            // An item never blocks itself: growing in place is fine.
+            assert!(fits(&grid, Item::List(0), g.at(2.0, 0.0, 3.0, 3.0)));
 
-        let mut grid = grid;
-        Item::List(0).set_rect(&mut grid, rect(512.0, 0.0, 128.0, 128.0));
-        assert_eq!(
-            Item::List(0).rect(&grid),
-            Some(rect(512.0, 0.0, 128.0, 128.0))
-        );
-        assert_eq!(Item::Widget(5).rect(&grid), None);
+            let moved = g.at(4.0, 0.0, 1.0, 1.0);
+            Item::List(0).set_rect(&mut grid, moved);
+            assert_eq!(Item::List(0).rect(&grid), Some(moved));
+            assert_eq!(Item::Widget(5).rect(&grid), None);
+        });
     }
 
     #[test]
     fn copies_go_to_the_nearest_free_spot() {
-        let mut grid: GridLayout = serde_json::from_str(
-            r#"{"containers": [
-                {"title": "a", "x": 128.0, "y": 128.0, "width": 256.0, "height": 128.0, "type": "Text Display"},
-                {"title": "b", "x": 384.0, "y": 128.0, "width": 128.0, "height": 128.0, "type": "Text Display"}
-            ]}"#,
-        )
-        .unwrap();
-        let area = (512.0, 384.0);
-        // Right of "a" is taken by "b", so the copy goes just above "a".
-        let copy = Item::Widget(0).duplicate(&mut grid, 128.0, area).unwrap();
-        assert_eq!(
-            Item::Widget(2).rect(&grid),
-            Some(rect(128.0, 0.0, 256.0, 128.0))
-        );
-        assert_eq!(copy.title(&grid), Some("a"));
-        // Then just below it.
-        Item::Widget(0).duplicate(&mut grid, 128.0, area).unwrap();
-        assert_eq!(
-            Item::Widget(3).rect(&grid),
-            Some(rect(128.0, 256.0, 256.0, 128.0))
-        );
-        // Fill the rest; then there's no room left.
-        while Item::Widget(1).duplicate(&mut grid, 128.0, area).is_some() {}
-        assert_eq!(grid.containers.len(), 4 + 5); // 12 cells, 7 used
-        assert_eq!(Item::Widget(0).duplicate(&mut grid, 128.0, area), None);
-        // Too big for the window at all.
-        let huge = rect(0.0, 0.0, 1024.0, 128.0);
-        assert_eq!(
-            free_spot_near(&GridLayout::default(), huge, 128.0, area),
-            None
-        );
+        each_size(|g| {
+            let mut grid = g.grid(
+                &[
+                    ("a", g.at(1.0, 1.0, 2.0, 1.0)),
+                    ("b", g.at(3.0, 1.0, 1.0, 1.0)),
+                ],
+                &[],
+            );
+            let window = g.window(4.0, 3.0);
+            let copy = |grid: &mut GridLayout, item: Item| item.duplicate(grid, g.cell, window);
+            // Right of "a" is taken by "b", so the copy goes just above "a".
+            let first = copy(&mut grid, Item::Widget(0)).unwrap();
+            assert_eq!(first.rect(&grid), Some(g.at(1.0, 0.0, 2.0, 1.0)));
+            assert_eq!(first.title(&grid), Some("a"));
+            // Then just below it.
+            let second = copy(&mut grid, Item::Widget(0)).unwrap();
+            assert_eq!(second.rect(&grid), Some(g.at(1.0, 2.0, 2.0, 1.0)));
+            // Fill the rest; then there's no room left. 12 cells, 7 used.
+            while copy(&mut grid, Item::Widget(1)).is_some() {}
+            assert_eq!(grid.containers.len(), 4 + 5);
+            assert_eq!(copy(&mut grid, Item::Widget(0)), None);
+            // Too big for the window at all.
+            let wide = g.at(0.0, 0.0, 8.0, 1.0);
+            assert_eq!(
+                free_spot_near(&GridLayout::default(), wide, g.cell, window),
+                None
+            );
+        });
     }
 
     #[test]
     fn removing_shifts_later_items() {
-        let mut grid: GridLayout = serde_json::from_str(
-            r#"{"containers": [
-                {"title": "a", "x": 0.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "Text Display"},
-                {"title": "b", "x": 128.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "Text Display"}
-            ], "layouts": [
-                {"title": "list", "x": 256.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "List Layout",
-                 "children": [{"title": "c", "x": 0.0, "y": 0.0, "width": 128.0, "height": 64.0, "type": "Text Display"}]}
-            ]}"#,
-        )
-        .unwrap();
-        Item::Widget(0).remove(&mut grid);
-        assert_eq!(Item::Widget(0).title(&grid), Some("b"));
-        Item::Widget(7).remove(&mut grid);
-        assert_eq!(grid.containers.len(), 1);
-        let copy = Item::List(0)
-            .duplicate(&mut grid, 128.0, (512.0, 128.0))
-            .unwrap();
-        assert_eq!(grid.layouts[1].children.len(), 1);
-        Item::List(0).remove(&mut grid);
-        assert_eq!(copy.title(&grid), None);
-        assert_eq!(Item::List(0).title(&grid), Some("list"));
+        each_size(|g| {
+            let mut grid = g.grid(
+                &[
+                    ("a", g.at(0.0, 0.0, 1.0, 1.0)),
+                    ("b", g.at(1.0, 0.0, 1.0, 1.0)),
+                ],
+                &[("list", g.at(2.0, 0.0, 1.0, 1.0))],
+            );
+            Item::Widget(0).remove(&mut grid);
+            assert_eq!(Item::Widget(0).title(&grid), Some("b"));
+            Item::Widget(7).remove(&mut grid);
+            assert_eq!(grid.containers.len(), 1);
+            let copy = Item::List(0)
+                .duplicate(&mut grid, g.cell, g.window(4.0, 1.0))
+                .unwrap();
+            assert_eq!(grid.layouts[1].children.len(), 1);
+            Item::List(0).remove(&mut grid);
+            assert_eq!(copy.title(&grid), None);
+            assert_eq!(Item::List(0).title(&grid), Some("list"));
+        });
     }
 }
