@@ -367,16 +367,17 @@ impl DashboardApp {
                         )
                         .sense(Sense::click()),
                     )
-                    .on_hover_cursor(CursorIcon::PointingHand)
-                    .on_hover_text(format!("{list}\n\nClick to copy this list"));
+                    .on_hover_text(format!("{list}\n\nRight-click to copy this list"));
                 // Copy the list so it can be pasted into a bug report or chat.
-                if badge.clicked() {
-                    ui.ctx().copy_text(list);
-                    self.status = format!(
-                        "Copied {n} fix{} to the clipboard",
-                        if n == 1 { "" } else { "es" }
-                    );
-                }
+                badge.context_menu(|ui| {
+                    if ui.button("Copy list").clicked() {
+                        ui.ctx().copy_text(list.clone());
+                        self.status = format!(
+                            "Copied {n} fix{} to the clipboard",
+                            if n == 1 { "" } else { "es" }
+                        );
+                    }
+                });
             }
         });
     }
