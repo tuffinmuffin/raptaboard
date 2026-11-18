@@ -40,3 +40,63 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
       - run: cargo test --workspace
+
+  # Test coverage (cargo-llvm-cov) of every workspace crate. The report goes
+  # in the job summary; on a PR it also shows the change from the base
+  # branch, and goes in one PR comment that each push updates. The HTML
+  # report is uploaded as an artifact. Same setup as nt4-rs.
+  coverage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+      COV_ARGS: --workspace --ignore-filename-regex (tests|examples|benches)/
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: Linux GUI libraries
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+      - name: Measure this commit
+        run: |
+          cargo llvm-cov $COV_ARGS --json --summary-only --output-path coverage.json
+          cargo llvm-cov report --html --ignore-filename-regex '(tests|examples|benches)/'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: target/llvm-cov/html
+      - name: Measure the base branch
+        if: github.event_name == 'pull_request'
+        run: |
+          git worktree add -q ../base "${{ github.event.pull_request.base.sha }}"
+          (cd ../base && cargo llvm-cov $COV_ARGS --json --summary-only \
+              --output-path "$GITHUB_WORKSPACE/base.json") \
+            || echo "::warning::Could not measure the base branch; the report has no comparison."
+      - name: Write the report
+        run: |
+          python3 scripts/coverage_summary.py coverage.json base.json > coverage.md
+          cat coverage.md >> "$GITHUB_STEP_SUMMARY"
+      # Fork PRs get a read-only token, so they only have the job summary.
+      - name: Post or update the PR comment
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq '.[] | select(.body | startswith("<!-- raptaboard-coverage -->")) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@coverage.md > /dev/null
+          else
+            gh pr comment "$PR" --body-file coverage.md
+          fi
