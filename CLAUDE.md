@@ -64,7 +64,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   (snapping, overlap) and `tabs.rs` tab actions and their shortcuts, `edit.rs` undo/redo (`History`, which
   notices any layout change once a frame) and the widget editing shortcuts; the drag handling and lock live
   in `ui.rs`. Widget values come from a
-  second subscription (`NtConnection::watch_widget_values`) at the open tab's shortest `period`.
+  second set of subscriptions (`NtConnection::watch_widget_values`), one per `period` on the open
+  tab, and `sampling.rs` (`Sampler`) has each widget take a new value only once per its period, so
+  fast redraws (mouse moves) or the tree watching the same topic don't make it jump ahead.
   `tests/cpu_load.rs` is the ignored 30-widgets-at-50-Hz CPU test (runs with the tree shown and
   hidden; prints % of one core and of the machine); its `other_dashboard` test runs the same load against Elastic for comparison
   (set `RAPTABOARD_CPU_OTHER=elastic_dashboard`, Elastic on localhost, port 5810 free).

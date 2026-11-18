@@ -74,8 +74,9 @@ struct Running {
     _all_topics: SubscriptionHandle,
     // Values for the topics the tree shows right now.
     tree_values: Watch,
-    // Values for the widgets on the open tab, at the widgets' update period.
-    widget_values: Watch,
+    // Values for the widgets on the open tab: one subscription per update
+    // period, keyed by the period's bits.
+    widget_values: HashMap<u64, Watch>,
     // Keeps the `/.schema/` values coming; struct topics need them to decode.
     _schemas: SubscriptionHandle,
     // Struct schemas from this server, and the bytes each was added from.
@@ -160,7 +161,7 @@ impl NtConnection {
                 client,
                 _all_topics: all_topics,
                 tree_values: Watch::default(),
-                widget_values: Watch::default(),
+                widget_values: HashMap::new(),
                 _schemas: schemas,
                 structs: StructDatabase::new(),
                 schema_bytes: HashMap::new(),
@@ -204,12 +205,29 @@ impl NtConnection {
     }
 
     /// Like [`watch_values`](Self::watch_values), for the widgets on the open
-    /// tab: `period_s` is how often the server should send each value, in
-    /// seconds (Elastic's default is 0.06). Kept apart from the tree's
-    /// request so opening a folder doesn't slow a widget down.
-    pub fn watch_widget_values(&mut self, names: Vec<String>, period_s: f64) {
+    /// tab. Each group is an update period in seconds (Elastic's default is
+    /// 0.06) and the topics wanted that often; each period gets its own
+    /// subscription, so a slow widget doesn't use bandwidth at a fast one's
+    /// rate. A topic in two groups comes at the faster one. Kept apart from
+    /// the tree's request so opening a folder doesn't slow a widget down.
+    pub fn watch_widget_values(&mut self, groups: Vec<(f64, Vec<String>)>) {
         let Some(r) = &mut self.running else { return };
-        r.widget_values.set(&r.client, names, Some(period_s));
+        let mut wanted = HashMap::new();
+        for (period_s, names) in groups {
+            wanted
+                .entry(period_s.to_bits())
+                .or_insert_with(Vec::new)
+                .extend(names);
+        }
+        r.widget_values
+            .retain(|period, _| wanted.contains_key(period));
+        for (period, names) in wanted {
+            r.widget_values.entry(period).or_default().set(
+                &r.client,
+                names,
+                Some(f64::from_bits(period)),
+            );
+        }
     }
 
     /// Add any struct schemas in `topics` that are new or changed, so struct

@@ -12,12 +12,10 @@ use serde_json::Value as Json;
 
 use crate::struct_view::EnumDisplay;
 use crate::widgets::{
-    self, DEFAULT_FALSE_COLOR, DEFAULT_FONT_SIZE, DEFAULT_PERIOD_S, DEFAULT_TRUE_COLOR,
-    MAX_DECIMAL_PLACES, MAX_FONT_SIZE, MIN_FONT_SIZE, WidgetKind, keys,
+    self, DEFAULT_FALSE_COLOR, DEFAULT_FONT_SIZE, DEFAULT_TRUE_COLOR, MAX_DECIMAL_PLACES,
+    MAX_FONT_SIZE, MIN_FONT_SIZE, MIN_PERIOD_S, WidgetKind, keys,
 };
 
-/// The shortest update period the dialog allows, in seconds.
-pub const MIN_PERIOD_S: f64 = 0.01;
 /// The longest update period the dialog allows, in seconds.
 pub const MAX_PERIOD_S: f64 = 5.0;
 /// Decimal places offered when "fixed" is first ticked.
@@ -89,7 +87,7 @@ pub fn show(ui: &mut egui::Ui, widget: &mut WidgetContainer, is_enum: bool) {
             ui.end_row();
 
             ui.label("Update period");
-            let mut period = widget.period().unwrap_or(DEFAULT_PERIOD_S);
+            let mut period = widgets::period_s(widget);
             let changed = ui
                 .add(
                     egui::DragValue::new(&mut period)

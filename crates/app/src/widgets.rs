@@ -80,6 +80,30 @@ impl WidgetKind {
 
 /// Elastic's default widget update period, in seconds.
 pub const DEFAULT_PERIOD_S: f64 = 0.06;
+/// The shortest update period used, in seconds. A saved period of 0 would
+/// ask for every change, so shorter ones are raised to this.
+pub const MIN_PERIOD_S: f64 = 0.01;
+
+/// How often `widget` updates, in seconds: its `period`, or
+/// [`DEFAULT_PERIOD_S`] if not set, and at least [`MIN_PERIOD_S`].
+///
+/// ```
+/// use raptaboard::widgets::{for_topic, period_s};
+/// use raptaboard_layout::Rect;
+/// let at = Rect { x: 0.0, y: 0.0, width: 128.0, height: 128.0 };
+/// let mut w = for_topic("/Sine", "double", None, at).unwrap();
+/// assert_eq!(period_s(&w), 0.06);
+/// w.properties.insert("period".into(), 0.0.into());
+/// assert_eq!(period_s(&w), 0.01);
+/// ```
+pub fn period_s(widget: &WidgetContainer) -> f64 {
+    let period = widget.period().unwrap_or(DEFAULT_PERIOD_S);
+    if period.is_finite() {
+        period.max(MIN_PERIOD_S)
+    } else {
+        DEFAULT_PERIOD_S
+    }
+}
 
 /// The widget type to make for a topic dropped on the grid, by its NT type
 /// string: a Boolean Box for booleans, a Text Display for numbers, strings

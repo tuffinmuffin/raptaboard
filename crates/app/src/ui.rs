@@ -1,8 +1,9 @@
 //! The main window: settings bar, tab bar and the widget grid.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, CursorIcon, Rect, Sense, Stroke, Vec2};
 use nt4::{Topic, Value};
@@ -14,11 +15,12 @@ use crate::edit::{self, EditAction, History};
 use crate::grid::{self, Item};
 use crate::layout_file::{self, FileAction, LoadError};
 use crate::nt::{ConnectionStatus, NtConnection};
+use crate::sampling::Sampler;
 use crate::struct_view;
 use crate::tabs::{self, TabAction};
 use crate::tree::{DraggedTopic, Folder, TopicEntry};
 use crate::widget_settings;
-use crate::widgets::{self, DEFAULT_PERIOD_S, WidgetKind};
+use crate::widgets::{self, WidgetKind};
 use nt4::proto::structs::StructDatabase;
 
 /// Space between List Layout children, in points.
@@ -136,6 +138,8 @@ pub struct DashboardApp {
     grid_room: (f64, f64),
     /// The widget whose settings dialog is open, if any.
     editing: Option<Editing>,
+    /// The values widgets show, taken once per each widget's period.
+    sampler: Sampler,
 }
 
 impl DashboardApp {
@@ -169,6 +173,7 @@ impl DashboardApp {
             history: History::new(&ElasticLayout::default()),
             grid_room: (0.0, 0.0),
             editing: None,
+            sampler: Sampler::default(),
         };
         if let Some(path) = options.layout_path {
             let path = PathBuf::from(path);
@@ -507,12 +512,12 @@ impl DashboardApp {
             .inner
     }
 
-    /// The topics the widgets on the open tab are bound to, and how often
-    /// they want updates (the shortest `period` of them, in seconds).
-    /// Only widgets raptaboard can draw are counted.
-    fn tab_topics(&self) -> (Vec<String>, f64) {
+    /// The topics the widgets on the open tab are bound to, grouped by how
+    /// often they want updates (each widget's `period`, in seconds). Only
+    /// widgets raptaboard can draw are counted.
+    fn tab_topics(&self) -> Vec<(f64, Vec<String>)> {
         let Some(tab) = self.layout.tabs.get(self.current_tab) else {
-            return (Vec::new(), DEFAULT_PERIOD_S);
+            return Vec::new();
         };
         let grid = &tab.grid_layout;
         let drawn = grid
@@ -520,22 +525,16 @@ impl DashboardApp {
             .iter()
             .chain(grid.layouts.iter().flat_map(|l| &l.children))
             .filter(|w| WidgetKind::from_type(&w.widget_type).is_some());
-        let mut names = Vec::new();
-        let mut period = f64::INFINITY;
+        let mut groups: Vec<(f64, Vec<String>)> = Vec::new();
         for w in drawn {
-            if let Some(topic) = w.topic() {
-                names.push(topic.to_owned());
-                period = period.min(w.period().unwrap_or(DEFAULT_PERIOD_S));
+            let Some(topic) = w.topic() else { continue };
+            let period = widgets::period_s(w);
+            match groups.iter_mut().find(|(p, _)| *p == period) {
+                Some((_, names)) => names.push(topic.to_owned()),
+                None => groups.push((period, vec![topic.to_owned()])),
             }
         }
-        // A period of 0 or less would ask for every change; Elastic's floor is
-        // a few milliseconds, so keep it sane.
-        let period = if period.is_finite() {
-            period.max(0.01)
-        } else {
-            DEFAULT_PERIOD_S
-        };
-        (names, period)
+        groups
     }
 
     /// The row of tabs. Click to switch; when unlocked, double-click to
@@ -800,7 +799,7 @@ impl DashboardApp {
     /// The open tab's grid: lines, widgets, and (when unlocked) dragging to
     /// move widgets and their bottom-right corner to resize them. Drops snap
     /// to the grid and are refused if they would cover another widget.
-    fn grid(&mut self, ui: &mut egui::Ui, values: &HashMap<&str, &Value>) {
+    fn grid(&mut self, ui: &mut egui::Ui, values: &HashMap<&str, &Value>, now: Instant) {
         // Clicking empty grid drops the selection.
         let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click());
         if response.clicked() {
@@ -901,13 +900,18 @@ impl DashboardApp {
             }
         }
 
-        // A widget's value: its topic's, or one field of it for widgets bound
-        // to a struct field (enum fields by name).
+        // A widget's value: its topic's, taken once per the widget's period,
+        // or one field of it for widgets bound to a struct field.
         let structs = self.nt.structs();
+        let sampler = RefCell::new(&mut self.sampler);
         let value_of = |w: &WidgetContainer| -> Option<Value> {
-            let value = values.get(w.topic()?)?;
-            match (w.struct_meta(), value) {
-                (None, value) => Some((*value).clone()),
+            let topic = w.topic()?;
+            let latest = values.get(topic).copied();
+            let value = sampler
+                .borrow_mut()
+                .sample(topic, widgets::period_s(w), latest, now)?;
+            match (w.struct_meta(), &value) {
+                (None, _) => Some(value),
                 (Some(meta), Value::Raw(bytes)) => {
                     let display = widgets::enum_display(&w.properties);
                     struct_view::field_value_shown(
@@ -1156,7 +1160,9 @@ impl eframe::App for DashboardApp {
         } else {
             Vec::new()
         };
-        egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values));
+        let now = Instant::now();
+        egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values, now));
+        let next_value = self.sampler.finish_frame(now);
         // Whatever changed the layout this frame can be undone. Changes in
         // the settings dialog are recorded once, when it closes.
         if self.editing.is_none() {
@@ -1164,19 +1170,14 @@ impl eframe::App for DashboardApp {
         }
 
         self.nt.watch_values(tree_topics);
-        let (widget_topics, period_s) = self.tab_topics();
-        let has_widgets = !widget_topics.is_empty();
-        self.nt.watch_widget_values(widget_topics, period_s);
+        self.nt.watch_widget_values(self.tab_topics());
 
         // The client runs on its own thread, so egui doesn't know when values
-        // change. Redraw at the widgets' period while widgets are showing, and
-        // a few times a second otherwise so connection changes still show.
-        let connected = matches!(self.nt.status(), ConnectionStatus::Connected { .. });
-        let wait = if has_widgets && connected {
-            Duration::from_secs_f64(period_s)
-        } else {
-            Duration::from_millis(250)
-        };
+        // change. Redraw when the next widget is due for a new value, and at
+        // least a few times a second so connection changes and first values
+        // still show.
+        let idle = Duration::from_millis(250);
+        let wait = next_value.map_or(idle, |due| due.min(idle));
         ui.ctx().request_repaint_after(wait);
     }
 }

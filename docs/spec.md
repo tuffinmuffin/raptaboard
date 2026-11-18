@@ -33,6 +33,8 @@ Open: should the robot serve plugins from port 5800 along with layouts? Stream D
 - Address modes: Driver Station (asks the DS at `ws://<host>:6768/ipws`), team number (10.TE.AM.2),
   SystemCore mDNS (`robot.local`), SystemCore WiFi (`172.30.0.1`), localhost, custom.
 - Subscriptions are shared between widgets on the same topic. Default period 0.06 s, graphs 0.033 s.
+  The open tab gets one subscription per period, and each widget shows a new value once per its
+  period on a steady beat, however often the window redraws.
 
 ### Structs
 
