@@ -82,7 +82,13 @@ jobs:
           (cd ../base && cargo llvm-cov $COV_ARGS --json --summary-only \
               --output-path "$GITHUB_WORKSPACE/base.json") \
             || echo "::warning::Could not measure the base branch; the report has no comparison."
+      # The comment is edited in place, and GitHub shows when it was first
+      # posted; the report says which commit it measured and when.
       - name: Write the report
+        env:
+          COV_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          COV_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          COV_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           python3 scripts/coverage_summary.py coverage.json base.json > coverage.md
           cat coverage.md >> "$GITHUB_STEP_SUMMARY"
