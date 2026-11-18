@@ -91,7 +91,7 @@ impl WidgetType for BooleanBox {
     ) {
         match fill(props, value) {
             Ok((color, text)) => {
-                painter.rect_filled(rect, CornerRadius::same(6), color);
+                painter.rect_filled(rect, CornerRadius::same(card::BODY_CORNER_RADIUS), color);
                 if let Some(text) = text {
                     painter.text(
                         rect.center(),
