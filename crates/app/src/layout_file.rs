@@ -62,12 +62,27 @@ impl std::fmt::Display for LoadError {
     }
 }
 
-/// Read the layout file at `path`.
+/// The biggest layout file [`load`] reads, in bytes (10 MB). Real layouts
+/// are a few kilobytes; this stops a wrong file from filling memory.
+pub const MAX_FILE_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Read the layout file at `path`. Files over [`MAX_FILE_BYTES`] are
+/// refused. The layout is as written in the file; call
+/// [`ElasticLayout::sanitize`] before showing it.
 pub fn load(path: &Path) -> Result<ElasticLayout, LoadError> {
-    let text = std::fs::read_to_string(path).map_err(|e| match e.kind() {
+    let io_error = |e: std::io::Error| match e.kind() {
         std::io::ErrorKind::NotFound => LoadError::NotFound,
         _ => LoadError::Bad(e.to_string()),
-    })?;
+    };
+    let size = std::fs::metadata(path).map_err(io_error)?.len();
+    if size > MAX_FILE_BYTES {
+        return Err(LoadError::Bad(format!(
+            "file is {:.1} MB; layouts are under {} MB",
+            size as f64 / 1_048_576.0,
+            MAX_FILE_BYTES / 1_048_576
+        )));
+    }
+    let text = std::fs::read_to_string(path).map_err(io_error)?;
     ElasticLayout::from_json(&text).map_err(|e| LoadError::Bad(e.to_string()))
 }
 
@@ -177,6 +192,19 @@ mod tests {
             panic!("a version 2 file should not load")
         };
         assert!(why.contains("version 2"), "{why}");
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn huge_files_are_refused() {
+        let path = temp_path("huge.json");
+        let file = std::fs::File::create(&path).unwrap();
+        // A sparse file: no real disk space used.
+        file.set_len(MAX_FILE_BYTES + 1).unwrap();
+        let Err(LoadError::Bad(why)) = load(&path) else {
+            panic!("a file over 10 MB should not load")
+        };
+        assert!(why.contains("under 10 MB"), "{why}");
         std::fs::remove_file(&path).unwrap();
     }
 

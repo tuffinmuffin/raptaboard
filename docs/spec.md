@@ -191,7 +191,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    save: Open…, Save, Save as… (Ctrl+O, Ctrl+S, Ctrl+Shift+S) with native file dialogs, an
    unsaved-changes dot and window title, and a "save changes?" question before opening another
    layout or quitting. Saves write a temporary file and rename it, so a failed save keeps the old
-   file. Next: drag from tree.
+   file. Opened layouts are checked: a grid size outside 16 to 1024, no tabs, sizes of zero or less,
+   negative positions and widgets past 100 cells are fixed and listed ("fixed N problems"), and
+   files over 10 MB are refused; normal Elastic layouts come through unchanged. Next: drag from tree.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, Mechanism2d,
