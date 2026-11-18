@@ -19,8 +19,7 @@ use crate::sampling::Sampler;
 use crate::struct_view;
 use crate::tabs::{self, TabAction};
 use crate::tree::{DraggedTopic, Folder, TopicEntry};
-use crate::widget_settings;
-use crate::widgets::{self, WidgetKind};
+use crate::widgets::{self, card, format, props, settings};
 use nt4::proto::structs::StructDatabase;
 
 /// Space between List Layout children, in points.
@@ -524,11 +523,11 @@ impl DashboardApp {
             .containers
             .iter()
             .chain(grid.layouts.iter().flat_map(|l| &l.children))
-            .filter(|w| WidgetKind::from_type(&w.widget_type).is_some());
+            .filter(|w| widgets::find(&w.widget_type).is_some());
         let mut groups: Vec<(f64, Vec<String>)> = Vec::new();
         for w in drawn {
             let Some(topic) = w.topic() else { continue };
-            let period = widgets::period_s(w);
+            let period = props::period_s(w);
             match groups.iter_mut().find(|(p, _)| *p == period) {
                 Some((_, names)) => names.push(topic.to_owned()),
                 None => groups.push((period, vec![topic.to_owned()])),
@@ -707,7 +706,7 @@ impl DashboardApp {
     /// the server announced for its topic. `None` if none of those is known.
     fn value_type(&self, widget: &WidgetContainer) -> Option<String> {
         let saved = |v: Option<&serde_json::Value>| v?.as_str().map(str::to_owned);
-        if let Some(ty) = saved(widget.properties.get(widgets::keys::DATA_TYPE)) {
+        if let Some(ty) = saved(widget.properties.get(props::DATA_TYPE)) {
             return Some(ty);
         }
         if widget.struct_meta().is_some() {
@@ -754,7 +753,7 @@ impl DashboardApp {
         egui::Modal::new(egui::Id::unique("widget_settings")).show(ctx, |ui| {
             ui.heading("Widget settings");
             ui.add_space(4.0);
-            widget_settings::show(ui, widget, nt_type.as_deref(), field_info.as_ref());
+            settings::show(ui, widget, nt_type.as_deref(), field_info.as_ref());
             ui.add_space(4.0);
             ui.separator();
             ui.horizontal(|ui| {
@@ -765,7 +764,7 @@ impl DashboardApp {
                     close = Some(false);
                 }
                 ui.separator();
-                let custom = widget_settings::has_custom_settings(widget);
+                let custom = settings::has_custom_settings(widget);
                 if ui
                     .add_enabled(custom, egui::Button::new("Reset settings"))
                     .on_hover_text(
@@ -775,7 +774,7 @@ impl DashboardApp {
                     .on_disabled_hover_text("All settings are at their defaults")
                     .clicked()
                 {
-                    widget_settings::reset_settings(widget);
+                    settings::reset_settings(widget);
                 }
             });
         });
@@ -941,7 +940,7 @@ impl DashboardApp {
             let latest = values.get(topic).copied();
             let value = sampler
                 .borrow_mut()
-                .sample(topic, widgets::period_s(w), latest, now)?;
+                .sample(topic, props::period_s(w), latest, now)?;
             match (w.struct_meta(), &value) {
                 (None, _) => Some(value),
                 (Some(meta), Value::Raw(bytes)) => struct_view::field_value_shown(
@@ -949,8 +948,8 @@ impl DashboardApp {
                     &meta.schema_name,
                     bytes,
                     &meta.path,
-                    widgets::enum_display(&w.properties),
-                    widgets::int_style(&w.properties),
+                    format::enum_display(&w.properties),
+                    format::int_style(&w.properties),
                 ),
                 (Some(_), _) => None,
             }
@@ -1057,13 +1056,13 @@ fn draw_item(
             let Some(w) = grid.containers.get(i) else {
                 return;
             };
-            widgets::draw(painter, visuals, rect, w, value_of(w).as_ref());
+            card::draw(painter, visuals, rect, w, value_of(w).as_ref());
         }
         // A List Layout stacks its children top to bottom, each at its own
         // height and the layout's full width; children that don't fit are cut off.
         Item::List(i) => {
             let Some(l) = grid.layouts.get(i) else { return };
-            let body = widgets::draw_card(painter, visuals, rect, &l.title).shrink(LIST_GAP);
+            let body = card::draw_card(painter, visuals, rect, &l.title).shrink(LIST_GAP);
             let inside = painter.with_clip_rect(body.intersect(painter.clip_rect()));
             let mut top = body.min.y;
             for child in &l.children {
@@ -1072,7 +1071,7 @@ fn draw_item(
                     egui::pos2(body.min.x, top),
                     Vec2::new(body.width(), height),
                 );
-                widgets::draw(
+                card::draw(
                     &inside,
                     visuals,
                     child_rect,
