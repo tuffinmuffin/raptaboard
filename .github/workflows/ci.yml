@@ -87,9 +87,9 @@ jobs:
       - name: Write the report
         env:
           COV_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          COV_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
           COV_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          export COV_SUBJECT="$(git log -1 --format=%s "$COV_COMMIT" 2>/dev/null || true)"
           python3 scripts/coverage_summary.py coverage.json base.json > coverage.md
           cat coverage.md >> "$GITHUB_STEP_SUMMARY"
       # Fork PRs get a read-only token, so they only have the job summary.

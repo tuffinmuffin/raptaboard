@@ -11,9 +11,9 @@ table per file.
 
 The commit line uses these environment variables, set by CI; any missing
 one is left out:
-  COV_COMMIT   the commit measured (full SHA)
-  COV_SUBJECT  its commit message's first line
-  COV_RUN_URL  the CI run's page
+  COV_COMMIT    the commit measured (full SHA)
+  COV_REPO_URL  the repository's page, to link the commit
+  COV_RUN_URL   the CI run's page
 
 Written by Claude.
 """
@@ -83,25 +83,23 @@ def delta(now: list, base: list | None) -> str:
 
 def measured_line(
     commit: str | None,
-    subject: str | None,
+    repo_url: str | None,
     when: datetime.datetime,
     run_url: str | None,
 ) -> str:
     """Which commit was measured and when, so a PR comment that is edited
     in place on every push shows how fresh it is:
-    "Measured `abc1234` (Fix the grid) at 2026-11-18 21:20 UTC, [CI run](...)."
+    "Measured commit [`abc1234`](...) at 2026-11-18 21:20 UTC ([CI run](...))."
     """
-    parts = ["Measured"]
+    line = "Measured"
     if commit:
-        parts.append(f"`{commit[:7]}`")
-        if subject:
-            # Keep the line one line, and its backticks from breaking it.
-            first = subject.splitlines()[0].replace("`", "'")
-            parts.append(f"({first})")
-    parts.append(f"at {when.strftime('%Y-%m-%d %H:%M')} UTC")
-    line = " ".join(parts)
+        short = f"`{commit[:7]}`"
+        if repo_url:
+            short = f"[{short}]({repo_url}/commit/{commit})"
+        line += f" commit {short}"
+    line += f" at {when.strftime('%Y-%m-%d %H:%M')} UTC"
     if run_url:
-        line += f", [CI run]({run_url})"
+        line += f" ([CI run]({run_url}))"
     return line + "."
 
 
@@ -160,7 +158,7 @@ def main() -> int:
         base = load(sys.argv[2])
     measured = measured_line(
         os.environ.get("COV_COMMIT") or None,
-        os.environ.get("COV_SUBJECT") or None,
+        os.environ.get("COV_REPO_URL") or None,
         datetime.datetime.now(datetime.timezone.utc),
         os.environ.get("COV_RUN_URL") or None,
     )
