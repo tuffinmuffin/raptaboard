@@ -39,7 +39,8 @@ cargo test -p raptaboard --release --test cpu_load -- --ignored --nocapture
 
 CI (`.github/workflows/ci.yml`) runs fmt, clippy with `-D warnings` and tests on Linux, Windows and
 macOS. Run the same locally before pushing. Its `coverage` job (cargo-llvm-cov, as in nt4-rs) posts a
-coverage report on each PR, compared with the base branch, via `scripts/coverage_summary.py`.
+coverage report on each PR, compared with the base branch, via `scripts/coverage_summary.py`
+(one comment, edited each push; its first line names the commit measured and the time).
 Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|benches)/' --html`.
 
 ## Layout

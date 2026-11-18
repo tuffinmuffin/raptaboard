@@ -5,13 +5,22 @@ Usage: python3 scripts/coverage_summary.py <coverage.json> [<base.json>]
 
 <coverage.json> is `cargo llvm-cov report --json --summary-only` output.
 With <base.json> (the same report for the base branch), each crate's line
-coverage also shows the change. Prints the report on stdout: a table per
-crate, then a collapsed table per file.
+coverage also shows the change. Prints the report on stdout: a line saying
+which commit was measured and when, a table per crate, then a collapsed
+table per file.
+
+The commit line uses these environment variables, set by CI; any missing
+one is left out:
+  COV_COMMIT   the commit measured (full SHA)
+  COV_SUBJECT  its commit message's first line
+  COV_RUN_URL  the CI run's page
 
 Written by Claude.
 """
 
+import datetime
 import json
+import os
 import pathlib
 import sys
 
@@ -72,7 +81,31 @@ def delta(now: list, base: list | None) -> str:
     return f"{d:+.1f}"
 
 
-def report(files: dict, base: dict | None) -> str:
+def measured_line(
+    commit: str | None,
+    subject: str | None,
+    when: datetime.datetime,
+    run_url: str | None,
+) -> str:
+    """Which commit was measured and when, so a PR comment that is edited
+    in place on every push shows how fresh it is:
+    "Measured `abc1234` (Fix the grid) at 2026-11-18 21:20 UTC, [CI run](...)."
+    """
+    parts = ["Measured"]
+    if commit:
+        parts.append(f"`{commit[:7]}`")
+        if subject:
+            # Keep the line one line, and its backticks from breaking it.
+            first = subject.splitlines()[0].replace("`", "'")
+            parts.append(f"({first})")
+    parts.append(f"at {when.strftime('%Y-%m-%d %H:%M')} UTC")
+    line = " ".join(parts)
+    if run_url:
+        line += f", [CI run]({run_url})"
+    return line + "."
+
+
+def report(files: dict, base: dict | None, measured: str | None = None) -> str:
     crates = by_crate(files)
     base_crates = by_crate(base) if base is not None else None
     total: dict = {}
@@ -80,6 +113,8 @@ def report(files: dict, base: dict | None) -> str:
         add(total, summary)
 
     out = [MARKER, "## Coverage", ""]
+    if measured:
+        out += [measured, ""]
     line = f"**{fmt(*total['lines'])}** of lines covered"
     if base is not None:
         base_total: dict = {}
@@ -123,7 +158,13 @@ def main() -> int:
     base = None
     if len(sys.argv) == 3 and pathlib.Path(sys.argv[2]).is_file():
         base = load(sys.argv[2])
-    sys.stdout.write(report(files, base))
+    measured = measured_line(
+        os.environ.get("COV_COMMIT") or None,
+        os.environ.get("COV_SUBJECT") or None,
+        datetime.datetime.now(datetime.timezone.utc),
+        os.environ.get("COV_RUN_URL") or None,
+    )
+    sys.stdout.write(report(files, base, measured))
     return 0
 
 
