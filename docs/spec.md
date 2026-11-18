@@ -287,6 +287,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Text style: a font dialog (from the widget dialog's Text size row) for the value text and the
      title: font family, size, color, bold, italic. Saved as raptaboard keys (`font_family`,
      `font_color`, `font_bold`, ...; `font_size` exists), with a layout-wide default style later.
+   - Copy settings to the rest of a list: in the list settings, set up one child as wanted, then
+     "Copy settings to all" (or pick which children) applies its display settings (colors, text,
+     decimal places, number format, font size, period) to the others of the same widget type.
+     Never copies what a child shows (topic, `struct_meta`, `data_type`) or its title.
    - Reflow while dragging: widgets in the way slide aside (to the nearest free spot) as a widget is
      dragged or resized over them, instead of the drop being refused.
    - Allow partial overlap: a per-widget setting (this widget may partly overlap others, such as a
