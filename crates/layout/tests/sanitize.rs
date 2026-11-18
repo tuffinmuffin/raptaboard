@@ -125,7 +125,7 @@ fn widgets_off_the_grid_move_to_a_free_spot() {
     let fixes = l.sanitize();
     assert_eq!(
         fixes,
-        [r#"tab "T", "far away": off the grid at (1000000000, 0); moved to (256, 0)"#]
+        [r#"tab "T", widget "far away": off the grid at (1000000000, 0); moved to (256, 0)"#]
     );
     // The first free cell, reading row by row: right of "home", left of the list.
     assert_eq!(

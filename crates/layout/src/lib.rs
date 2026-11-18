@@ -299,8 +299,8 @@ impl GridLayout {
             let moved = free_spot(rect, cell, limit, &others);
             *self.rect_at_mut(i) = moved;
             fixes.push(format!(
-                "tab \"{tab}\", \"{}\": off the grid at ({}, {}); moved to ({}, {})",
-                self.title_at(i),
+                "tab \"{tab}\", {}: off the grid at ({}, {}); moved to ({}, {})",
+                self.name_at(i),
                 rect.x,
                 rect.y,
                 moved.x,
@@ -325,10 +325,11 @@ impl GridLayout {
         }
     }
 
-    fn title_at(&self, i: usize) -> &str {
+    /// `widget "Title"` or `list "Title"`, for messages.
+    fn name_at(&self, i: usize) -> String {
         match self.containers.get(i) {
-            Some(w) => &w.title,
-            None => &self.layouts[i - self.containers.len()].title,
+            Some(w) => format!("widget \"{}\"", w.title),
+            None => format!("list \"{}\"", self.layouts[i - self.containers.len()].title),
         }
     }
 }
