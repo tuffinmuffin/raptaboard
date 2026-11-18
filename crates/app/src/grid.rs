@@ -61,9 +61,10 @@ pub fn items(grid: &GridLayout) -> Vec<(Item, Rect)> {
 
 /// Snap a moved rectangle to the nearest cell corner, keeping its size.
 ///
-/// `area` is the width and height of the visible grid in pixels: the
-/// rectangle is kept inside it where it fits, and never goes left of or
-/// above the grid.
+/// `area` is the width and height of the visible grid in pixels. The
+/// rectangle stays within the cells that show, counting a last row or
+/// column the window cuts off part way, and never goes left of or above
+/// the grid.
 ///
 /// ```
 /// use raptaboard::grid::snap_move;
@@ -75,7 +76,9 @@ pub fn items(grid: &GridLayout) -> Vec<(Item, Rect)> {
 /// ```
 pub fn snap_move(rect: Rect, cell: f64, area: (f64, f64)) -> Rect {
     let snap = |pos: f64, size: f64, room: f64| {
-        let last = ((room - size) / cell).floor().max(0.0) * cell;
+        let shown = (room / cell).ceil();
+        let needed = (size / cell).ceil();
+        let last = (shown - needed).max(0.0) * cell;
         ((pos / cell).round() * cell).clamp(0.0, last)
     };
     Rect {
@@ -170,6 +173,17 @@ mod tests {
         assert_eq!(
             snap_move(rect(0.0, 200.0, 128.0, 512.0), 128.0, area).y,
             0.0
+        );
+        // A window 1000 tall shows 7 full rows and part of an 8th; widgets
+        // can go in that last row.
+        let area = (1024.0, 1000.0);
+        assert_eq!(
+            snap_move(rect(0.0, 950.0, 128.0, 128.0), 128.0, area).y,
+            896.0
+        );
+        assert_eq!(
+            snap_move(rect(0.0, 950.0, 128.0, 256.0), 128.0, area).y,
+            768.0
         );
     }
 

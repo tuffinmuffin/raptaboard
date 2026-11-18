@@ -336,7 +336,9 @@ impl DashboardApp {
                     }
                     continue;
                 }
-                let tab = ui.selectable_label(self.current_tab == i, name);
+                let tab = ui
+                    .selectable_label(self.current_tab == i, name)
+                    .on_hover_text(tabs::tab_hint(ui.ctx(), i, self.locked));
                 if tab.clicked() {
                     action = Some(TabAction::Select(i));
                 }
@@ -638,7 +640,7 @@ impl eframe::App for DashboardApp {
             .inner;
         let ctx = ui.ctx().clone();
         let pressed = if self.confirm_close.is_none() {
-            tabs::shortcut(&ctx, self.current_tab)
+            tabs::shortcut(&ctx)
         } else {
             None
         };

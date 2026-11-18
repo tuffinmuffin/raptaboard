@@ -1,8 +1,10 @@
 //! Tab actions: switching, adding, closing, renaming and reordering tabs.
 //!
 //! The tab bar and the keyboard shortcuts both produce a [`TabAction`], and
-//! [`apply`] carries it out on the layout. The shortcuts match Elastic's,
-//! with Ctrl on Windows and Linux and Cmd on macOS.
+//! [`apply`] carries it out on the layout. Only switching tabs has
+//! shortcuts (see [`shortcut`]): Ctrl+1 to 9 as in Elastic, and Ctrl+Left
+//! and Right for the previous and next tab, where Elastic moves the tab
+//! instead. Ctrl is Cmd on macOS.
 
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 use raptaboard_layout::{ElasticLayout, Tab};
@@ -106,57 +108,80 @@ pub fn apply(layout: &mut ElasticLayout, current: usize, action: TabAction) -> u
     }
 }
 
+/// The number keys for [`shortcut`]: Ctrl+1 shows the first tab.
+const NUMBER_KEYS: [Key; 9] = [
+    Key::Num1,
+    Key::Num2,
+    Key::Num3,
+    Key::Num4,
+    Key::Num5,
+    Key::Num6,
+    Key::Num7,
+    Key::Num8,
+    Key::Num9,
+];
+
 /// Read this frame's tab shortcuts, if any, and use up their key presses.
+/// Only switching tabs has shortcuts; adding, closing, renaming and moving
+/// tabs are rare, so they live in the tab bar.
 ///
 /// | Keys | Action |
 /// | --- | --- |
 /// | Ctrl+1 to Ctrl+9 | show tab 1 to 9 |
-/// | Ctrl+Tab, Ctrl+Shift+Tab | next, previous tab |
-/// | Ctrl+Left, Ctrl+Right | move the open tab |
-/// | Ctrl+T | new tab |
-/// | Ctrl+W | close the open tab |
+/// | Ctrl+Left, Ctrl+Right | previous, next tab |
+/// | Ctrl+Tab, Ctrl+Shift+Tab | next, previous tab (Windows and Linux; macOS keeps Cmd+Tab) |
 ///
-/// Skipped while a text box has the keyboard, so Ctrl+Left still moves by
-/// word there.
-pub fn shortcut(ctx: &egui::Context, current: usize) -> Option<TabAction> {
+/// Ctrl is Cmd on macOS. Skipped while a text box has the keyboard, so
+/// Ctrl+Left still moves by word there.
+pub fn shortcut(ctx: &egui::Context) -> Option<TabAction> {
     if ctx.egui_wants_keyboard_input() {
         return None;
     }
     let cmd = Modifiers::COMMAND;
     let key = |modifiers, key| KeyboardShortcut::new(modifiers, key);
-    const NUMBERS: [Key; 9] = [
-        Key::Num1,
-        Key::Num2,
-        Key::Num3,
-        Key::Num4,
-        Key::Num5,
-        Key::Num6,
-        Key::Num7,
-        Key::Num8,
-        Key::Num9,
-    ];
     ctx.input_mut(|input| {
         // The Shift version first: Ctrl+Tab would also match Ctrl+Shift+Tab.
         if input.consume_shortcut(&key(cmd | Modifiers::SHIFT, Key::Tab)) {
             return Some(TabAction::Previous);
         }
         let simple = [
+            (Key::ArrowLeft, TabAction::Previous),
+            (Key::ArrowRight, TabAction::Next),
             (Key::Tab, TabAction::Next),
-            (Key::ArrowLeft, TabAction::MoveLeft),
-            (Key::ArrowRight, TabAction::MoveRight),
-            (Key::T, TabAction::New),
-            (Key::W, TabAction::Close(current)),
         ];
         for (k, action) in simple {
             if input.consume_shortcut(&key(cmd, k)) {
                 return Some(action);
             }
         }
-        NUMBERS
+        NUMBER_KEYS
             .iter()
             .position(|&k| input.consume_shortcut(&key(cmd, k)))
             .map(TabAction::Select)
     })
+}
+
+/// The hover text for tab `i`: its shortcut, if it has one, and how to edit
+/// it when the layout isn't locked. `ctx` gives the platform's key names
+/// (Cmd on macOS, Ctrl elsewhere).
+pub fn tab_hint(ctx: &egui::Context, i: usize, locked: bool) -> String {
+    let mut lines = Vec::new();
+    if let Some(&k) = NUMBER_KEYS.get(i) {
+        lines.push(format!(
+            "{} to show this tab",
+            ctx.format_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, k))
+        ));
+    }
+    let arrows = |k| ctx.format_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, k));
+    lines.push(format!(
+        "{} / {} for the previous / next tab",
+        arrows(Key::ArrowLeft),
+        arrows(Key::ArrowRight)
+    ));
+    if !locked {
+        lines.push("Double-click to rename, right-click for more".to_owned());
+    }
+    lines.join("\n")
 }
 
 #[cfg(test)]

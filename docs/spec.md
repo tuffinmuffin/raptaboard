@@ -184,7 +184,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    for milestone 2 if a team laptop needs it.
 2. Grid and layouts: tabs, snap grid, drag from tree, List Layout, lock, layout save, settings,
    hotkeys. **Started**: tabs (add, close with a confirmation if it has widgets, rename, reorder;
-   Ctrl+1..9, Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+T, Ctrl+W, Ctrl+Left/Right), moving and resizing
+   Ctrl+1..9 and Ctrl+Left/Right switch tabs; unlike Elastic, adding, closing and moving tabs have
+   no shortcuts, since they're rare and hard to remember), moving and resizing
    widgets and List Layouts on the snap grid (no overlaps), and the layout lock. With no layout
    file the app starts with Elastic's empty "Teleoperated" and "Autonomous" tabs. Next: layout save.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
