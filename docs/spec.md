@@ -144,6 +144,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `true_text`, `false_text` | `builtin/boolean_box.rs` | Boolean Box | text when true / false; empty for none | none |
 | `label_position` (Elastic) | `list_layout.rs` | List Layout | `TOP`, `LEFT`, `RIGHT`, `BOTTOM`, `HIDDEN` (any case read) | `TOP`; always written |
 | `label_inside` | `list_layout.rs` | List Layout | `true`: each label drawn over its value (on a see-through backing) instead of beside it | off |
+| `dividers` | `list_layout.rs` | List Layout | `true`: a thin line under the list's title and below each child | off |
 | `hidden` | `list_layout.rs` | a List Layout's child | `true`: kept in the list but not shown or subscribed | shown |
 
 Adding a setting: a key constant and a reader in the file that owns it, its row in that widget's
@@ -277,12 +278,17 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - List Layout editing. Done: lists draw like Elastic's (children compact with no card each:
      a label placed by `label_position` and the child's body, each row its saved height less 48
      and at least 32); Edit… or double-click on a list opens its settings (title, label position and an Inside box that
-     draws labels over the values to save space,
+     draws labels over the values to save space, Dividers for a thin line between children,
      children in order with a Shown checkbox (unticked: kept but not drawn or subscribed), ↑/↓,
      Edit…, Delete); double-clicking a child opens its own settings. Dragging: a grid widget or a
      tree topic dropped over a list goes into it, where the green line shows; a child dragged
      within its list reorders, into another list moves there, and onto free grid becomes a widget
-     again (its saved size, in whole cells). Next: "New List Layout" and "Put in a new list" (PR C).
+     again (its saved size, in whole cells). New lists: right-click empty grid → "New List
+     Layout" (an empty 2 x 2 list, titled "List Layout", nearest the click; new lists start with
+     labels inside at the top and dividers on, raptaboard's more compact look, while lists from
+     files keep their own settings), or right-click a
+     widget → "Put in a new list" (a list in its place, at least 2 x 2 and a cell taller than the
+     widget, holding it).
    - Color by value for number widgets (ints and floats): a background color chosen by thresholds
      (below 10 red, 10 to 20 yellow, above green), or a gradient between colors across a range.
      raptaboard-only settings in the widget dialog.
@@ -304,6 +310,12 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Boolean Box text: an option for a backing behind the true/false text (like inside list
      labels: a see-through rounded box, so it reads over any color), and a text color per state
      instead of only the automatic black or white.
+   - Group widget: a card holding its own small grid, so widgets inside can sit side by side and
+     be any size (a List Layout only stacks them). Same dragging in and out as lists; saved as a
+     raptaboard-only container type (Elastic would show a placeholder). Its settings can reach the
+     widgets inside: group-level settings (font size, period, colors) that every child uses
+     unless it sets its own, and resizing the group scales its children's sizes (and text) to
+     match.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      A built-in library of standard images (Elastic's `true_icon`/`false_icon` set: Checkmark, X,
      Exclamation Point, so its layouts keep their icons, plus more), and any PNG/SVG the team

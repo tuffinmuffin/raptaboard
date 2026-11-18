@@ -29,6 +29,22 @@ pub const HIDDEN: &str = "hidden";
 /// `true` writes each child's label over its value instead of beside it,
 /// to save space (raptaboard; Elastic ignores it). Left out when off.
 pub const LABEL_INSIDE: &str = "label_inside";
+/// `true` draws a thin line between children, so they don't run together
+/// (raptaboard; Elastic ignores it). Left out when off.
+pub const DIVIDERS: &str = "dividers";
+
+/// The `dividers` setting: whether lines are drawn between children.
+pub fn dividers(props: &Map<String, Json>) -> bool {
+    props.get(DIVIDERS).and_then(Json::as_bool).unwrap_or(false)
+}
+
+/// Heights to draw dividers at, between rows: halfway into the gap below
+/// each row, the last one included, so a last child that doesn't fill the
+/// list isn't left floating. (A line past the list's bottom is cut off by
+/// drawing.) [`draw`] also draws one along the bottom of the title.
+pub fn divider_ys(rows: &[ChildRow]) -> Vec<f32> {
+    rows.iter().map(|r| r.row.max.y + CHILD_GAP / 2.0).collect()
+}
 
 // Sizes, in screen points.
 
@@ -159,6 +175,40 @@ pub fn is_hidden(child: &WidgetContainer) -> bool {
         .get(HIDDEN)
         .and_then(Json::as_bool)
         .unwrap_or(false)
+}
+
+/// How big a new List Layout is, in grid cells each way (Elastic's 2 x 2).
+pub const NEW_LIST_CELLS: f64 = 2.0;
+/// The title a new List Layout gets (Elastic's).
+pub const NEW_LIST_TITLE: &str = "List Layout";
+
+/// A new List Layout at `rect` holding `children`: titled "List Layout"
+/// like Elastic's, but with raptaboard's more compact look: labels inside
+/// at the top, and dividers between children. Lists opened from a file
+/// keep their own settings.
+///
+/// ```
+/// use raptaboard::widgets::list_layout::{dividers, labels, new_list, LabelPosition, TYPE_NAME};
+/// use raptaboard_layout::Rect;
+/// let list = new_list(Rect { x: 0.0, y: 0.0, width: 256.0, height: 256.0 }, vec![]);
+/// assert_eq!((list.title.as_str(), list.layout_type.as_str()), ("List Layout", TYPE_NAME));
+/// let l = labels(&list.properties);
+/// assert_eq!((l.position, l.inside), (LabelPosition::Top, true));
+/// assert!(dividers(&list.properties));
+/// ```
+pub fn new_list(rect: raptaboard_layout::Rect, children: Vec<WidgetContainer>) -> LayoutContainer {
+    let mut properties = Map::new();
+    properties.insert(LABEL_POSITION.into(), LabelPosition::Top.key().into());
+    properties.insert(LABEL_INSIDE.into(), true.into());
+    properties.insert(DIVIDERS.into(), true.into());
+    LayoutContainer {
+        title: NEW_LIST_TITLE.into(),
+        rect,
+        layout_type: TYPE_NAME.into(),
+        properties,
+        children,
+        extra: Map::new(),
+    }
 }
 
 /// Where one child goes in a list's body, in screen points.
@@ -326,6 +376,7 @@ pub fn draw(
     let body = card::draw_card(painter, visuals, rect, &list.title);
     let labels = labels(&list.properties);
     let font = egui::FontId::proportional(LABEL_FONT_SIZE);
+    let title_edge = body.min.y;
     card::draw_clipped(painter, body, |painter, body| {
         let width = |i: usize| {
             let title = list.children[i].title.clone();
@@ -334,7 +385,20 @@ pub fn draw(
                 .size()
                 .x
         };
-        for place in rows(body, &list.children, labels, width) {
+        let placed = rows(body, &list.children, labels, width);
+        if dividers(&list.properties) {
+            let line = egui::Stroke::new(
+                card::BORDER_WIDTH,
+                visuals.widgets.noninteractive.bg_stroke.color,
+            );
+            // Along the bottom of the title strip, half a line inside the
+            // body so it isn't clipped, then below each child.
+            painter.hline(body.x_range(), title_edge + line.width / 2.0, line);
+            for y in divider_ys(&placed) {
+                painter.hline(body.x_range(), y, line);
+            }
+        }
+        for place in placed {
             let child = &list.children[place.index];
             if let Some(label) = place.label
                 && !labels.inside
@@ -484,6 +548,13 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
                     LABEL_INSIDE,
                     inside.then_some(true.into()),
                 );
+            }
+            ui.end_row();
+
+            ui.label("Dividers");
+            let mut lines = dividers(&list.properties);
+            if ui.checkbox(&mut lines, "Lines between children").changed() {
+                set_property(&mut list.properties, DIVIDERS, lines.then_some(true.into()));
             }
             ui.end_row();
         });
@@ -838,5 +909,32 @@ mod tests {
         let text = draw_settings(&mut drawn);
         assert_eq!(drawn, off);
         assert!(text.iter().any(|t| t == "Inside"), "{text:?}");
+    }
+
+    #[test]
+    fn dividers_sit_in_the_gaps() {
+        let children = [child("a", 128.0), child("b", 128.0), child("c", 128.0)];
+        let hidden = Labels {
+            position: LabelPosition::Hidden,
+            inside: false,
+        };
+        let placed = rows(body(), &children, hidden, |_| 0.0);
+        // Rows 0..80, 86..166, 172..252: lines at 83, 169, and 255 below
+        // the last.
+        assert_eq!(divider_ys(&placed), [83.0, 169.0, 255.0]);
+        assert_eq!(divider_ys(&placed[..1]), [83.0]);
+        assert!(divider_ys(&[]).is_empty());
+        // Off unless ticked, and drawing the settings adds nothing.
+        let mut l = list(children.to_vec(), Some("TOP"));
+        assert!(!dividers(&l.properties));
+        let before = l.clone();
+        let text = draw_settings(&mut l);
+        assert_eq!(l, before);
+        assert!(
+            text.iter().any(|t| t == "Lines between children"),
+            "{text:?}"
+        );
+        l.properties.insert(DIVIDERS.into(), true.into());
+        assert!(dividers(&l.properties));
     }
 }

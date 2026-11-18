@@ -191,6 +191,9 @@ pub struct DashboardApp {
     drag: Option<Drag>,
     /// A List Layout child being dragged, if any.
     child_drag: Option<ChildDrag>,
+    /// Where empty grid was last right-clicked, in grid pixels, for the
+    /// menu's "New List Layout".
+    menu_at: (f64, f64),
     /// The tab being renamed, the name typed so far, and whether its text
     /// box has been given the keyboard yet.
     renaming: Option<(usize, String, bool)>,
@@ -236,6 +239,7 @@ impl DashboardApp {
             locked: false,
             drag: None,
             child_drag: None,
+            menu_at: (0.0, 0.0),
             renaming: None,
             confirm_close: None,
             selected: None,
@@ -1019,6 +1023,25 @@ impl DashboardApp {
         }
         let area = response.rect;
         let origin = area.min;
+        // Right-clicking empty grid: a menu to make a new list there.
+        let mut new_list = false;
+        if !self.locked {
+            if response.secondary_clicked()
+                && let Some(p) = response.interact_pointer_pos()
+            {
+                self.menu_at = (f64::from(p.x - origin.x), f64::from(p.y - origin.y));
+                self.selected = None;
+            }
+            response.context_menu(|ui| {
+                if ui
+                    .button("New List Layout")
+                    .on_hover_text("An empty list here, to drag widgets into")
+                    .clicked()
+                {
+                    new_list = true;
+                }
+            });
+        }
         let cell = f64::from(self.layout.grid_size());
         let visuals = ui.visuals().clone();
         let line = Stroke::new(
@@ -1055,6 +1078,7 @@ impl DashboardApp {
         let mut dropped = None;
         let mut menu_action = None;
         let mut edit_child = None;
+        let mut wrap = None;
         if !self.locked {
             for &(item, r) in &placed {
                 let rect = to_screen(&r);
@@ -1132,6 +1156,14 @@ impl DashboardApp {
                         if ui.add(button).clicked() {
                             menu_action = Some((item, action));
                         }
+                    }
+                    if let Item::Widget(widget) = item
+                        && ui
+                            .button("Put in a new list")
+                            .on_hover_text("Make a List Layout here holding this widget")
+                            .clicked()
+                    {
+                        wrap = Some(widget);
                     }
                 });
                 if corner.hovered() || corner.dragged() {
@@ -1389,6 +1421,19 @@ impl DashboardApp {
                 original: Box::new(l.clone()),
                 child: Some((child, c.clone())),
             });
+        }
+        if (new_list || wrap.is_some())
+            && let Some(tab) = self.layout.tabs.get_mut(self.current_tab)
+        {
+            let grid = &mut tab.grid_layout;
+            let made = match wrap {
+                Some(widget) => grid::wrap_in_list(grid, widget, cell, room),
+                None => grid::add_list(grid, self.menu_at, cell, room),
+            };
+            match made {
+                Some(list) => self.selected = Some(Item::List(list)),
+                None => self.status = "No free space for a new list".to_owned(),
+            }
         }
         if let Some((item, action)) = menu_action {
             self.selected = Some(item);
