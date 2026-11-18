@@ -10,7 +10,7 @@ use eframe::egui;
 use raptaboard_layout::WidgetContainer;
 use serde_json::Value as Json;
 
-use crate::struct_view::EnumDisplay;
+use crate::struct_view::{EnumDisplay, FieldInfo};
 use crate::widgets::{
     self, DEFAULT_FALSE_COLOR, DEFAULT_FONT_SIZE, DEFAULT_TRUE_COLOR, IntFormat,
     MAX_DECIMAL_PLACES, MAX_FONT_SIZE, MAX_INT_DIGITS, MIN_FONT_SIZE, MIN_PERIOD_S, ValueKind,
@@ -47,9 +47,16 @@ pub fn set_property(props: &mut serde_json::Map<String, Json>, key: &str, value:
 ///
 /// `nt_type` is the NT type of the value it shows (`"double"`), if known;
 /// number settings are offered only for numbers of the right kind, or all
-/// of them if the type isn't known. `is_enum` says whether it shows an enum
-/// struct field, which adds the choice of name, number or both.
-pub fn show(ui: &mut egui::Ui, widget: &mut WidgetContainer, nt_type: Option<&str>, is_enum: bool) {
+/// of them if the type isn't known. `field_info` is what the schema says
+/// about the struct field it shows, if it shows one; an enum field adds the
+/// choice of name, number or both, and the type row lists its values.
+pub fn show(
+    ui: &mut egui::Ui,
+    widget: &mut WidgetContainer,
+    nt_type: Option<&str>,
+    field_info: Option<&FieldInfo>,
+) {
+    let is_enum = field_info.is_some_and(FieldInfo::is_enum);
     let source = widget.topic().unwrap_or_default().to_owned();
     let field = widget.struct_meta();
     let source_title = widgets::source_title(&source, field.as_ref());
@@ -87,10 +94,20 @@ pub fn show(ui: &mut egui::Ui, widget: &mut WidgetContainer, nt_type: Option<&st
             ui.end_row();
 
             ui.label("Type");
-            match nt_type {
-                Some(ty) => ui.label(format!("{}, {ty}", widget.widget_type)),
-                None => ui.label(&widget.widget_type),
-            };
+            // The schema's type for a struct field (`enum uint8`), else the
+            // NT type (`double`).
+            let ty = field_info
+                .map(FieldInfo::label)
+                .or(nt_type.map(str::to_owned));
+            ui.vertical(|ui| {
+                match ty {
+                    Some(ty) => ui.label(format!("{}, {ty}", widget.widget_type)),
+                    None => ui.label(&widget.widget_type),
+                };
+                if let Some(info) = field_info.filter(|f| f.is_enum()) {
+                    ui.weak(info.enum_list());
+                }
+            });
             ui.end_row();
 
             ui.label("Update period");
@@ -137,7 +154,9 @@ fn text_display(
 ) {
     let props = &mut widget.properties;
     let decimals = matches!(kind, None | Some(ValueKind::Decimal));
-    let whole = matches!(kind, None | Some(ValueKind::Whole));
+    // An enum shown by name has no number to format.
+    let whole = matches!(kind, None | Some(ValueKind::Whole))
+        && !(is_enum && widgets::enum_display(props) == EnumDisplay::Name);
 
     if is_enum {
         ui.label("Enum shows");
@@ -313,9 +332,14 @@ mod tests {
     /// Draw the settings once in a window-less egui frame, and return the
     /// row labels shown.
     fn draw(w: &mut WidgetContainer, nt_type: Option<&str>, is_enum: bool) -> Vec<String> {
+        let info = FieldInfo {
+            type_name: "uint8".into(),
+            array: None,
+            enum_values: vec![("kStow".into(), 0), ("kIntake".into(), 3)],
+        };
         let ctx = egui::Context::default();
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-            show(ui, w, nt_type, is_enum);
+            show(ui, w, nt_type, is_enum.then_some(&info));
         });
         // No window to upload the font texture to.
         output.textures_delta.clear();
@@ -347,8 +371,8 @@ mod tests {
 
     #[test]
     fn number_settings_match_the_value_type() {
-        let rows = |nt_type: Option<&str>, is_enum: bool| {
-            let labels = draw(&mut widget("Text Display", is_enum), nt_type, is_enum);
+        let rows_for = |w: &mut WidgetContainer, nt_type: Option<&str>, is_enum: bool| {
+            let labels = draw(w, nt_type, is_enum);
             [
                 "Decimal places",
                 "Whole numbers",
@@ -360,15 +384,35 @@ mod tests {
             .filter(|row| labels.iter().any(|l| l == row))
             .collect::<Vec<_>>()
         };
+        let rows = |nt_type: Option<&str>, is_enum: bool| {
+            rows_for(&mut widget("Text Display", is_enum), nt_type, is_enum)
+        };
         assert_eq!(rows(Some("double"), false), ["Decimal places", "Text size"]);
         assert_eq!(
             rows(Some("int[]"), false),
             ["Whole numbers", "Digits", "Text size"]
         );
         assert_eq!(rows(Some("string"), false), ["Text size"]);
+        // An enum shown by name has no number settings, until it shows its
+        // number.
+        assert_eq!(rows(Some("int"), true), ["Enum shows", "Text size"]);
+        let mut by_number = widget("Text Display", true);
+        by_number
+            .properties
+            .insert(keys::ENUM_DISPLAY.into(), "both".into());
         assert_eq!(
-            rows(Some("int"), true),
+            rows_for(&mut by_number, Some("int"), true),
             ["Whole numbers", "Digits", "Enum shows", "Text size"]
+        );
+        // The type row names the enum and lists its values.
+        let labels = draw(&mut widget("Text Display", true), Some("int"), true);
+        assert!(
+            labels.iter().any(|l| l == "Text Display, enum uint8"),
+            "{labels:?}"
+        );
+        assert!(
+            labels.iter().any(|l| l == "kStow = 0, kIntake = 3"),
+            "{labels:?}"
         );
         // Not known yet: offer both kinds of number setting.
         assert_eq!(

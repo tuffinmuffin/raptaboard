@@ -727,11 +727,9 @@ impl DashboardApp {
     /// and the whole visit is one step for undo.
     fn widget_dialog(&mut self, ctx: &egui::Context) {
         let Some(editing) = &self.editing else { return };
-        let is_enum = |w: &WidgetContainer| {
-            let (Some(db), Some(meta)) = (self.nt.structs(), w.struct_meta()) else {
-                return false;
-            };
-            struct_view::is_enum_field(db, &meta.schema_name, &meta.path)
+        let field_info = |w: &WidgetContainer| {
+            let meta = w.struct_meta()?;
+            struct_view::field_info(self.nt.structs()?, &meta.schema_name, &meta.path)
         };
         let Some(widget) = self
             .layout
@@ -742,7 +740,7 @@ impl DashboardApp {
             self.editing = None;
             return;
         };
-        let is_enum = is_enum(widget);
+        let field_info = field_info(widget);
         let nt_type = self.value_type(widget);
         let Some(widget) = self
             .layout
@@ -756,7 +754,7 @@ impl DashboardApp {
         egui::Modal::new(egui::Id::unique("widget_settings")).show(ctx, |ui| {
             ui.heading("Widget settings");
             ui.add_space(4.0);
-            widget_settings::show(ui, widget, nt_type.as_deref(), is_enum);
+            widget_settings::show(ui, widget, nt_type.as_deref(), field_info.as_ref());
             ui.add_space(4.0);
             ui.separator();
             ui.horizontal(|ui| {

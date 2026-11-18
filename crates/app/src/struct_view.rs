@@ -196,6 +196,91 @@ pub fn field_value_shown(
     })
 }
 
+/// What the schema says about one struct field: its type, whether it's an
+/// array, and its enum names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldInfo {
+    /// The type as the schema writes it: `double`, `uint8`, `Translation2d`.
+    pub type_name: String,
+    /// The array length for an array field (`double v[4]`).
+    pub array: Option<usize>,
+    /// The enum's names and numbers, in schema order; empty if not an enum.
+    pub enum_values: Vec<(String, i64)>,
+}
+
+impl FieldInfo {
+    /// Whether the field is an enum.
+    pub fn is_enum(&self) -> bool {
+        !self.enum_values.is_empty()
+    }
+
+    /// The type in a few words: `double`, `enum uint8`, `double[4]`.
+    ///
+    /// ```
+    /// use nt4::proto::structs::StructDatabase;
+    /// use raptaboard::struct_view::field_info;
+    /// let mut db = StructDatabase::new();
+    /// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode; double v[4]").unwrap();
+    /// let info = |f: &str| field_info(&db, "Arm", &[f.to_string()]).unwrap().label();
+    /// assert_eq!(info("mode"), "enum uint8");
+    /// assert_eq!(info("v"), "double[4]");
+    /// ```
+    pub fn label(&self) -> String {
+        let kind = if self.is_enum() { "enum " } else { "" };
+        match self.array {
+            Some(n) => format!("{kind}{}[{n}]", self.type_name),
+            None => format!("{kind}{}", self.type_name),
+        }
+    }
+
+    /// The enum's names and numbers on one line: `kStow = 0, kIntake = 3`.
+    pub fn enum_list(&self) -> String {
+        self.enum_values
+            .iter()
+            .map(|(name, n)| format!("{name} = {n}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+/// What the schema says about the field `path` names in the struct
+/// `schema`. Needs only the schemas, not a value. Array items in the path
+/// (`[0]`, as the tree names them) step into the array; a path ending in
+/// one describes a single item.
+///
+/// ```
+/// use nt4::proto::structs::StructDatabase;
+/// use raptaboard::struct_view::field_info;
+/// let mut db = StructDatabase::new();
+/// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode; double angle").unwrap();
+/// let mode = field_info(&db, "Arm", &["mode".to_string()]).unwrap();
+/// assert_eq!(mode.type_name, "uint8");
+/// assert_eq!(mode.enum_list(), "kStow = 0, kIntake = 3");
+/// assert!(field_info(&db, "Arm", &["speed".to_string()]).is_none());
+/// ```
+pub fn field_info(db: &StructDatabase, schema: &str, path: &[String]) -> Option<FieldInfo> {
+    let mut s = db.find(schema)?;
+    let mut field = None;
+    let mut item = false;
+    for name in path {
+        if name.starts_with('[') {
+            item = true;
+            continue;
+        }
+        if let Some(f) = field {
+            s = db.nested(f)?;
+        }
+        field = Some(s.field(name)?);
+        item = false;
+    }
+    let field = field?;
+    Some(FieldInfo {
+        type_name: field.type_name().to_owned(),
+        array: (field.is_array() && !item).then(|| field.array_size()),
+        enum_values: field.enum_values().to_vec(),
+    })
+}
+
 /// Whether the field `path` names in the struct `schema` is an enum. Needs
 /// only the schemas, not a value.
 ///
@@ -208,15 +293,7 @@ pub fn field_value_shown(
 /// assert!(!is_enum_field(&db, "Arm", &["angle".to_string()]));
 /// ```
 pub fn is_enum_field(db: &StructDatabase, schema: &str, path: &[String]) -> bool {
-    let Some((last, parents)) = path.split_last() else {
-        return false;
-    };
-    let mut s = db.find(schema);
-    for name in parents {
-        s = s.and_then(|s| s.field(name)).and_then(|f| db.nested(f));
-    }
-    s.and_then(|s| s.field(last))
-        .is_some_and(|f| !f.enum_values().is_empty())
+    field_info(db, schema, path).is_some_and(|f| f.is_enum())
 }
 
 /// The struct holding the field `path` names, and that field.
@@ -685,5 +762,29 @@ mod tests {
         assert!(is_enum_field(&db, "DashTestMode", &one("mode")));
         assert!(is_enum_field(&db, "DashTestMode", &one("health")));
         assert!(!is_enum_field(&db, "DashTestMode", &one("elapsed_s")));
+    }
+
+    #[test]
+    fn field_info_walks_nested_structs_and_arrays() {
+        let mut db = StructDatabase::new();
+        db.add("Translation2d", "double x;double y").unwrap();
+        db.add(
+            "Path",
+            "Translation2d points[3]; enum {kA=1, kB=2} int8 kind; Translation2d end",
+        )
+        .unwrap();
+        let path = |p: &[&str]| p.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let info = |p: &[&str]| field_info(&db, "Path", &path(p));
+        assert_eq!(info(&["points"]).unwrap().label(), "Translation2d[3]");
+        // One item of the array, and a field inside it.
+        assert_eq!(info(&["points", "[1]"]).unwrap().label(), "Translation2d");
+        assert_eq!(info(&["points", "[1]", "x"]).unwrap().label(), "double");
+        assert_eq!(info(&["end", "y"]).unwrap().label(), "double");
+        let kind = info(&["kind"]).unwrap();
+        assert_eq!(kind.label(), "enum int8");
+        assert_eq!(kind.enum_list(), "kA = 1, kB = 2");
+        // A plain field has no fields inside it.
+        assert_eq!(info(&["kind", "x"]), None);
+        assert_eq!(info(&[]), None);
     }
 }
