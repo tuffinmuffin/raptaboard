@@ -633,7 +633,9 @@ impl DashboardApp {
                     self.history.redo(&mut self.layout)
                 };
                 if done {
-                    self.current_tab = self.current_tab.min(self.layout.tabs.len().saturating_sub(1));
+                    self.current_tab = self
+                        .current_tab
+                        .min(self.layout.tabs.len().saturating_sub(1));
                     self.selected = None;
                     self.drag = None;
                     self.renaming = None;
