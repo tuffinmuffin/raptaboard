@@ -68,8 +68,30 @@ pub trait WidgetType: Sync {
     /// this widget.
     fn accepts(&self, nt_type: &str) -> bool;
 
+    /// Draw the whole widget in `rect` (its grid cells, less a small gap),
+    /// for the newest `value` of its topic, if any.
+    ///
+    /// The default is the standard card: a rounded box with the title on
+    /// top and [`draw_body`](Self::draw_body) inside. Override it for a
+    /// widget that needs a different frame or none, such as a camera view
+    /// drawn edge to edge; [`card`] has the pieces to build one.
+    fn draw(
+        &self,
+        painter: &egui::Painter,
+        visuals: &egui::Visuals,
+        rect: Rect,
+        widget: &WidgetContainer,
+        value: Option<&Value>,
+    ) {
+        let body = card::draw_card(painter, visuals, rect, &widget.title);
+        card::draw_clipped(painter, body, |painter, body| {
+            self.draw_body(painter, visuals, body, &widget.properties, value);
+        });
+    }
+
     /// Draw the widget's body (the card below the title) in `rect`, for the
-    /// newest `value` of its topic, if any.
+    /// newest `value` of its topic, if any. Only called by the default
+    /// [`draw`](Self::draw).
     fn draw_body(
         &self,
         painter: &egui::Painter,
@@ -244,6 +266,82 @@ mod tests {
             json["properties"],
             serde_json::json!({"topic": "/DashTest/ModeName", "period": 0.06, "data_type": "string"})
         );
+    }
+
+    /// A widget drawn edge to edge, with no card.
+    struct Frameless;
+
+    impl WidgetType for Frameless {
+        fn names(&self) -> &'static [&'static str] {
+            &["Frameless"]
+        }
+        fn accepts(&self, _: &str) -> bool {
+            false
+        }
+        fn draw(
+            &self,
+            painter: &egui::Painter,
+            _: &egui::Visuals,
+            rect: Rect,
+            _: &WidgetContainer,
+            _: Option<&Value>,
+        ) {
+            painter.rect_filled(rect, 0, egui::Color32::BLUE);
+        }
+        fn draw_body(
+            &self,
+            _: &egui::Painter,
+            _: &egui::Visuals,
+            _: Rect,
+            _: &Map<String, Json>,
+            _: Option<&Value>,
+        ) {
+            unreachable!("draw is overridden")
+        }
+        fn settings(&self, _: &mut egui::Ui, _: &mut Map<String, Json>, _: ValueInfo<'_>) {}
+        fn setting_keys(&self) -> &'static [&'static str] {
+            &[]
+        }
+    }
+
+    /// The text drawn by `ty.draw` for a widget titled "Sine" showing 0.5.
+    fn drawn_text(ty: &dyn WidgetType) -> Vec<String> {
+        let at = LayoutRect {
+            x: 0.0,
+            y: 0.0,
+            width: 128.0,
+            height: 128.0,
+        };
+        let mut widget = for_topic("/Sine", "double", None, at).unwrap();
+        widget.title = "Sine".into();
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let rect = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(128.0, 128.0));
+            ty.draw(
+                ui.painter(),
+                ui.visuals(),
+                rect,
+                &widget,
+                Some(&Value::Double(0.5)),
+            );
+        });
+        output.textures_delta.clear();
+        output
+            .shapes
+            .into_iter()
+            .filter_map(|s| match s.shape {
+                egui::epaint::Shape::Text(t) => Some(t.galley.text().to_owned()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn widgets_can_replace_the_card() {
+        // The default draw is the card: title, then the body.
+        assert_eq!(drawn_text(&text_display::TextDisplay), ["Sine", "0.5"]);
+        // An override draws instead, with no card or title.
+        assert!(drawn_text(&Frameless).is_empty());
     }
 
     #[test]

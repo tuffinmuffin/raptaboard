@@ -1,6 +1,7 @@
-//! The card every widget is drawn in: a rounded box with the title in a
-//! strip along the top. [`draw`] draws a whole widget, asking its
-//! [`WidgetType`](super::WidgetType) to fill the body.
+//! The card most widgets are drawn in: a rounded box with the title in a
+//! strip along the top. [`draw`] draws a whole widget through its
+//! [`WidgetType`](super::WidgetType), whose default `draw` uses this card;
+//! a widget with its own frame uses the pieces here as it needs.
 
 use eframe::egui::{self, CornerRadius, Rect, Stroke, StrokeKind};
 use nt4::Value;
@@ -49,9 +50,17 @@ pub fn draw_card(
     body_rect
 }
 
-/// Draw a widget card: a rounded box, its title on top, and its body.
-/// `value` is the newest value of the widget's topic, if any. Types that
-/// aren't built yet say what they are and what they're bound to.
+/// Run `draw` with a painter that can't draw outside `body`, and the body
+/// less a small margin, so long text stays inside the card.
+pub fn draw_clipped(painter: &egui::Painter, body: Rect, draw: impl FnOnce(&egui::Painter, Rect)) {
+    let inside = painter.with_clip_rect(body.intersect(painter.clip_rect()));
+    draw(&inside, body.shrink(BODY_MARGIN));
+}
+
+/// Draw a widget in `rect` with its type's [`draw`](super::WidgetType::draw)
+/// (the standard card unless the type has its own). `value` is the newest
+/// value of the widget's topic, if any. Types that aren't built yet get a
+/// card saying what they are and what they're bound to.
 pub fn draw(
     painter: &egui::Painter,
     visuals: &egui::Visuals,
@@ -59,29 +68,26 @@ pub fn draw(
     widget: &WidgetContainer,
     value: Option<&Value>,
 ) {
-    let body_rect = draw_card(painter, visuals, rect, &widget.title);
-    // Keep long text inside the card.
-    let painter = painter.with_clip_rect(body_rect.intersect(painter.clip_rect()));
-    let body_rect = body_rect.shrink(BODY_MARGIN);
-    match super::find(&widget.widget_type) {
-        Some(ty) => ty.draw_body(&painter, visuals, body_rect, &widget.properties, value),
-        None => {
-            let font = egui::FontId::proportional(12.0);
-            let center = body_rect.center();
-            for (line, dy) in [
-                (widget.widget_type.as_str(), -8.0),
-                (widget.topic().unwrap_or(""), 8.0),
-            ] {
-                painter.text(
-                    center + egui::vec2(0.0, dy),
-                    egui::Align2::CENTER_CENTER,
-                    line,
-                    font.clone(),
-                    visuals.weak_text_color(),
-                );
-            }
-        }
+    if let Some(ty) = super::find(&widget.widget_type) {
+        ty.draw(painter, visuals, rect, widget, value);
+        return;
     }
+    let body = draw_card(painter, visuals, rect, &widget.title);
+    draw_clipped(painter, body, |painter, body| {
+        let font = egui::FontId::proportional(12.0);
+        for (line, dy) in [
+            (widget.widget_type.as_str(), -8.0),
+            (widget.topic().unwrap_or(""), 8.0),
+        ] {
+            painter.text(
+                body.center() + egui::vec2(0.0, dy),
+                egui::Align2::CENTER_CENTER,
+                line,
+                font.clone(),
+                visuals.weak_text_color(),
+            );
+        }
+    });
 }
 
 /// Say in grey why a widget has nothing to show: `"no value"` yet, or a

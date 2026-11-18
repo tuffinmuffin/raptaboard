@@ -152,7 +152,9 @@ the key in the widget's `setting_keys` so "Reset settings" clears it, and a row 
 Each widget type is one file in `crates/app/src/widgets/` implementing the `WidgetType` trait
 (`names` it's saved under, which dropped topics it `accepts`, `draw_body`, its `settings` rows,
 its `setting_keys`), listed in `widgets::TYPES`. The grid and the settings dialog only use that
-trait. `card.rs` draws the card around every body, `settings.rs` the dialog's shared rows (title,
+trait. The trait's default `draw` puts `draw_body` inside the standard card (`card.rs`: rounded
+box, title on top); a widget that needs another frame or none (a camera view edge to edge)
+overrides `draw`, using `card.rs`'s pieces as it likes. `settings.rs` the dialog's shared rows (title,
 period) and "Reset settings". Milestone 4 plugin widgets implement the same trait through an
 adapter: WIT `render` shapes drawn with egui, settings rows from `plugin.toml`.
 
