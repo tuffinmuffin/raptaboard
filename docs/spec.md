@@ -147,6 +147,19 @@ Adding a setting: a key constant and a reader in the file that owns it, its row 
 `WidgetType::settings` (shared rows: `props::text_size_row`, `props::color_row`, `format::rows`),
 the key in the widget's `setting_keys` so "Reset settings" clears it, and a row here.
 
+### Grid size
+
+`grid_size` is the cell size in pixels (Elastic's default 128); widget positions and sizes are
+saved in pixels at that size. The grid rules (`crates/app/src/grid.rs`, `sanitize`) all take the
+cell size, and their tests run at 16, 64, 128 and 256. Drawing sizes (card title 24 pt, gaps,
+outlines, corner radii; named constants in `ui.rs` and `widgets/shared/card.rs`) are screen
+points and don't change with the grid size. There's no setting to change the grid size yet. When
+there is one, it must:
+- Rescale every widget's position and size (pixels at the old size become pixels at the new),
+  or the layout scrambles.
+- Shrink the title strip and gaps on small grids: at 16 px a 24 pt title is taller than a cell.
+  Likely the title and gaps scale down below some cell size (around 64 px), or the title hides.
+
 ### Widget code
 
 Each widget type is one file in `crates/app/src/widgets/builtin/` implementing the `WidgetType` trait

@@ -23,10 +23,32 @@ use crate::widgets;
 use crate::widgets::shared::{card, format, props, settings};
 use nt4::proto::structs::StructDatabase;
 
+// How the grid looks. All sizes are screen points, not grid pixels: they stay
+// the same at any grid size (see "Grid size" in docs/spec.md).
+
 /// Space between List Layout children, in points.
 const LIST_GAP: f32 = 6.0;
 /// Size of the resize corner at the bottom right of each widget, in points.
 const RESIZE_HANDLE: f32 = 14.0;
+/// Space between a widget's card and the edges of its cells, in points, so
+/// side-by-side widgets don't touch.
+const CELL_GAP: f32 = 4.0;
+/// Width of the grid lines, in points.
+const GRID_LINE_WIDTH: f32 = 1.0;
+/// How strongly the grid lines show, from 0 (not at all) to 1.
+const GRID_LINE_STRENGTH: f32 = 0.3;
+/// Width of the selection outline and the drop outline, in points.
+const OUTLINE_WIDTH: f32 = 2.0;
+/// How far inside its cells the selection outline is drawn, in points.
+const SELECTION_INSET: f32 = 1.0;
+/// How far inside its cells the drop outline is drawn, in points.
+const LANDING_INSET: f32 = 2.0;
+/// Lengths of the resize corner's two diagonal marks, in points.
+const RESIZE_MARKS: [f32; 2] = [5.0, 9.0];
+/// Width of the resize marks, in points.
+const RESIZE_MARK_WIDTH: f32 = 1.5;
+/// How far the resize marks sit in from the card's corner, in points.
+const RESIZE_MARK_INSET: f32 = 4.0;
 
 /// What a drag on the grid is doing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -841,7 +863,10 @@ impl DashboardApp {
         let origin = area.min;
         let cell = f64::from(self.layout.grid_size());
         let visuals = ui.visuals().clone();
-        let line = Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3));
+        let line = Stroke::new(
+            GRID_LINE_WIDTH,
+            visuals.weak_text_color().gamma_multiply(GRID_LINE_STRENGTH),
+        );
 
         let mut x = 0.0;
         while x <= area.width() {
@@ -977,9 +1002,9 @@ impl DashboardApp {
             && let Some(r) = item.rect(&tab.grid_layout)
         {
             painter.rect_stroke(
-                to_screen(&r).shrink(1.0),
-                egui::CornerRadius::same(10),
-                Stroke::new(2.0, visuals.selection.stroke.color),
+                to_screen(&r).shrink(SELECTION_INSET),
+                egui::CornerRadius::same(card::CORNER_RADIUS),
+                Stroke::new(OUTLINE_WIDTH, visuals.selection.stroke.color),
                 egui::StrokeKind::Inside,
             );
         }
@@ -1051,7 +1076,7 @@ fn draw_item(
     item: Item,
     value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
 ) {
-    let rect = rect.shrink(4.0);
+    let rect = rect.shrink(CELL_GAP);
     match item {
         Item::Widget(i) => {
             let Some(w) = grid.containers.get(i) else {
@@ -1094,9 +1119,9 @@ fn draw_landing(painter: &egui::Painter, rect: Rect, ok: bool) {
         Color32::from_rgb(220, 60, 60)
     };
     painter.rect_stroke(
-        rect.shrink(2.0),
-        egui::CornerRadius::same(10),
-        Stroke::new(2.0, color),
+        rect.shrink(LANDING_INSET),
+        egui::CornerRadius::same(card::CORNER_RADIUS),
+        Stroke::new(OUTLINE_WIDTH, color),
         egui::StrokeKind::Inside,
     );
 }
@@ -1104,9 +1129,9 @@ fn draw_landing(painter: &egui::Painter, rect: Rect, ok: bool) {
 /// Two short diagonal lines in a widget's bottom-right corner, showing
 /// where to drag to resize it.
 fn draw_resize_handle(painter: &egui::Painter, visuals: &egui::Visuals, rect: Rect) {
-    let corner = rect.shrink(4.0).max - Vec2::splat(4.0);
-    let stroke = Stroke::new(1.5, visuals.weak_text_color());
-    for size in [5.0, 9.0] {
+    let corner = rect.shrink(CELL_GAP).max - Vec2::splat(RESIZE_MARK_INSET);
+    let stroke = Stroke::new(RESIZE_MARK_WIDTH, visuals.weak_text_color());
+    for size in RESIZE_MARKS {
         painter.line_segment(
             [corner - Vec2::new(size, 0.0), corner - Vec2::new(0.0, size)],
             stroke,

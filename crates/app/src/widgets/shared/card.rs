@@ -7,10 +7,27 @@ use eframe::egui::{self, CornerRadius, Rect, Stroke, StrokeKind};
 use nt4::Value;
 use raptaboard_layout::WidgetContainer;
 
+// How cards look. All sizes are screen points, not grid pixels: they stay
+// the same at any grid size, so text stays readable.
+
 /// Height of a card's title strip, in points.
 pub const TITLE_HEIGHT: f32 = 24.0;
 /// Space between the card's edge and its body, in points.
-const BODY_MARGIN: f32 = 6.0;
+pub const BODY_MARGIN: f32 = 6.0;
+/// Corner radius of the card, in points.
+pub const CORNER_RADIUS: u8 = 10;
+/// Corner radius for shapes filling the body, such as a Boolean Box's
+/// color, in points. Smaller than the card's, as the body sits inside it.
+pub const BODY_CORNER_RADIUS: u8 = 6;
+/// Width of the card's border, in points.
+pub const BORDER_WIDTH: f32 = 1.0;
+/// Size of the title text, in points.
+pub const TITLE_FONT_SIZE: f32 = 14.0;
+/// Size of grey messages ("no value") and placeholder text, in points.
+pub const MESSAGE_FONT_SIZE: f32 = 12.0;
+/// Distance of each of the placeholder's two lines from the body's middle,
+/// in points.
+const PLACEHOLDER_LINE_OFFSET: f32 = 8.0;
 
 /// Draw an empty card with `title` in a strip along the top, and return
 /// the space left below the title for the body. Also used for List Layouts.
@@ -22,17 +39,18 @@ pub fn draw_card(
 ) -> Rect {
     painter.rect(
         rect,
-        CornerRadius::same(10),
+        CornerRadius::same(CORNER_RADIUS),
         visuals.extreme_bg_color,
-        Stroke::new(1.0, visuals.widgets.noninteractive.bg_stroke.color),
+        Stroke::new(BORDER_WIDTH, visuals.widgets.noninteractive.bg_stroke.color),
         StrokeKind::Inside,
     );
     let (title_rect, body_rect) = rect.split_top_bottom_at_y(rect.min.y + TITLE_HEIGHT);
     painter.rect_filled(
-        title_rect.shrink(1.0),
+        // Inside the border, with corners that follow the card's.
+        title_rect.shrink(BORDER_WIDTH),
         CornerRadius {
-            nw: 9,
-            ne: 9,
+            nw: CORNER_RADIUS - BORDER_WIDTH as u8,
+            ne: CORNER_RADIUS - BORDER_WIDTH as u8,
             sw: 0,
             se: 0,
         },
@@ -44,7 +62,7 @@ pub fn draw_card(
             title_rect.center(),
             egui::Align2::CENTER_CENTER,
             title,
-            egui::FontId::proportional(14.0),
+            egui::FontId::proportional(TITLE_FONT_SIZE),
             visuals.text_color(),
         );
     body_rect
@@ -74,10 +92,10 @@ pub fn draw(
     }
     let body = draw_card(painter, visuals, rect, &widget.title);
     draw_clipped(painter, body, |painter, body| {
-        let font = egui::FontId::proportional(12.0);
+        let font = egui::FontId::proportional(MESSAGE_FONT_SIZE);
         for (line, dy) in [
-            (widget.widget_type.as_str(), -8.0),
-            (widget.topic().unwrap_or(""), 8.0),
+            (widget.widget_type.as_str(), -PLACEHOLDER_LINE_OFFSET),
+            (widget.topic().unwrap_or(""), PLACEHOLDER_LINE_OFFSET),
         ] {
             painter.text(
                 body.center() + egui::vec2(0.0, dy),
@@ -97,7 +115,7 @@ pub fn draw_message(painter: &egui::Painter, visuals: &egui::Visuals, rect: Rect
         rect.center(),
         egui::Align2::CENTER_CENTER,
         why,
-        egui::FontId::proportional(12.0),
+        egui::FontId::proportional(MESSAGE_FONT_SIZE),
         visuals.weak_text_color(),
     );
 }
