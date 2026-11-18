@@ -142,6 +142,8 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `true_color`, `false_color` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | ARGB number | green, red |
 | `show_text` | `builtin/boolean_box.rs` | Boolean Box | write the text below over the color | false |
 | `true_text`, `false_text` | `builtin/boolean_box.rs` | Boolean Box | text when true / false; empty for none | none |
+| `label_position` (Elastic) | `list_layout.rs` | List Layout | `TOP`, `LEFT`, `RIGHT`, `BOTTOM`, `HIDDEN` (any case read) | `TOP`; always written |
+| `hidden` | `list_layout.rs` | a List Layout's child | `true`: kept in the list but not shown or subscribed | shown |
 
 Adding a setting: a key constant and a reader in the file that owns it, its row in that widget's
 `WidgetType::settings` (shared rows: `props::text_size_row`, `props::color_row`, `format::rows`),
@@ -271,13 +273,24 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    to its default (period 0.06 s, default colors, no raptaboard settings) but keeps the title and
    the topic or field. Settings at their default are left out of
    the file. Next:
-   - List Layout editing (drop into a list, create one).
+   - List Layout editing. Done: lists draw like Elastic's (children compact with no card each:
+     a label placed by `label_position` and the child's body, each row its saved height less 48
+     and at least 32), and Edit… or double-click on a list opens its settings (title, label
+     position, children in order with a Shown checkbox (unticked: kept in the list but not drawn or
+     subscribed), ↑/↓, and Edit… for a child's widget settings). No Delete yet: until widgets can be
+     dragged into a list, a deleted child couldn't be put back; it comes with PR B. Next:
+     drag widgets and tree topics into a list and children back out (PR B), then "New List
+     Layout" and "Put in a new list" (PR C).
    - Color by value for number widgets (ints and floats): a background color chosen by thresholds
      (below 10 red, 10 to 20 yellow, above green), or a gradient between colors across a range.
      raptaboard-only settings in the widget dialog.
    - Text style: a font dialog (from the widget dialog's Text size row) for the value text and the
      title: font family, size, color, bold, italic. Saved as raptaboard keys (`font_family`,
      `font_color`, `font_bold`, ...; `font_size` exists), with a layout-wide default style later.
+   - Copy settings to the rest of a list: in the list settings, set up one child as wanted, then
+     "Copy settings to all" (or pick which children) applies its display settings (colors, text,
+     decimal places, number format, font size, period) to the others of the same widget type.
+     Never copies what a child shows (topic, `struct_meta`, `data_type`) or its title.
    - Reflow while dragging: widgets in the way slide aside (to the nearest free spot) as a widget is
      dragged or resized over them, instead of the drop being refused.
    - Allow partial overlap: a per-widget setting (this widget may partly overlap others, such as a

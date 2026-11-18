@@ -7,7 +7,9 @@ use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, CursorIcon, Rect, Sense, Stroke, Vec2};
 use nt4::{Topic, Value};
-use raptaboard_layout::{ElasticLayout, GridLayout, Rect as LayoutRect, WidgetContainer};
+use raptaboard_layout::{
+    ElasticLayout, GridLayout, LayoutContainer, Rect as LayoutRect, WidgetContainer,
+};
 
 use crate::cli::StartupOptions;
 use crate::connection::{AddressMode, resolve};
@@ -16,18 +18,16 @@ use crate::grid::{self, Item};
 use crate::layout_file::{self, FileAction, LoadError};
 use crate::nt::{ConnectionStatus, NtConnection};
 use crate::sampling::Sampler;
-use crate::struct_view;
+use crate::struct_view::{self, FieldInfo};
 use crate::tabs::{self, TabAction};
 use crate::tree::{DraggedTopic, Folder, TopicEntry};
-use crate::widgets;
 use crate::widgets::shared::{card, format, props, settings};
+use crate::widgets::{self, list_layout};
 use nt4::proto::structs::StructDatabase;
 
 // How the grid looks. All sizes are screen points, not grid pixels: they stay
 // the same at any grid size (see "Grid size" in docs/spec.md).
 
-/// Space between List Layout children, in points.
-const LIST_GAP: f32 = 6.0;
 /// Size of the resize corner at the bottom right of each widget, in points.
 const RESIZE_HANDLE: f32 = 14.0;
 /// Space between a widget's card and the edges of its cells, in points, so
@@ -99,12 +99,24 @@ impl Drag {
 
 /// A widget whose settings dialog is open.
 #[derive(Debug, Clone)]
-struct Editing {
-    tab: usize,
-    /// Its index in the tab's `containers`.
-    index: usize,
-    /// The widget as it was when the dialog opened, for Cancel.
-    original: WidgetContainer,
+enum Editing {
+    /// A widget on the grid: its tab, its index in the tab's `containers`,
+    /// and the widget as it was when the dialog opened, for Cancel.
+    Widget {
+        tab: usize,
+        index: usize,
+        original: WidgetContainer,
+    },
+    /// A List Layout: its tab, its index in the tab's `layouts`, and the
+    /// list (with its children) as it was, for Cancel. `child` is the child
+    /// whose settings are open inside the list's dialog, with that child as
+    /// it was when they opened.
+    List {
+        tab: usize,
+        index: usize,
+        original: Box<LayoutContainer>,
+        child: Option<(usize, WidgetContainer)>,
+    },
 }
 
 /// What to do once the user has answered "save changes?".
@@ -545,7 +557,12 @@ impl DashboardApp {
         let drawn = grid
             .containers
             .iter()
-            .chain(grid.layouts.iter().flat_map(|l| &l.children))
+            .chain(
+                grid.layouts
+                    .iter()
+                    .flat_map(|l| &l.children)
+                    .filter(|w| !list_layout::is_hidden(w)),
+            )
             .filter(|w| widgets::find(&w.widget_type).is_some());
         let mut groups: Vec<(f64, Vec<String>)> = Vec::new();
         for w in drawn {
@@ -705,21 +722,27 @@ impl DashboardApp {
             }
             EditAction::Deselect => self.selected = None,
             EditAction::Edit => {
-                // List Layouts get settings with List Layout editing.
-                if let Some(Item::Widget(index)) = self.selected
-                    && let Some(w) = self
-                        .layout
-                        .tabs
-                        .get(self.current_tab)
-                        .and_then(|t| t.grid_layout.containers.get(index))
-                {
-                    self.editing = Some(Editing {
-                        tab: self.current_tab,
+                let tab = self.current_tab;
+                let Some(grid) = self.layout.tabs.get(tab).map(|t| &t.grid_layout) else {
+                    return;
+                };
+                self.editing = match self.selected {
+                    Some(Item::Widget(index)) => {
+                        grid.containers.get(index).map(|w| Editing::Widget {
+                            tab,
+                            index,
+                            original: w.clone(),
+                        })
+                    }
+                    Some(Item::List(index)) => grid.layouts.get(index).map(|l| Editing::List {
+                        tab,
                         index,
-                        original: w.clone(),
-                    });
-                    self.drag = None;
-                }
+                        original: Box::new(l.clone()),
+                        child: None,
+                    }),
+                    None => None,
+                };
+                self.drag = None;
             }
         }
     }
@@ -744,39 +767,135 @@ impl DashboardApp {
         Some(topic.ty.to_string())
     }
 
-    /// The widget settings dialog, while one is open. Changes show on the
-    /// grid as they're made; Cancel or Esc puts the widget back as it was,
-    /// and the whole visit is one step for undo.
+    /// The settings dialog for a widget or List Layout, while one is open.
+    /// Changes show on the grid as they're made; Cancel or Esc puts things
+    /// back as they were, and the whole visit is one step for undo.
     fn widget_dialog(&mut self, ctx: &egui::Context) {
-        let Some(editing) = &self.editing else { return };
-        let field_info = |w: &WidgetContainer| {
-            let meta = w.struct_meta()?;
+        match self.editing {
+            Some(Editing::Widget { .. }) => self.single_widget_dialog(ctx),
+            Some(Editing::List { .. }) => self.list_dialog(ctx),
+            None => {}
+        }
+    }
+
+    /// The type and struct field info for `widget`'s settings.
+    fn value_facts(&self, widget: &WidgetContainer) -> (Option<String>, Option<FieldInfo>) {
+        let field = widget.struct_meta().and_then(|meta| {
             struct_view::field_info(self.nt.structs()?, &meta.schema_name, &meta.path)
+        });
+        (self.value_type(widget), field)
+    }
+
+    /// The settings of a widget on the grid.
+    fn single_widget_dialog(&mut self, ctx: &egui::Context) {
+        let Some(Editing::Widget { tab, index, .. }) = self.editing else {
+            return;
         };
+        let Some(widget) = self.widget_at(tab, index) else {
+            self.editing = None;
+            return;
+        };
+        let (nt_type, field) = self.value_facts(widget);
         let Some(widget) = self
             .layout
             .tabs
-            .get(editing.tab)
-            .and_then(|t| t.grid_layout.containers.get(editing.index))
+            .get_mut(tab)
+            .and_then(|t| t.grid_layout.containers.get_mut(index))
+        else {
+            return;
+        };
+        let close = widget_window(
+            ctx,
+            "Widget settings",
+            widget,
+            nt_type.as_deref(),
+            field.as_ref(),
+        );
+        match close {
+            Some(true) => self.editing = None,
+            Some(false) => {
+                if let Some(Editing::Widget { original, .. }) = self.editing.take() {
+                    *widget = original;
+                }
+            }
+            None => {}
+        }
+    }
+
+    /// The widget at `index` in tab `tab`'s `containers`.
+    fn widget_at(&self, tab: usize, index: usize) -> Option<&WidgetContainer> {
+        self.layout.tabs.get(tab)?.grid_layout.containers.get(index)
+    }
+
+    /// The settings of a List Layout: its title, label position and
+    /// children. A child's Edit… shows that child's widget settings in the
+    /// same dialog; its Done or Cancel comes back to the list.
+    fn list_dialog(&mut self, ctx: &egui::Context) {
+        let Some(Editing::List {
+            tab, index, child, ..
+        }) = &self.editing
+        else {
+            return;
+        };
+        let (tab, index, child) = (*tab, *index, child.as_ref().map(|(c, _)| *c));
+        let Some(list) = self
+            .layout
+            .tabs
+            .get(tab)
+            .and_then(|t| t.grid_layout.layouts.get(index))
         else {
             self.editing = None;
             return;
         };
-        let field_info = field_info(widget);
-        let nt_type = self.value_type(widget);
-        let Some(widget) = self
+
+        // A child's settings, inside the list's dialog.
+        if let Some(c) = child {
+            let Some(widget) = list.children.get(c) else {
+                self.close_child();
+                return;
+            };
+            let (nt_type, field) = self.value_facts(widget);
+            let heading = format!("{}: {}", list.title, widget.title);
+            let Some(widget) = self
+                .layout
+                .tabs
+                .get_mut(tab)
+                .and_then(|t| t.grid_layout.layouts.get_mut(index))
+                .and_then(|l| l.children.get_mut(c))
+            else {
+                return;
+            };
+            match widget_window(ctx, &heading, widget, nt_type.as_deref(), field.as_ref()) {
+                Some(true) => self.close_child(),
+                Some(false) => {
+                    if let Some(Editing::List {
+                        child: Some((_, original)),
+                        ..
+                    }) = &self.editing
+                    {
+                        *widget = original.clone();
+                    }
+                    self.close_child();
+                }
+                None => {}
+            }
+            return;
+        }
+
+        let Some(list) = self
             .layout
             .tabs
-            .get_mut(editing.tab)
-            .and_then(|t| t.grid_layout.containers.get_mut(editing.index))
+            .get_mut(tab)
+            .and_then(|t| t.grid_layout.layouts.get_mut(index))
         else {
             return;
         };
         let mut close = None;
-        egui::Modal::new(egui::Id::unique("widget_settings")).show(ctx, |ui| {
-            ui.heading("Widget settings");
+        let mut action = None;
+        egui::Modal::new(egui::Id::unique("list_settings")).show(ctx, |ui| {
+            ui.heading("List settings");
             ui.add_space(4.0);
-            settings::show(ui, widget, nt_type.as_deref(), field_info.as_ref());
+            action = list_layout::settings(ui, list);
             ui.add_space(4.0);
             ui.separator();
             ui.horizontal(|ui| {
@@ -786,34 +905,32 @@ impl DashboardApp {
                 if ui.button("Cancel").on_hover_text("Esc").clicked() {
                     close = Some(false);
                 }
-                ui.separator();
-                let custom = settings::has_custom_settings(widget);
-                if ui
-                    .add_enabled(custom, egui::Button::new("Reset settings"))
-                    .on_hover_text(
-                        "Put every setting back to its default. The title is kept; \
-                         Cancel still undoes this.",
-                    )
-                    .on_disabled_hover_text("All settings are at their defaults")
-                    .clicked()
-                {
-                    settings::reset_settings(widget);
-                }
             });
         });
-        // Esc cancels. A click outside does nothing, so a stray click
-        // doesn't throw away the changes.
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             close = Some(false);
+        }
+        if let Some(list_layout::ListAction::EditChild(c)) = action
+            && let Some(widget) = list.children.get(c)
+            && let Some(Editing::List { child, .. }) = &mut self.editing
+        {
+            *child = Some((c, widget.clone()));
         }
         match close {
             Some(true) => self.editing = None,
             Some(false) => {
-                if let Some(editing) = self.editing.take() {
-                    *widget = editing.original;
+                if let Some(Editing::List { original, .. }) = self.editing.take() {
+                    *list = *original;
                 }
             }
             None => {}
+        }
+    }
+
+    /// Leave a child's settings and go back to its list's.
+    fn close_child(&mut self) {
+        if let Some(Editing::List { child, .. }) = &mut self.editing {
+            *child = None;
         }
     }
 
@@ -925,8 +1042,7 @@ impl DashboardApp {
                 if body.clicked() || body.secondary_clicked() || body.drag_started() {
                     self.selected = Some(item);
                 }
-                let is_widget = matches!(item, Item::Widget(_));
-                if is_widget && body.double_clicked() {
+                if body.double_clicked() {
                     menu_action = Some((item, EditAction::Edit));
                 }
                 body.context_menu(|ui| {
@@ -937,9 +1053,6 @@ impl DashboardApp {
                         ("Delete", EditAction::Delete),
                     ];
                     for (label, action) in actions {
-                        if action == EditAction::Edit && !is_widget {
-                            continue;
-                        }
                         let button = egui::Button::new(label)
                             .shortcut_text(ctx.format_shortcut(&action.shortcut()));
                         if ui.add(button).clicked() {
@@ -1066,6 +1179,54 @@ impl DashboardApp {
     }
 }
 
+/// One widget's settings in a dialog titled `heading`, with Done, Cancel
+/// and Reset settings. Returns `Some(true)` for Done, `Some(false)` for
+/// Cancel or Esc, `None` while it stays open. Changes are made to `widget`
+/// as they happen; on Cancel the caller puts the original back.
+fn widget_window(
+    ctx: &egui::Context,
+    heading: &str,
+    widget: &mut WidgetContainer,
+    nt_type: Option<&str>,
+    field: Option<&FieldInfo>,
+) -> Option<bool> {
+    let mut close = None;
+    egui::Modal::new(egui::Id::unique("widget_settings")).show(ctx, |ui| {
+        ui.heading(heading);
+        ui.add_space(4.0);
+        settings::show(ui, widget, nt_type, field);
+        ui.add_space(4.0);
+        ui.separator();
+        ui.horizontal(|ui| {
+            if ui.button("Done").clicked() {
+                close = Some(true);
+            }
+            if ui.button("Cancel").on_hover_text("Esc").clicked() {
+                close = Some(false);
+            }
+            ui.separator();
+            let custom = settings::has_custom_settings(widget);
+            if ui
+                .add_enabled(custom, egui::Button::new("Reset settings"))
+                .on_hover_text(
+                    "Put every setting back to its default. The title is kept; \
+                     Cancel still undoes this.",
+                )
+                .on_disabled_hover_text("All settings are at their defaults")
+                .clicked()
+            {
+                settings::reset_settings(widget);
+            }
+        });
+    });
+    // Esc cancels. A click outside does nothing, so a stray click doesn't
+    // throw away the changes.
+    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        close = Some(false);
+    }
+    close
+}
+
 /// Draw one grid item (a widget, or a List Layout with its children) in
 /// `rect`, in screen points.
 fn draw_item(
@@ -1084,28 +1245,9 @@ fn draw_item(
             };
             card::draw(painter, visuals, rect, w, value_of(w).as_ref());
         }
-        // A List Layout stacks its children top to bottom, each at its own
-        // height and the layout's full width; children that don't fit are cut off.
         Item::List(i) => {
             let Some(l) = grid.layouts.get(i) else { return };
-            let body = card::draw_card(painter, visuals, rect, &l.title).shrink(LIST_GAP);
-            let inside = painter.with_clip_rect(body.intersect(painter.clip_rect()));
-            let mut top = body.min.y;
-            for child in &l.children {
-                let height = child.rect.height as f32;
-                let child_rect = Rect::from_min_size(
-                    egui::pos2(body.min.x, top),
-                    Vec2::new(body.width(), height),
-                );
-                card::draw(
-                    &inside,
-                    visuals,
-                    child_rect,
-                    child,
-                    value_of(child).as_ref(),
-                );
-                top += height + LIST_GAP;
-            }
+            list_layout::draw(painter, visuals, rect, l, value_of);
         }
     }
 }
