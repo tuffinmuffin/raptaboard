@@ -38,12 +38,11 @@ pub fn dividers(props: &Map<String, Json>) -> bool {
     props.get(DIVIDERS).and_then(Json::as_bool).unwrap_or(false)
 }
 
-/// Heights to draw dividers at, between each pair of `rows`: halfway into
-/// the gap between them.
+/// Heights to draw dividers at: halfway into the gap below each row, the
+/// last one included, so a last child that doesn't fill the list isn't
+/// left floating. (A line past the list's bottom is cut off by drawing.)
 pub fn divider_ys(rows: &[ChildRow]) -> Vec<f32> {
-    rows.windows(2)
-        .map(|pair| (pair[0].row.max.y + pair[1].row.min.y) / 2.0)
-        .collect()
+    rows.iter().map(|r| r.row.max.y + CHILD_GAP / 2.0).collect()
 }
 
 // Sizes, in screen points.
@@ -915,9 +914,11 @@ mod tests {
             inside: false,
         };
         let placed = rows(body(), &children, hidden, |_| 0.0);
-        // Rows 0..80, 86..166, 172..252: lines at 83 and 169.
-        assert_eq!(divider_ys(&placed), [83.0, 169.0]);
-        assert!(divider_ys(&placed[..1]).is_empty());
+        // Rows 0..80, 86..166, 172..252: lines at 83, 169, and 255 below
+        // the last.
+        assert_eq!(divider_ys(&placed), [83.0, 169.0, 255.0]);
+        assert_eq!(divider_ys(&placed[..1]), [83.0]);
+        assert!(divider_ys(&[]).is_empty());
         // Off unless ticked, and drawing the settings adds nothing.
         let mut l = list(children.to_vec(), Some("TOP"));
         assert!(!dividers(&l.properties));
