@@ -5,8 +5,9 @@ An FRC driver dashboard written in Rust, from FRC Team 3200 (Raptacon). The goal
 add **widget plugins**: small WebAssembly modules that load without rebuilding the dashboard and draw
 a NetworkTables table, such as an arm subsystem.
 
-Status: **milestone 1 in progress.** The app opens an Elastic layout and shows its tabs and widgets
-on the grid, and connects to the robot over NetworkTables (status and topic count in the settings
+Status: **milestone 2 in progress.** The app opens an Elastic layout and shows its tabs and widgets
+on the grid, where tabs can be added, renamed and reordered and widgets moved and resized (the
+"🔓 Unlocked" button locks them; saving comes next). It connects to the robot over NetworkTables (status and topic count in the settings
 bar) with a NetworkTables tree of live values, including WPILib structs such as Pose2d. Text
 Display and Boolean Box widgets show live values; other widget types are placeholders for now.
 

@@ -183,7 +183,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    raptaboard. Milestone 1 is done; the OpenGL (glow) fallback for laptops without DX12 is an option
    for milestone 2 if a team laptop needs it.
 2. Grid and layouts: tabs, snap grid, drag from tree, List Layout, lock, layout save, settings,
-   hotkeys.
+   hotkeys. **Started**: tabs (add, close with a confirmation if it has widgets, rename, reorder;
+   Ctrl+1..9, Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+T, Ctrl+W, Ctrl+Left/Right), moving and resizing
+   widgets and List Layouts on the snap grid (no overlaps), and the layout lock. With no layout
+   file the app starts with Elastic's empty "Teleoperated" and "Autonomous" tabs. Next: layout save.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, Mechanism2d,

@@ -109,7 +109,55 @@ pub struct LayoutContainer {
     pub extra: Map<String, Value>,
 }
 
+impl Tab {
+    /// An empty tab called `name`.
+    ///
+    /// ```
+    /// let tab = raptaboard_layout::Tab::new("Pit");
+    /// assert_eq!(tab.name, "Pit");
+    /// assert!(tab.grid_layout.containers.is_empty());
+    /// ```
+    pub fn new(name: impl Into<String>) -> Self {
+        Tab {
+            name: name.into(),
+            grid_layout: GridLayout::default(),
+            extra: Map::new(),
+        }
+    }
+}
+
+impl Default for ElasticLayout {
+    /// A new layout like Elastic starts with: tabs "Teleoperated" and
+    /// "Autonomous", both empty, on a 128-pixel grid.
+    fn default() -> Self {
+        ElasticLayout {
+            version: 1.0,
+            grid_size: Some(DEFAULT_GRID_SIZE),
+            tabs: vec![Tab::new("Teleoperated"), Tab::new("Autonomous")],
+            extra: Map::new(),
+        }
+    }
+}
+
 impl ElasticLayout {
+    /// A tab name not used yet: `base`, or `base 2`, `base 3` and so on.
+    ///
+    /// ```
+    /// let layout = raptaboard_layout::ElasticLayout::default();
+    /// assert_eq!(layout.unused_tab_name("Pit"), "Pit");
+    /// assert_eq!(layout.unused_tab_name("Autonomous"), "Autonomous 2");
+    /// ```
+    pub fn unused_tab_name(&self, base: &str) -> String {
+        let taken = |name: &str| self.tabs.iter().any(|t| t.name == name);
+        if !taken(base) {
+            return base.to_owned();
+        }
+        (2..)
+            .map(|n| format!("{base} {n}"))
+            .find(|name| !taken(name))
+            .expect("some number is free")
+    }
+
     /// Parse an Elastic layout file. Accepts any 1.x version.
     pub fn from_json(text: &str) -> Result<Self, LayoutError> {
         let layout: Self = serde_json::from_str(text)?;
