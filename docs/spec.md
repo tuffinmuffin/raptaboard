@@ -178,7 +178,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    (17.0 to 15.7%); most of the rest is redrawing the window 50 times a second. Windows, 2026-11-17 on a
    20-thread i7-13800H laptop (not a DS laptop), same test: 15.6% of one core with the tree shown and 15.1%
    hidden (0.78% and 0.75% of the machine); Elastic 2027.0.0-alpha10 61.5% of one core (3.1%), about 4
-   times as much. ```
+   times as much. A Windows 11 ARM VM under Parallels drew with wgpu's software fallback (no
+   hardware DX12) and used about 330% of one core, so VM numbers measure the software renderer, not
+   raptaboard. Milestone 1 is done; the OpenGL (glow) fallback for laptops without DX12 is an option
+   for milestone 2 if a team laptop needs it.
 2. Grid and layouts: tabs, snap grid, drag from tree, List Layout, lock, layout save, settings,
    hotkeys.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
