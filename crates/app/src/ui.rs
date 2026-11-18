@@ -764,6 +764,19 @@ impl DashboardApp {
                 if ui.button("Cancel").on_hover_text("Esc").clicked() {
                     close = Some(false);
                 }
+                ui.separator();
+                let custom = widget_settings::has_custom_settings(widget);
+                if ui
+                    .add_enabled(custom, egui::Button::new("Reset settings"))
+                    .on_hover_text(
+                        "Put every setting back to its default. The title is kept; \
+                         Cancel still undoes this.",
+                    )
+                    .on_disabled_hover_text("All settings are at their defaults")
+                    .clicked()
+                {
+                    widget_settings::reset_settings(widget);
+                }
             });
         });
         // Esc cancels. A click outside does nothing, so a stray click

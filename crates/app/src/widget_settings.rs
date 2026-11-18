@@ -12,7 +12,7 @@ use serde_json::Value as Json;
 
 use crate::struct_view::{EnumDisplay, FieldInfo};
 use crate::widgets::{
-    self, DEFAULT_FALSE_COLOR, DEFAULT_FONT_SIZE, DEFAULT_TRUE_COLOR, IntFormat,
+    self, DEFAULT_FALSE_COLOR, DEFAULT_FONT_SIZE, DEFAULT_PERIOD_S, DEFAULT_TRUE_COLOR, IntFormat,
     MAX_DECIMAL_PLACES, MAX_FONT_SIZE, MAX_INT_DIGITS, MIN_FONT_SIZE, MIN_PERIOD_S, ValueKind,
     WidgetKind, keys,
 };
@@ -41,6 +41,68 @@ pub fn set_property(props: &mut serde_json::Map<String, Json>, key: &str, value:
             props.remove(key);
         }
     }
+}
+
+/// Settings [`reset_settings`] removes when they're set: raptaboard's own,
+/// which all default to "not set".
+const RESETTABLE: [&str; 5] = [
+    keys::DECIMAL_PLACES,
+    keys::FONT_SIZE,
+    keys::ENUM_DISPLAY,
+    keys::INT_FORMAT,
+    keys::INT_DIGITS,
+];
+
+/// Whether any of `widget`'s settings differ from the defaults, so
+/// [`reset_settings`] would change something. The title doesn't count.
+pub fn has_custom_settings(widget: &WidgetContainer) -> bool {
+    let mut reset = widget.clone();
+    reset_settings(&mut reset);
+    reset != *widget
+}
+
+/// Put `widget`'s settings back to their defaults: update period 0.06 s,
+/// Boolean Box colors green and red, and none of raptaboard's own settings.
+/// The title and what the widget shows (`topic`, `struct_meta`,
+/// `data_type`) are kept, as are settings for widget types not built yet.
+///
+/// ```
+/// use raptaboard::widget_settings::{has_custom_settings, reset_settings};
+/// use raptaboard::widgets::for_topic;
+/// use raptaboard_layout::Rect;
+/// let at = Rect { x: 0.0, y: 0.0, width: 128.0, height: 128.0 };
+/// let mut w = for_topic("/Sine", "double", None, at).unwrap();
+/// assert!(!has_custom_settings(&w));
+/// w.title = "Wave".into();
+/// w.properties.insert("decimal_places".into(), 2.into());
+/// w.properties.insert("period".into(), 1.0.into());
+/// assert!(has_custom_settings(&w));
+/// reset_settings(&mut w);
+/// assert!(!has_custom_settings(&w));
+/// assert_eq!(w.title, "Wave");
+/// assert_eq!(w.period(), Some(0.06));
+/// ```
+pub fn reset_settings(widget: &mut WidgetContainer) {
+    let props = &mut widget.properties;
+    for key in RESETTABLE {
+        props.remove(key);
+    }
+    if widget_period(props) != Some(DEFAULT_PERIOD_S) {
+        set_property(props, keys::PERIOD, Some(DEFAULT_PERIOD_S.into()));
+    }
+    // Elastic saves the default colors in every Boolean Box; leave those.
+    for (key, default) in [
+        (keys::TRUE_COLOR, DEFAULT_TRUE_COLOR),
+        (keys::FALSE_COLOR, DEFAULT_FALSE_COLOR),
+    ] {
+        if props.contains_key(key) && widgets::color_property(props, key) != Some(default) {
+            props.remove(key);
+        }
+    }
+}
+
+fn widget_period(props: &serde_json::Map<String, Json>) -> Option<f64> {
+    props.get(keys::PERIOD).and_then(Json::as_f64)
 }
 
 /// Draw the settings for `widget` and apply any changes to it at once.
@@ -431,5 +493,36 @@ mod tests {
         // Removing a key that isn't there is fine.
         set_property(&mut props, "nothing", None);
         assert!(props.is_empty());
+    }
+
+    #[test]
+    fn reset_keeps_bindings_and_elastic_defaults() {
+        let mut w = widget("Boolean Box", false);
+        // As Elastic saves it: the default colors written out. Nothing to reset.
+        w.properties
+            .insert(keys::TRUE_COLOR.into(), 4283215696u32.into());
+        w.properties
+            .insert(keys::FALSE_COLOR.into(), 4294198070u32.into());
+        assert!(!has_custom_settings(&w));
+        // A custom color and a setting for some other widget type.
+        w.properties
+            .insert(keys::TRUE_COLOR.into(), 0xFF2196F3u32.into());
+        w.properties.insert("num_of_ticks".into(), 5.into());
+        assert!(has_custom_settings(&w));
+        reset_settings(&mut w);
+        assert!(!w.properties.contains_key(keys::TRUE_COLOR));
+        assert_eq!(w.properties[keys::FALSE_COLOR], 4294198070u32);
+        assert_eq!(w.properties["num_of_ticks"], 5);
+        assert_eq!(w.topic(), Some("/Arm/state"));
+        assert_eq!(w.properties[keys::DATA_TYPE], "boolean");
+
+        // A struct field keeps its field.
+        let mut field = widget("Text Display", true);
+        field
+            .properties
+            .insert(keys::ENUM_DISPLAY.into(), "both".into());
+        reset_settings(&mut field);
+        assert!(field.struct_meta().is_some());
+        assert!(!has_custom_settings(&field));
     }
 }

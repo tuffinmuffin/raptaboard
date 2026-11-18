@@ -215,9 +215,14 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    `decimal_places` for double/float, `int_format` (`decimal`, `hex` as `0x1A`, `binary` as
    `0b11010`) and `int_digits` (zero padding, like `%08X`) for int and enum numbers, `enum_display` (`name`, `number` or `both`) for enum
    struct fields, and `font_size` for any value. Changes show on the grid as they're made; Cancel or Esc undoes
-   them, and one visit to the dialog is one undo step. Settings at their default are left out of
+   them, and one visit to the dialog is one undo step. "Reset settings" puts every setting back
+   to its default (period 0.06 s, default colors, no raptaboard settings) but keeps the title and
+   the topic or field. Settings at their default are left out of
    the file. Next:
    - List Layout editing (drop into a list, create one).
+   - Color by value for number widgets (ints and floats): a background color chosen by thresholds
+     (below 10 red, 10 to 20 yellow, above green), or a gradient between colors across a range.
+     raptaboard-only settings in the widget dialog.
    - Find a topic's widgets: selecting a topic (or struct field) in the NT tree highlights every
      widget on the open tab bound to it, and marks other tabs that have one, so it's easy to see
      where a value is already shown before adding another.
