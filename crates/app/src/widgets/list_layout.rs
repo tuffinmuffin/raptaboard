@@ -26,6 +26,9 @@ pub const LABEL_POSITION: &str = "label_position";
 /// On a child: `true` keeps it in the list without showing it (raptaboard;
 /// Elastic ignores it and shows the child). Left out when shown.
 pub const HIDDEN: &str = "hidden";
+/// `true` writes each child's label over its value instead of beside it,
+/// to save space (raptaboard; Elastic ignores it). Left out when off.
+pub const LABEL_INSIDE: &str = "label_inside";
 
 // Sizes, in screen points.
 
@@ -44,6 +47,10 @@ const LABEL_FONT_SIZE: f32 = 13.0;
 const SIDE_LABEL_GAP: f32 = 5.0;
 /// The most of a row's width a side label may take, from 0 to 1.
 const MAX_SIDE_LABEL: f32 = 0.5;
+/// Space around a label drawn inside a child's value, in points.
+const INSIDE_LABEL_PAD: f32 = 2.0;
+/// How solid the backing behind an inside label is, from 0 (clear) to 1.
+const INSIDE_LABEL_BACKING: f32 = 0.8;
 
 /// Where a List Layout puts each child's title.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -118,6 +125,33 @@ pub fn label_position(props: &Map<String, Json>) -> LabelPosition {
         .unwrap_or_default()
 }
 
+/// How a list labels its children: `label_position` and `label_inside`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Labels {
+    /// Where each label goes.
+    pub position: LabelPosition,
+    /// Over the value, rather than beside it.
+    pub inside: bool,
+}
+
+/// The `label_position` and `label_inside` settings together.
+///
+/// ```
+/// use raptaboard::widgets::list_layout::{labels, LabelPosition};
+/// let props = serde_json::json!({"label_position": "TOP", "label_inside": true});
+/// let l = labels(props.as_object().unwrap());
+/// assert_eq!((l.position, l.inside), (LabelPosition::Top, true));
+/// ```
+pub fn labels(props: &Map<String, Json>) -> Labels {
+    Labels {
+        position: label_position(props),
+        inside: props
+            .get(LABEL_INSIDE)
+            .and_then(Json::as_bool)
+            .unwrap_or(false),
+    }
+}
+
 /// Whether `child` is kept in its list without being shown (`hidden`).
 pub fn is_hidden(child: &WidgetContainer) -> bool {
     child
@@ -136,7 +170,9 @@ pub struct ChildRow {
     pub row: Rect,
     /// Where the child's value is drawn.
     pub content: Rect,
-    /// Where its title is written; `None` when labels are hidden.
+    /// Where its title is written; `None` when labels are hidden. With
+    /// labels inside, this is part of `content`, and the label is drawn
+    /// over the value.
     pub label: Option<Rect>,
 }
 
@@ -149,14 +185,16 @@ pub fn content_height(child: &WidgetContainer) -> f32 {
 
 /// Lay the shown children out top to bottom in `body`; hidden ones take no
 /// space. `label_width` gives a child's title width (by its index), for
-/// labels at the side (they take at most half the row). Rows past the
+/// labels at the side (they take at most half the row). Labels inside take
+/// no room of their own: the value gets the whole row. Rows past the
 /// bottom of `body` are still returned; drawing cuts them off.
 pub fn rows(
     body: Rect,
     children: &[WidgetContainer],
-    position: LabelPosition,
+    labels: Labels,
     label_width: impl Fn(usize) -> f32,
 ) -> Vec<ChildRow> {
+    let Labels { position, inside } = labels;
     let mut top = body.min.y;
     children
         .iter()
@@ -165,7 +203,9 @@ pub fn rows(
         .map(|(i, child)| {
             let content_height = content_height(child);
             let height = match position {
-                LabelPosition::Top | LabelPosition::Bottom => LABEL_HEIGHT + content_height,
+                LabelPosition::Top | LabelPosition::Bottom if !inside => {
+                    LABEL_HEIGHT + content_height
+                }
                 _ => content_height,
             };
             let row = Rect::from_min_size(
@@ -174,6 +214,25 @@ pub fn rows(
             );
             top += height + CHILD_GAP;
             let side = (label_width(i)).min(row.width() * MAX_SIDE_LABEL);
+            if inside {
+                let label = match position {
+                    LabelPosition::Top => {
+                        Some(row.with_max_y(row.min.y + LABEL_HEIGHT.min(row.height())))
+                    }
+                    LabelPosition::Bottom => {
+                        Some(row.with_min_y(row.max.y - LABEL_HEIGHT.min(row.height())))
+                    }
+                    LabelPosition::Left => Some(row.with_max_x(row.min.x + side)),
+                    LabelPosition::Right => Some(row.with_min_x(row.max.x - side)),
+                    LabelPosition::Hidden => None,
+                };
+                return ChildRow {
+                    index: i,
+                    row,
+                    content: row,
+                    label,
+                };
+            }
             let (content, label) = match position {
                 LabelPosition::Top => {
                     let (label, content) = row.split_top_bottom_at_y(row.min.y + LABEL_HEIGHT);
@@ -203,6 +262,58 @@ pub fn rows(
         .collect()
 }
 
+/// The area children are laid out in, for a list whose card is `card`:
+/// below the title, less the card's margin. Matches [`draw`].
+pub fn body_rect(card: Rect) -> Rect {
+    card.with_min_y(card.min.y + card::TITLE_HEIGHT)
+        .shrink(card::BODY_MARGIN)
+}
+
+/// Each shown child's row for a list whose card is `card`, for finding
+/// what's under the pointer. (Side labels' widths don't matter for that.)
+pub fn rows_on_screen(card: Rect, list: &LayoutContainer) -> Vec<ChildRow> {
+    rows(
+        body_rect(card),
+        &list.children,
+        labels(&list.properties),
+        |_| 0.0,
+    )
+}
+
+/// Where a child dropped at height `y` goes among a list's children: before
+/// the first shown child whose row's middle is below `y`, or last.
+/// `children` is how many children the list has, hidden ones included.
+///
+/// ```
+/// use eframe::egui::{pos2, vec2, Rect};
+/// use raptaboard::widgets::list_layout::{insert_index, ChildRow};
+/// let row = |index, top: f32| {
+///     let r = Rect::from_min_size(pos2(0.0, top), vec2(100.0, 50.0));
+///     ChildRow { index, row: r, content: r, label: None }
+/// };
+/// let rows = [row(0, 0.0), row(2, 60.0)]; // child 1 is hidden
+/// assert_eq!(insert_index(&rows, 3, 10.0), 0);
+/// assert_eq!(insert_index(&rows, 3, 40.0), 2);
+/// assert_eq!(insert_index(&rows, 3, 200.0), 3);
+/// ```
+pub fn insert_index(rows: &[ChildRow], children: usize, y: f32) -> usize {
+    rows.iter()
+        .find(|r| r.row.center().y > y)
+        .map_or(children, |r| r.index)
+}
+
+/// The height to draw the "drops here" line at, for inserting at `at`:
+/// halfway into the gap above the first shown row at or after `at`, below
+/// the last row, or at the top of `body` for an empty list.
+pub fn insert_line_y(rows: &[ChildRow], at: usize, body: Rect) -> f32 {
+    match rows.iter().find(|r| r.index >= at) {
+        Some(r) => r.row.min.y - CHILD_GAP / 2.0,
+        None => rows
+            .last()
+            .map_or(body.min.y, |r| r.row.max.y + CHILD_GAP / 2.0),
+    }
+}
+
 /// Draw a List Layout in `rect`: its card and title, then each child's
 /// label and value. `value_of` gives a child's value.
 pub fn draw(
@@ -213,7 +324,7 @@ pub fn draw(
     value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
 ) {
     let body = card::draw_card(painter, visuals, rect, &list.title);
-    let position = label_position(&list.properties);
+    let labels = labels(&list.properties);
     let font = egui::FontId::proportional(LABEL_FONT_SIZE);
     card::draw_clipped(painter, body, |painter, body| {
         let width = |i: usize| {
@@ -223,9 +334,11 @@ pub fn draw(
                 .size()
                 .x
         };
-        for place in rows(body, &list.children, position, width) {
+        for place in rows(body, &list.children, labels, width) {
             let child = &list.children[place.index];
-            if let Some(label) = place.label {
+            if let Some(label) = place.label
+                && !labels.inside
+            {
                 painter
                     .with_clip_rect(label.intersect(painter.clip_rect()))
                     .text(
@@ -246,8 +359,55 @@ pub fn draw(
                 ),
                 None => card::draw_message(painter, visuals, place.content, &child.widget_type),
             }
+            // Inside: over the value, on a backing so it reads over anything.
+            if let Some(label) = place.label
+                && labels.inside
+            {
+                draw_inside_label(
+                    painter,
+                    visuals,
+                    label,
+                    labels.position,
+                    &child.title,
+                    &font,
+                );
+            }
         }
     });
+}
+
+/// A label drawn over a child's value: the title on a slightly see-through
+/// backing in the card's color, at the left of `area` (or the right, for
+/// labels on the right).
+fn draw_inside_label(
+    painter: &egui::Painter,
+    visuals: &egui::Visuals,
+    area: Rect,
+    position: LabelPosition,
+    title: &str,
+    font: &egui::FontId,
+) {
+    let painter = painter.with_clip_rect(area.intersect(painter.clip_rect()));
+    let galley = painter.layout_no_wrap(title.to_owned(), font.clone(), visuals.text_color());
+    let size = galley.size();
+    let x = match position {
+        LabelPosition::Right => area.max.x - size.x - INSIDE_LABEL_PAD,
+        _ => area.min.x + INSIDE_LABEL_PAD,
+    };
+    let y = match position {
+        LabelPosition::Top => area.min.y + INSIDE_LABEL_PAD,
+        LabelPosition::Bottom => area.max.y - size.y - INSIDE_LABEL_PAD,
+        _ => area.center().y - size.y / 2.0,
+    };
+    let text_rect = Rect::from_min_size(egui::pos2(x, y), size);
+    painter.rect_filled(
+        text_rect.expand(INSIDE_LABEL_PAD),
+        egui::CornerRadius::same(card::BODY_CORNER_RADIUS / 2),
+        visuals
+            .extreme_bg_color
+            .gamma_multiply(INSIDE_LABEL_BACKING),
+    );
+    painter.galley(text_rect.min, galley, visuals.text_color());
 }
 
 /// Move the child at `from` to `to` in `list`, shifting the ones between.
@@ -281,10 +441,8 @@ pub enum ListAction {
 
 /// Draw the settings for `list` and apply changes at once: its title, the
 /// label position, and its children in order, each with a Shown checkbox
-/// and buttons to move it up or down or edit it. Edit… is returned as
-/// [`ListAction::EditChild`] for the window to carry out. Children can't be
-/// deleted here: until widgets can be dragged into a list, a deleted child
-/// couldn't be put back, so hiding one is the way to take it out of view.
+/// and buttons to move it up or down, edit it, or delete it. Edit… is
+/// returned as [`ListAction::EditChild`] for the window to carry out.
 pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAction> {
     let mut action = None;
     egui::Grid::new("list_settings")
@@ -310,6 +468,21 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
                     &mut list.properties,
                     LABEL_POSITION,
                     Some(position.key().into()),
+                );
+            }
+            let mut inside = labels(&list.properties).inside;
+            let checkbox = ui
+                .add_enabled(
+                    position != LabelPosition::Hidden,
+                    egui::Checkbox::new(&mut inside, "Inside"),
+                )
+                .on_hover_text("Write each label over its value, to save space")
+                .on_disabled_hover_text("Labels are hidden");
+            if checkbox.changed() {
+                set_property(
+                    &mut list.properties,
+                    LABEL_INSIDE,
+                    inside.then_some(true.into()),
                 );
             }
             ui.end_row();
@@ -360,12 +533,25 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
                     if ui.button("Edit…").clicked() {
                         action = Some(ListAction::EditChild(i));
                     }
+                    if ui
+                        .button("Delete")
+                        .on_hover_text(
+                            "Delete it. Cancel or undo brings it back; to keep it but not \
+                             show it, untick Shown.",
+                        )
+                        .clicked()
+                    {
+                        change = Some((i, Change::Delete));
+                    }
                 });
                 ui.end_row();
             }
         });
     match change {
         Some((i, Change::Move(to))) => move_child(list, i, to),
+        Some((i, Change::Delete)) => {
+            list.children.remove(i);
+        }
         Some((i, Change::Show(shown))) => {
             set_property(
                 &mut list.children[i].properties,
@@ -382,6 +568,7 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
 enum Change {
     Move(usize),
     Show(bool),
+    Delete,
 }
 
 #[cfg(test)]
@@ -432,7 +619,15 @@ mod tests {
         // A one-cell child gets 128 - 48 = 80 for its value; a tiny one
         // still gets 32.
         let children = [child("a", 128.0), child("b", 10.0)];
-        let top = rows(body(), &children, LabelPosition::Top, |_| 30.0);
+        let top = rows(
+            body(),
+            &children,
+            Labels {
+                position: LabelPosition::Top,
+                inside: false,
+            },
+            |_| 30.0,
+        );
         assert_eq!(top[0].label.unwrap().height(), LABEL_HEIGHT);
         assert_eq!(top[0].content.height(), 80.0);
         assert_eq!(top[0].content.min.y, LABEL_HEIGHT);
@@ -441,12 +636,28 @@ mod tests {
         assert_eq!(top[1].content.height(), MIN_CHILD_CONTENT);
 
         // Below: value first, then the label.
-        let bottom = rows(body(), &children, LabelPosition::Bottom, |_| 30.0);
+        let bottom = rows(
+            body(),
+            &children,
+            Labels {
+                position: LabelPosition::Bottom,
+                inside: false,
+            },
+            |_| 30.0,
+        );
         assert_eq!(bottom[0].content.min.y, 0.0);
         assert_eq!(bottom[0].label.unwrap().min.y, 80.0);
 
         // Hidden: the value takes the whole row, and rows are shorter.
-        let hidden = rows(body(), &children, LabelPosition::Hidden, |_| 30.0);
+        let hidden = rows(
+            body(),
+            &children,
+            Labels {
+                position: LabelPosition::Hidden,
+                inside: false,
+            },
+            |_| 30.0,
+        );
         assert_eq!(hidden[0].label, None);
         assert_eq!(hidden[0].content, hidden[0].row);
         assert_eq!(hidden[1].row.min.y, 80.0 + CHILD_GAP);
@@ -455,12 +666,28 @@ mod tests {
     #[test]
     fn side_labels_take_their_width_up_to_half() {
         let children = [child("a", 128.0)];
-        let left = rows(body(), &children, LabelPosition::Left, |_| 30.0);
+        let left = rows(
+            body(),
+            &children,
+            Labels {
+                position: LabelPosition::Left,
+                inside: false,
+            },
+            |_| 30.0,
+        );
         assert_eq!(left[0].label.unwrap().width(), 30.0);
         assert_eq!(left[0].content.min.x, 30.0 + SIDE_LABEL_GAP);
         assert_eq!(left[0].content.height(), 80.0);
         // A long title is cut to half the row.
-        let right = rows(body(), &children, LabelPosition::Right, |_| 500.0);
+        let right = rows(
+            body(),
+            &children,
+            Labels {
+                position: LabelPosition::Right,
+                inside: false,
+            },
+            |_| 500.0,
+        );
         assert_eq!(right[0].label.unwrap().width(), 100.0);
         assert_eq!(right[0].content.max.x, 100.0 - SIDE_LABEL_GAP);
     }
@@ -508,8 +735,9 @@ mod tests {
         let before = l.clone();
         let text = draw_settings(&mut l);
         assert_eq!(l, before);
-        assert!(!text.iter().any(|t| t == "Delete"), "{text:?}");
-        for expected in ["Labels", "Top", "Children", "speed", "angle", "Edit…"] {
+        for expected in [
+            "Labels", "Top", "Children", "speed", "angle", "Edit…", "Delete",
+        ] {
             assert!(text.iter().any(|t| t == expected), "{expected} in {text:?}");
         }
         // An empty list says so.
@@ -523,9 +751,92 @@ mod tests {
         children[1].properties.insert(HIDDEN.into(), true.into());
         assert!(is_hidden(&children[1]));
         assert!(!is_hidden(&children[0]));
-        let placed = rows(body(), &children, LabelPosition::Hidden, |_| 0.0);
+        let placed = rows(
+            body(),
+            &children,
+            Labels {
+                position: LabelPosition::Hidden,
+                inside: false,
+            },
+            |_| 0.0,
+        );
         // "b" is skipped, and "c" moves up into its place.
         assert_eq!(placed.iter().map(|r| r.index).collect::<Vec<_>>(), [0, 2]);
         assert_eq!(placed[1].row.min.y, 80.0 + CHILD_GAP);
+    }
+
+    #[test]
+    fn drop_lines_sit_between_rows() {
+        let children = [child("a", 128.0), child("b", 128.0)];
+        let placed = rows(
+            body(),
+            &children,
+            Labels {
+                position: LabelPosition::Hidden,
+                inside: false,
+            },
+            |_| 0.0,
+        );
+        // Rows are 80 tall with a 6 gap: 0..80 and 86..166.
+        assert_eq!(insert_line_y(&placed, 0, body()), -CHILD_GAP / 2.0);
+        assert_eq!(insert_line_y(&placed, 1, body()), 83.0);
+        assert_eq!(insert_line_y(&placed, 2, body()), 166.0 + CHILD_GAP / 2.0);
+        assert_eq!(insert_line_y(&[], 0, body()), 0.0);
+        // The drop index follows the rows' middles.
+        assert_eq!(insert_index(&placed, 2, 39.0), 0);
+        assert_eq!(insert_index(&placed, 2, 41.0), 1);
+        assert_eq!(insert_index(&placed, 2, 127.0), 2);
+        // The body sits below the card's title, inside its margin.
+        let card = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(256.0, 512.0));
+        let inside = body_rect(card);
+        assert_eq!(inside.min.y, card::TITLE_HEIGHT + card::BODY_MARGIN);
+        assert_eq!(inside.width(), 256.0 - 2.0 * card::BODY_MARGIN);
+    }
+
+    #[test]
+    fn inside_labels_take_no_room() {
+        let children = [child("a", 128.0), child("b", 128.0)];
+        let inside = |position| {
+            rows(
+                body(),
+                &children,
+                Labels {
+                    position,
+                    inside: true,
+                },
+                |_| 30.0,
+            )
+        };
+        // Top: rows are just the value's height, and the label sits at the
+        // top of the value.
+        let top = inside(LabelPosition::Top);
+        assert_eq!(top[0].content, top[0].row);
+        assert_eq!(top[0].row.height(), 80.0);
+        assert_eq!(top[1].row.min.y, 80.0 + CHILD_GAP);
+        let label = top[0].label.unwrap();
+        assert_eq!((label.min.y, label.height()), (0.0, LABEL_HEIGHT));
+        assert!(top[0].content.contains_rect(label));
+        // Bottom and the sides put it at that edge of the value.
+        let bottom = inside(LabelPosition::Bottom)[0].label.unwrap();
+        assert_eq!(bottom.max.y, 80.0);
+        let left = inside(LabelPosition::Left)[0].label.unwrap();
+        assert_eq!((left.min.x, left.width()), (0.0, 30.0));
+        let right = inside(LabelPosition::Right)[0].label.unwrap();
+        assert_eq!(right.max.x, 200.0);
+        assert_eq!(inside(LabelPosition::Hidden)[0].label, None);
+    }
+
+    #[test]
+    fn the_inside_box_is_saved_only_when_ticked() {
+        let off = list(vec![], Some("TOP"));
+        assert!(!labels(&off.properties).inside);
+        let mut on = off.clone();
+        on.properties.insert(LABEL_INSIDE.into(), true.into());
+        assert!(labels(&on.properties).inside);
+        // Drawing the settings adds nothing.
+        let mut drawn = off.clone();
+        let text = draw_settings(&mut drawn);
+        assert_eq!(drawn, off);
+        assert!(text.iter().any(|t| t == "Inside"), "{text:?}");
     }
 }

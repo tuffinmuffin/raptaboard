@@ -49,6 +49,10 @@ const RESIZE_MARKS: [f32; 2] = [5.0, 9.0];
 const RESIZE_MARK_WIDTH: f32 = 1.5;
 /// How far the resize marks sit in from the card's corner, in points.
 const RESIZE_MARK_INSET: f32 = 4.0;
+/// Color of a drop outline where the drop fits.
+const DROP_OK: Color32 = Color32::from_rgb(60, 180, 90);
+/// Color of a drop outline where the drop would cover something.
+const DROP_BLOCKED: Color32 = Color32::from_rgb(220, 60, 60);
 
 /// What a drag on the grid is doing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,6 +99,34 @@ impl Drag {
             DragMode::Resize => grid::snap_resize(self.following(), cell),
         }
     }
+}
+
+/// A List Layout's child being dragged: to another place in its list, into
+/// another list, or out onto the grid.
+#[derive(Debug, Clone, Copy)]
+struct ChildDrag {
+    /// The list, by its index in the tab's `layouts`.
+    list: usize,
+    /// The child, by its index in the list's `children`.
+    child: usize,
+    /// Where in its row the pointer took hold, in points, so the preview
+    /// keeps the same spot under the pointer.
+    grab: Vec2,
+}
+
+/// Where something dropped on the grid would go.
+#[derive(Debug, Clone, Copy)]
+enum DropTarget {
+    /// Into List Layout `list` as child number `at`. `card` is the list on
+    /// screen and `line_y` where the "goes here" line is drawn.
+    List {
+        list: usize,
+        at: usize,
+        card: Rect,
+        line_y: f32,
+    },
+    /// Onto the grid at `rect`, if it's `free`.
+    Grid { rect: LayoutRect, free: bool },
 }
 
 /// A widget whose settings dialog is open.
@@ -157,6 +189,8 @@ pub struct DashboardApp {
     /// When locked, widgets and tabs can't be moved, resized or edited.
     locked: bool,
     drag: Option<Drag>,
+    /// A List Layout child being dragged, if any.
+    child_drag: Option<ChildDrag>,
     /// The tab being renamed, the name typed so far, and whether its text
     /// box has been given the keyboard yet.
     renaming: Option<(usize, String, bool)>,
@@ -201,6 +235,7 @@ impl DashboardApp {
             show_metadata: false,
             locked: false,
             drag: None,
+            child_drag: None,
             renaming: None,
             confirm_close: None,
             selected: None,
@@ -247,6 +282,7 @@ impl DashboardApp {
         self.layout_path = Some(path);
         self.current_tab = 0;
         self.drag = None;
+        self.child_drag = None;
         self.renaming = None;
         self.confirm_close = None;
         self.selected = None;
@@ -374,6 +410,7 @@ impl DashboardApp {
             if ui.button(label).on_hover_text(hint).clicked() {
                 self.locked = !self.locked;
                 self.drag = None;
+                self.child_drag = None;
                 self.renaming = None;
                 self.selected = None;
             }
@@ -666,6 +703,7 @@ impl DashboardApp {
         }
         self.confirm_close = None;
         self.drag = None;
+        self.child_drag = None;
         self.selected = None;
         self.current_tab = tabs::apply(&mut self.layout, self.current_tab, action);
     }
@@ -690,6 +728,7 @@ impl DashboardApp {
                         .min(self.layout.tabs.len().saturating_sub(1));
                     self.selected = None;
                     self.drag = None;
+                    self.child_drag = None;
                     self.renaming = None;
                     self.confirm_close = None;
                 }
@@ -704,6 +743,7 @@ impl DashboardApp {
                 let title = item.title(&tab.grid_layout).unwrap_or_default().to_owned();
                 item.remove(&mut tab.grid_layout);
                 self.drag = None;
+                self.child_drag = None;
                 self.status = format!("Deleted \"{title}\"; {undo_key} brings it back");
             }
             EditAction::Duplicate => {
@@ -743,6 +783,7 @@ impl DashboardApp {
                     None => None,
                 };
                 self.drag = None;
+                self.child_drag = None;
             }
         }
     }
@@ -1013,12 +1054,45 @@ impl DashboardApp {
         // corner wins where they overlap.
         let mut dropped = None;
         let mut menu_action = None;
+        let mut edit_child = None;
         if !self.locked {
             for &(item, r) in &placed {
                 let rect = to_screen(&r);
                 let id = ui.scope_id().with(("grid_item", self.current_tab, item));
                 let corner = Rect::from_min_max(rect.max - Vec2::splat(RESIZE_HANDLE), rect.max);
                 let body = ui.interact(rect, id, Sense::click_and_drag());
+                // A list's children, on top of its body so a child can be
+                // dragged on its own, but under its resize corner.
+                if let Item::List(index) = item
+                    && let Some(list) = tab.grid_layout.layouts.get(index)
+                {
+                    let card = rect.shrink(CELL_GAP);
+                    for row in list_layout::rows_on_screen(card, list) {
+                        let area = row.row.intersect(card);
+                        let child_id = id.with(("child", row.index));
+                        let child = ui.interact(area, child_id, Sense::click_and_drag());
+                        if child.drag_started()
+                            && let Some(p) = child.interact_pointer_pos()
+                        {
+                            self.child_drag = Some(ChildDrag {
+                                list: index,
+                                child: row.index,
+                                grab: p - row.row.min,
+                            });
+                        }
+                        if child.clicked() || child.secondary_clicked() || child.drag_started() {
+                            self.selected = Some(item);
+                        }
+                        if child.double_clicked() {
+                            edit_child = Some((index, row.index));
+                        }
+                        if child.dragged() {
+                            ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+                        } else if child.hovered() {
+                            ui.ctx().set_cursor_icon(CursorIcon::Grab);
+                        }
+                    }
+                }
                 let corner = ui.interact(corner, id.with("resize"), Sense::drag());
                 for (handle, mode) in [(&body, DragMode::Move), (&corner, DragMode::Resize)] {
                     if handle.drag_started() {
@@ -1121,12 +1195,48 @@ impl DashboardApp {
                 egui::StrokeKind::Inside,
             );
         }
+        // Where the pointer is, in grid pixels, and the list under it as a
+        // drop target, if any.
+        let pointer_screen = ui.ctx().pointer_latest_pos();
+        let to_grid = |p: egui::Pos2| (f64::from(p.x - origin.x), f64::from(p.y - origin.y));
+        let list_drop = |p: egui::Pos2| -> Option<DropTarget> {
+            if !area.contains(p) {
+                return None;
+            }
+            let list = grid::list_at(&tab.grid_layout, to_grid(p))?;
+            let l = &tab.grid_layout.layouts[list];
+            let card = to_screen(&l.rect).shrink(CELL_GAP);
+            let rows = list_layout::rows_on_screen(card, l);
+            let at = list_layout::insert_index(&rows, l.children.len(), p.y);
+            let line_y = list_layout::insert_line_y(&rows, at, list_layout::body_rect(card));
+            Some(DropTarget::List {
+                list,
+                at,
+                card,
+                line_y,
+            })
+        };
+
         // The dragged item follows the pointer on top of everything, with an
-        // outline where it will land: green if it fits, red if not.
+        // outline where it will land: green if it fits, red if not. A
+        // widget over a list goes into the list instead.
+        let mut widget_into = None;
         if let Some(drag) = self.drag {
-            let target = drag.target(cell, room);
-            let ok = grid::fits(&tab.grid_layout, drag.item, target);
-            draw_landing(&painter, to_screen(&target), ok);
+            let into_list = match (drag.item, drag.mode, pointer_screen) {
+                (Item::Widget(_), DragMode::Move, Some(p)) => list_drop(p),
+                _ => None,
+            };
+            match into_list {
+                Some(target) => {
+                    draw_drop(&painter, &target, &to_screen);
+                    widget_into = Some(target);
+                }
+                None => {
+                    let target = drag.target(cell, room);
+                    let ok = grid::fits(&tab.grid_layout, drag.item, target);
+                    draw_landing(&painter, to_screen(&target), ok);
+                }
+            }
             draw_item(
                 &painter,
                 &visuals,
@@ -1137,8 +1247,51 @@ impl DashboardApp {
             );
         }
 
+        // A list child being dragged: a preview follows the pointer; it goes
+        // into the list under the pointer, or onto free grid.
+        let mut child_dropped = None;
+        if let Some(cd) = self.child_drag
+            && let Some(p) = pointer_screen
+            && let Some(child) = tab
+                .grid_layout
+                .layouts
+                .get(cd.list)
+                .and_then(|l| l.children.get(cd.child))
+        {
+            let size = grid::snap_resize(child.rect, cell);
+            let corner = p - cd.grab;
+            let target = list_drop(p).or_else(|| {
+                area.contains(p).then(|| {
+                    let (x, y) = to_grid(corner);
+                    let rect = grid::snap_move(LayoutRect { x, y, ..size }, cell, room);
+                    DropTarget::Grid {
+                        rect,
+                        free: grid::is_free(&tab.grid_layout, rect),
+                    }
+                })
+            });
+            if let Some(target) = &target {
+                draw_drop(&painter, target, &to_screen);
+            }
+            let preview =
+                Rect::from_min_size(corner, Vec2::new(size.width as f32, size.height as f32));
+            card::draw(
+                &painter,
+                &visuals,
+                preview.shrink(CELL_GAP),
+                child,
+                value_of(child).as_ref(),
+            );
+            // Let go: here, or outside the window, where the release may not
+            // reach us (it then stays where it was).
+            if !ui.input(|i| i.pointer.primary_down()) {
+                child_dropped = Some((cd, target));
+            }
+        }
+
         // A topic dragged from the NT tree: show the cell under the pointer
         // where its widget would go, and make the widget when it's dropped.
+        // Over a list, it goes into the list.
         let pointer = ui.ctx().pointer_hover_pos().filter(|p| area.contains(*p));
         if !self.locked
             && let Some(p) = pointer
@@ -1150,27 +1303,92 @@ impl DashboardApp {
                 width: cell,
                 height: cell,
             };
+            let into_list = list_drop(p);
             let target = grid::snap_move(under, cell, room);
             let free = grid::is_free(&tab.grid_layout, target);
-            draw_landing(&painter, to_screen(&target), free);
-            if free
-                && ui.input(|i| i.pointer.any_released())
+            match &into_list {
+                Some(drop) => draw_drop(&painter, drop, &to_screen),
+                None => draw_landing(&painter, to_screen(&target), free),
+            }
+            if ui.input(|i| i.pointer.any_released())
                 && let Some(widget) =
                     widgets::for_topic(&topic.name, &topic.ty, topic.field.as_ref(), target)
                 && let Some(tab) = self.layout.tabs.get_mut(self.current_tab)
             {
-                tab.grid_layout.containers.push(widget);
-                self.selected = Some(Item::Widget(tab.grid_layout.containers.len() - 1));
+                let grid = &mut tab.grid_layout;
+                match into_list {
+                    Some(DropTarget::List { list, at, .. }) => {
+                        let mut widget = widget;
+                        // In a list only the size matters: one cell, as dropped.
+                        widget.rect.x = 0.0;
+                        widget.rect.y = 0.0;
+                        let at = at.min(grid.layouts[list].children.len());
+                        grid.layouts[list].children.insert(at, widget);
+                        self.selected = Some(Item::List(list));
+                    }
+                    _ if free => {
+                        grid.containers.push(widget);
+                        self.selected = Some(Item::Widget(grid.containers.len() - 1));
+                    }
+                    _ => {}
+                }
             }
         }
 
-        if let Some(drag) = dropped {
-            let target = drag.target(cell, room);
-            if let Some(tab) = self.layout.tabs.get_mut(self.current_tab)
-                && grid::fits(&tab.grid_layout, drag.item, target)
-            {
-                drag.item.set_rect(&mut tab.grid_layout, target);
+        if let Some(drag) = dropped
+            && let Some(tab) = self.layout.tabs.get_mut(self.current_tab)
+        {
+            let grid = &mut tab.grid_layout;
+            match (drag.item, widget_into) {
+                (Item::Widget(widget), Some(DropTarget::List { list, at, .. })) => {
+                    if grid::widget_into_list(grid, widget, list, at).is_some() {
+                        self.selected = Some(Item::List(list));
+                    }
+                }
+                _ => {
+                    let target = drag.target(cell, room);
+                    if grid::fits(grid, drag.item, target) {
+                        drag.item.set_rect(grid, target);
+                    }
+                }
             }
+        }
+        if let Some((cd, target)) = child_dropped {
+            self.child_drag = None;
+            if let Some(tab) = self.layout.tabs.get_mut(self.current_tab) {
+                let grid = &mut tab.grid_layout;
+                match target {
+                    Some(DropTarget::List { list, at, .. }) => {
+                        if grid::child_to_list(grid, cd.list, cd.child, list, at).is_some() {
+                            self.selected = Some(Item::List(list));
+                        }
+                    }
+                    Some(DropTarget::Grid { rect, free: true }) => {
+                        if let Some(w) = grid::child_out_of_list(grid, cd.list, cd.child, rect) {
+                            self.selected = Some(Item::Widget(w));
+                        }
+                    }
+                    // Not over the grid, or no room there: it stays put.
+                    _ => {}
+                }
+            }
+        }
+        if let Some((list, child)) = edit_child
+            && let Some(l) = self
+                .layout
+                .tabs
+                .get(self.current_tab)
+                .and_then(|t| t.grid_layout.layouts.get(list))
+            && let Some(c) = l.children.get(child)
+        {
+            // Straight to the child's settings; Done goes back to the list's.
+            self.selected = Some(Item::List(list));
+            self.editing = Some(Editing::List {
+                tab: self.current_tab,
+                index: list,
+                original: Box::new(l.clone()),
+                child: Some((child, c.clone())),
+            });
         }
         if let Some((item, action)) = menu_action {
             self.selected = Some(item);
@@ -1255,17 +1473,31 @@ fn draw_item(
 /// The outline where a dragged widget or topic will land: green if it fits
 /// there, red if it would cover another widget.
 fn draw_landing(painter: &egui::Painter, rect: Rect, ok: bool) {
-    let color = if ok {
-        Color32::from_rgb(60, 180, 90)
-    } else {
-        Color32::from_rgb(220, 60, 60)
-    };
+    let color = if ok { DROP_OK } else { DROP_BLOCKED };
     painter.rect_stroke(
         rect.shrink(LANDING_INSET),
         egui::CornerRadius::same(card::CORNER_RADIUS),
         Stroke::new(OUTLINE_WIDTH, color),
         egui::StrokeKind::Inside,
     );
+}
+
+/// Show where a drop goes: for a list, the list outlined in green with a
+/// line where the new child goes; for the grid, the cells outlined green if
+/// free, red if not.
+fn draw_drop(
+    painter: &egui::Painter,
+    target: &DropTarget,
+    to_screen: &dyn Fn(&LayoutRect) -> Rect,
+) {
+    match *target {
+        DropTarget::List { card, line_y, .. } => {
+            draw_landing(painter, card, true);
+            let body = list_layout::body_rect(card);
+            painter.hline(body.x_range(), line_y, Stroke::new(OUTLINE_WIDTH, DROP_OK));
+        }
+        DropTarget::Grid { rect, free } => draw_landing(painter, to_screen(&rect), free),
+    }
 }
 
 /// Two short diagonal lines in a widget's bottom-right corner, showing

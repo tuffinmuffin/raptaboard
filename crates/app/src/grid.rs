@@ -101,6 +101,91 @@ impl Item {
     }
 }
 
+/// The List Layout on `grid` under the point (`x`, `y`) in grid pixels,
+/// if any.
+///
+/// ```
+/// use raptaboard::grid::list_at;
+/// use raptaboard_layout::GridLayout;
+/// let grid: GridLayout = serde_json::from_str(r#"{"layouts": [
+///     {"title": "list", "x": 256.0, "y": 0.0, "width": 256.0, "height": 384.0,
+///      "type": "List Layout"}]}"#).unwrap();
+/// assert_eq!(list_at(&grid, (300.0, 100.0)), Some(0));
+/// assert_eq!(list_at(&grid, (100.0, 100.0)), None);
+/// ```
+pub fn list_at(grid: &GridLayout, (x, y): (f64, f64)) -> Option<usize> {
+    grid.layouts.iter().position(|l| {
+        let r = l.rect;
+        x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
+    })
+}
+
+/// Move widget `widget` (an index in `containers`) into List Layout `list`,
+/// as child number `at` (or last, if `at` is past the end). It keeps its
+/// size. Returns its index among the list's children, or `None` (changing
+/// nothing) if either doesn't exist.
+///
+/// Removing the widget shifts later widgets' indexes down by one.
+pub fn widget_into_list(
+    grid: &mut GridLayout,
+    widget: usize,
+    list: usize,
+    at: usize,
+) -> Option<usize> {
+    if widget >= grid.containers.len() || list >= grid.layouts.len() {
+        return None;
+    }
+    let child = grid.containers.remove(widget);
+    let children = &mut grid.layouts[list].children;
+    let at = at.min(children.len());
+    children.insert(at, child);
+    Some(at)
+}
+
+/// Move child `child` of List Layout `from` to List Layout `to`, as child
+/// number `at` there (or last, if past the end). Within one list this
+/// reorders: `at` is counted before the child is taken out, so dropping
+/// a child just below itself leaves it where it is. Returns its new index,
+/// or `None` (changing nothing) if any of them doesn't exist.
+pub fn child_to_list(
+    grid: &mut GridLayout,
+    from: usize,
+    child: usize,
+    to: usize,
+    at: usize,
+) -> Option<usize> {
+    if to >= grid.layouts.len() || child >= grid.layouts.get(from)?.children.len() {
+        return None;
+    }
+    let moving = grid.layouts[from].children.remove(child);
+    // Taking it out shifts everything after it up one in its own list.
+    let at = if from == to && at > child { at - 1 } else { at };
+    let children = &mut grid.layouts[to].children;
+    let at = at.min(children.len());
+    children.insert(at, moving);
+    Some(at)
+}
+
+/// Take child `child` out of List Layout `list` and put it on the grid as a
+/// widget at `rect`. The caller checks `rect` is free first ([`is_free`]).
+/// Returns its index in `containers`, or `None` (changing nothing) if there
+/// is no such child.
+pub fn child_out_of_list(
+    grid: &mut GridLayout,
+    list: usize,
+    child: usize,
+    rect: Rect,
+) -> Option<usize> {
+    let children = &mut grid.layouts.get_mut(list)?.children;
+    if child >= children.len() {
+        return None;
+    }
+    let mut widget = children.remove(child);
+    widget.rect = rect;
+    grid.containers.push(widget);
+    Some(grid.containers.len() - 1)
+}
+
 /// The free spot for something `rect`'s size closest to `rect`, on whole
 /// cells inside `area` (the visible grid's width and height in pixels,
 /// counting a part-shown last row or column). Ties go to the spot higher
@@ -450,6 +535,72 @@ mod tests {
             Item::List(0).remove(&mut grid);
             assert_eq!(copy.title(&grid), None);
             assert_eq!(Item::List(0).title(&grid), Some("list"));
+        });
+    }
+
+    #[test]
+    fn widgets_go_into_lists_and_back_out() {
+        each_size(|g| {
+            let mut grid = g.grid(
+                &[
+                    ("a", g.at(0.0, 0.0, 1.0, 1.0)),
+                    ("b", g.at(1.0, 0.0, 1.0, 2.0)),
+                ],
+                &[("list", g.at(3.0, 0.0, 2.0, 4.0))],
+            );
+            let titles = |grid: &GridLayout| -> Vec<String> {
+                grid.layouts[0]
+                    .children
+                    .iter()
+                    .map(|c| c.title.clone())
+                    .collect()
+            };
+            // Over the list, not over the widgets.
+            assert_eq!(list_at(&grid, (3.5 * g.cell, 3.9 * g.cell)), Some(0));
+            assert_eq!(list_at(&grid, (5.0 * g.cell, 0.0)), None);
+
+            // "b" goes in first, keeping its size; "a" goes past the end, so last.
+            assert_eq!(widget_into_list(&mut grid, 1, 0, 0), Some(0));
+            assert_eq!(widget_into_list(&mut grid, 0, 0, 99), Some(2));
+            assert_eq!(titles(&grid), ["b", "child", "a"]);
+            assert!(grid.containers.is_empty());
+            assert_eq!(grid.layouts[0].children[0].rect.height, 2.0 * g.cell);
+            assert_eq!(widget_into_list(&mut grid, 0, 0, 0), None);
+
+            // Reordering: "a" up to the top; "b" dropped just below itself stays.
+            assert_eq!(child_to_list(&mut grid, 0, 2, 0, 0), Some(0));
+            assert_eq!(titles(&grid), ["a", "b", "child"]);
+            assert_eq!(child_to_list(&mut grid, 0, 1, 0, 2), Some(1));
+            assert_eq!(titles(&grid), ["a", "b", "child"]);
+            // Moving down: "a" dropped below "child" (at 3) ends up last.
+            assert_eq!(child_to_list(&mut grid, 0, 0, 0, 3), Some(2));
+            assert_eq!(titles(&grid), ["b", "child", "a"]);
+            assert_eq!(child_to_list(&mut grid, 0, 9, 0, 0), None);
+            assert_eq!(child_to_list(&mut grid, 0, 0, 4, 0), None);
+
+            // Out onto the grid, wherever the caller says.
+            let spot = g.at(0.0, 2.0, 1.0, 1.0);
+            let out = child_out_of_list(&mut grid, 0, 2, spot).unwrap();
+            assert_eq!(grid.containers[out].title, "a");
+            assert_eq!(grid.containers[out].rect, spot);
+            assert_eq!(titles(&grid), ["b", "child"]);
+            assert_eq!(child_out_of_list(&mut grid, 0, 5, spot), None);
+        });
+    }
+
+    #[test]
+    fn children_move_between_lists() {
+        each_size(|g| {
+            let mut grid = g.grid(
+                &[],
+                &[
+                    ("one", g.at(0.0, 0.0, 2.0, 3.0)),
+                    ("two", g.at(2.0, 0.0, 2.0, 3.0)),
+                ],
+            );
+            assert_eq!(child_to_list(&mut grid, 0, 0, 1, 0), Some(0));
+            assert!(grid.layouts[0].children.is_empty());
+            assert_eq!(grid.layouts[1].children.len(), 2);
         });
     }
 }
