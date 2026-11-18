@@ -252,9 +252,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      title: font family, size, color, bold, italic. Saved as raptaboard keys (`font_family`,
      `font_color`, `font_bold`, ...; `font_size` exists), with a layout-wide default style later.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
-     Start with Elastic's `true_icon`/`false_icon` (None, Checkmark, X, Exclamation Point) so its
-     layouts keep their icons, then any PNG/SVG the team picks. Image files need to travel with the
-     layout: stored next to it, embedded, or served by the robot with layouts.
+     A built-in library of standard images (Elastic's `true_icon`/`false_icon` set: Checkmark, X,
+     Exclamation Point, so its layouts keep their icons, plus more), and any PNG/SVG the team
+     picks. Open (decide when built), likely both: embed the image in the layout, scaled down to a
+     small fixed size so the file stays well under its 10 MB limit and is fully portable, and/or
+     keep image files next to the layout or served by the robot.
    - Find a topic's widgets: selecting a topic (or struct field) in the NT tree highlights every
      widget on the open tab bound to it, and marks other tabs that have one, so it's easy to see
      where a value is already shown before adding another.
