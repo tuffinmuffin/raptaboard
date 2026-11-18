@@ -6,7 +6,7 @@
 //! tested without a window. Positions and sizes are pixels at the layout's
 //! grid size, as Elastic saves them.
 
-use raptaboard_layout::{GridLayout, Rect};
+use raptaboard_layout::{GridLayout, MAX_GRID_CELLS, Rect};
 
 /// Something on a tab's grid: a single widget or a List Layout, by its index
 /// in [`GridLayout::containers`] or [`GridLayout::layouts`].
@@ -170,9 +170,12 @@ pub fn items(grid: &GridLayout) -> Vec<(Item, Rect)> {
 /// Snap a moved rectangle to the nearest cell corner, keeping its size.
 ///
 /// `area` is the width and height of the visible grid in pixels. The
-/// rectangle stays within the cells that show, counting a last row or
-/// column the window cuts off part way, and never goes left of or above
-/// the grid.
+/// rectangle's top-left cell stays among the cells that show (counting a
+/// last row or column the window cuts off part way), so it can always be
+/// grabbed again; the rest may run past the right or bottom of the window,
+/// so a big widget can show just its first row or column. It never goes
+/// left of or above the grid, or past [`MAX_GRID_CELLS`] cells, which
+/// opening a layout would undo.
 ///
 /// ```
 /// use raptaboard::grid::snap_move;
@@ -181,13 +184,18 @@ pub fn items(grid: &GridLayout) -> Vec<(Item, Rect)> {
 /// let placed = snap_move(dropped, 128.0, (1024.0, 768.0));
 /// assert_eq!((placed.x, placed.y), (256.0, 0.0));
 /// assert_eq!((placed.width, placed.height), (128.0, 256.0));
+/// // Most of a tall widget can hang off the bottom: only its top row shows.
+/// let low = Rect { y: 700.0, ..dropped };
+/// assert_eq!(snap_move(low, 128.0, (1024.0, 768.0)).y, 640.0);
 /// ```
 pub fn snap_move(rect: Rect, cell: f64, area: (f64, f64)) -> Rect {
     let snap = |pos: f64, size: f64, room: f64| {
-        let shown = (room / cell).ceil();
-        let needed = (size / cell).ceil();
-        let last = (shown - needed).max(0.0) * cell;
-        ((pos / cell).round() * cell).clamp(0.0, last)
+        let shown = (room / cell).ceil().max(1.0);
+        // The top-left cell must show...
+        let last_shown = (shown - 1.0) * cell;
+        // ...and the far edge stay inside the layout's limit.
+        let last_allowed = ((cell * MAX_GRID_CELLS - size) / cell).floor().max(0.0) * cell;
+        ((pos / cell).round() * cell).clamp(0.0, last_shown.min(last_allowed))
     };
     Rect {
         x: snap(rect.x, rect.width, area.0),
@@ -273,15 +281,25 @@ mod tests {
             snap_move(rect(63.0, 65.0, 128.0, 128.0), 128.0, area).y,
             128.0
         );
-        // Dropped past the right edge: the last column it fits in.
+        // Dropped past the right edge: its first column stays in the last
+        // column that shows, the rest off the window.
         assert_eq!(
             snap_move(rect(600.0, 0.0, 256.0, 128.0), 128.0, area).x,
-            384.0
+            512.0
         );
-        // Taller than the window: pinned to the top rather than going negative.
+        assert_eq!(
+            snap_move(rect(5000.0, 0.0, 256.0, 128.0), 128.0, area).x,
+            512.0
+        );
+        // Taller than the window: it can still move down; only its top shows.
         assert_eq!(
             snap_move(rect(0.0, 200.0, 128.0, 512.0), 128.0, area).y,
-            0.0
+            256.0
+        );
+        // Never left of or above the grid.
+        assert_eq!(
+            snap_move(rect(-300.0, -300.0, 128.0, 128.0), 128.0, area),
+            rect(0.0, 0.0, 128.0, 128.0)
         );
         // A window 1000 tall shows 7 full rows and part of an 8th; widgets
         // can go in that last row.
@@ -292,7 +310,18 @@ mod tests {
         );
         assert_eq!(
             snap_move(rect(0.0, 950.0, 128.0, 256.0), 128.0, area).y,
-            768.0
+            896.0
+        );
+        // A huge window can't push a widget past the layout's 100-cell
+        // limit: a 100-cell-wide widget stays at the left edge.
+        let huge = (128.0 * 200.0, 1000.0);
+        assert_eq!(
+            snap_move(rect(640.0, 0.0, 12800.0, 128.0), 128.0, huge).x,
+            0.0
+        );
+        assert_eq!(
+            snap_move(rect(99999.0, 0.0, 256.0, 128.0), 128.0, huge).x,
+            12544.0
         );
     }
 

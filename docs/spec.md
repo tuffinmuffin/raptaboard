@@ -225,7 +225,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    hotkeys. **Started**: tabs (add, close with a confirmation if it has widgets, rename, reorder;
    Ctrl+1..9 and Ctrl+Left/Right switch tabs; unlike Elastic, adding, closing and moving tabs have
    no shortcuts, since they're rare and hard to remember), moving and resizing
-   widgets and List Layouts on the snap grid (no overlaps), and the layout lock. With no layout
+   widgets and List Layouts on the snap grid (no overlaps; a widget's top-left cell must show, but
+   the rest may run off the right or bottom of the window, up to the 100-cell limit, so a big
+   widget can show just its first row or column), and the layout lock. With no layout
    file the app starts with Elastic's empty "Teleoperated" and "Autonomous" tabs. Layout open and
    save: Open…, Save, Save as… (Ctrl+O, Ctrl+S, Ctrl+Shift+S) with native file dialogs, an
    unsaved-changes dot and window title, and a "save changes?" question before opening another
