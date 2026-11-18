@@ -690,14 +690,14 @@ impl DashboardApp {
         }
 
         // A widget's value: its topic's, or one field of it for widgets bound
-        // to a struct field.
+        // to a struct field (enum fields by name).
         let structs = self.nt.structs();
         let value_of = |w: &WidgetContainer| -> Option<Value> {
             let value = values.get(w.topic()?)?;
             match (w.struct_meta(), value) {
                 (None, value) => Some((*value).clone()),
                 (Some(meta), Value::Raw(bytes)) => {
-                    struct_view::field_value(structs?, &meta.schema_name, bytes, &meta.path)
+                    struct_view::field_value_shown(structs?, &meta.schema_name, bytes, &meta.path)
                 }
                 (Some(_), _) => None,
             }

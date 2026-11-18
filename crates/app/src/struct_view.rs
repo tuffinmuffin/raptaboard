@@ -7,7 +7,9 @@
 //! decides how the result is labelled, so it can be tested without a server.
 
 use nt4::Value;
-use nt4::proto::structs::{Declaration, DynamicStruct, FieldValue, StructDatabase, parse_schema};
+use nt4::proto::structs::{
+    Declaration, DynamicStruct, FieldDescriptor, FieldValue, StructDatabase, parse_schema,
+};
 
 use crate::tree::format_number;
 
@@ -99,6 +101,51 @@ pub fn field_value(
     bytes: &[u8],
     path: &[String],
 ) -> Option<Value> {
+    let (s, field) = find_field(db, schema, bytes, path)?;
+    as_nt_value(s.value(field)?)
+}
+
+/// Like [`field_value`], but an enum field gives its name from the schema
+/// (`kIntake`) as a string instead of its number, for showing to a person.
+/// Numbers the enum doesn't name stay numbers.
+///
+/// ```
+/// use nt4::Value;
+/// use nt4::proto::structs::StructDatabase;
+/// use raptaboard::struct_view::{field_value, field_value_shown};
+/// let mut db = StructDatabase::new();
+/// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode").unwrap();
+/// let mode = vec!["mode".to_string()];
+/// assert_eq!(field_value(&db, "Arm", &[3], &mode), Some(Value::Int(3)));
+/// assert_eq!(field_value_shown(&db, "Arm", &[3], &mode), Some(Value::String("kIntake".into())));
+/// assert_eq!(field_value_shown(&db, "Arm", &[9], &mode), Some(Value::Int(9)));
+/// ```
+pub fn field_value_shown(
+    db: &StructDatabase,
+    schema: &str,
+    bytes: &[u8],
+    path: &[String],
+) -> Option<Value> {
+    let (s, field) = find_field(db, schema, bytes, path)?;
+    let value = as_nt_value(s.value(field)?)?;
+    if field.enum_values().is_empty() {
+        return Some(value);
+    }
+    Some(match value {
+        Value::Int(n) => field
+            .enum_name(n)
+            .map_or(Value::Int(n), |name| Value::String(name.to_owned())),
+        other => other,
+    })
+}
+
+/// The struct holding the field `path` names, and that field.
+fn find_field<'a>(
+    db: &'a StructDatabase,
+    schema: &str,
+    bytes: &'a [u8],
+    path: &[String],
+) -> Option<(DynamicStruct<'a>, &'a FieldDescriptor)> {
     let (last, parents) = path.split_last()?;
     let mut s = DynamicStruct::new(db, schema, bytes)?;
     for name in parents {
@@ -107,7 +154,8 @@ pub fn field_value(
             _ => return None,
         }
     }
-    as_nt_value(s.value(s.field(last)?)?)
+    let field = s.field(last)?;
+    Some((s, field))
 }
 
 /// A struct field's value as an NT value. Whole structs and mixed arrays
