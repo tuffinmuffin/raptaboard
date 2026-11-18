@@ -22,7 +22,10 @@ Options:
   --port N          NetworkTables server port (default 5810, robot code;
                     SystemCore's own server is 6810)
   --hide-tree       Start with the NetworkTables tree panel hidden
-  -h, --help        Show this help";
+  -h, --help        Show this help
+
+LAYOUT.json is an Elastic layout file to open. If it doesn't exist yet, the
+app starts with an empty layout and Save writes it there.";
 
 /// What the app starts with.
 #[derive(Debug, Clone, PartialEq, Eq)]

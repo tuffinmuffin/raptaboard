@@ -46,7 +46,8 @@ macOS. Run the same locally before pushing.
   read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),
   `struct_view.rs` struct values decoded with the server's `/.schema/` topics
   (`nt4::proto::structs::StructDatabase` + `DynamicStruct`), `widgets.rs` the grid widgets
-  (Text Display, Boolean Box; other types draw as placeholders), `grid.rs` the snap-grid rules
+  (Text Display, Boolean Box; other types draw as placeholders), `layout_file.rs` opening and saving layout files (atomic
+  writes, Ctrl+O/S/Shift+S), `grid.rs` the snap-grid rules
   (snapping, overlap) and `tabs.rs` tab actions and their shortcuts; the drag handling and lock live
   in `ui.rs`. Widget values come from a
   second subscription (`NtConnection::watch_widget_values`) at the open tab's shortest `period`.
@@ -54,7 +55,8 @@ macOS. Run the same locally before pushing.
   hidden; prints % of one core and of the machine); its `other_dashboard` test runs the same load against Elastic for comparison
   (set `RAPTABOARD_CPU_OTHER=elastic_dashboard`, Elastic on localhost, port 5810 free).
   Results are in `docs/spec.md`; VMs without hardware DX12 render in software, so their numbers
-  don't count. Milestone 2 has tabs, the snap grid and the lock; next is layout save.
+  don't count. Milestone 2 has tabs, the snap grid, the lock and layout open/save
+  (`layout_file.rs`, native dialogs via `rfd`); next is dragging topics from the tree onto the grid.
 - `layouts/robot2027_sim.json`: a layout for trying widgets against the robot-2027 sim
   (`cargo run -p raptaboard -- --address sim layouts/robot2027_sim.json`). Its `/DashTest/`
   topics come from robot-2027's `utils/dashboard_test_topics.py` (sim only).

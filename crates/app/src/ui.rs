@@ -1,6 +1,7 @@
 //! The main window: settings bar, tab bar and the widget grid.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use eframe::egui::{self, Color32, CursorIcon, Rect, Sense, Stroke, Vec2};
@@ -10,6 +11,7 @@ use raptaboard_layout::{ElasticLayout, GridLayout, Rect as LayoutRect};
 use crate::cli::StartupOptions;
 use crate::connection::{AddressMode, resolve};
 use crate::grid::{self, Item};
+use crate::layout_file::{self, FileAction, LoadError};
 use crate::nt::{ConnectionStatus, NtConnection};
 use crate::tabs::{self, TabAction};
 use crate::tree::{Folder, TopicEntry};
@@ -70,11 +72,30 @@ impl Drag {
     }
 }
 
+/// What to do once the user has answered "save changes?".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AfterSaving {
+    /// Open another layout file.
+    Open,
+    /// Close the window.
+    Quit,
+}
+
 /// Top-level app state.
 pub struct DashboardApp {
     layout: ElasticLayout,
-    layout_path: String,
+    /// The file the layout was opened from or last saved to, if any.
+    layout_path: Option<PathBuf>,
+    /// The layout as it is in the file, to tell when there are unsaved changes.
+    saved: ElasticLayout,
+    /// The last thing that happened to the layout file, shown in the settings bar.
     status: String,
+    /// Waiting for an answer to "save changes?" before doing this.
+    unsaved_prompt: Option<AfterSaving>,
+    /// The user chose to quit without saving, so let the window close.
+    allow_close: bool,
+    /// The window title last set, so it's only sent when it changes.
+    title: String,
     current_tab: usize,
     team: u32,
     mode: AddressMode,
@@ -99,11 +120,14 @@ impl DashboardApp {
     ///
     /// Fails only if the tokio runtime for the NT client cannot start.
     pub fn new(options: StartupOptions) -> std::io::Result<Self> {
-        let layout_path = options.layout_path;
         let mut app = DashboardApp {
             layout: ElasticLayout::default(),
-            layout_path: layout_path.clone().unwrap_or_default(),
-            status: "New layout".into(),
+            layout_path: None,
+            saved: ElasticLayout::default(),
+            status: String::new(),
+            unsaved_prompt: None,
+            allow_close: false,
+            title: String::new(),
             current_tab: 0,
             team: options.team,
             mode: options.mode,
@@ -118,30 +142,134 @@ impl DashboardApp {
             renaming: None,
             confirm_close: None,
         };
-        if layout_path.is_some() {
-            app.load_layout();
+        if let Some(path) = options.layout_path {
+            let path = PathBuf::from(path);
+            match layout_file::load(&path) {
+                Ok(layout) => app.show_layout(layout, path),
+                // A new file named on the command line: start empty and
+                // save there.
+                Err(LoadError::NotFound) => {
+                    app.status = format!("New layout; Save writes {}", path.display());
+                    app.layout_path = Some(path);
+                }
+                Err(e) => app.status = format!("Could not open {}: {e}", path.display()),
+            }
         }
         Ok(app)
     }
 
-    fn load_layout(&mut self) {
-        let result = std::fs::read_to_string(&self.layout_path)
-            .map_err(|e| e.to_string())
-            .and_then(|text| ElasticLayout::from_json(&text).map_err(|e| e.to_string()));
-        match result {
-            Ok(layout) => {
-                self.status = format!(
-                    "Loaded {} tabs, {} widgets",
-                    layout.tabs.len(),
-                    layout.widgets().count()
-                );
-                self.layout = layout;
-                self.current_tab = 0;
-                self.drag = None;
-                self.renaming = None;
-                self.confirm_close = None;
+    /// Whether the layout has changed since it was opened or saved.
+    fn unsaved(&self) -> bool {
+        self.layout != self.saved
+    }
+
+    /// Show a layout just read from `path`.
+    fn show_layout(&mut self, layout: ElasticLayout, path: PathBuf) {
+        self.status = format!(
+            "Opened {} tabs, {} widgets",
+            layout.tabs.len(),
+            layout.widgets().count()
+        );
+        self.saved = layout.clone();
+        self.layout = layout;
+        self.layout_path = Some(path);
+        self.current_tab = 0;
+        self.drag = None;
+        self.renaming = None;
+        self.confirm_close = None;
+    }
+
+    /// Carry out Open, Save or Save as. Opening with unsaved changes asks
+    /// to save them first.
+    fn run_file_action(&mut self, action: FileAction) {
+        match action {
+            FileAction::Open if self.unsaved() => self.unsaved_prompt = Some(AfterSaving::Open),
+            FileAction::Open => self.open(),
+            FileAction::Save => {
+                self.save(false);
             }
-            Err(e) => self.status = format!("Could not load layout: {e}"),
+            FileAction::SaveAs => {
+                self.save(true);
+            }
+        }
+    }
+
+    /// Ask for a layout file and open it.
+    fn open(&mut self) {
+        let Some(path) = layout_file::pick_open(self.layout_path.as_deref()) else {
+            return;
+        };
+        match layout_file::load(&path) {
+            Ok(layout) => self.show_layout(layout, path),
+            Err(e) => self.status = format!("Could not open {}: {e}", path.display()),
+        }
+    }
+
+    /// Save the layout, asking where if `choose` is set or it has no file
+    /// yet. Returns whether it was saved.
+    fn save(&mut self, choose: bool) -> bool {
+        let path = match &self.layout_path {
+            Some(path) if !choose => path.clone(),
+            near => match layout_file::pick_save(near.as_deref()) {
+                Some(path) => path,
+                None => return false,
+            },
+        };
+        match layout_file::save(&self.layout, &path) {
+            Ok(()) => {
+                self.status = format!("Saved {}", path.display());
+                self.saved = self.layout.clone();
+                self.layout_path = Some(path);
+                true
+            }
+            Err(e) => {
+                self.status = format!("Could not save {}: {e}", path.display());
+                false
+            }
+        }
+    }
+
+    /// The "save changes?" question, while one is open.
+    fn unsaved_dialog(&mut self, ctx: &egui::Context) {
+        let Some(after) = self.unsaved_prompt else {
+            return;
+        };
+        let name = layout_file::display_name(self.layout_path.as_deref());
+        let mut answer = None;
+        let modal = egui::Modal::new(egui::Id::unique("unsaved_changes")).show(ctx, |ui| {
+            ui.heading(format!("Save changes to {name}?"));
+            ui.label(match after {
+                AfterSaving::Open => "Opening another layout replaces this one.",
+                AfterSaving::Quit => "Your changes will be lost if you don't save them.",
+            });
+            ui.horizontal(|ui| {
+                if ui.button("Save").clicked() {
+                    answer = Some(true);
+                }
+                if ui.button("Don't save").clicked() {
+                    answer = Some(false);
+                }
+                if ui.button("Cancel").clicked() {
+                    self.unsaved_prompt = None;
+                }
+            });
+        });
+        if answer.is_none() {
+            if modal.should_close() {
+                self.unsaved_prompt = None;
+            }
+            return;
+        }
+        self.unsaved_prompt = None;
+        if answer == Some(true) && !self.save(false) {
+            return;
+        }
+        match after {
+            AfterSaving::Open => self.open(),
+            AfterSaving::Quit => {
+                self.allow_close = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
         }
     }
 
@@ -191,12 +319,31 @@ impl DashboardApp {
             status_label(ui, &self.nt.status());
         });
         ui.horizontal(|ui| {
-            ui.label("Layout");
-            ui.text_edit_singleline(&mut self.layout_path);
-            if ui.button("Load").clicked() {
-                self.load_layout();
+            let ctx = ui.ctx().clone();
+            for (label, action) in [
+                ("Open…", FileAction::Open),
+                ("Save", FileAction::Save),
+                ("Save as…", FileAction::SaveAs),
+            ] {
+                if ui
+                    .button(label)
+                    .on_hover_text(ctx.format_shortcut(&action.shortcut()))
+                    .clicked()
+                {
+                    self.run_file_action(action);
+                }
             }
-            ui.label(&self.status);
+            ui.separator();
+            let name = layout_file::display_name(self.layout_path.as_deref());
+            let name = ui.strong(name);
+            if let Some(path) = &self.layout_path {
+                name.on_hover_text(path.display().to_string());
+            }
+            if self.unsaved() {
+                ui.label(egui::RichText::new("●").color(Color32::from_rgb(230, 160, 40)))
+                    .on_hover_text("Unsaved changes");
+            }
+            ui.weak(&self.status);
         });
     }
 
@@ -639,15 +786,34 @@ impl eframe::App for DashboardApp {
             })
             .inner;
         let ctx = ui.ctx().clone();
-        let pressed = if self.confirm_close.is_none() {
-            tabs::shortcut(&ctx)
-        } else {
+        let dialog_open = self.confirm_close.is_some() || self.unsaved_prompt.is_some();
+        let pressed = if dialog_open {
             None
+        } else {
+            tabs::shortcut(&ctx)
         };
         if let Some(action) = clicked.or(pressed) {
             self.run_tab_action(action);
         }
+        if !dialog_open && let Some(action) = layout_file::shortcut(&ctx) {
+            self.run_file_action(action);
+        }
+        // Closing the window with unsaved changes asks first.
+        if ctx.input(|i| i.viewport().close_requested()) && self.unsaved() && !self.allow_close {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.unsaved_prompt = Some(AfterSaving::Quit);
+        }
         self.close_dialog(&ctx);
+        self.unsaved_dialog(&ctx);
+        let title = format!(
+            "{}{} - raptaboard",
+            layout_file::display_name(self.layout_path.as_deref()),
+            if self.unsaved() { " •" } else { "" }
+        );
+        if title != self.title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.title = title;
+        }
         // One copy of every topic per frame, shared by the tree and the grid.
         let topics = self.nt.topics();
         self.nt.update_structs(&topics);
