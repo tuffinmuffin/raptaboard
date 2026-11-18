@@ -225,13 +225,15 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    hotkeys. **Started**: tabs (add, close with a confirmation if it has widgets, rename, reorder;
    Ctrl+1..9 and Ctrl+Left/Right switch tabs; unlike Elastic, adding, closing and moving tabs have
    no shortcuts, since they're rare and hard to remember), moving and resizing
-   widgets and List Layouts on the snap grid (no overlaps), and the layout lock. With no layout
+   widgets and List Layouts on the snap grid (no overlaps; a widget's top-left cell must show, but
+   the rest may run off the right or bottom of the window, up to the 100-cell limit, so a big
+   widget can show just its first row or column), and the layout lock. With no layout
    file the app starts with Elastic's empty "Teleoperated" and "Autonomous" tabs. Layout open and
    save: Open…, Save, Save as… (Ctrl+O, Ctrl+S, Ctrl+Shift+S) with native file dialogs, an
    unsaved-changes dot and window title, and a "save changes?" question before opening another
    layout or quitting. Saves write a temporary file and rename it, so a failed save keeps the old
    file. Opened layouts are checked: a grid size outside 16 to 1024, no tabs, sizes of zero or less,
-   negative positions and widgets past 100 cells are fixed and listed ("fixed N problems"), and
+   negative positions, widgets past 100 cells and overlapping widgets (moved to the nearest free spot) are fixed and listed ("fixed N problems"), and
    files over 10 MB are refused; normal Elastic layouts come through unchanged. Drag from tree:
    dragging a topic onto the grid makes a one-cell widget there (Boolean Box for booleans, Text
    Display for the rest; saved with `topic`, `period` and `data_type` like Elastic). Fields inside a
@@ -263,6 +265,14 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Text style: a font dialog (from the widget dialog's Text size row) for the value text and the
      title: font family, size, color, bold, italic. Saved as raptaboard keys (`font_family`,
      `font_color`, `font_bold`, ...; `font_size` exists), with a layout-wide default style later.
+   - Reflow while dragging: widgets in the way slide aside (to the nearest free spot) as a widget is
+     dragged or resized over them, instead of the drop being refused.
+   - Allow partial overlap: a per-widget setting (this widget may partly overlap others, such as a
+     label over a corner of a camera view) and a layout-wide setting allowing it everywhere.
+     Partial only: no widget may be completely covered, so every widget keeps some part visible to
+     see and grab. A 1x1 on top of a 1x2 is fine (part of the 1x2 still shows); two 1x1s on the same
+     cell, or a big widget over a smaller one, are not. Needs a draw order (front/back), and the
+     overlap fix when opening a layout must allow the same partial overlaps.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      A built-in library of standard images (Elastic's `true_icon`/`false_icon` set: Checkmark, X,
      Exclamation Point, so its layouts keep their icons, plus more), and any PNG/SVG the team

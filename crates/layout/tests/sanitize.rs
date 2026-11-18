@@ -89,10 +89,16 @@ fn sizes_and_positions_are_fixed() {
     .join(",");
     let mut l = layout("128", &containers, "");
     let fixes = l.sanitize();
-    assert_eq!(fixes.len(), 4, "{fixes:#?}");
+    assert_eq!(fixes.len(), 5, "{fixes:#?}");
     assert_eq!(
         fixes[0],
         r#"tab "T", widget "flat": 128x0 at (0, 0) became 128x128 at (0, 0)"#
+    );
+    // Moving "left of the grid" onto the grid put it on top of "flat", so it
+    // then moves to the free cell beside it.
+    assert_eq!(
+        fixes[4],
+        r#"tab "T", widget "left of the grid": covers widget "flat"; moved from (0, 0) to (128, 0)"#
     );
     let rects: Vec<Rect> = l.tabs[0]
         .grid_layout
@@ -105,7 +111,7 @@ fn sizes_and_positions_are_fixed() {
         [
             rect(0.0, 0.0, 128.0, 128.0),
             rect(256.0, 0.0, 128.0, 128.0),
-            rect(0.0, 0.0, 128.0, 128.0),
+            rect(128.0, 0.0, 128.0, 128.0),
             // Cut to 100 cells wide.
             rect(0.0, 512.0, 12800.0, 256.0),
         ]
@@ -151,4 +157,81 @@ fn list_children_only_get_size_fixes() {
     let children = &l.tabs[0].grid_layout.layouts[0].children;
     assert_eq!(children[0].rect, rect(-5.0, -5.0, 256.0, 128.0));
     assert_eq!(children[1].rect.height, 128.0);
+}
+
+#[test]
+fn overlapping_items_move_to_the_nearest_free_spot() {
+    let containers = [
+        widget("a", 0.0, 0.0, 256.0, 128.0),
+        // Half on top of "a": moves right next to it, the nearest free spot.
+        widget("b", 128.0, 0.0, 256.0, 128.0),
+        widget("c", 0.0, 128.0, 128.0, 128.0),
+    ]
+    .join(",");
+    // A list over "c": lists are checked after widgets, so the list moves.
+    let list = r#"{"title": "list", "x": 0.0, "y": 128.0, "width": 128.0, "height": 256.0,
+        "type": "List Layout", "properties": {}, "children": []}"#;
+    let mut l = layout("128", &containers, list);
+    let fixes = l.sanitize();
+    assert_eq!(
+        fixes,
+        [
+            r#"tab "T", widget "b": covers widget "a"; moved from (128, 0) to (256, 0)"#,
+            r#"tab "T", list "list": covers widget "c"; moved from (0, 128) to (128, 128)"#,
+        ]
+    );
+    let grid = &l.tabs[0].grid_layout;
+    assert_eq!(grid.containers[1].rect, rect(256.0, 0.0, 256.0, 128.0));
+    assert_eq!(grid.layouts[0].rect, rect(128.0, 128.0, 128.0, 256.0));
+    // Fixed once, nothing left to fix.
+    let mut again = l.clone();
+    assert!(again.sanitize().is_empty());
+    assert_eq!(again, l);
+}
+
+#[test]
+fn identical_widgets_are_spread_out() {
+    // Three widgets stacked on one spot, as a script might write them.
+    let containers = [0, 1, 2]
+        .map(|i| widget(&format!("w{i}"), 128.0, 128.0, 128.0, 128.0))
+        .join(",");
+    let mut l = layout("128", &containers, "");
+    assert_eq!(l.sanitize().len(), 2);
+    let spots: Vec<Rect> = l.tabs[0]
+        .grid_layout
+        .containers
+        .iter()
+        .map(|w| w.rect)
+        .collect();
+    // The first stays; the others go to the nearest free cells: above, then left.
+    assert_eq!(
+        spots,
+        [
+            rect(128.0, 128.0, 128.0, 128.0),
+            rect(128.0, 0.0, 128.0, 128.0),
+            rect(0.0, 128.0, 128.0, 128.0),
+        ]
+    );
+}
+
+#[test]
+fn an_overlap_with_no_room_is_left_and_reported() {
+    // Grid size 1024 with 100 cells is a 102400-pixel grid; fill it with one
+    // giant widget so nothing else fits anywhere.
+    let containers = [
+        widget("everything", 0.0, 0.0, 102400.0, 102400.0),
+        widget("small", 0.0, 0.0, 1024.0, 1024.0),
+    ]
+    .join(",");
+    let mut l = layout("1024", &containers, "");
+    assert_eq!(
+        l.sanitize(),
+        [
+            r#"tab "T", widget "small": covers widget "everything", and there's no free space; left there"#
+        ]
+    );
+    assert_eq!(
+        l.tabs[0].grid_layout.containers[1].rect,
+        rect(0.0, 0.0, 1024.0, 1024.0)
+    );
 }
