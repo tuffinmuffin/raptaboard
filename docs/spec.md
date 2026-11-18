@@ -214,6 +214,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Find a topic's widgets: selecting a topic (or struct field) in the NT tree highlights every
      widget on the open tab bound to it, and marks other tabs that have one, so it's easy to see
      where a value is already shown before adding another.
+   - Add from the tree without dragging: right-click a topic or struct field → "Add to grid" puts
+     its widget in the first free spot on the open tab.
+   - Select several topics in the tree (Ctrl+click, Shift+click for a range) and add them all at
+     once, by dragging them together or with "Add to grid"; each gets its own widget, placed in free
+     spots starting where they're dropped.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
