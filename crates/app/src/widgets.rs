@@ -10,7 +10,7 @@
 
 use eframe::egui::{self, Color32, CornerRadius, Rect, Stroke, StrokeKind};
 use nt4::Value;
-use raptaboard_layout::WidgetContainer;
+use raptaboard_layout::{Rect as LayoutRect, WidgetContainer};
 use serde_json::Value as Json;
 
 use crate::tree::format_number;
@@ -48,6 +48,57 @@ impl WidgetKind {
             "Boolean Box" => Some(WidgetKind::BooleanBox),
             _ => None,
         }
+    }
+}
+
+/// Elastic's default widget update period, in seconds.
+pub const DEFAULT_PERIOD_S: f64 = 0.06;
+
+/// The widget type to make for a topic dropped on the grid, by its NT type
+/// string: a Boolean Box for booleans, a Text Display for everything else.
+///
+/// ```
+/// use raptaboard::widgets::type_for_topic;
+/// assert_eq!(type_for_topic("boolean"), "Boolean Box");
+/// assert_eq!(type_for_topic("double"), "Text Display");
+/// assert_eq!(type_for_topic("struct:Pose2d"), "Text Display");
+/// ```
+pub fn type_for_topic(nt_type: &str) -> &'static str {
+    match nt_type {
+        "boolean" => "Boolean Box",
+        _ => "Text Display",
+    }
+}
+
+/// A new widget for the topic `name` of NT type `nt_type`, placed at `rect`.
+/// It is titled with the last part of the name and saved the way Elastic
+/// saves widgets: `topic`, `period` and `data_type` properties.
+///
+/// ```
+/// use raptaboard::widgets::for_topic;
+/// use raptaboard_layout::Rect;
+/// let at = Rect { x: 128.0, y: 0.0, width: 128.0, height: 128.0 };
+/// let w = for_topic("/Drive/Health/allModulesHealthy", "boolean", at);
+/// assert_eq!(w.title, "allModulesHealthy");
+/// assert_eq!(w.widget_type, "Boolean Box");
+/// assert_eq!(w.topic(), Some("/Drive/Health/allModulesHealthy"));
+/// assert_eq!(w.period(), Some(0.06));
+/// ```
+pub fn for_topic(name: &str, nt_type: &str, rect: LayoutRect) -> WidgetContainer {
+    let title = name
+        .rsplit('/')
+        .find(|part| !part.is_empty())
+        .unwrap_or(name);
+    let mut properties = serde_json::Map::new();
+    properties.insert("topic".into(), name.into());
+    properties.insert("period".into(), DEFAULT_PERIOD_S.into());
+    properties.insert("data_type".into(), nt_type.into());
+    WidgetContainer {
+        title: title.to_owned(),
+        rect,
+        widget_type: type_for_topic(nt_type).to_owned(),
+        properties,
+        extra: serde_json::Map::new(),
     }
 }
 
@@ -289,6 +340,36 @@ mod tests {
         assert_eq!(
             body(WidgetKind::BooleanBox, &blue, Some(&Value::Double(1.0))),
             Body::NoData("not a boolean")
+        );
+    }
+
+    #[test]
+    fn dropped_topics_become_widgets() {
+        let at = LayoutRect {
+            x: 0.0,
+            y: 256.0,
+            width: 128.0,
+            height: 128.0,
+        };
+        let w = for_topic("/DashTest/ModeName", "string", at);
+        assert_eq!(
+            (w.title.as_str(), w.widget_type.as_str()),
+            ("ModeName", "Text Display")
+        );
+        assert_eq!(w.rect, at);
+        assert_eq!(w.properties["data_type"], "string");
+        // It can be drawn: the kind is one raptaboard knows.
+        assert_eq!(
+            WidgetKind::from_type(&w.widget_type),
+            Some(WidgetKind::TextDisplay)
+        );
+        // A name ending in a slash still gets a title.
+        assert_eq!(for_topic("/odd/", "double", at).title, "odd");
+        // The JSON matches what Elastic writes for a dropped topic.
+        let json = serde_json::to_value(&w).unwrap();
+        assert_eq!(
+            json["properties"],
+            serde_json::json!({"topic": "/DashTest/ModeName", "period": 0.06, "data_type": "string"})
         );
     }
 

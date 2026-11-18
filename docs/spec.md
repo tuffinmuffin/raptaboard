@@ -193,7 +193,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    layout or quitting. Saves write a temporary file and rename it, so a failed save keeps the old
    file. Opened layouts are checked: a grid size outside 16 to 1024, no tabs, sizes of zero or less,
    negative positions and widgets past 100 cells are fixed and listed ("fixed N problems"), and
-   files over 10 MB are refused; normal Elastic layouts come through unchanged. Next: drag from tree.
+   files over 10 MB are refused; normal Elastic layouts come through unchanged. Drag from tree:
+   dragging a topic onto the grid makes a one-cell widget there (Boolean Box for booleans, Text
+   Display for the rest; saved with `topic`, `period` and `data_type` like Elastic). Dragging folders
+   (tables with `.type`) waits for the widgets that draw tables in milestone 3. Next: List Layout
+   editing (drop into a list, create one).
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, Mechanism2d,

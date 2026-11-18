@@ -34,6 +34,16 @@ impl From<nt4::Topic> for TopicEntry {
     }
 }
 
+/// What a topic row carries while it's dragged out of the tree, for the
+/// grid to make a widget from when it's dropped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DraggedTopic {
+    /// Full topic name.
+    pub name: String,
+    /// NT type string, such as `boolean`.
+    pub ty: String,
+}
+
 /// A folder: sub-folders and topics, each sorted by name.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Folder {
@@ -103,6 +113,8 @@ impl Folder {
     /// `structs` holds the struct schemas the server has sent, used to open struct topics
     /// such as `Pose2d` into their fields.
     ///
+    /// Topic rows can be dragged onto the grid; see [`DraggedTopic`].
+    ///
     /// Returns the full names of the topics that were drawn, that is, those
     /// in open folders, so their values can be requested from the server.
     pub fn show(
@@ -124,7 +136,12 @@ impl Folder {
             visible.extend(open.body_returned.unwrap_or_default());
         }
         for (key, topic) in &self.topics {
-            show_topic(ui, key, topic, structs);
+            let payload = DraggedTopic {
+                name: topic.name.clone(),
+                ty: topic.ty.clone(),
+            };
+            let id = egui::Id::unique(("nt_topic", &topic.name));
+            ui.dnd_drag_source(id, payload, |ui| show_topic(ui, key, topic, structs));
             visible.push(topic.name.clone());
         }
         visible

@@ -14,12 +14,10 @@ use crate::grid::{self, Item};
 use crate::layout_file::{self, FileAction, LoadError};
 use crate::nt::{ConnectionStatus, NtConnection};
 use crate::tabs::{self, TabAction};
-use crate::tree::{Folder, TopicEntry};
-use crate::widgets::{self, WidgetKind};
+use crate::tree::{DraggedTopic, Folder, TopicEntry};
+use crate::widgets::{self, DEFAULT_PERIOD_S, WidgetKind};
 use nt4::proto::structs::StructDatabase;
 
-/// Elastic's default widget update period, in seconds.
-const DEFAULT_PERIOD_S: f64 = 0.06;
 /// Space between List Layout children, in points.
 const LIST_GAP: f32 = 6.0;
 /// Size of the resize corner at the bottom right of each widget, in points.
@@ -712,17 +710,7 @@ impl DashboardApp {
         if let Some(drag) = self.drag {
             let target = drag.target(cell, room);
             let ok = grid::fits(&tab.grid_layout, drag.item, target);
-            let color = if ok {
-                Color32::from_rgb(60, 180, 90)
-            } else {
-                Color32::from_rgb(220, 60, 60)
-            };
-            painter.rect_stroke(
-                to_screen(&target).shrink(2.0),
-                egui::CornerRadius::same(10),
-                Stroke::new(2.0, color),
-                egui::StrokeKind::Inside,
-            );
+            draw_landing(&painter, to_screen(&target), ok);
             draw_item(
                 &painter,
                 &visuals,
@@ -731,6 +719,30 @@ impl DashboardApp {
                 drag.item,
                 &value_of,
             );
+        }
+
+        // A topic dragged from the NT tree: show the cell under the pointer
+        // where its widget would go, and make the widget when it's dropped.
+        let pointer = ui.ctx().pointer_hover_pos().filter(|p| area.contains(*p));
+        if !self.locked
+            && let Some(p) = pointer
+            && let Some(topic) = egui::DragAndDrop::payload::<DraggedTopic>(ui.ctx())
+        {
+            let under = LayoutRect {
+                x: f64::from(p.x - origin.x) - cell / 2.0,
+                y: f64::from(p.y - origin.y) - cell / 2.0,
+                width: cell,
+                height: cell,
+            };
+            let target = grid::snap_move(under, cell, room);
+            let free = grid::is_free(&tab.grid_layout, target);
+            draw_landing(&painter, to_screen(&target), free);
+            if free && ui.input(|i| i.pointer.any_released()) {
+                let widget = widgets::for_topic(&topic.name, &topic.ty, target);
+                if let Some(tab) = self.layout.tabs.get_mut(self.current_tab) {
+                    tab.grid_layout.containers.push(widget);
+                }
+            }
         }
 
         if let Some(drag) = dropped {
@@ -780,6 +792,22 @@ fn draw_item<'v>(
             }
         }
     }
+}
+
+/// The outline where a dragged widget or topic will land: green if it fits
+/// there, red if it would cover another widget.
+fn draw_landing(painter: &egui::Painter, rect: Rect, ok: bool) {
+    let color = if ok {
+        Color32::from_rgb(60, 180, 90)
+    } else {
+        Color32::from_rgb(220, 60, 60)
+    };
+    painter.rect_stroke(
+        rect.shrink(2.0),
+        egui::CornerRadius::same(10),
+        Stroke::new(2.0, color),
+        egui::StrokeKind::Inside,
+    );
 }
 
 /// Two short diagonal lines in a widget's bottom-right corner, showing
