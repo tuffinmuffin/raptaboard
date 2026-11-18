@@ -6,9 +6,10 @@ When the two differ, update both.
 
 ## Goal and decisions
 
-raptaboard is an FRC driver dashboard in Rust for Team 3200 (Raptacon). It matches what
-[Elastic](https://github.com/Gold872/elastic-dashboard) does, reads Elastic layouts, and adds widget
-plugins that load at runtime and bind to a NetworkTables table.
+raptaboard is an FRC driver dashboard in Rust for Team 3200 (Raptacon). It started from
+[Elastic](https://github.com/Gold872/elastic-dashboard) and aims past it: what Elastic does, fixes for
+its limits, and widget plugins that load at runtime and bind to a NetworkTables table. Opening
+Elastic layouts is a convenience, not a requirement.
 
 | Decision | Choice | Date |
 | --- | --- | --- |
@@ -16,7 +17,8 @@ plugins that load at runtime and bind to a NetworkTables table.
 | NT client | our own NT4.1 client, published as the [`nt4`](https://crates.io/crates/nt4) crate (`tuffinmuffin/nt4-rs`) | 2026-11-17 |
 | Plugins | WebAssembly components only, run by wasmtime, interface in `wit/dashboard.wit` | 2026-11-14 |
 | Dynamic-library plugins | rejected: a crash would take down the dashboard during a match | 2026-11-14 |
-| Layout files | read and write Elastic `version 1.0` JSON unchanged; native v2 later | 2026-11-14 |
+| Layout files | ~~read and write Elastic `version 1.0` JSON unchanged~~ (2026-11-14); replaced 2026-11-18: no need to keep Elastic's file format. Teams aren't expected to switch back and forth; working with Elastic files is nice to have when it's cheap. Files are Elastic-shaped today and may become raptaboard's own format; if they do, an import tool converts Elastic layouts into it (one way) | 2026-11-18 |
+| Elastic's role | the starting point, not the limit: add features beyond it; keep Elastic's names where robot code depends on them (`.type`, `/Elastic/` topics) | 2026-11-18 |
 | Repo | `tuffinmuffin/raptaboard` | 2026-11-14 |
 
 Open: should the robot serve plugins from port 5800 along with layouts? Stream Deck hooks are a later interest.
@@ -193,8 +195,24 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    layout or quitting. Saves write a temporary file and rename it, so a failed save keeps the old
    file. Opened layouts are checked: a grid size outside 16 to 1024, no tabs, sizes of zero or less,
    negative positions and widgets past 100 cells are fixed and listed ("fixed N problems"), and
-   files over 10 MB are refused; normal Elastic layouts come through unchanged. Next: drag from tree.
+   files over 10 MB are refused; normal Elastic layouts come through unchanged. Drag from tree:
+   dragging a topic onto the grid makes a one-cell widget there (Boolean Box for booleans, Text
+   Display for the rest; saved with `topic`, `period` and `data_type` like Elastic). Fields inside a
+   struct topic (Pose2d → translation → x) drag too: the widget keeps the struct topic and saves
+   Elastic's `struct_meta` (`path`, `schema_name`, `type`); fields inside struct arrays don't, as in
+   Elastic. Whole structs wait for their widgets. Dragging folders
+   (tables with `.type`) waits for the widgets that draw tables in milestone 3. Next:
+   - Widget menu (right-click, unlocked): Edit…, Duplicate, Delete; the Delete key for a selected
+     widget; Ctrl+Z undo for layout edits, so deleting needs no confirmation.
+   - Widget settings dialog: title (rename, reset to the source name, source still shown), period,
+     Boolean Box true/false colors (Elastic's `true_color`/`false_color`), and raptaboard-only
+     settings: decimal places for numbers, enum fields as name, number or both, and font size.
+   - List Layout editing (drop into a list, create one).
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
+   Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
+   enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
+   WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro, SwerveModuleState[] → swerve view.
+   Milestone 4 plugins may also match a struct type (a `struct = "ArmState"` rule).
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, Mechanism2d,
    units, MJPEG cameras.

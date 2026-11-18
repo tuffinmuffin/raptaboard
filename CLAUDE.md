@@ -12,8 +12,16 @@ Read its "Goal and decisions" and "Milestones" sections before starting work.
 
 Decisions already made (don't reopen without asking the user): egui/eframe UI; our own NT4.1 client
 (the published `nt4` crate, from `tuffinmuffin/nt4-rs`); plugins are WASM components only
-(wasmtime + `wit/dashboard.wit`), no dynamic libraries, no scripting tier; Elastic layout JSON v1
-must round-trip unchanged.
+(wasmtime + `wit/dashboard.wit`), no dynamic libraries, no scripting tier.
+
+Elastic is the starting point, not the limit (decided 2026-11-18): the goal is a richer dashboard
+that fixes Elastic's shortcomings. raptaboard doesn't have to keep Elastic's file format: teams aren't
+expected to switch back and forth, so opening Elastic layouts and saving files Elastic can read is
+nice to have, kept when it's cheap, never a reason to block a feature. Layout files are Elastic-shaped
+today (`crates/layout`), and that can change; if raptaboard gets its own format, an import tool
+converts Elastic layouts into it (one way). raptaboard-only widget settings, widgets and behavior are
+welcome. Keep Elastic's names (`.type` strings, `/Elastic/` topics) where
+robot code depends on them.
 
 ## Commands
 
@@ -37,8 +45,8 @@ macOS. Run the same locally before pushing.
 - NetworkTables: the `nt4` crate from crates.io (`nt4::Client`, typed subscribers, `nt4::proto` for
   ports and URLs). Fix protocol bugs upstream in `nt4-rs`, not here.
 - `crates/layout`: Elastic v1 model. Unknown fields go in `extra` maps so files round-trip.
-  `ElasticLayout::sanitize` fixes values the app can't show (run on every opened file); it must
-  leave valid Elastic layouts unchanged (`tests/sanitize.rs`).
+  `ElasticLayout::sanitize` fixes values the app can't show (run on every opened file) and leaves
+  valid layouts unchanged (`tests/sanitize.rs`).
 - `crates/plugin-host`: manifest parsing and matching; `path` has topic path helpers
   (`.type` tables). wasmtime hosting comes in milestone 4.
 - `crates/app`: the eframe app. `ui.rs` holds the window, `connection.rs` the robot address modes,
@@ -58,7 +66,10 @@ macOS. Run the same locally before pushing.
   (set `RAPTABOARD_CPU_OTHER=elastic_dashboard`, Elastic on localhost, port 5810 free).
   Results are in `docs/spec.md`; VMs without hardware DX12 render in software, so their numbers
   don't count. Milestone 2 has tabs, the snap grid, the lock and layout open/save
-  (`layout_file.rs`, native dialogs via `rfd`); next is dragging topics from the tree onto the grid.
+  (`layout_file.rs`, native dialogs via `rfd`); topics and struct fields drag from the tree onto the grid (`tree::DraggedTopic`,
+  `widgets::for_topic`; struct fields use Elastic's `struct_meta`, read with
+  `struct_view::field_value`); next is List
+  Layout editing.
 - `layouts/robot2027_sim.json`: a layout for trying widgets against the robot-2027 sim
   (`cargo run -p raptaboard -- --address sim layouts/robot2027_sim.json`). Its `/DashTest/`
   topics come from robot-2027's `utils/dashboard_test_topics.py` (sim only).

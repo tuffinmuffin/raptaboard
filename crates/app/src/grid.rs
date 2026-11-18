@@ -107,6 +107,18 @@ pub fn snap_resize(rect: Rect, cell: f64) -> Rect {
     }
 }
 
+/// Whether `rect` is empty on `grid`, for placing something new there.
+///
+/// ```
+/// use raptaboard::grid::is_free;
+/// use raptaboard_layout::{GridLayout, Rect};
+/// let empty = GridLayout::default();
+/// assert!(is_free(&empty, Rect { x: 0.0, y: 0.0, width: 128.0, height: 128.0 }));
+/// ```
+pub fn is_free(grid: &GridLayout, rect: Rect) -> bool {
+    items(grid).into_iter().all(|(_, r)| !rect.overlaps(&r))
+}
+
 /// Whether `item` can go at `rect` on `grid` without covering anything else.
 ///
 /// ```
@@ -216,6 +228,9 @@ mod tests {
             Item::Widget(0),
             rect(384.0, 128.0, 128.0, 128.0)
         ));
+        // Something new can't go on the list, but can go beside it.
+        assert!(!is_free(&grid, rect(256.0, 128.0, 128.0, 128.0)));
+        assert!(is_free(&grid, rect(128.0, 0.0, 128.0, 128.0)));
         // An item never blocks itself: growing in place is fine.
         assert!(fits(&grid, Item::List(0), rect(256.0, 0.0, 384.0, 384.0)));
 

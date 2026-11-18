@@ -6,7 +6,10 @@
 //! the schemas and [`DynamicStruct`] reads a value with one. This module only
 //! decides how the result is labelled, so it can be tested without a server.
 
-use nt4::proto::structs::{Declaration, DynamicStruct, FieldValue, StructDatabase, parse_schema};
+use nt4::Value;
+use nt4::proto::structs::{
+    Declaration, DynamicStruct, FieldDescriptor, FieldValue, StructDatabase, parse_schema,
+};
 
 use crate::tree::format_number;
 
@@ -70,6 +73,174 @@ pub fn decode(db: &StructDatabase, ty: &str, bytes: &[u8]) -> Option<Shown> {
         })
     } else {
         Some(show_struct(&DynamicStruct::new(db, name, bytes)?))
+    }
+}
+
+/// One field of a struct value, as a plain NT value: `path` names the field
+/// and any structs it's inside, such as `["translation", "x"]` in a
+/// `Pose2d`. `schema` is the struct's name (`Pose2d`). `None` if the schema
+/// hasn't arrived, the path doesn't name a field, or the field is a whole
+/// struct.
+///
+/// This is how a widget bound to a struct field (Elastic's `struct_meta`)
+/// gets its value.
+///
+/// ```
+/// use nt4::Value;
+/// use nt4::proto::structs::StructDatabase;
+/// use raptaboard::struct_view::field_value;
+/// let mut db = StructDatabase::new();
+/// db.add("Translation2d", "double x;double y").unwrap();
+/// let bytes: Vec<u8> = [1.5f64, -2.0].iter().flat_map(|d| d.to_le_bytes()).collect();
+/// let x = field_value(&db, "Translation2d", &bytes, &["x".to_string()]);
+/// assert_eq!(x, Some(Value::Double(1.5)));
+/// ```
+pub fn field_value(
+    db: &StructDatabase,
+    schema: &str,
+    bytes: &[u8],
+    path: &[String],
+) -> Option<Value> {
+    let (s, field) = find_field(db, schema, bytes, path)?;
+    as_nt_value(s.value(field)?)
+}
+
+/// Like [`field_value`], but an enum field gives its name from the schema
+/// (`kIntake`) as a string instead of its number, for showing to a person.
+/// Numbers the enum doesn't name stay numbers.
+///
+/// ```
+/// use nt4::Value;
+/// use nt4::proto::structs::StructDatabase;
+/// use raptaboard::struct_view::{field_value, field_value_shown};
+/// let mut db = StructDatabase::new();
+/// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode").unwrap();
+/// let mode = vec!["mode".to_string()];
+/// assert_eq!(field_value(&db, "Arm", &[3], &mode), Some(Value::Int(3)));
+/// assert_eq!(field_value_shown(&db, "Arm", &[3], &mode), Some(Value::String("kIntake".into())));
+/// assert_eq!(field_value_shown(&db, "Arm", &[9], &mode), Some(Value::Int(9)));
+/// ```
+pub fn field_value_shown(
+    db: &StructDatabase,
+    schema: &str,
+    bytes: &[u8],
+    path: &[String],
+) -> Option<Value> {
+    let (s, field) = find_field(db, schema, bytes, path)?;
+    let value = as_nt_value(s.value(field)?)?;
+    if field.enum_values().is_empty() {
+        return Some(value);
+    }
+    Some(match value {
+        Value::Int(n) => field
+            .enum_name(n)
+            .map_or(Value::Int(n), |name| Value::String(name.to_owned())),
+        other => other,
+    })
+}
+
+/// The struct holding the field `path` names, and that field.
+fn find_field<'a>(
+    db: &'a StructDatabase,
+    schema: &str,
+    bytes: &'a [u8],
+    path: &[String],
+) -> Option<(DynamicStruct<'a>, &'a FieldDescriptor)> {
+    let (last, parents) = path.split_last()?;
+    let mut s = DynamicStruct::new(db, schema, bytes)?;
+    for name in parents {
+        match s.value(s.field(name)?)? {
+            FieldValue::Struct(inner) => s = inner,
+            _ => return None,
+        }
+    }
+    let field = s.field(last)?;
+    Some((s, field))
+}
+
+/// A struct field's value as an NT value. Whole structs and mixed arrays
+/// have no plain NT form.
+fn as_nt_value(v: FieldValue<'_>) -> Option<Value> {
+    Some(match v {
+        FieldValue::Bool(b) => Value::Boolean(b),
+        FieldValue::Int(n) => Value::Int(n),
+        FieldValue::Uint(n) => Value::Int(i64::try_from(n).ok()?),
+        FieldValue::Float(f) => Value::Float(f),
+        FieldValue::Double(d) => Value::Double(d),
+        FieldValue::String(s) => Value::String(s.into_owned()),
+        FieldValue::Struct(_) => return None,
+        FieldValue::Array(items) => {
+            let items: Vec<Value> = items.into_iter().map(as_nt_value).collect::<Option<_>>()?;
+            let all = |f: fn(&Value) -> bool| items.iter().all(f);
+            if all(|v| matches!(v, Value::Boolean(_))) {
+                Value::BooleanArray(
+                    items
+                        .iter()
+                        .filter_map(|v| match v {
+                            Value::Boolean(b) => Some(*b),
+                            _ => None,
+                        })
+                        .collect(),
+                )
+            } else if all(|v| matches!(v, Value::Int(_))) {
+                Value::IntArray(
+                    items
+                        .iter()
+                        .filter_map(|v| match v {
+                            Value::Int(n) => Some(*n),
+                            _ => None,
+                        })
+                        .collect(),
+                )
+            } else if all(|v| matches!(v, Value::Float(_))) {
+                Value::FloatArray(
+                    items
+                        .iter()
+                        .filter_map(|v| match v {
+                            Value::Float(f) => Some(*f),
+                            _ => None,
+                        })
+                        .collect(),
+                )
+            } else if all(|v| matches!(v, Value::Double(_))) {
+                Value::DoubleArray(
+                    items
+                        .iter()
+                        .filter_map(|v| match v {
+                            Value::Double(d) => Some(*d),
+                            _ => None,
+                        })
+                        .collect(),
+                )
+            } else {
+                return None;
+            }
+        }
+    })
+}
+
+/// The NT type string for a value, as servers announce it: `double`,
+/// `boolean[]` and so on. Used as a widget's `data_type`.
+///
+/// ```
+/// use nt4::Value;
+/// use raptaboard::struct_view::nt_type_name;
+/// assert_eq!(nt_type_name(&Value::Double(1.0)), "double");
+/// assert_eq!(nt_type_name(&Value::IntArray(vec![])), "int[]");
+/// ```
+pub fn nt_type_name(v: &Value) -> &'static str {
+    match v {
+        Value::Boolean(_) => "boolean",
+        Value::Double(_) => "double",
+        Value::Float(_) => "float",
+        Value::Int(_) => "int",
+        Value::String(_) => "string",
+        Value::Raw(_) => "raw",
+        Value::BooleanArray(_) => "boolean[]",
+        Value::DoubleArray(_) => "double[]",
+        Value::FloatArray(_) => "float[]",
+        Value::IntArray(_) => "int[]",
+        Value::StringArray(_) => "string[]",
     }
 }
 
@@ -220,6 +391,52 @@ mod tests {
 
     fn leaf(s: &str) -> Shown {
         Shown::Leaf(s.into())
+    }
+
+    fn path(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|p| p.to_string()).collect()
+    }
+
+    #[test]
+    fn struct_fields_read_by_path() {
+        let db = wpilib_db();
+        // Pose2d: translation (x, y), rotation (value).
+        let pose = doubles(&[1.5, -2.0, 0.25]);
+        let field = |p: &[&str]| field_value(&db, "Pose2d", &pose, &path(p));
+        assert_eq!(field(&["translation", "x"]), Some(Value::Double(1.5)));
+        assert_eq!(field(&["translation", "y"]), Some(Value::Double(-2.0)));
+        assert_eq!(field(&["rotation", "value"]), Some(Value::Double(0.25)));
+        // A whole struct, a missing field, a path through a number, no path.
+        assert_eq!(field(&["translation"]), None);
+        assert_eq!(field(&["heading"]), None);
+        assert_eq!(field(&["translation", "x", "more"]), None);
+        assert_eq!(field(&[]), None);
+        // An unknown schema or too few bytes.
+        assert_eq!(field_value(&db, "Pose3d", &pose, &path(&["x"])), None);
+        assert_eq!(
+            field_value(&db, "Pose2d", &pose[..8], &path(&["translation", "x"])),
+            None
+        );
+    }
+
+    #[test]
+    fn struct_field_types_become_nt_types() {
+        let mut db = StructDatabase::new();
+        db.add("Mixed", "bool on;int16 n;float f;double d[2];char name[4]")
+            .unwrap();
+        let mut bytes = vec![1u8];
+        bytes.extend((-3i16).to_le_bytes());
+        bytes.extend(0.5f32.to_le_bytes());
+        bytes.extend(doubles(&[1.0, 2.0]));
+        bytes.extend(b"abc\0");
+        let field = |name: &str| field_value(&db, "Mixed", &bytes, &path(&[name])).unwrap();
+        assert_eq!(field("on"), Value::Boolean(true));
+        assert_eq!(field("n"), Value::Int(-3));
+        assert_eq!(field("f"), Value::Float(0.5));
+        assert_eq!(field("d"), Value::DoubleArray(vec![1.0, 2.0]));
+        assert_eq!(field("name"), Value::String("abc".into()));
+        assert_eq!(nt_type_name(&field("on")), "boolean");
+        assert_eq!(nt_type_name(&field("d")), "double[]");
     }
 
     fn node(summary: &str, children: Vec<(&str, Shown)>) -> Shown {

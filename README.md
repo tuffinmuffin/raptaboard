@@ -1,14 +1,15 @@
 # raptaboard
 
-An FRC driver dashboard written in Rust, from FRC Team 3200 (Raptacon). The goal is to do everything
-[Elastic](https://github.com/Gold872/elastic-dashboard) does, open Elastic layouts as they are, and
-add **widget plugins**: small WebAssembly modules that load without rebuilding the dashboard and draw
+An FRC driver dashboard written in Rust, from FRC Team 3200 (Raptacon). It started from
+[Elastic](https://github.com/Gold872/elastic-dashboard) and aims past it: everything Elastic does,
+a richer set of widget settings, and **widget plugins**: small WebAssembly modules that load without rebuilding the dashboard and draw
 a NetworkTables table, such as an arm subsystem.
 
 Status: **milestone 2 in progress.** The app opens an Elastic layout and shows its tabs and widgets
 on the grid, where tabs can be added, renamed and reordered and widgets moved and resized (the
 "🔓 Unlocked" button locks them), and layouts are opened and saved with Open…, Save and Save as…
-(Ctrl+O, Ctrl+S, Ctrl+Shift+S; Cmd on macOS). It connects to the robot over NetworkTables (status and topic count in the settings
+(Ctrl+O, Ctrl+S, Ctrl+Shift+S; Cmd on macOS). Drag a topic from the NetworkTables tree onto the
+grid to make a widget for it. It connects to the robot over NetworkTables (status and topic count in the settings
 bar) with a NetworkTables tree of live values, including WPILib structs such as Pose2d. Text
 Display and Boolean Box widgets show live values; other widget types are placeholders for now.
 

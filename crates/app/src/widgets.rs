@@ -10,7 +10,7 @@
 
 use eframe::egui::{self, Color32, CornerRadius, Rect, Stroke, StrokeKind};
 use nt4::Value;
-use raptaboard_layout::WidgetContainer;
+use raptaboard_layout::{Rect as LayoutRect, StructMeta, WidgetContainer};
 use serde_json::Value as Json;
 
 use crate::tree::format_number;
@@ -49,6 +49,80 @@ impl WidgetKind {
             _ => None,
         }
     }
+}
+
+/// Elastic's default widget update period, in seconds.
+pub const DEFAULT_PERIOD_S: f64 = 0.06;
+
+/// The widget type to make for a topic dropped on the grid, by its NT type
+/// string: a Boolean Box for booleans, a Text Display for numbers, strings
+/// and arrays of them. `None` for types with no widget yet, such as structs
+/// (a Pose2d gets the Field widget in milestone 3); those can't be dragged.
+///
+/// ```
+/// use raptaboard::widgets::type_for_topic;
+/// assert_eq!(type_for_topic("boolean"), Some("Boolean Box"));
+/// assert_eq!(type_for_topic("double"), Some("Text Display"));
+/// assert_eq!(type_for_topic("struct:Pose2d"), None);
+/// ```
+pub fn type_for_topic(nt_type: &str) -> Option<&'static str> {
+    match nt_type {
+        "boolean" => Some("Boolean Box"),
+        "double" | "float" | "int" | "string" | "boolean[]" | "double[]" | "float[]" | "int[]"
+        | "string[]" => Some("Text Display"),
+        _ => None,
+    }
+}
+
+/// A new widget for the topic `name` of NT type `nt_type`, placed at `rect`.
+/// It is titled with the last part of the name and saved the way Elastic
+/// saves widgets: `topic`, `period` and `data_type` properties. `None` if
+/// [`type_for_topic`] has no widget for the type.
+///
+/// With `field`, the widget shows one field of the struct topic `name`, and
+/// `nt_type` is the field's type. It's saved with Elastic's `struct_meta`
+/// and titled like `pose.translation.x`.
+///
+/// ```
+/// use raptaboard::widgets::for_topic;
+/// use raptaboard_layout::Rect;
+/// let at = Rect { x: 128.0, y: 0.0, width: 128.0, height: 128.0 };
+/// let w = for_topic("/Drive/Health/allModulesHealthy", "boolean", None, at).unwrap();
+/// assert_eq!(w.title, "allModulesHealthy");
+/// assert_eq!(w.widget_type, "Boolean Box");
+/// assert_eq!(w.topic(), Some("/Drive/Health/allModulesHealthy"));
+/// assert_eq!(w.period(), Some(0.06));
+/// assert!(for_topic("/Drive/pose", "struct:Pose2d", None, at).is_none());
+/// ```
+pub fn for_topic(
+    name: &str,
+    nt_type: &str,
+    field: Option<&StructMeta>,
+    rect: LayoutRect,
+) -> Option<WidgetContainer> {
+    let widget_type = type_for_topic(nt_type)?;
+    let last = name
+        .rsplit('/')
+        .find(|part| !part.is_empty())
+        .unwrap_or(name);
+    let title = match field {
+        Some(field) => format!("{last}.{}", field.path.join(".")),
+        None => last.to_owned(),
+    };
+    let mut properties = serde_json::Map::new();
+    properties.insert("topic".into(), name.into());
+    properties.insert("period".into(), DEFAULT_PERIOD_S.into());
+    properties.insert("data_type".into(), nt_type.into());
+    if let Some(field) = field {
+        properties.insert("struct_meta".into(), field.to_json(nt_type));
+    }
+    Some(WidgetContainer {
+        title,
+        rect,
+        widget_type: widget_type.to_owned(),
+        properties,
+        extra: serde_json::Map::new(),
+    })
 }
 
 /// What a widget body shows for a value. Kept apart from drawing so it can
@@ -289,6 +363,53 @@ mod tests {
         assert_eq!(
             body(WidgetKind::BooleanBox, &blue, Some(&Value::Double(1.0))),
             Body::NoData("not a boolean")
+        );
+    }
+
+    #[test]
+    fn dropped_topics_become_widgets() {
+        let at = LayoutRect {
+            x: 0.0,
+            y: 256.0,
+            width: 128.0,
+            height: 128.0,
+        };
+        let w = for_topic("/DashTest/ModeName", "string", None, at).unwrap();
+        assert_eq!(
+            (w.title.as_str(), w.widget_type.as_str()),
+            ("ModeName", "Text Display")
+        );
+        assert_eq!(w.rect, at);
+        assert_eq!(w.properties["data_type"], "string");
+        // It can be drawn: the kind is one raptaboard knows.
+        assert_eq!(
+            WidgetKind::from_type(&w.widget_type),
+            Some(WidgetKind::TextDisplay)
+        );
+        // A name ending in a slash still gets a title.
+        assert_eq!(for_topic("/odd/", "double", None, at).unwrap().title, "odd");
+        // A struct field keeps the struct topic and says which field.
+        let field = StructMeta {
+            path: vec!["translation".into(), "x".into()],
+            schema_name: "Pose2d".into(),
+        };
+        let x = for_topic("/Drive/pose", "double", Some(&field), at).unwrap();
+        assert_eq!(x.title, "pose.translation.x");
+        assert_eq!(x.topic(), Some("/Drive/pose"));
+        assert_eq!(x.struct_meta(), Some(field));
+        assert_eq!(
+            x.properties["struct_meta"],
+            serde_json::json!({"path": ["translation", "x"], "schema_name": "Pose2d", "type": "double"})
+        );
+        // Arrays go in a Text Display; raw bytes and schemas have no widget.
+        assert_eq!(type_for_topic("int[]"), Some("Text Display"));
+        assert_eq!(type_for_topic("raw"), None);
+        assert_eq!(type_for_topic("structschema"), None);
+        // The JSON matches what Elastic writes for a dropped topic.
+        let json = serde_json::to_value(&w).unwrap();
+        assert_eq!(
+            json["properties"],
+            serde_json::json!({"topic": "/DashTest/ModeName", "period": 0.06, "data_type": "string"})
         );
     }
 

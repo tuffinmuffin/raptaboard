@@ -9,9 +9,11 @@ use std::collections::BTreeMap;
 use eframe::egui;
 use nt4::Value;
 use nt4::proto::structs::StructDatabase;
+use raptaboard_layout::StructMeta;
 use raptaboard_plugin_host::path;
 
 use crate::struct_view::{self, Shown};
+use crate::widgets;
 
 /// One topic as the tree shows it.
 #[derive(Debug, Clone, PartialEq)]
@@ -32,6 +34,19 @@ impl From<nt4::Topic> for TopicEntry {
             value: t.value.map(|v| v.value),
         }
     }
+}
+
+/// What a topic row carries while it's dragged out of the tree, for the
+/// grid to make a widget from when it's dropped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DraggedTopic {
+    /// Full topic name.
+    pub name: String,
+    /// NT type string, such as `boolean`. For a struct field, the field's
+    /// type.
+    pub ty: String,
+    /// Set when one field of a struct topic is dragged.
+    pub field: Option<StructMeta>,
 }
 
 /// A folder: sub-folders and topics, each sorted by name.
@@ -103,6 +118,10 @@ impl Folder {
     /// `structs` holds the struct schemas the server has sent, used to open struct topics
     /// such as `Pose2d` into their fields.
     ///
+    /// When `draggable` is set (the layout isn't locked), rows for topics
+    /// that have a widget type can be dragged onto the grid; see
+    /// [`DraggedTopic`] and [`widgets::type_for_topic`].
+    ///
     /// Returns the full names of the topics that were drawn, that is, those
     /// in open folders, so their values can be requested from the server.
     pub fn show(
@@ -111,6 +130,7 @@ impl Folder {
         path: &str,
         expand_all: bool,
         structs: &StructDatabase,
+        draggable: bool,
     ) -> Vec<String> {
         let mut visible = Vec::new();
         for (name, folder) in &self.folders {
@@ -120,19 +140,60 @@ impl Folder {
                 .id_salt(&folder_path)
                 .default_open(false)
                 .open(expand_all.then_some(true))
-                .show(ui, |ui| folder.show(ui, &folder_path, expand_all, structs));
+                .show(ui, |ui| {
+                    folder.show(ui, &folder_path, expand_all, structs, draggable)
+                });
             visible.extend(open.body_returned.unwrap_or_default());
         }
         for (key, topic) in &self.topics {
-            show_topic(ui, key, topic, structs);
+            let has_widget = widgets::type_for_topic(&topic.ty).is_some();
+            if draggable && has_widget {
+                let payload = DraggedTopic {
+                    name: topic.name.clone(),
+                    ty: topic.ty.clone(),
+                    field: None,
+                };
+                let id = egui::Id::unique(("nt_topic", &topic.name));
+                ui.dnd_drag_source(id, payload, |ui| {
+                    // Plain labels, so the pointer shows the grab hand rather
+                    // than the text cursor.
+                    ui.style_mut().interaction.selectable_labels = false;
+                    show_topic(
+                        ui,
+                        key,
+                        topic,
+                        structs,
+                        "Drag onto the grid to make a widget",
+                        false,
+                    );
+                });
+            } else {
+                // Rows that open (structs, schemas) must not be drag sources:
+                // egui gives a drag area on top of a header the clicks.
+                let note = if has_widget || struct_view::struct_type(&topic.ty).is_some() {
+                    String::new()
+                } else {
+                    format!("No widget for {} yet", topic.ty)
+                };
+                show_topic(ui, key, topic, structs, &note, draggable);
+            }
             visible.push(topic.name.clone());
         }
         visible
     }
 }
 
-/// One topic row. Struct values that can be decoded open into their fields.
-fn show_topic(ui: &mut egui::Ui, key: &str, topic: &TopicEntry, structs: &StructDatabase) {
+/// One topic row. Struct values that can be decoded open into their fields,
+/// which can be dragged onto the grid when `draggable` is set. `note`, if
+/// not empty, is added to the hover text.
+fn show_topic(
+    ui: &mut egui::Ui,
+    key: &str,
+    topic: &TopicEntry,
+    structs: &StructDatabase,
+    note: &str,
+    draggable: bool,
+) {
     let bytes = match &topic.value {
         Some(Value::Raw(bytes)) => Some(bytes.as_slice()),
         _ => None,
@@ -140,17 +201,33 @@ fn show_topic(ui: &mut egui::Ui, key: &str, topic: &TopicEntry, structs: &Struct
     let schema = struct_view::struct_type(&topic.ty)
         .and_then(|(name, _)| structs.find(name))
         .map(|d| d.schema().to_owned());
-    let hover = match &schema {
+    let mut hover = match &schema {
         Some(schema) => format!("{}\nschema: {schema}", topic.name),
         None => topic.name.clone(),
     };
+    if !note.is_empty() {
+        hover = format!("{hover}\n{note}");
+    }
     if let Some(Shown::Node { summary, children }) =
         bytes.and_then(|b| struct_view::decode(structs, &topic.ty, b))
     {
+        // Fields of a single struct can be dragged; Elastic doesn't bind to
+        // fields inside struct arrays either.
+        let source = match (struct_view::struct_type(&topic.ty), bytes) {
+            (Some((schema, false)), Some(bytes)) if draggable => Some(FieldSource {
+                topic: &topic.name,
+                schema,
+                bytes,
+                structs,
+            }),
+            _ => None,
+        };
         egui::CollapsingHeader::new(format!("{key}  {summary}"))
             .id_salt(&topic.name)
             .default_open(false)
-            .show(ui, |ui| show_children(ui, &topic.name, &children))
+            .show(ui, |ui| {
+                show_children(ui, &topic.name, &children, source.as_ref(), &[])
+            })
             .header_response
             .on_hover_text(hover);
         return;
@@ -163,7 +240,9 @@ fn show_topic(ui: &mut egui::Ui, key: &str, topic: &TopicEntry, structs: &Struct
         egui::CollapsingHeader::new(format!("{key}  schema, {summary}"))
             .id_salt(&topic.name)
             .default_open(false)
-            .show(ui, |ui| show_children(ui, &topic.name, &children))
+            .show(ui, |ui| {
+                show_children(ui, &topic.name, &children, None, &[])
+            })
             .header_response
             .on_hover_text(format!("{}\n{text}", topic.name));
         return;
@@ -185,23 +264,75 @@ fn show_topic(ui: &mut egui::Ui, key: &str, topic: &TopicEntry, structs: &Struct
     .on_hover_text(hover);
 }
 
+/// A struct topic whose field rows can be dragged onto the grid.
+struct FieldSource<'a> {
+    topic: &'a str,
+    /// The struct's schema name, such as `Pose2d`.
+    schema: &'a str,
+    bytes: &'a [u8],
+    structs: &'a StructDatabase,
+}
+
 /// The fields of a decoded struct; nested structs and arrays open in turn.
-fn show_children(ui: &mut egui::Ui, id: &str, children: &[(String, Shown)]) {
+/// With `source`, plain fields (not array items) can be dragged onto the
+/// grid; `path` is the field names leading here.
+fn show_children(
+    ui: &mut egui::Ui,
+    id: &str,
+    children: &[(String, Shown)],
+    source: Option<&FieldSource<'_>>,
+    path: &[String],
+) {
     // Used for decoded values and for schemas; nested parts start open.
     for (name, shown) in children {
+        // Array items are named [0], [1], ...; they can't be bound to.
+        let source = source.filter(|_| !name.starts_with('['));
+        let field_path: Vec<String> = path.iter().cloned().chain([name.clone()]).collect();
         match shown {
             Shown::Leaf(text) => {
-                ui.horizontal(|ui| {
-                    ui.label(name);
-                    ui.monospace(text);
+                let row = |ui: &mut egui::Ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(name);
+                        ui.monospace(text);
+                    })
+                };
+                let payload = source.and_then(|src| {
+                    let value =
+                        struct_view::field_value(src.structs, src.schema, src.bytes, &field_path)?;
+                    let ty = struct_view::nt_type_name(&value);
+                    widgets::type_for_topic(ty)?;
+                    Some(DraggedTopic {
+                        name: src.topic.to_owned(),
+                        ty: ty.to_owned(),
+                        field: Some(StructMeta {
+                            path: field_path.clone(),
+                            schema_name: src.schema.to_owned(),
+                        }),
+                    })
                 });
+                match payload {
+                    Some(payload) => {
+                        let drag_id = egui::Id::unique(("nt_field", id, name));
+                        ui.dnd_drag_source(drag_id, payload, |ui| {
+                            ui.style_mut().interaction.selectable_labels = false;
+                            row(ui)
+                        })
+                        .response
+                        .on_hover_text("Drag onto the grid to make a widget for this field");
+                    }
+                    None => {
+                        row(ui);
+                    }
+                }
             }
             Shown::Node { summary, children } => {
                 let child_id = format!("{id}/{name}");
                 egui::CollapsingHeader::new(format!("{name}  {summary}"))
                     .id_salt(&child_id)
                     .default_open(true)
-                    .show(ui, |ui| show_children(ui, &child_id, children));
+                    .show(ui, |ui| {
+                        show_children(ui, &child_id, children, source, &field_path)
+                    });
             }
         }
     }

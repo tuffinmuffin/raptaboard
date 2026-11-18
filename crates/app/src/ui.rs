@@ -6,20 +6,19 @@ use std::time::Duration;
 
 use eframe::egui::{self, Color32, CursorIcon, Rect, Sense, Stroke, Vec2};
 use nt4::{Topic, Value};
-use raptaboard_layout::{ElasticLayout, GridLayout, Rect as LayoutRect};
+use raptaboard_layout::{ElasticLayout, GridLayout, Rect as LayoutRect, WidgetContainer};
 
 use crate::cli::StartupOptions;
 use crate::connection::{AddressMode, resolve};
 use crate::grid::{self, Item};
 use crate::layout_file::{self, FileAction, LoadError};
 use crate::nt::{ConnectionStatus, NtConnection};
+use crate::struct_view;
 use crate::tabs::{self, TabAction};
-use crate::tree::{Folder, TopicEntry};
-use crate::widgets::{self, WidgetKind};
+use crate::tree::{DraggedTopic, Folder, TopicEntry};
+use crate::widgets::{self, DEFAULT_PERIOD_S, WidgetKind};
 use nt4::proto::structs::StructDatabase;
 
-/// Elastic's default widget update period, in seconds.
-const DEFAULT_PERIOD_S: f64 = 0.06;
 /// Space between List Layout children, in points.
 const LIST_GAP: f32 = 6.0;
 /// Size of the resize corner at the bottom right of each widget, in points.
@@ -454,8 +453,8 @@ impl DashboardApp {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| match self.nt.structs() {
-                Some(structs) => tree.show(ui, "", filtering, structs),
-                None => tree.show(ui, "", filtering, &StructDatabase::new()),
+                Some(structs) => tree.show(ui, "", filtering, structs, !self.locked),
+                None => tree.show(ui, "", filtering, &StructDatabase::new(), !self.locked),
             })
             .inner
     }
@@ -690,7 +689,19 @@ impl DashboardApp {
             }
         }
 
-        let value_of = |topic: Option<&str>| topic.and_then(|t| values.get(t).copied());
+        // A widget's value: its topic's, or one field of it for widgets bound
+        // to a struct field (enum fields by name).
+        let structs = self.nt.structs();
+        let value_of = |w: &WidgetContainer| -> Option<Value> {
+            let value = values.get(w.topic()?)?;
+            match (w.struct_meta(), value) {
+                (None, value) => Some((*value).clone()),
+                (Some(meta), Value::Raw(bytes)) => {
+                    struct_view::field_value_shown(structs?, &meta.schema_name, bytes, &meta.path)
+                }
+                (Some(_), _) => None,
+            }
+        };
         let dragging = self.drag.map(|d| d.item);
         for &(item, r) in &placed {
             if Some(item) != dragging {
@@ -712,17 +723,7 @@ impl DashboardApp {
         if let Some(drag) = self.drag {
             let target = drag.target(cell, room);
             let ok = grid::fits(&tab.grid_layout, drag.item, target);
-            let color = if ok {
-                Color32::from_rgb(60, 180, 90)
-            } else {
-                Color32::from_rgb(220, 60, 60)
-            };
-            painter.rect_stroke(
-                to_screen(&target).shrink(2.0),
-                egui::CornerRadius::same(10),
-                Stroke::new(2.0, color),
-                egui::StrokeKind::Inside,
-            );
+            draw_landing(&painter, to_screen(&target), ok);
             draw_item(
                 &painter,
                 &visuals,
@@ -731,6 +732,32 @@ impl DashboardApp {
                 drag.item,
                 &value_of,
             );
+        }
+
+        // A topic dragged from the NT tree: show the cell under the pointer
+        // where its widget would go, and make the widget when it's dropped.
+        let pointer = ui.ctx().pointer_hover_pos().filter(|p| area.contains(*p));
+        if !self.locked
+            && let Some(p) = pointer
+            && let Some(topic) = egui::DragAndDrop::payload::<DraggedTopic>(ui.ctx())
+        {
+            let under = LayoutRect {
+                x: f64::from(p.x - origin.x) - cell / 2.0,
+                y: f64::from(p.y - origin.y) - cell / 2.0,
+                width: cell,
+                height: cell,
+            };
+            let target = grid::snap_move(under, cell, room);
+            let free = grid::is_free(&tab.grid_layout, target);
+            draw_landing(&painter, to_screen(&target), free);
+            if free
+                && ui.input(|i| i.pointer.any_released())
+                && let Some(widget) =
+                    widgets::for_topic(&topic.name, &topic.ty, topic.field.as_ref(), target)
+                && let Some(tab) = self.layout.tabs.get_mut(self.current_tab)
+            {
+                tab.grid_layout.containers.push(widget);
+            }
         }
 
         if let Some(drag) = dropped {
@@ -746,13 +773,13 @@ impl DashboardApp {
 
 /// Draw one grid item (a widget, or a List Layout with its children) in
 /// `rect`, in screen points.
-fn draw_item<'v>(
+fn draw_item(
     painter: &egui::Painter,
     visuals: &egui::Visuals,
     rect: Rect,
     grid: &GridLayout,
     item: Item,
-    value_of: &dyn Fn(Option<&str>) -> Option<&'v Value>,
+    value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
 ) {
     let rect = rect.shrink(4.0);
     match item {
@@ -760,7 +787,7 @@ fn draw_item<'v>(
             let Some(w) = grid.containers.get(i) else {
                 return;
             };
-            widgets::draw(painter, visuals, rect, w, value_of(w.topic()));
+            widgets::draw(painter, visuals, rect, w, value_of(w).as_ref());
         }
         // A List Layout stacks its children top to bottom, each at its own
         // height and the layout's full width; children that don't fit are cut off.
@@ -775,11 +802,33 @@ fn draw_item<'v>(
                     egui::pos2(body.min.x, top),
                     Vec2::new(body.width(), height),
                 );
-                widgets::draw(&inside, visuals, child_rect, child, value_of(child.topic()));
+                widgets::draw(
+                    &inside,
+                    visuals,
+                    child_rect,
+                    child,
+                    value_of(child).as_ref(),
+                );
                 top += height + LIST_GAP;
             }
         }
     }
+}
+
+/// The outline where a dragged widget or topic will land: green if it fits
+/// there, red if it would cover another widget.
+fn draw_landing(painter: &egui::Painter, rect: Rect, ok: bool) {
+    let color = if ok {
+        Color32::from_rgb(60, 180, 90)
+    } else {
+        Color32::from_rgb(220, 60, 60)
+    };
+    painter.rect_stroke(
+        rect.shrink(2.0),
+        egui::CornerRadius::same(10),
+        Stroke::new(2.0, color),
+        egui::StrokeKind::Inside,
+    );
 }
 
 /// Two short diagonal lines in a widget's bottom-right corner, showing

@@ -1,8 +1,9 @@
 //! Layout files for raptaboard.
 //!
-//! Milestone 1 reads and writes Elastic's layout JSON (`"version": 1.0`)
-//! without losing anything, so existing Elastic layouts open in raptaboard and
-//! a layout saved by raptaboard still opens in Elastic.
+//! Layouts are Elastic's JSON shape (`"version": 1.0`), read and written
+//! without losing anything, so Elastic layouts open in raptaboard and the
+//! other way round. That's a convenience, not a promise: raptaboard may
+//! grow its own format (see "Goal and decisions" in `docs/spec.md`).
 //!
 //! Widget settings live in each container's `properties` object. They are kept
 //! as raw JSON here; each widget reads the keys it knows and keeps the rest.
@@ -393,7 +394,63 @@ fn free_spot(rect: Rect, cell: f64, limit: f64, others: &[Rect]) -> Rect {
         })
 }
 
+/// Which field of a struct topic a widget shows: Elastic's `struct_meta`
+/// property. The widget's `topic` is the struct topic itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructMeta {
+    /// Field names from the struct down to the field, such as
+    /// `["translation", "x"]` in a `Pose2d`.
+    pub path: Vec<String>,
+    /// The struct's schema name, such as `Pose2d`.
+    pub schema_name: String,
+}
+
+impl StructMeta {
+    /// The `struct_meta` JSON Elastic saves, with `nt_type` the field's NT
+    /// type (`double`).
+    ///
+    /// ```
+    /// use raptaboard_layout::StructMeta;
+    /// let meta = StructMeta { path: vec!["x".into()], schema_name: "Translation2d".into() };
+    /// assert_eq!(
+    ///     meta.to_json("double"),
+    ///     serde_json::json!({"path": ["x"], "schema_name": "Translation2d", "type": "double"})
+    /// );
+    /// ```
+    pub fn to_json(&self, nt_type: &str) -> Value {
+        serde_json::json!({
+            "path": self.path,
+            "schema_name": self.schema_name,
+            "type": nt_type,
+        })
+    }
+}
+
 impl WidgetContainer {
+    /// The struct field this widget shows, if it's bound to one (Elastic's
+    /// `struct_meta` property with a non-empty `path`).
+    ///
+    /// ```
+    /// let json = r#"{"title": "x", "x": 0.0, "y": 0.0, "width": 128.0, "height": 128.0,
+    ///   "type": "Text Display", "properties": {"topic": "/Drive/pose",
+    ///   "struct_meta": {"path": ["translation", "x"], "schema_name": "Pose2d", "type": "double"}}}"#;
+    /// let w: raptaboard_layout::WidgetContainer = serde_json::from_str(json).unwrap();
+    /// let meta = w.struct_meta().unwrap();
+    /// assert_eq!(meta.path, ["translation", "x"]);
+    /// assert_eq!(meta.schema_name, "Pose2d");
+    /// ```
+    pub fn struct_meta(&self) -> Option<StructMeta> {
+        let meta = self.properties.get("struct_meta")?;
+        let path: Vec<String> = meta
+            .get("path")?
+            .as_array()?
+            .iter()
+            .map(|p| p.as_str().map(str::to_owned))
+            .collect::<Option<_>>()?;
+        let schema_name = meta.get("schema_name")?.as_str()?.to_owned();
+        (!path.is_empty() && !schema_name.is_empty()).then_some(StructMeta { path, schema_name })
+    }
+
     /// The NT topic or table this widget is bound to.
     pub fn topic(&self) -> Option<&str> {
         self.properties.get("topic").and_then(Value::as_str)
