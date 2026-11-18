@@ -28,7 +28,9 @@ pub struct DashboardApp {
     team: u32,
     mode: AddressMode,
     custom_address: String,
+    port: u16,
     nt: NtConnection,
+    show_tree: bool,
     tree_filter: String,
     show_metadata: bool,
 }
@@ -47,7 +49,9 @@ impl DashboardApp {
             team: options.team,
             mode: options.mode,
             custom_address: options.custom_address,
+            port: options.port,
             nt: NtConnection::new()?,
+            show_tree: options.show_tree,
             tree_filter: String::new(),
             show_metadata: false,
         };
@@ -78,6 +82,14 @@ impl DashboardApp {
     fn settings_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.strong("raptaboard");
+            let (label, hint) = if self.show_tree {
+                ("◀ Tree", "Hide the NetworkTables tree")
+            } else {
+                ("▶ Tree", "Show the NetworkTables tree")
+            };
+            if ui.button(label).on_hover_text(hint).clicked() {
+                self.show_tree = !self.show_tree;
+            }
             ui.separator();
             ui.label("Team");
             ui.add(egui::DragValue::new(&mut self.team).range(1..=99999));
@@ -92,8 +104,7 @@ impl DashboardApp {
                 ui.text_edit_singleline(&mut self.custom_address);
             }
             let host = resolve(self.mode, self.team, &self.custom_address);
-            self.nt
-                .set_target(host.as_deref(), nt4::proto::ROBOT_CODE_PORT);
+            self.nt.set_target(host.as_deref(), self.port);
             ui.separator();
             status_label(ui, &self.nt.status());
         });
@@ -112,7 +123,18 @@ impl DashboardApp {
     ///
     /// Returns the topics drawn, whose values the tree needs.
     fn tree_panel(&mut self, ui: &mut egui::Ui, topics: &[Topic]) -> Vec<String> {
-        ui.heading("NetworkTables");
+        ui.horizontal(|ui| {
+            ui.heading("NetworkTables");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .small_button("◀")
+                    .on_hover_text("Hide the tree")
+                    .clicked()
+                {
+                    self.show_tree = false;
+                }
+            });
+        });
         // A plain row: a right-to-left layout here would fill the rest of the
         // panel's height and push the tree out of view.
         ui.horizontal(|ui| {
@@ -313,11 +335,16 @@ impl eframe::App for DashboardApp {
             .iter()
             .filter_map(|t| Some((&*t.name, &t.value.as_ref()?.value)))
             .collect();
-        let tree_topics = egui::Panel::left("nt_tree")
-            .resizable(true)
-            .default_size(300.0)
-            .show(ui, |ui| self.tree_panel(ui, &topics))
-            .inner;
+        // A hidden tree costs nothing: it isn't built and asks for no values.
+        let tree_topics = if self.show_tree {
+            egui::Panel::left("nt_tree")
+                .resizable(true)
+                .default_size(300.0)
+                .show(ui, |ui| self.tree_panel(ui, &topics))
+                .inner
+        } else {
+            Vec::new()
+        };
         egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values));
 
         self.nt.watch_values(tree_topics);

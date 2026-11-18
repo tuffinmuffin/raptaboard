@@ -25,6 +25,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p raptaboard -- crates/layout/tests/data/elastic_sample.json
 cargo run -p raptaboard -- --address sim crates/layout/tests/data/elastic_sample.json  # robot sim
 cargo run -p raptaboard -- --help
+# Milestone 1 CPU test (opens a window, ~40 s; keep it visible):
+cargo test -p raptaboard --release --test cpu_load -- --ignored --nocapture
 ```
 
 CI (`.github/workflows/ci.yml`) runs fmt, clippy with `-D warnings` and tests on Linux, Windows and
@@ -38,7 +40,7 @@ macOS. Run the same locally before pushing.
 - `crates/plugin-host`: manifest parsing and matching; `path` has topic path helpers
   (`.type` tables). wasmtime hosting comes in milestone 4.
 - `crates/app`: the eframe app. `ui.rs` holds the window, `connection.rs` the robot address modes,
-  `cli.rs` the startup flags (`--team`, `--address`; stand-ins until settings persist),
+  `cli.rs` the startup flags (`--team`, `--address`, `--port`, `--hide-tree`; stand-ins until settings persist),
   `nt.rs` the live connection (`NtConnection`: a 1-thread tokio runtime that owns the `nt4::Client`
   and restarts it when the address changes; the UI only makes non-blocking calls), `tree.rs` the
   read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),
@@ -46,7 +48,10 @@ macOS. Run the same locally before pushing.
   (`nt4::proto::structs::StructDatabase` + `DynamicStruct`), `widgets.rs` the grid widgets
   (Text Display, Boolean Box; other types draw as placeholders). Widget values come from a
   second subscription (`NtConnection::watch_widget_values`) at the open tab's shortest `period`.
-  Next: the 30-widget CPU test.
+  `tests/cpu_load.rs` is the ignored 30-widgets-at-50-Hz CPU test (runs with the tree shown and
+  hidden; prints % of one core and of the machine); its `other_dashboard` test runs the same load against Elastic for comparison
+  (set `RAPTABOARD_CPU_OTHER=elastic_dashboard`, Elastic on localhost, port 5810 free).
+  Next: run it on a Driver Station laptop, then milestone 2.
 - `layouts/robot2027_sim.json`: a layout for trying widgets against the robot-2027 sim
   (`cargo run -p raptaboard -- --address sim layouts/robot2027_sim.json`). Its `/DashTest/`
   topics come from robot-2027's `utils/dashboard_test_topics.py` (sim only).
