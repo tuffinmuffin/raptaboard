@@ -309,7 +309,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      instead of only the automatic black or white.
    - Group widget: a card holding its own small grid, so widgets inside can sit side by side and
      be any size (a List Layout only stacks them). Same dragging in and out as lists; saved as a
-     raptaboard-only container type (Elastic would show a placeholder).
+     raptaboard-only container type (Elastic would show a placeholder). Its settings can reach the
+     widgets inside: group-level settings (font size, period, colors) that every child uses
+     unless it sets its own, and resizing the group scales its children's sizes (and text) to
+     match.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      A built-in library of standard images (Elastic's `true_icon`/`false_icon` set: Checkmark, X,
      Exclamation Point, so its layouts keep their icons, plus more), and any PNG/SVG the team
