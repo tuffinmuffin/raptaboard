@@ -38,16 +38,12 @@ pub fn dividers(props: &Map<String, Json>) -> bool {
     props.get(DIVIDERS).and_then(Json::as_bool).unwrap_or(false)
 }
 
-/// Heights to draw dividers at: above the first row (a break under the
-/// list's title) and halfway into the gap below each row, the last one
-/// included, so a last child that doesn't fill the list isn't left
-/// floating. (A line past the list's bottom is cut off by drawing.)
+/// Heights to draw dividers at, between rows: halfway into the gap below
+/// each row, the last one included, so a last child that doesn't fill the
+/// list isn't left floating. (A line past the list's bottom is cut off by
+/// drawing.) [`draw`] also draws one along the bottom of the title.
 pub fn divider_ys(rows: &[ChildRow]) -> Vec<f32> {
-    let above_first = rows.first().map(|r| r.row.min.y - CHILD_GAP / 2.0);
-    above_first
-        .into_iter()
-        .chain(rows.iter().map(|r| r.row.max.y + CHILD_GAP / 2.0))
-        .collect()
+    rows.iter().map(|r| r.row.max.y + CHILD_GAP / 2.0).collect()
 }
 
 // Sizes, in screen points.
@@ -380,6 +376,7 @@ pub fn draw(
     let body = card::draw_card(painter, visuals, rect, &list.title);
     let labels = labels(&list.properties);
     let font = egui::FontId::proportional(LABEL_FONT_SIZE);
+    let title_edge = body.min.y;
     card::draw_clipped(painter, body, |painter, body| {
         let width = |i: usize| {
             let title = list.children[i].title.clone();
@@ -394,6 +391,9 @@ pub fn draw(
                 card::BORDER_WIDTH,
                 visuals.widgets.noninteractive.bg_stroke.color,
             );
+            // Along the bottom of the title strip, half a line inside the
+            // body so it isn't clipped, then below each child.
+            painter.hline(body.x_range(), title_edge + line.width / 2.0, line);
             for y in divider_ys(&placed) {
                 painter.hline(body.x_range(), y, line);
             }
@@ -919,10 +919,10 @@ mod tests {
             inside: false,
         };
         let placed = rows(body(), &children, hidden, |_| 0.0);
-        // Rows 0..80, 86..166, 172..252: a line above the first, then 83,
-        // 169, and 255 below the last.
-        assert_eq!(divider_ys(&placed), [-3.0, 83.0, 169.0, 255.0]);
-        assert_eq!(divider_ys(&placed[..1]), [-3.0, 83.0]);
+        // Rows 0..80, 86..166, 172..252: lines at 83, 169, and 255 below
+        // the last.
+        assert_eq!(divider_ys(&placed), [83.0, 169.0, 255.0]);
+        assert_eq!(divider_ys(&placed[..1]), [83.0]);
         assert!(divider_ys(&[]).is_empty());
         // Off unless ticked, and drawing the settings adds nothing.
         let mut l = list(children.to_vec(), Some("TOP"));
