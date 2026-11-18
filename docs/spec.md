@@ -301,6 +301,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      see and grab. A 1x1 on top of a 1x2 is fine (part of the 1x2 still shows); two 1x1s on the same
      cell, or a big widget over a smaller one, are not. Needs a draw order (front/back), and the
      overlap fix when opening a layout must allow the same partial overlaps.
+   - Boolean Box text: an option for a backing behind the true/false text (like inside list
+     labels: a see-through rounded box, so it reads over any color), and a text color per state
+     instead of only the automatic black or white.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      A built-in library of standard images (Elastic's `true_icon`/`false_icon` set: Checkmark, X,
      Exclamation Point, so its layouts keep their icons, plus more), and any PNG/SVG the team
