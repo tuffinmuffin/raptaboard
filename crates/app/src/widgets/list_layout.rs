@@ -29,6 +29,22 @@ pub const HIDDEN: &str = "hidden";
 /// `true` writes each child's label over its value instead of beside it,
 /// to save space (raptaboard; Elastic ignores it). Left out when off.
 pub const LABEL_INSIDE: &str = "label_inside";
+/// `true` draws a thin line between children, so they don't run together
+/// (raptaboard; Elastic ignores it). Left out when off.
+pub const DIVIDERS: &str = "dividers";
+
+/// The `dividers` setting: whether lines are drawn between children.
+pub fn dividers(props: &Map<String, Json>) -> bool {
+    props.get(DIVIDERS).and_then(Json::as_bool).unwrap_or(false)
+}
+
+/// Heights to draw dividers at, between each pair of `rows`: halfway into
+/// the gap between them.
+pub fn divider_ys(rows: &[ChildRow]) -> Vec<f32> {
+    rows.windows(2)
+        .map(|pair| (pair[0].row.max.y + pair[1].row.min.y) / 2.0)
+        .collect()
+}
 
 // Sizes, in screen points.
 
@@ -362,7 +378,17 @@ pub fn draw(
                 .size()
                 .x
         };
-        for place in rows(body, &list.children, labels, width) {
+        let placed = rows(body, &list.children, labels, width);
+        if dividers(&list.properties) {
+            let line = egui::Stroke::new(
+                card::BORDER_WIDTH,
+                visuals.widgets.noninteractive.bg_stroke.color,
+            );
+            for y in divider_ys(&placed) {
+                painter.hline(body.x_range(), y, line);
+            }
+        }
+        for place in placed {
             let child = &list.children[place.index];
             if let Some(label) = place.label
                 && !labels.inside
@@ -512,6 +538,13 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
                     LABEL_INSIDE,
                     inside.then_some(true.into()),
                 );
+            }
+            ui.end_row();
+
+            ui.label("Dividers");
+            let mut lines = dividers(&list.properties);
+            if ui.checkbox(&mut lines, "Lines between children").changed() {
+                set_property(&mut list.properties, DIVIDERS, lines.then_some(true.into()));
             }
             ui.end_row();
         });
@@ -866,5 +899,30 @@ mod tests {
         let text = draw_settings(&mut drawn);
         assert_eq!(drawn, off);
         assert!(text.iter().any(|t| t == "Inside"), "{text:?}");
+    }
+
+    #[test]
+    fn dividers_sit_in_the_gaps() {
+        let children = [child("a", 128.0), child("b", 128.0), child("c", 128.0)];
+        let hidden = Labels {
+            position: LabelPosition::Hidden,
+            inside: false,
+        };
+        let placed = rows(body(), &children, hidden, |_| 0.0);
+        // Rows 0..80, 86..166, 172..252: lines at 83 and 169.
+        assert_eq!(divider_ys(&placed), [83.0, 169.0]);
+        assert!(divider_ys(&placed[..1]).is_empty());
+        // Off unless ticked, and drawing the settings adds nothing.
+        let mut l = list(children.to_vec(), Some("TOP"));
+        assert!(!dividers(&l.properties));
+        let before = l.clone();
+        let text = draw_settings(&mut l);
+        assert_eq!(l, before);
+        assert!(
+            text.iter().any(|t| t == "Lines between children"),
+            "{text:?}"
+        );
+        l.properties.insert(DIVIDERS.into(), true.into());
+        assert!(dividers(&l.properties));
     }
 }
