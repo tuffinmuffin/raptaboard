@@ -48,6 +48,113 @@ pub mod keys {
     pub const FONT_SIZE: &str = "font_size";
     /// Enum struct fields: `"name"`, `"number"` or `"both"`.
     pub const ENUM_DISPLAY: &str = "enum_display";
+    /// Text Display: whole numbers as `"decimal"`, `"hex"` or `"binary"`.
+    pub const INT_FORMAT: &str = "int_format";
+    /// The NT type of the value shown, such as `"double"` (Elastic).
+    pub const DATA_TYPE: &str = "data_type";
+}
+
+/// How a Text Display writes whole numbers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum IntFormat {
+    /// `26`
+    #[default]
+    Decimal,
+    /// `0x1A`
+    Hex,
+    /// `0b11010`
+    Binary,
+}
+
+impl IntFormat {
+    /// All choices, in the order a menu lists them.
+    pub const ALL: [IntFormat; 3] = [IntFormat::Decimal, IntFormat::Hex, IntFormat::Binary];
+
+    /// The word saved in a layout's `int_format` setting.
+    pub fn key(self) -> &'static str {
+        match self {
+            IntFormat::Decimal => "decimal",
+            IntFormat::Hex => "hex",
+            IntFormat::Binary => "binary",
+        }
+    }
+
+    /// The choice saved as `key`, if it's one of [`IntFormat::key`]'s words.
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|f| f.key() == key)
+    }
+
+    /// Words for a menu.
+    pub fn label(self) -> &'static str {
+        match self {
+            IntFormat::Decimal => "Decimal (26)",
+            IntFormat::Hex => "Hex (0x1A)",
+            IntFormat::Binary => "Binary (0b11010)",
+        }
+    }
+
+    /// Write `n` this way. Negative numbers keep their minus sign:
+    /// `-0x1A`.
+    ///
+    /// ```
+    /// use raptaboard::widgets::IntFormat;
+    /// assert_eq!(IntFormat::Decimal.format(26), "26");
+    /// assert_eq!(IntFormat::Hex.format(26), "0x1A");
+    /// assert_eq!(IntFormat::Binary.format(-5), "-0b101");
+    /// ```
+    pub fn format(self, n: i64) -> String {
+        let sign = if n < 0 { "-" } else { "" };
+        let m = n.unsigned_abs();
+        match self {
+            IntFormat::Decimal => n.to_string(),
+            IntFormat::Hex => format!("{sign}0x{m:X}"),
+            IntFormat::Binary => format!("{sign}0b{m:b}"),
+        }
+    }
+}
+
+/// What kind of value an NT type holds, for choosing which settings apply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueKind {
+    /// `double`, `float` and their arrays: decimal places apply.
+    Decimal,
+    /// `int` and `int[]`: hex and binary apply.
+    Whole,
+    /// Strings, booleans and anything else: no number settings.
+    Other,
+}
+
+impl ValueKind {
+    /// The kind for an NT type string.
+    ///
+    /// ```
+    /// use raptaboard::widgets::ValueKind;
+    /// assert_eq!(ValueKind::of("double[]"), ValueKind::Decimal);
+    /// assert_eq!(ValueKind::of("int"), ValueKind::Whole);
+    /// assert_eq!(ValueKind::of("string"), ValueKind::Other);
+    /// ```
+    pub fn of(nt_type: &str) -> Self {
+        match nt_type {
+            "double" | "float" | "double[]" | "float[]" => ValueKind::Decimal,
+            "int" | "int[]" => ValueKind::Whole,
+            _ => ValueKind::Other,
+        }
+    }
+}
+
+/// The `int_format` setting; [`IntFormat::Decimal`] if not set.
+///
+/// ```
+/// use raptaboard::widgets::{int_format, IntFormat};
+/// let props = serde_json::json!({"int_format": "hex"});
+/// assert_eq!(int_format(props.as_object().unwrap()), IntFormat::Hex);
+/// ```
+pub fn int_format(properties: &serde_json::Map<String, Json>) -> IntFormat {
+    properties
+        .get(keys::INT_FORMAT)
+        .and_then(Json::as_str)
+        .and_then(IntFormat::from_key)
+        .unwrap_or_default()
 }
 
 /// The widget types raptaboard can draw.
@@ -277,10 +384,12 @@ pub fn body(
         return Body::NoData("no value");
     };
     match kind {
-        WidgetKind::TextDisplay => match text_of(value, decimal_places(properties)) {
-            Some(text) => Body::Text(text),
-            None => Body::NoData("not text"),
-        },
+        WidgetKind::TextDisplay => {
+            match text_of(value, decimal_places(properties), int_format(properties)) {
+                Some(text) => Body::Text(text),
+                None => Body::NoData("not text"),
+            }
+        }
         WidgetKind::BooleanBox => match value {
             Value::Boolean(true) => {
                 Body::Fill(color_property(properties, "true_color").unwrap_or(DEFAULT_TRUE_COLOR))
@@ -294,10 +403,10 @@ pub fn body(
 }
 
 /// A value as a Text Display shows it: strings without quotes, arrays as
-/// `[a, b, c]`, and numbers with exactly `decimals` places, or up to 4
-/// without trailing zeros if `None`. Raw bytes (such as struct values) have
-/// no text form.
-fn text_of(value: &Value, decimals: Option<usize>) -> Option<String> {
+/// `[a, b, c]`, whole numbers as `ints` says, and other numbers with
+/// exactly `decimals` places, or up to 4 without trailing zeros if `None`.
+/// Raw bytes (such as struct values) have no text form.
+fn text_of(value: &Value, decimals: Option<usize>, ints: IntFormat) -> Option<String> {
     fn list<T>(items: &[T], one: impl Fn(&T) -> String) -> String {
         format!("[{}]", items.iter().map(one).collect::<Vec<_>>().join(", "))
     }
@@ -309,12 +418,12 @@ fn text_of(value: &Value, decimals: Option<usize>) -> Option<String> {
         Value::Boolean(b) => b.to_string(),
         Value::Double(d) => number(*d),
         Value::Float(f) => number(f64::from(*f)),
-        Value::Int(i) => i.to_string(),
+        Value::Int(i) => ints.format(*i),
         Value::String(s) => s.clone(),
         Value::BooleanArray(a) => list(a, |b| b.to_string()),
         Value::DoubleArray(a) => list(a, |d| number(*d)),
         Value::FloatArray(a) => list(a, |f| number(f64::from(*f))),
-        Value::IntArray(a) => list(a, |i| i.to_string()),
+        Value::IntArray(a) => list(a, |i| ints.format(*i)),
         Value::StringArray(a) => list(a, |s| s.clone()),
         Value::Raw(_) => return None,
     })
@@ -599,5 +708,26 @@ mod tests {
             p.insert("c".into(), color_json(color));
             assert_eq!(color_property(&p, "c"), Some(color));
         }
+    }
+
+    #[test]
+    fn whole_numbers_in_hex_and_binary() {
+        let hex = props(serde_json::json!({"int_format": "hex", "decimal_places": 1}));
+        let text = |v: Value| body(WidgetKind::TextDisplay, &hex, Some(&v));
+        assert_eq!(text(Value::Int(255)), Body::Text("0xFF".into()));
+        assert_eq!(
+            text(Value::IntArray(vec![10, -1])),
+            Body::Text("[0xA, -0x1]".into())
+        );
+        // Fractional numbers ignore it and keep their decimal places.
+        assert_eq!(text(Value::Double(10.0)), Body::Text("10.0".into()));
+        let bin = props(serde_json::json!({"int_format": "binary"}));
+        assert_eq!(
+            body(WidgetKind::TextDisplay, &bin, Some(&Value::Int(5))),
+            Body::Text("0b101".into())
+        );
+        assert_eq!(IntFormat::Hex.format(i64::MIN), "-0x8000000000000000");
+        let bad = props(serde_json::json!({"int_format": 16}));
+        assert_eq!(int_format(&bad), IntFormat::Decimal);
     }
 }

@@ -702,6 +702,26 @@ impl DashboardApp {
         }
     }
 
+    /// The NT type of the value `widget` shows: its saved `data_type`, or
+    /// for a struct field the type in its `struct_meta`, or else the type
+    /// the server announced for its topic. `None` if none of those is known.
+    fn value_type(&self, widget: &WidgetContainer) -> Option<String> {
+        let saved = |v: Option<&serde_json::Value>| v?.as_str().map(str::to_owned);
+        if let Some(ty) = saved(widget.properties.get(widgets::keys::DATA_TYPE)) {
+            return Some(ty);
+        }
+        if widget.struct_meta().is_some() {
+            return saved(
+                widget
+                    .properties
+                    .get("struct_meta")
+                    .and_then(|m| m.get("type")),
+            );
+        }
+        let topic = self.nt.client()?.topic(widget.topic()?)?;
+        Some(topic.ty.to_string())
+    }
+
     /// The widget settings dialog, while one is open. Changes show on the
     /// grid as they're made; Cancel or Esc puts the widget back as it was,
     /// and the whole visit is one step for undo.
@@ -723,6 +743,7 @@ impl DashboardApp {
             return;
         };
         let is_enum = is_enum(widget);
+        let nt_type = self.value_type(widget);
         let Some(widget) = self
             .layout
             .tabs
@@ -735,7 +756,7 @@ impl DashboardApp {
         egui::Modal::new(egui::Id::unique("widget_settings")).show(ctx, |ui| {
             ui.heading("Widget settings");
             ui.add_space(4.0);
-            widget_settings::show(ui, widget, is_enum);
+            widget_settings::show(ui, widget, nt_type.as_deref(), is_enum);
             ui.add_space(4.0);
             ui.separator();
             ui.horizontal(|ui| {
@@ -912,16 +933,14 @@ impl DashboardApp {
                 .sample(topic, widgets::period_s(w), latest, now)?;
             match (w.struct_meta(), &value) {
                 (None, _) => Some(value),
-                (Some(meta), Value::Raw(bytes)) => {
-                    let display = widgets::enum_display(&w.properties);
-                    struct_view::field_value_shown(
-                        structs?,
-                        &meta.schema_name,
-                        bytes,
-                        &meta.path,
-                        display,
-                    )
-                }
+                (Some(meta), Value::Raw(bytes)) => struct_view::field_value_shown(
+                    structs?,
+                    &meta.schema_name,
+                    bytes,
+                    &meta.path,
+                    widgets::enum_display(&w.properties),
+                    widgets::int_format(&w.properties),
+                ),
                 (Some(_), _) => None,
             }
         };

@@ -12,6 +12,7 @@ use nt4::proto::structs::{
 };
 
 use crate::tree::format_number;
+use crate::widgets::IntFormat;
 
 /// A decoded value, ready to draw.
 #[derive(Debug, Clone, PartialEq)]
@@ -147,21 +148,27 @@ impl EnumDisplay {
 
 /// Like [`field_value`], but an enum field is shown as `display` says: by
 /// its name from the schema (`kIntake`, as a string), its number, or both
-/// (`kIntake (3)`). Numbers the enum doesn't name stay numbers.
+/// (`kIntake (3)`, with the number written as `ints` says). Numbers the
+/// enum doesn't name stay numbers.
 ///
 /// ```
 /// use nt4::Value;
 /// use nt4::proto::structs::StructDatabase;
 /// use raptaboard::struct_view::{field_value, field_value_shown, EnumDisplay};
+/// use raptaboard::widgets::IntFormat;
 /// let mut db = StructDatabase::new();
 /// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode").unwrap();
 /// let mode = vec!["mode".to_string()];
-/// let shown = |bytes: &[u8], how| field_value_shown(&db, "Arm", bytes, &mode, how);
+/// let shown = |bytes: &[u8], how| {
+///     field_value_shown(&db, "Arm", bytes, &mode, how, IntFormat::Decimal)
+/// };
 /// assert_eq!(field_value(&db, "Arm", &[3], &mode), Some(Value::Int(3)));
 /// assert_eq!(shown(&[3], EnumDisplay::Name), Some(Value::String("kIntake".into())));
 /// assert_eq!(shown(&[3], EnumDisplay::Both), Some(Value::String("kIntake (3)".into())));
 /// assert_eq!(shown(&[3], EnumDisplay::Number), Some(Value::Int(3)));
 /// assert_eq!(shown(&[9], EnumDisplay::Name), Some(Value::Int(9)));
+/// let hex = field_value_shown(&db, "Arm", &[3], &mode, EnumDisplay::Both, IntFormat::Hex);
+/// assert_eq!(hex, Some(Value::String("kIntake (0x3)".into())));
 /// ```
 pub fn field_value_shown(
     db: &StructDatabase,
@@ -169,6 +176,7 @@ pub fn field_value_shown(
     bytes: &[u8],
     path: &[String],
     display: EnumDisplay,
+    ints: IntFormat,
 ) -> Option<Value> {
     let (s, field) = find_field(db, schema, bytes, path)?;
     let value = as_nt_value(s.value(field)?)?;
@@ -177,7 +185,9 @@ pub fn field_value_shown(
     }
     Some(match value {
         Value::Int(n) => match field.enum_name(n) {
-            Some(name) if display == EnumDisplay::Both => Value::String(format!("{name} ({n})")),
+            Some(name) if display == EnumDisplay::Both => {
+                Value::String(format!("{name} ({})", ints.format(n)))
+            }
             Some(name) => Value::String(name.to_owned()),
             None => Value::Int(n),
         },
@@ -652,11 +662,27 @@ mod tests {
         // Values two levels down show by name, number or both.
         let bytes = [3u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         let mode = path(&["arm", "mode"]);
-        let shown = |how| field_value_shown(&db, "Robot", &bytes, &mode, how);
+        let shown = |how| field_value_shown(&db, "Robot", &bytes, &mode, how, IntFormat::Decimal);
         assert_eq!(
             shown(EnumDisplay::Name),
             Some(Value::String("kIntake".into()))
         );
         assert_eq!(shown(EnumDisplay::Number), Some(Value::Int(3)));
+    }
+
+    #[test]
+    fn robot_2027_test_enums_are_found() {
+        // The schema robot-2027's dashboard_test_topics.py publishes.
+        let mut db = StructDatabase::new();
+        db.add(
+            "DashTestMode",
+            "enum {kIdle=0, kIntake=1, kShoot=2, kClimb=3} uint8 mode;\
+             enum {kOk=0, kWarn=1, kFault=-1} int8 health;double elapsed_s",
+        )
+        .unwrap();
+        let one = |name: &str| vec![name.to_string()];
+        assert!(is_enum_field(&db, "DashTestMode", &one("mode")));
+        assert!(is_enum_field(&db, "DashTestMode", &one("health")));
+        assert!(!is_enum_field(&db, "DashTestMode", &one("elapsed_s")));
     }
 }

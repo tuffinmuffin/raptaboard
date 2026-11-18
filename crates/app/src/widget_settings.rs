@@ -12,8 +12,8 @@ use serde_json::Value as Json;
 
 use crate::struct_view::EnumDisplay;
 use crate::widgets::{
-    self, DEFAULT_FALSE_COLOR, DEFAULT_FONT_SIZE, DEFAULT_TRUE_COLOR, MAX_DECIMAL_PLACES,
-    MAX_FONT_SIZE, MIN_FONT_SIZE, MIN_PERIOD_S, WidgetKind, keys,
+    self, DEFAULT_FALSE_COLOR, DEFAULT_FONT_SIZE, DEFAULT_TRUE_COLOR, IntFormat,
+    MAX_DECIMAL_PLACES, MAX_FONT_SIZE, MIN_FONT_SIZE, MIN_PERIOD_S, ValueKind, WidgetKind, keys,
 };
 
 /// The longest update period the dialog allows, in seconds.
@@ -43,9 +43,12 @@ pub fn set_property(props: &mut serde_json::Map<String, Json>, key: &str, value:
 }
 
 /// Draw the settings for `widget` and apply any changes to it at once.
-/// `is_enum` says whether it shows an enum struct field, which adds the
-/// choice of name, number or both.
-pub fn show(ui: &mut egui::Ui, widget: &mut WidgetContainer, is_enum: bool) {
+///
+/// `nt_type` is the NT type of the value it shows (`"double"`), if known;
+/// number settings are offered only for numbers of the right kind, or all
+/// of them if the type isn't known. `is_enum` says whether it shows an enum
+/// struct field, which adds the choice of name, number or both.
+pub fn show(ui: &mut egui::Ui, widget: &mut WidgetContainer, nt_type: Option<&str>, is_enum: bool) {
     let source = widget.topic().unwrap_or_default().to_owned();
     let field = widget.struct_meta();
     let source_title = widgets::source_title(&source, field.as_ref());
@@ -83,7 +86,10 @@ pub fn show(ui: &mut egui::Ui, widget: &mut WidgetContainer, is_enum: bool) {
             ui.end_row();
 
             ui.label("Type");
-            ui.label(&widget.widget_type);
+            match nt_type {
+                Some(ty) => ui.label(format!("{}, {ty}", widget.widget_type)),
+                None => ui.label(&widget.widget_type),
+            };
             ui.end_row();
 
             ui.label("Update period");
@@ -107,7 +113,9 @@ pub fn show(ui: &mut egui::Ui, widget: &mut WidgetContainer, is_enum: bool) {
             ui.end_row();
 
             match kind {
-                Some(WidgetKind::TextDisplay) => text_display(ui, widget, is_enum),
+                Some(WidgetKind::TextDisplay) => {
+                    text_display(ui, widget, nt_type.map(ValueKind::of), is_enum);
+                }
                 Some(WidgetKind::BooleanBox) => boolean_box(ui, widget),
                 None => {}
             }
@@ -117,10 +125,61 @@ pub fn show(ui: &mut egui::Ui, widget: &mut WidgetContainer, is_enum: bool) {
     }
 }
 
-/// Decimal places, text size, and how enum fields show.
-fn text_display(ui: &mut egui::Ui, widget: &mut WidgetContainer, is_enum: bool) {
+/// Decimal places for fractional numbers, hex or binary for whole ones, how
+/// enum fields show, and text size. `kind` is `None` if the value's type
+/// isn't known, which offers both number settings.
+fn text_display(
+    ui: &mut egui::Ui,
+    widget: &mut WidgetContainer,
+    kind: Option<ValueKind>,
+    is_enum: bool,
+) {
     let props = &mut widget.properties;
+    let decimals = matches!(kind, None | Some(ValueKind::Decimal));
+    let whole = matches!(kind, None | Some(ValueKind::Whole));
 
+    if is_enum {
+        ui.label("Enum shows");
+        let mut display = widgets::enum_display(props);
+        egui::ComboBox::from_id_salt("enum_display")
+            .selected_text(display.label())
+            .show_ui(ui, |ui| {
+                for choice in EnumDisplay::ALL {
+                    ui.selectable_value(&mut display, choice, choice.label());
+                }
+            });
+        if display != widgets::enum_display(props) {
+            let value = (display != EnumDisplay::default()).then(|| display.key().into());
+            set_property(props, keys::ENUM_DISPLAY, value);
+        }
+        ui.end_row();
+    }
+
+    if whole {
+        ui.label("Whole numbers");
+        let mut format = widgets::int_format(props);
+        egui::ComboBox::from_id_salt("int_format")
+            .selected_text(format.label())
+            .show_ui(ui, |ui| {
+                for choice in IntFormat::ALL {
+                    ui.selectable_value(&mut format, choice, choice.label());
+                }
+            });
+        if format != widgets::int_format(props) {
+            let value = (format != IntFormat::default()).then(|| format.key().into());
+            set_property(props, keys::INT_FORMAT, value);
+        }
+        ui.end_row();
+    }
+
+    if decimals {
+        decimal_places(ui, props);
+    }
+    text_size(ui, props);
+}
+
+/// The "fixed decimal places" row.
+fn decimal_places(ui: &mut egui::Ui, props: &mut serde_json::Map<String, Json>) {
     ui.label("Decimal places");
     ui.horizontal(|ui| {
         let saved = widgets::decimal_places(props);
@@ -142,7 +201,10 @@ fn text_display(ui: &mut egui::Ui, widget: &mut WidgetContainer, is_enum: bool) 
         }
     });
     ui.end_row();
+}
 
+/// The value text size row.
+fn text_size(ui: &mut egui::Ui, props: &mut serde_json::Map<String, Json>) {
     ui.label("Text size");
     ui.horizontal(|ui| {
         let mut size = widgets::font_size(props);
@@ -170,23 +232,6 @@ fn text_display(ui: &mut egui::Ui, widget: &mut WidgetContainer, is_enum: bool) 
         }
     });
     ui.end_row();
-
-    if is_enum {
-        ui.label("Enum shows");
-        let mut display = widgets::enum_display(props);
-        egui::ComboBox::from_id_salt("enum_display")
-            .selected_text(display.label())
-            .show_ui(ui, |ui| {
-                for choice in EnumDisplay::ALL {
-                    ui.selectable_value(&mut display, choice, choice.label());
-                }
-            });
-        if display != widgets::enum_display(props) {
-            let value = (display != EnumDisplay::default()).then(|| display.key().into());
-            set_property(props, keys::ENUM_DISPLAY, value);
-        }
-        ui.end_row();
-    }
 }
 
 /// The true and false colors.
@@ -244,14 +289,22 @@ mod tests {
         w
     }
 
-    /// Draw the settings once in a window-less egui frame.
-    fn draw(w: &mut WidgetContainer, is_enum: bool) {
+    /// Draw the settings once in a window-less egui frame, and return the
+    /// row labels shown.
+    fn draw(w: &mut WidgetContainer, nt_type: Option<&str>, is_enum: bool) -> Vec<String> {
         let ctx = egui::Context::default();
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-            show(ui, w, is_enum);
+            show(ui, w, nt_type, is_enum);
         });
         // No window to upload the font texture to.
         output.textures_delta.clear();
+        let mut labels = Vec::new();
+        for shape in output.shapes {
+            if let egui::epaint::Shape::Text(text) = shape.shape {
+                labels.push(text.galley.text().to_owned());
+            }
+        }
+        labels
     }
 
     #[test]
@@ -266,9 +319,32 @@ mod tests {
         ] {
             let mut w = widget(ty, field);
             let before = w.clone();
-            draw(&mut w, is_enum);
+            draw(&mut w, None, is_enum);
             assert_eq!(w, before, "{ty}");
         }
+    }
+
+    #[test]
+    fn number_settings_match_the_value_type() {
+        let rows = |nt_type: Option<&str>, is_enum: bool| {
+            let labels = draw(&mut widget("Text Display", is_enum), nt_type, is_enum);
+            ["Decimal places", "Whole numbers", "Enum shows", "Text size"]
+                .into_iter()
+                .filter(|row| labels.iter().any(|l| l == row))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(rows(Some("double"), false), ["Decimal places", "Text size"]);
+        assert_eq!(rows(Some("int[]"), false), ["Whole numbers", "Text size"]);
+        assert_eq!(rows(Some("string"), false), ["Text size"]);
+        assert_eq!(
+            rows(Some("int"), true),
+            ["Whole numbers", "Enum shows", "Text size"]
+        );
+        // Not known yet: offer both kinds of number setting.
+        assert_eq!(
+            rows(None, false),
+            ["Decimal places", "Whole numbers", "Text size"]
+        );
     }
 
     #[test]
