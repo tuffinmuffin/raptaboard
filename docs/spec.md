@@ -275,12 +275,12 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    the file. Next:
    - List Layout editing. Done: lists draw like Elastic's (children compact with no card each:
      a label placed by `label_position` and the child's body, each row its saved height less 48
-     and at least 32), and Edit… or double-click on a list opens its settings (title, label
-     position, children in order with a Shown checkbox (unticked: kept in the list but not drawn or
-     subscribed), ↑/↓, and Edit… for a child's widget settings). No Delete yet: until widgets can be
-     dragged into a list, a deleted child couldn't be put back; it comes with PR B. Next:
-     drag widgets and tree topics into a list and children back out (PR B), then "New List
-     Layout" and "Put in a new list" (PR C).
+     and at least 32); Edit… or double-click on a list opens its settings (title, label position,
+     children in order with a Shown checkbox (unticked: kept but not drawn or subscribed), ↑/↓,
+     Edit…, Delete); double-clicking a child opens its own settings. Dragging: a grid widget or a
+     tree topic dropped over a list goes into it, where the green line shows; a child dragged
+     within its list reorders, into another list moves there, and onto free grid becomes a widget
+     again (its saved size, in whole cells). Next: "New List Layout" and "Put in a new list" (PR C).
    - Color by value for number widgets (ints and floats): a background color chosen by thresholds
      (below 10 red, 10 to 20 yellow, above green), or a gradient between colors across a range.
      raptaboard-only settings in the widget dialog.

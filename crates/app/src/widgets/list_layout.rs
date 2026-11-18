@@ -203,6 +203,58 @@ pub fn rows(
         .collect()
 }
 
+/// The area children are laid out in, for a list whose card is `card`:
+/// below the title, less the card's margin. Matches [`draw`].
+pub fn body_rect(card: Rect) -> Rect {
+    card.with_min_y(card.min.y + card::TITLE_HEIGHT)
+        .shrink(card::BODY_MARGIN)
+}
+
+/// Each shown child's row for a list whose card is `card`, for finding
+/// what's under the pointer. (Side labels' widths don't matter for that.)
+pub fn rows_on_screen(card: Rect, list: &LayoutContainer) -> Vec<ChildRow> {
+    rows(
+        body_rect(card),
+        &list.children,
+        label_position(&list.properties),
+        |_| 0.0,
+    )
+}
+
+/// Where a child dropped at height `y` goes among a list's children: before
+/// the first shown child whose row's middle is below `y`, or last.
+/// `children` is how many children the list has, hidden ones included.
+///
+/// ```
+/// use eframe::egui::{pos2, vec2, Rect};
+/// use raptaboard::widgets::list_layout::{insert_index, ChildRow};
+/// let row = |index, top: f32| {
+///     let r = Rect::from_min_size(pos2(0.0, top), vec2(100.0, 50.0));
+///     ChildRow { index, row: r, content: r, label: None }
+/// };
+/// let rows = [row(0, 0.0), row(2, 60.0)]; // child 1 is hidden
+/// assert_eq!(insert_index(&rows, 3, 10.0), 0);
+/// assert_eq!(insert_index(&rows, 3, 40.0), 2);
+/// assert_eq!(insert_index(&rows, 3, 200.0), 3);
+/// ```
+pub fn insert_index(rows: &[ChildRow], children: usize, y: f32) -> usize {
+    rows.iter()
+        .find(|r| r.row.center().y > y)
+        .map_or(children, |r| r.index)
+}
+
+/// The height to draw the "drops here" line at, for inserting at `at`:
+/// halfway into the gap above the first shown row at or after `at`, below
+/// the last row, or at the top of `body` for an empty list.
+pub fn insert_line_y(rows: &[ChildRow], at: usize, body: Rect) -> f32 {
+    match rows.iter().find(|r| r.index >= at) {
+        Some(r) => r.row.min.y - CHILD_GAP / 2.0,
+        None => rows
+            .last()
+            .map_or(body.min.y, |r| r.row.max.y + CHILD_GAP / 2.0),
+    }
+}
+
 /// Draw a List Layout in `rect`: its card and title, then each child's
 /// label and value. `value_of` gives a child's value.
 pub fn draw(
@@ -281,10 +333,8 @@ pub enum ListAction {
 
 /// Draw the settings for `list` and apply changes at once: its title, the
 /// label position, and its children in order, each with a Shown checkbox
-/// and buttons to move it up or down or edit it. Edit… is returned as
-/// [`ListAction::EditChild`] for the window to carry out. Children can't be
-/// deleted here: until widgets can be dragged into a list, a deleted child
-/// couldn't be put back, so hiding one is the way to take it out of view.
+/// and buttons to move it up or down, edit it, or delete it. Edit… is
+/// returned as [`ListAction::EditChild`] for the window to carry out.
 pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAction> {
     let mut action = None;
     egui::Grid::new("list_settings")
@@ -360,12 +410,25 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
                     if ui.button("Edit…").clicked() {
                         action = Some(ListAction::EditChild(i));
                     }
+                    if ui
+                        .button("Delete")
+                        .on_hover_text(
+                            "Delete it. Cancel or undo brings it back; to keep it but not \
+                             show it, untick Shown.",
+                        )
+                        .clicked()
+                    {
+                        change = Some((i, Change::Delete));
+                    }
                 });
                 ui.end_row();
             }
         });
     match change {
         Some((i, Change::Move(to))) => move_child(list, i, to),
+        Some((i, Change::Delete)) => {
+            list.children.remove(i);
+        }
         Some((i, Change::Show(shown))) => {
             set_property(
                 &mut list.children[i].properties,
@@ -382,6 +445,7 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
 enum Change {
     Move(usize),
     Show(bool),
+    Delete,
 }
 
 #[cfg(test)]
@@ -508,8 +572,9 @@ mod tests {
         let before = l.clone();
         let text = draw_settings(&mut l);
         assert_eq!(l, before);
-        assert!(!text.iter().any(|t| t == "Delete"), "{text:?}");
-        for expected in ["Labels", "Top", "Children", "speed", "angle", "Edit…"] {
+        for expected in [
+            "Labels", "Top", "Children", "speed", "angle", "Edit…", "Delete",
+        ] {
             assert!(text.iter().any(|t| t == expected), "{expected} in {text:?}");
         }
         // An empty list says so.
@@ -527,5 +592,25 @@ mod tests {
         // "b" is skipped, and "c" moves up into its place.
         assert_eq!(placed.iter().map(|r| r.index).collect::<Vec<_>>(), [0, 2]);
         assert_eq!(placed[1].row.min.y, 80.0 + CHILD_GAP);
+    }
+
+    #[test]
+    fn drop_lines_sit_between_rows() {
+        let children = [child("a", 128.0), child("b", 128.0)];
+        let placed = rows(body(), &children, LabelPosition::Hidden, |_| 0.0);
+        // Rows are 80 tall with a 6 gap: 0..80 and 86..166.
+        assert_eq!(insert_line_y(&placed, 0, body()), -CHILD_GAP / 2.0);
+        assert_eq!(insert_line_y(&placed, 1, body()), 83.0);
+        assert_eq!(insert_line_y(&placed, 2, body()), 166.0 + CHILD_GAP / 2.0);
+        assert_eq!(insert_line_y(&[], 0, body()), 0.0);
+        // The drop index follows the rows' middles.
+        assert_eq!(insert_index(&placed, 2, 39.0), 0);
+        assert_eq!(insert_index(&placed, 2, 41.0), 1);
+        assert_eq!(insert_index(&placed, 2, 127.0), 2);
+        // The body sits below the card's title, inside its margin.
+        let card = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(256.0, 512.0));
+        let inside = body_rect(card);
+        assert_eq!(inside.min.y, card::TITLE_HEIGHT + card::BODY_MARGIN);
+        assert_eq!(inside.width(), 256.0 - 2.0 * card::BODY_MARGIN);
     }
 }
