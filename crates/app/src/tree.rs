@@ -12,6 +12,7 @@ use nt4::proto::structs::StructDatabase;
 use raptaboard_plugin_host::path;
 
 use crate::struct_view::{self, Shown};
+use crate::widgets;
 
 /// One topic as the tree shows it.
 #[derive(Debug, Clone, PartialEq)]
@@ -113,7 +114,9 @@ impl Folder {
     /// `structs` holds the struct schemas the server has sent, used to open struct topics
     /// such as `Pose2d` into their fields.
     ///
-    /// Topic rows can be dragged onto the grid; see [`DraggedTopic`].
+    /// When `draggable` is set (the layout isn't locked), rows for topics
+    /// that have a widget type can be dragged onto the grid; see
+    /// [`DraggedTopic`] and [`widgets::type_for_topic`].
     ///
     /// Returns the full names of the topics that were drawn, that is, those
     /// in open folders, so their values can be requested from the server.
@@ -123,6 +126,7 @@ impl Folder {
         path: &str,
         expand_all: bool,
         structs: &StructDatabase,
+        draggable: bool,
     ) -> Vec<String> {
         let mut visible = Vec::new();
         for (name, folder) in &self.folders {
@@ -132,16 +136,41 @@ impl Folder {
                 .id_salt(&folder_path)
                 .default_open(false)
                 .open(expand_all.then_some(true))
-                .show(ui, |ui| folder.show(ui, &folder_path, expand_all, structs));
+                .show(ui, |ui| {
+                    folder.show(ui, &folder_path, expand_all, structs, draggable)
+                });
             visible.extend(open.body_returned.unwrap_or_default());
         }
         for (key, topic) in &self.topics {
-            let payload = DraggedTopic {
-                name: topic.name.clone(),
-                ty: topic.ty.clone(),
-            };
-            let id = egui::Id::unique(("nt_topic", &topic.name));
-            ui.dnd_drag_source(id, payload, |ui| show_topic(ui, key, topic, structs));
+            let has_widget = widgets::type_for_topic(&topic.ty).is_some();
+            if draggable && has_widget {
+                let payload = DraggedTopic {
+                    name: topic.name.clone(),
+                    ty: topic.ty.clone(),
+                };
+                let id = egui::Id::unique(("nt_topic", &topic.name));
+                ui.dnd_drag_source(id, payload, |ui| {
+                    // Plain labels, so the pointer shows the grab hand rather
+                    // than the text cursor.
+                    ui.style_mut().interaction.selectable_labels = false;
+                    show_topic(
+                        ui,
+                        key,
+                        topic,
+                        structs,
+                        "Drag onto the grid to make a widget",
+                    );
+                });
+            } else {
+                // Rows that open (structs, schemas) must not be drag sources:
+                // egui gives a drag area on top of a header the clicks.
+                let note = if has_widget {
+                    String::new()
+                } else {
+                    format!("No widget for {} yet", topic.ty)
+                };
+                show_topic(ui, key, topic, structs, &note);
+            }
             visible.push(topic.name.clone());
         }
         visible
@@ -149,7 +178,14 @@ impl Folder {
 }
 
 /// One topic row. Struct values that can be decoded open into their fields.
-fn show_topic(ui: &mut egui::Ui, key: &str, topic: &TopicEntry, structs: &StructDatabase) {
+/// `note`, if not empty, is added to the hover text.
+fn show_topic(
+    ui: &mut egui::Ui,
+    key: &str,
+    topic: &TopicEntry,
+    structs: &StructDatabase,
+    note: &str,
+) {
     let bytes = match &topic.value {
         Some(Value::Raw(bytes)) => Some(bytes.as_slice()),
         _ => None,
@@ -157,10 +193,13 @@ fn show_topic(ui: &mut egui::Ui, key: &str, topic: &TopicEntry, structs: &Struct
     let schema = struct_view::struct_type(&topic.ty)
         .and_then(|(name, _)| structs.find(name))
         .map(|d| d.schema().to_owned());
-    let hover = match &schema {
+    let mut hover = match &schema {
         Some(schema) => format!("{}\nschema: {schema}", topic.name),
         None => topic.name.clone(),
     };
+    if !note.is_empty() {
+        hover = format!("{hover}\n{note}");
+    }
     if let Some(Shown::Node { summary, children }) =
         bytes.and_then(|b| struct_view::decode(structs, &topic.ty, b))
     {

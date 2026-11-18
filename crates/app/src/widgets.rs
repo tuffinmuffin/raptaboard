@@ -55,36 +55,43 @@ impl WidgetKind {
 pub const DEFAULT_PERIOD_S: f64 = 0.06;
 
 /// The widget type to make for a topic dropped on the grid, by its NT type
-/// string: a Boolean Box for booleans, a Text Display for everything else.
+/// string: a Boolean Box for booleans, a Text Display for numbers, strings
+/// and arrays of them. `None` for types with no widget yet, such as structs
+/// (a Pose2d gets the Field widget in milestone 3); those can't be dragged.
 ///
 /// ```
 /// use raptaboard::widgets::type_for_topic;
-/// assert_eq!(type_for_topic("boolean"), "Boolean Box");
-/// assert_eq!(type_for_topic("double"), "Text Display");
-/// assert_eq!(type_for_topic("struct:Pose2d"), "Text Display");
+/// assert_eq!(type_for_topic("boolean"), Some("Boolean Box"));
+/// assert_eq!(type_for_topic("double"), Some("Text Display"));
+/// assert_eq!(type_for_topic("struct:Pose2d"), None);
 /// ```
-pub fn type_for_topic(nt_type: &str) -> &'static str {
+pub fn type_for_topic(nt_type: &str) -> Option<&'static str> {
     match nt_type {
-        "boolean" => "Boolean Box",
-        _ => "Text Display",
+        "boolean" => Some("Boolean Box"),
+        "double" | "float" | "int" | "string" | "boolean[]" | "double[]" | "float[]" | "int[]"
+        | "string[]" => Some("Text Display"),
+        _ => None,
     }
 }
 
 /// A new widget for the topic `name` of NT type `nt_type`, placed at `rect`.
 /// It is titled with the last part of the name and saved the way Elastic
-/// saves widgets: `topic`, `period` and `data_type` properties.
+/// saves widgets: `topic`, `period` and `data_type` properties. `None` if
+/// [`type_for_topic`] has no widget for the type.
 ///
 /// ```
 /// use raptaboard::widgets::for_topic;
 /// use raptaboard_layout::Rect;
 /// let at = Rect { x: 128.0, y: 0.0, width: 128.0, height: 128.0 };
-/// let w = for_topic("/Drive/Health/allModulesHealthy", "boolean", at);
+/// let w = for_topic("/Drive/Health/allModulesHealthy", "boolean", at).unwrap();
 /// assert_eq!(w.title, "allModulesHealthy");
 /// assert_eq!(w.widget_type, "Boolean Box");
 /// assert_eq!(w.topic(), Some("/Drive/Health/allModulesHealthy"));
 /// assert_eq!(w.period(), Some(0.06));
+/// assert!(for_topic("/Drive/pose", "struct:Pose2d", at).is_none());
 /// ```
-pub fn for_topic(name: &str, nt_type: &str, rect: LayoutRect) -> WidgetContainer {
+pub fn for_topic(name: &str, nt_type: &str, rect: LayoutRect) -> Option<WidgetContainer> {
+    let widget_type = type_for_topic(nt_type)?;
     let title = name
         .rsplit('/')
         .find(|part| !part.is_empty())
@@ -93,13 +100,13 @@ pub fn for_topic(name: &str, nt_type: &str, rect: LayoutRect) -> WidgetContainer
     properties.insert("topic".into(), name.into());
     properties.insert("period".into(), DEFAULT_PERIOD_S.into());
     properties.insert("data_type".into(), nt_type.into());
-    WidgetContainer {
+    Some(WidgetContainer {
         title: title.to_owned(),
         rect,
-        widget_type: type_for_topic(nt_type).to_owned(),
+        widget_type: widget_type.to_owned(),
         properties,
         extra: serde_json::Map::new(),
-    }
+    })
 }
 
 /// What a widget body shows for a value. Kept apart from drawing so it can
@@ -351,7 +358,7 @@ mod tests {
             width: 128.0,
             height: 128.0,
         };
-        let w = for_topic("/DashTest/ModeName", "string", at);
+        let w = for_topic("/DashTest/ModeName", "string", at).unwrap();
         assert_eq!(
             (w.title.as_str(), w.widget_type.as_str()),
             ("ModeName", "Text Display")
@@ -364,7 +371,11 @@ mod tests {
             Some(WidgetKind::TextDisplay)
         );
         // A name ending in a slash still gets a title.
-        assert_eq!(for_topic("/odd/", "double", at).title, "odd");
+        assert_eq!(for_topic("/odd/", "double", at).unwrap().title, "odd");
+        // Arrays go in a Text Display; raw bytes and schemas have no widget.
+        assert_eq!(type_for_topic("int[]"), Some("Text Display"));
+        assert_eq!(type_for_topic("raw"), None);
+        assert_eq!(type_for_topic("structschema"), None);
         // The JSON matches what Elastic writes for a dropped topic.
         let json = serde_json::to_value(&w).unwrap();
         assert_eq!(

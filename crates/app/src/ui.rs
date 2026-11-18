@@ -452,8 +452,8 @@ impl DashboardApp {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| match self.nt.structs() {
-                Some(structs) => tree.show(ui, "", filtering, structs),
-                None => tree.show(ui, "", filtering, &StructDatabase::new()),
+                Some(structs) => tree.show(ui, "", filtering, structs, !self.locked),
+                None => tree.show(ui, "", filtering, &StructDatabase::new(), !self.locked),
             })
             .inner
     }
@@ -737,11 +737,12 @@ impl DashboardApp {
             let target = grid::snap_move(under, cell, room);
             let free = grid::is_free(&tab.grid_layout, target);
             draw_landing(&painter, to_screen(&target), free);
-            if free && ui.input(|i| i.pointer.any_released()) {
-                let widget = widgets::for_topic(&topic.name, &topic.ty, target);
-                if let Some(tab) = self.layout.tabs.get_mut(self.current_tab) {
-                    tab.grid_layout.containers.push(widget);
-                }
+            if free
+                && ui.input(|i| i.pointer.any_released())
+                && let Some(widget) = widgets::for_topic(&topic.name, &topic.ty, target)
+                && let Some(tab) = self.layout.tabs.get_mut(self.current_tab)
+            {
+                tab.grid_layout.containers.push(widget);
             }
         }
 
