@@ -277,7 +277,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      a label placed by `label_position` and the child's body, each row its saved height less 48
      and at least 32), and Edit… or double-click on a list opens its settings (title, label
      position, children in order with a Shown checkbox (unticked: kept in the list but not drawn or
-     subscribed), ↑/↓, Edit… for a child's widget settings, and Delete). Next:
+     subscribed), ↑/↓, and Edit… for a child's widget settings). No Delete yet: until widgets can be
+     dragged into a list, a deleted child couldn't be put back; it comes with PR B. Next:
      drag widgets and tree topics into a list and children back out (PR B), then "New List
      Layout" and "Put in a new list" (PR C).
    - Color by value for number widgets (ints and floats): a background color chosen by thresholds

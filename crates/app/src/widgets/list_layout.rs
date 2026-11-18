@@ -281,8 +281,10 @@ pub enum ListAction {
 
 /// Draw the settings for `list` and apply changes at once: its title, the
 /// label position, and its children in order, each with a Shown checkbox
-/// and buttons to move it up or down, edit it, or delete it. Edit… is
-/// returned as [`ListAction::EditChild`] for the window to carry out.
+/// and buttons to move it up or down or edit it. Edit… is returned as
+/// [`ListAction::EditChild`] for the window to carry out. Children can't be
+/// deleted here: until widgets can be dragged into a list, a deleted child
+/// couldn't be put back, so hiding one is the way to take it out of view.
 pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAction> {
     let mut action = None;
     egui::Grid::new("list_settings")
@@ -358,13 +360,6 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
                     if ui.button("Edit…").clicked() {
                         action = Some(ListAction::EditChild(i));
                     }
-                    if ui
-                        .button("Delete")
-                        .on_hover_text("Delete it. Cancel or undo brings it back.")
-                        .clicked()
-                    {
-                        change = Some((i, Change::Delete));
-                    }
                 });
                 ui.end_row();
             }
@@ -378,9 +373,6 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
                 (!shown).then_some(true.into()),
             );
         }
-        Some((i, Change::Delete)) => {
-            list.children.remove(i);
-        }
         None => {}
     }
     action
@@ -390,7 +382,6 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
 enum Change {
     Move(usize),
     Show(bool),
-    Delete,
 }
 
 #[cfg(test)]
@@ -517,9 +508,8 @@ mod tests {
         let before = l.clone();
         let text = draw_settings(&mut l);
         assert_eq!(l, before);
-        for expected in [
-            "Labels", "Top", "Children", "speed", "angle", "Edit…", "Delete",
-        ] {
+        assert!(!text.iter().any(|t| t == "Delete"), "{text:?}");
+        for expected in ["Labels", "Top", "Children", "speed", "angle", "Edit…"] {
             assert!(text.iter().any(|t| t == expected), "{expected} in {text:?}");
         }
         // An empty list says so.
