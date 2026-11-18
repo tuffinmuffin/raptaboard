@@ -175,7 +175,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    50 Hz with 280 topics on the server: raptaboard 9 to 17% of one core (0.5 to 0.95% of the
    machine); Elastic 2027.0.0-alpha10 on the same load and layout 36.5 to 37.1% of one core (2.0%),
    about 2 to 4 times as much. Hiding raptaboard's NT tree saves about 1.3 points of one core
-   (17.0 to 15.7%); most of the rest is redrawing the window 50 times a second. Still to do: measure both on a Windows Driver Station laptop.
+   (17.0 to 15.7%); most of the rest is redrawing the window 50 times a second. Windows, 2026-11-17 on a
+   20-thread i7-13800H laptop (not a DS laptop), same test: 15.6% of one core with the tree shown and 15.1%
+   hidden (0.78% and 0.75% of the machine); Elastic 2027.0.0-alpha10 61.5% of one core (3.1%), about 4
+   times as much. ```
 2. Grid and layouts: tabs, snap grid, drag from tree, List Layout, lock, layout save, settings,
    hotkeys.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
