@@ -265,6 +265,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Text style: a font dialog (from the widget dialog's Text size row) for the value text and the
      title: font family, size, color, bold, italic. Saved as raptaboard keys (`font_family`,
      `font_color`, `font_bold`, ...; `font_size` exists), with a layout-wide default style later.
+   - Reflow while dragging: widgets in the way slide aside (to the nearest free spot) as a widget is
+     dragged or resized over them, instead of the drop being refused.
+   - Allow overlap: a per-widget setting (this widget may sit on top of, or under, others, such as
+     a label over a camera view) and a layout-wide setting allowing overlap everywhere. Needs a
+     draw order (front/back) and must skip the overlap fix when opening a layout.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      A built-in library of standard images (Elastic's `true_icon`/`false_icon` set: Checkmark, X,
      Exclamation Point, so its layouts keep their icons, plus more), and any PNG/SVG the team
