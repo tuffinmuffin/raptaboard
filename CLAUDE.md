@@ -18,8 +18,9 @@ Elastic is the starting point, not the limit (decided 2026-11-18): the goal is a
 that fixes Elastic's shortcomings. raptaboard doesn't have to keep Elastic's file format: teams aren't
 expected to switch back and forth, so opening Elastic layouts and saving files Elastic can read is
 nice to have, kept when it's cheap, never a reason to block a feature. Layout files are Elastic-shaped
-today (`crates/layout`), and that can change; raptaboard-only widget settings, widgets and behavior
-are welcome. Keep Elastic's names (`.type` strings, `/Elastic/` topics) where
+today (`crates/layout`), and that can change; if raptaboard gets its own format, an import tool
+converts Elastic layouts into it (one way). raptaboard-only widget settings, widgets and behavior are
+welcome. Keep Elastic's names (`.type` strings, `/Elastic/` topics) where
 robot code depends on them.
 
 ## Commands

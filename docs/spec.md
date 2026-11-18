@@ -17,7 +17,7 @@ Elastic layouts is a convenience, not a requirement.
 | NT client | our own NT4.1 client, published as the [`nt4`](https://crates.io/crates/nt4) crate (`tuffinmuffin/nt4-rs`) | 2026-11-17 |
 | Plugins | WebAssembly components only, run by wasmtime, interface in `wit/dashboard.wit` | 2026-11-14 |
 | Dynamic-library plugins | rejected: a crash would take down the dashboard during a match | 2026-11-14 |
-| Layout files | ~~read and write Elastic `version 1.0` JSON unchanged~~ (2026-11-14); replaced 2026-11-18: no need to keep Elastic's file format. Teams aren't expected to switch back and forth; working with Elastic files is nice to have when it's cheap. Files are Elastic-shaped today and may become raptaboard's own format | 2026-11-18 |
+| Layout files | ~~read and write Elastic `version 1.0` JSON unchanged~~ (2026-11-14); replaced 2026-11-18: no need to keep Elastic's file format. Teams aren't expected to switch back and forth; working with Elastic files is nice to have when it's cheap. Files are Elastic-shaped today and may become raptaboard's own format; if they do, an import tool converts Elastic layouts into it (one way) | 2026-11-18 |
 | Elastic's role | the starting point, not the limit: add features beyond it; keep Elastic's names where robot code depends on them (`.type`, `/Elastic/` topics) | 2026-11-18 |
 | Repo | `tuffinmuffin/raptaboard` | 2026-11-14 |
 
