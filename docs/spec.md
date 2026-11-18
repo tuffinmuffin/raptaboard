@@ -211,6 +211,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      Boolean Box true/false colors (Elastic's `true_color`/`false_color`), and raptaboard-only
      settings: decimal places for numbers, enum fields as name, number or both, and font size.
    - List Layout editing (drop into a list, create one).
+   - Find a topic's widgets: selecting a topic (or struct field) in the NT tree highlights every
+     widget on the open tab bound to it, and marks other tabs that have one, so it's easy to see
+     where a value is already shown before adding another.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
