@@ -17,6 +17,7 @@ plugins that load at runtime and bind to a NetworkTables table.
 | Plugins | WebAssembly components only, run by wasmtime, interface in `wit/dashboard.wit` | 2026-11-14 |
 | Dynamic-library plugins | rejected: a crash would take down the dashboard during a match | 2026-11-14 |
 | Layout files | read and write Elastic `version 1.0` JSON unchanged; native v2 later | 2026-11-14 |
+| Elastic's role | the starting point, not the limit: keep its layouts and names working, add features beyond it (raptaboard-only widget settings and widgets are fine) | 2026-11-18 |
 | Repo | `tuffinmuffin/raptaboard` | 2026-11-14 |
 
 Open: should the robot serve plugins from port 5800 along with layouts? Stream Deck hooks are a later interest.
@@ -198,10 +199,20 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    Display for the rest; saved with `topic`, `period` and `data_type` like Elastic). Fields inside a
    struct topic (Pose2d → translation → x) drag too: the widget keeps the struct topic and saves
    Elastic's `struct_meta` (`path`, `schema_name`, `type`); fields inside struct arrays don't, as in
-   Elastic. Whole structs wait for their widgets (Field). Dragging folders
-   (tables with `.type`) waits for the widgets that draw tables in milestone 3. Next: List Layout
-   editing (drop into a list, create one).
+   Elastic. Whole structs wait for their widgets. Dragging folders
+   (tables with `.type`) waits for the widgets that draw tables in milestone 3. Next:
+   - Widget menu (right-click, unlocked): Edit…, Duplicate, Delete; the Delete key for a selected
+     widget; Ctrl+Z undo for layout edits, so deleting needs no confirmation.
+   - Widget settings dialog: title (rename, reset to the source name, source still shown), period,
+     Boolean Box true/false colors (Elastic's `true_color`/`false_color`), and raptaboard-only
+     settings: decimal places for numbers, enum fields as name, number or both, and font size. Elastic
+     ignores the raptaboard-only ones and drops them if it saves the layout.
+   - List Layout editing (drop into a list, create one).
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
+   Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
+   enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
+   WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro, SwerveModuleState[] → swerve view.
+   Milestone 4 plugins may also match a struct type (a `struct = "ArmState"` rule).
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, Mechanism2d,
    units, MJPEG cameras.

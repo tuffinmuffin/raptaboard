@@ -15,6 +15,11 @@ Decisions already made (don't reopen without asking the user): egui/eframe UI; o
 (wasmtime + `wit/dashboard.wit`), no dynamic libraries, no scripting tier; Elastic layout JSON v1
 must round-trip unchanged.
 
+Elastic is the starting point, not the limit: the goal is a richer dashboard that fixes Elastic's
+shortcomings. Keep opening and saving Elastic layouts without loss and keep Elastic's names where that
+costs nothing, but add raptaboard-only features freely (extra widget settings, new widgets, different
+shortcuts). Say when a raptaboard-only setting won't survive a save from Elastic.
+
 ## Commands
 
 ```sh
