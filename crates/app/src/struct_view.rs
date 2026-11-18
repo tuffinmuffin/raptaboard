@@ -12,6 +12,7 @@ use nt4::proto::structs::{
 };
 
 use crate::tree::format_number;
+use crate::widgets::IntStyle;
 
 /// A decoded value, ready to draw.
 #[derive(Debug, Clone, PartialEq)]
@@ -105,38 +106,194 @@ pub fn field_value(
     as_nt_value(s.value(field)?)
 }
 
-/// Like [`field_value`], but an enum field gives its name from the schema
-/// (`kIntake`) as a string instead of its number, for showing to a person.
-/// Numbers the enum doesn't name stay numbers.
+/// How a widget shows an enum field's value.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum EnumDisplay {
+    /// The name from the schema: `kIntake`.
+    #[default]
+    Name,
+    /// The number: `3`.
+    Number,
+    /// Both: `kIntake (3)`.
+    Both,
+}
+
+impl EnumDisplay {
+    /// All choices, in the order a menu lists them.
+    pub const ALL: [EnumDisplay; 3] = [EnumDisplay::Name, EnumDisplay::Number, EnumDisplay::Both];
+
+    /// The word saved in a layout's `enum_display` setting.
+    pub fn key(self) -> &'static str {
+        match self {
+            EnumDisplay::Name => "name",
+            EnumDisplay::Number => "number",
+            EnumDisplay::Both => "both",
+        }
+    }
+
+    /// The choice saved as `key`, if it's one of [`EnumDisplay::key`]'s words.
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|d| d.key() == key)
+    }
+
+    /// Words for a menu.
+    pub fn label(self) -> &'static str {
+        match self {
+            EnumDisplay::Name => "Name (kIntake)",
+            EnumDisplay::Number => "Number (3)",
+            EnumDisplay::Both => "Both (kIntake (3))",
+        }
+    }
+}
+
+/// Like [`field_value`], but an enum field is shown as `display` says: by
+/// its name from the schema (`kIntake`, as a string), its number, or both
+/// (`kIntake (3)`, with the number written as `ints` says). Numbers the
+/// enum doesn't name stay numbers.
 ///
 /// ```
 /// use nt4::Value;
 /// use nt4::proto::structs::StructDatabase;
-/// use raptaboard::struct_view::{field_value, field_value_shown};
+/// use raptaboard::struct_view::{field_value, field_value_shown, EnumDisplay};
+/// use raptaboard::widgets::{IntFormat, IntStyle};
 /// let mut db = StructDatabase::new();
 /// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode").unwrap();
 /// let mode = vec!["mode".to_string()];
+/// let shown = |bytes: &[u8], how| {
+///     field_value_shown(&db, "Arm", bytes, &mode, how, IntStyle::default())
+/// };
 /// assert_eq!(field_value(&db, "Arm", &[3], &mode), Some(Value::Int(3)));
-/// assert_eq!(field_value_shown(&db, "Arm", &[3], &mode), Some(Value::String("kIntake".into())));
-/// assert_eq!(field_value_shown(&db, "Arm", &[9], &mode), Some(Value::Int(9)));
+/// assert_eq!(shown(&[3], EnumDisplay::Name), Some(Value::String("kIntake".into())));
+/// assert_eq!(shown(&[3], EnumDisplay::Both), Some(Value::String("kIntake (3)".into())));
+/// assert_eq!(shown(&[3], EnumDisplay::Number), Some(Value::Int(3)));
+/// assert_eq!(shown(&[9], EnumDisplay::Name), Some(Value::Int(9)));
+/// let hex = IntStyle { format: IntFormat::Hex, digits: 2 };
+/// let both = field_value_shown(&db, "Arm", &[3], &mode, EnumDisplay::Both, hex);
+/// assert_eq!(both, Some(Value::String("kIntake (0x03)".into())));
 /// ```
 pub fn field_value_shown(
     db: &StructDatabase,
     schema: &str,
     bytes: &[u8],
     path: &[String],
+    display: EnumDisplay,
+    ints: IntStyle,
 ) -> Option<Value> {
     let (s, field) = find_field(db, schema, bytes, path)?;
     let value = as_nt_value(s.value(field)?)?;
-    if field.enum_values().is_empty() {
+    if field.enum_values().is_empty() || display == EnumDisplay::Number {
         return Some(value);
     }
     Some(match value {
-        Value::Int(n) => field
-            .enum_name(n)
-            .map_or(Value::Int(n), |name| Value::String(name.to_owned())),
+        Value::Int(n) => match field.enum_name(n) {
+            Some(name) if display == EnumDisplay::Both => {
+                Value::String(format!("{name} ({})", ints.write(n)))
+            }
+            Some(name) => Value::String(name.to_owned()),
+            None => Value::Int(n),
+        },
         other => other,
     })
+}
+
+/// What the schema says about one struct field: its type, whether it's an
+/// array, and its enum names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldInfo {
+    /// The type as the schema writes it: `double`, `uint8`, `Translation2d`.
+    pub type_name: String,
+    /// The array length for an array field (`double v[4]`).
+    pub array: Option<usize>,
+    /// The enum's names and numbers, in schema order; empty if not an enum.
+    pub enum_values: Vec<(String, i64)>,
+}
+
+impl FieldInfo {
+    /// Whether the field is an enum.
+    pub fn is_enum(&self) -> bool {
+        !self.enum_values.is_empty()
+    }
+
+    /// The type in a few words: `double`, `enum uint8`, `double[4]`.
+    ///
+    /// ```
+    /// use nt4::proto::structs::StructDatabase;
+    /// use raptaboard::struct_view::field_info;
+    /// let mut db = StructDatabase::new();
+    /// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode; double v[4]").unwrap();
+    /// let info = |f: &str| field_info(&db, "Arm", &[f.to_string()]).unwrap().label();
+    /// assert_eq!(info("mode"), "enum uint8");
+    /// assert_eq!(info("v"), "double[4]");
+    /// ```
+    pub fn label(&self) -> String {
+        let kind = if self.is_enum() { "enum " } else { "" };
+        match self.array {
+            Some(n) => format!("{kind}{}[{n}]", self.type_name),
+            None => format!("{kind}{}", self.type_name),
+        }
+    }
+
+    /// The enum's names and numbers on one line: `kStow = 0, kIntake = 3`.
+    pub fn enum_list(&self) -> String {
+        self.enum_values
+            .iter()
+            .map(|(name, n)| format!("{name} = {n}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+/// What the schema says about the field `path` names in the struct
+/// `schema`. Needs only the schemas, not a value. Array items in the path
+/// (`[0]`, as the tree names them) step into the array; a path ending in
+/// one describes a single item.
+///
+/// ```
+/// use nt4::proto::structs::StructDatabase;
+/// use raptaboard::struct_view::field_info;
+/// let mut db = StructDatabase::new();
+/// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode; double angle").unwrap();
+/// let mode = field_info(&db, "Arm", &["mode".to_string()]).unwrap();
+/// assert_eq!(mode.type_name, "uint8");
+/// assert_eq!(mode.enum_list(), "kStow = 0, kIntake = 3");
+/// assert!(field_info(&db, "Arm", &["speed".to_string()]).is_none());
+/// ```
+pub fn field_info(db: &StructDatabase, schema: &str, path: &[String]) -> Option<FieldInfo> {
+    let mut s = db.find(schema)?;
+    let mut field = None;
+    let mut item = false;
+    for name in path {
+        if name.starts_with('[') {
+            item = true;
+            continue;
+        }
+        if let Some(f) = field {
+            s = db.nested(f)?;
+        }
+        field = Some(s.field(name)?);
+        item = false;
+    }
+    let field = field?;
+    Some(FieldInfo {
+        type_name: field.type_name().to_owned(),
+        array: (field.is_array() && !item).then(|| field.array_size()),
+        enum_values: field.enum_values().to_vec(),
+    })
+}
+
+/// Whether the field `path` names in the struct `schema` is an enum. Needs
+/// only the schemas, not a value.
+///
+/// ```
+/// use nt4::proto::structs::StructDatabase;
+/// use raptaboard::struct_view::is_enum_field;
+/// let mut db = StructDatabase::new();
+/// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode; double angle").unwrap();
+/// assert!(is_enum_field(&db, "Arm", &["mode".to_string()]));
+/// assert!(!is_enum_field(&db, "Arm", &["angle".to_string()]));
+/// ```
+pub fn is_enum_field(db: &StructDatabase, schema: &str, path: &[String]) -> bool {
+    field_info(db, schema, path).is_some_and(|f| f.is_enum())
 }
 
 /// The struct holding the field `path` names, and that field.
@@ -566,5 +723,68 @@ mod tests {
         assert_eq!(decode(&db, "struct:Pose2d", &[0; 8]), None);
         assert_eq!(decode(&db, "struct:SwerveModuleState[]", &[0; 17]), None);
         assert_eq!(decode(&db, "double", &[0; 8]), None);
+    }
+
+    #[test]
+    fn enum_fields_are_found_inside_nested_structs() {
+        let mut db = StructDatabase::new();
+        db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode; double angle")
+            .unwrap();
+        db.add("Robot", "Arm arm; double speed").unwrap();
+        let path = |p: &[&str]| p.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(is_enum_field(&db, "Robot", &path(&["arm", "mode"])));
+        assert!(!is_enum_field(&db, "Robot", &path(&["arm", "angle"])));
+        assert!(!is_enum_field(&db, "Robot", &path(&["speed", "mode"])));
+        assert!(!is_enum_field(&db, "Robot", &path(&[])));
+        assert!(!is_enum_field(&db, "Unknown", &path(&["mode"])));
+        // Values two levels down show by name, number or both.
+        let bytes = [3u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let mode = path(&["arm", "mode"]);
+        let shown = |how| field_value_shown(&db, "Robot", &bytes, &mode, how, IntStyle::default());
+        assert_eq!(
+            shown(EnumDisplay::Name),
+            Some(Value::String("kIntake".into()))
+        );
+        assert_eq!(shown(EnumDisplay::Number), Some(Value::Int(3)));
+    }
+
+    #[test]
+    fn robot_2027_test_enums_are_found() {
+        // The schema robot-2027's dashboard_test_topics.py publishes.
+        let mut db = StructDatabase::new();
+        db.add(
+            "DashTestMode",
+            "enum {kIdle=0, kIntake=1, kShoot=2, kClimb=3} uint8 mode;\
+             enum {kOk=0, kWarn=1, kFault=-1} int8 health;double elapsed_s",
+        )
+        .unwrap();
+        let one = |name: &str| vec![name.to_string()];
+        assert!(is_enum_field(&db, "DashTestMode", &one("mode")));
+        assert!(is_enum_field(&db, "DashTestMode", &one("health")));
+        assert!(!is_enum_field(&db, "DashTestMode", &one("elapsed_s")));
+    }
+
+    #[test]
+    fn field_info_walks_nested_structs_and_arrays() {
+        let mut db = StructDatabase::new();
+        db.add("Translation2d", "double x;double y").unwrap();
+        db.add(
+            "Path",
+            "Translation2d points[3]; enum {kA=1, kB=2} int8 kind; Translation2d end",
+        )
+        .unwrap();
+        let path = |p: &[&str]| p.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let info = |p: &[&str]| field_info(&db, "Path", &path(p));
+        assert_eq!(info(&["points"]).unwrap().label(), "Translation2d[3]");
+        // One item of the array, and a field inside it.
+        assert_eq!(info(&["points", "[1]"]).unwrap().label(), "Translation2d");
+        assert_eq!(info(&["points", "[1]", "x"]).unwrap().label(), "double");
+        assert_eq!(info(&["end", "y"]).unwrap().label(), "double");
+        let kind = info(&["kind"]).unwrap();
+        assert_eq!(kind.label(), "enum int8");
+        assert_eq!(kind.enum_list(), "kA = 1, kB = 2");
+        // A plain field has no fields inside it.
+        assert_eq!(info(&["kind", "x"]), None);
+        assert_eq!(info(&[]), None);
     }
 }

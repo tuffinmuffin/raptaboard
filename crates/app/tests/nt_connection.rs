@@ -193,7 +193,7 @@ fn widget_values_keep_coming_when_the_tree_closes() {
 
     // The tree and a widget both want the topic.
     nt.watch_values(vec!["/Drive/Health/allModulesHealthy".into()]);
-    nt.watch_widget_values(vec!["/Drive/Health/allModulesHealthy".into()], 0.06);
+    nt.watch_widget_values(vec![(0.06, vec!["/Drive/Health/allModulesHealthy".into()])]);
     wait_value(&nt, true);
 
     // Closing the tree folder must not stop the widget's updates.

@@ -143,7 +143,7 @@
             }
           },
           {
-            "title": "Mode",
+            "title": "Mode name (string)",
             "x": 256,
             "y": 128,
             "width": 256,
@@ -219,6 +219,47 @@
               "topic": "/DashTest/Missing",
               "period": 0.06,
               "data_type": "boolean"
+            }
+          },
+          {
+            "title": "Mode (enum)",
+            "x": 512.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/DashTest/CyclingMode",
+              "period": 0.06,
+              "data_type": "int",
+              "struct_meta": {
+                "path": [
+                  "mode"
+                ],
+                "schema_name": "DashTestMode",
+                "type": "int"
+              }
+            }
+          },
+          {
+            "title": "Health (enum, both)",
+            "x": 512.0,
+            "y": 128.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/DashTest/CyclingMode",
+              "period": 0.06,
+              "data_type": "int",
+              "struct_meta": {
+                "path": [
+                  "health"
+                ],
+                "schema_name": "DashTestMode",
+                "type": "int"
+              },
+              "enum_display": "both"
             }
           }
         ]

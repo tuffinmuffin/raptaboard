@@ -33,6 +33,8 @@ Open: should the robot serve plugins from port 5800 along with layouts? Stream D
 - Address modes: Driver Station (asks the DS at `ws://<host>:6768/ipws`), team number (10.TE.AM.2),
   SystemCore mDNS (`robot.local`), SystemCore WiFi (`172.30.0.1`), localhost, custom.
 - Subscriptions are shared between widgets on the same topic. Default period 0.06 s, graphs 0.033 s.
+  The open tab gets one subscription per period, and each widget shows a new value once per its
+  period on a steady beat, however often the window redraws.
 
 ### Structs
 
@@ -121,6 +123,29 @@ Not in Elastic: Mechanism2d, any display of the 2027 `unit` topic property.
 Pixels at the saved grid size. `properties` always has `topic` and `period`; single-topic widgets add
 `data_type` and `struct_meta`. Unknown types load as empty placeholders.
 
+### raptaboard widget settings
+
+raptaboard adds its own keys to a widget's `properties`, next to Elastic's. Elastic ignores keys it
+doesn't know, so these files still open there (without these settings). A key at its default is
+left out of the file. The names are `widgets::keys` in `crates/app`; readers there clamp
+out-of-range values and ignore wrong types.
+
+| Key | Widgets | Value | Default |
+| --- | --- | --- | --- |
+| `period` (Elastic) | all | update period, seconds (0.01–5) | 0.06 |
+| `true_color`, `false_color` (Elastic) | Boolean Box | ARGB number | green, red |
+| `show_text` | Boolean Box | write the text below over the color | false |
+| `true_text`, `false_text` | Boolean Box | text when true / false; empty for none | none |
+| `decimal_places` | Text Display (double, float) | fixed places, 0–10 | up to 4, trailing zeros cut |
+| `int_format` | Text Display (int, enum numbers) | `decimal`, `hex` (`0x1A`), `binary` (`0b11010`) | `decimal` |
+| `int_digits` | Text Display (int, enum numbers) | at least this many digits, zero-padded, 1–64 | no padding |
+| `enum_display` | Text Display (enum struct field) | `name`, `number`, `both` | `name` |
+| `font_size` | Text Display; Boolean Box text | points, 8–96 | 16 |
+
+Adding a setting: add its key to `widgets::keys`, a reader in `widgets.rs`, its control in
+`widget_settings.rs` (and its key in `RESETTABLE` if "Reset settings" should clear it), and a row
+here.
+
 ### Remote layouts
 
 `GET http://<robot>:5800/?format=json` lists `files`; then `GET http://<robot>:5800/<name>.json`.
@@ -206,11 +231,32 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    Backspace deletes, Ctrl+D duplicates into the nearest free spot, Esc deselects. Undo and redo
    (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y, and buttons in the settings bar) cover every layout edit,
    tabs included, up to 100 steps, so deleting needs no confirmation; opening a file starts a new
-   history. Next:
-   - Widget settings dialog, opened by Edit… in the widget menu: title (rename, reset to the source name, source still shown), period,
-     Boolean Box true/false colors (Elastic's `true_color`/`false_color`), and raptaboard-only
-     settings: decimal places for numbers, enum fields as name, number or both, and font size.
+   history. Widget settings (Edit… in the widget menu, double-click, or Enter): title (rename, or
+   reset to the name from the source, which is shown), update period, Boolean Box true and false
+   colors (Elastic's `true_color`/`false_color`), and raptaboard-only settings for Text Display,
+   offered by the value's type (`data_type`, else the struct field's or the topic's type): fixed
+   `decimal_places` for double/float, `int_format` (`decimal`, `hex` as `0x1A`, `binary` as
+   `0b11010`) and `int_digits` (zero padding, like `%08X`) for int and enum numbers, `enum_display` (`name`, `number` or `both`) for enum
+   struct fields, and `font_size` for any value. Changes show on the grid as they're made; Cancel or Esc undoes
+   them, and one visit to the dialog is one undo step. Boolean Box can also write text over its
+   color (`show_text`, `true_text`, `false_text`; black or white, whichever reads better). The
+   setting keys are listed under "raptaboard widget settings". "Reset settings" puts every setting back
+   to its default (period 0.06 s, default colors, no raptaboard settings) but keeps the title and
+   the topic or field. Settings at their default are left out of
+   the file. Next:
    - List Layout editing (drop into a list, create one).
+   - Color by value for number widgets (ints and floats): a background color chosen by thresholds
+     (below 10 red, 10 to 20 yellow, above green), or a gradient between colors across a range.
+     raptaboard-only settings in the widget dialog.
+   - Text style: a font dialog (from the widget dialog's Text size row) for the value text and the
+     title: font family, size, color, bold, italic. Saved as raptaboard keys (`font_family`,
+     `font_color`, `font_bold`, ...; `font_size` exists), with a layout-wide default style later.
+   - Boolean Box images: show an image for true and for false instead of (or over) the color.
+     A built-in library of standard images (Elastic's `true_icon`/`false_icon` set: Checkmark, X,
+     Exclamation Point, so its layouts keep their icons, plus more), and any PNG/SVG the team
+     picks. Open (decide when built), likely both: embed the image in the layout, scaled down to a
+     small fixed size so the file stays well under its 10 MB limit and is fully portable, and/or
+     keep image files next to the layout or served by the robot.
    - Find a topic's widgets: selecting a topic (or struct field) in the NT tree highlights every
      widget on the open tab bound to it, and marks other tabs that have one, so it's easy to see
      where a value is already shown before adding another.

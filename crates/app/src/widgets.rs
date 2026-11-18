@@ -13,6 +13,7 @@ use nt4::Value;
 use raptaboard_layout::{Rect as LayoutRect, StructMeta, WidgetContainer};
 use serde_json::Value as Json;
 
+use crate::struct_view::EnumDisplay;
 use crate::tree::format_number;
 
 /// Elastic's default Boolean Box colors (Material green 500 and red 500).
@@ -22,6 +23,200 @@ pub const DEFAULT_FALSE_COLOR: Color32 = Color32::from_rgb(0xF4, 0x43, 0x36);
 
 /// Height of a card's title strip, in points.
 pub const TITLE_HEIGHT: f32 = 24.0;
+
+/// Size of a Text Display's value text when `font_size` isn't set, in points.
+pub const DEFAULT_FONT_SIZE: f32 = 16.0;
+/// The smallest `font_size` used, in points.
+pub const MIN_FONT_SIZE: f32 = 8.0;
+/// The largest `font_size` used, in points.
+pub const MAX_FONT_SIZE: f32 = 96.0;
+/// The most `decimal_places` used.
+pub const MAX_DECIMAL_PLACES: usize = 10;
+
+/// Widget setting keys. `true_color` and `false_color` are Elastic's; the
+/// rest are raptaboard's own, which Elastic ignores.
+pub mod keys {
+    /// Update period in seconds (Elastic).
+    pub const PERIOD: &str = "period";
+    /// Boolean Box color when true, as an ARGB number (Elastic).
+    pub const TRUE_COLOR: &str = "true_color";
+    /// Boolean Box color when false, as an ARGB number (Elastic).
+    pub const FALSE_COLOR: &str = "false_color";
+    /// Text Display: show numbers with exactly this many decimal places.
+    pub const DECIMAL_PLACES: &str = "decimal_places";
+    /// Text Display: value text size in points.
+    pub const FONT_SIZE: &str = "font_size";
+    /// Enum struct fields: `"name"`, `"number"` or `"both"`.
+    pub const ENUM_DISPLAY: &str = "enum_display";
+    /// Text Display: whole numbers as `"decimal"`, `"hex"` or `"binary"`.
+    pub const INT_FORMAT: &str = "int_format";
+    /// Text Display: write whole numbers with at least this many digits,
+    /// padded with zeros (`0x001A` for 4).
+    pub const INT_DIGITS: &str = "int_digits";
+    /// Boolean Box: whether to write `true_text` or `false_text` over the color.
+    pub const SHOW_TEXT: &str = "show_text";
+    /// Boolean Box: text over the color when true, such as `"Good"`.
+    pub const TRUE_TEXT: &str = "true_text";
+    /// Boolean Box: text over the color when false; empty for none.
+    pub const FALSE_TEXT: &str = "false_text";
+    /// The NT type of the value shown, such as `"double"` (Elastic).
+    pub const DATA_TYPE: &str = "data_type";
+}
+
+/// How a Text Display writes whole numbers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum IntFormat {
+    /// `26`
+    #[default]
+    Decimal,
+    /// `0x1A`
+    Hex,
+    /// `0b11010`
+    Binary,
+}
+
+impl IntFormat {
+    /// All choices, in the order a menu lists them.
+    pub const ALL: [IntFormat; 3] = [IntFormat::Decimal, IntFormat::Hex, IntFormat::Binary];
+
+    /// The word saved in a layout's `int_format` setting.
+    pub fn key(self) -> &'static str {
+        match self {
+            IntFormat::Decimal => "decimal",
+            IntFormat::Hex => "hex",
+            IntFormat::Binary => "binary",
+        }
+    }
+
+    /// The choice saved as `key`, if it's one of [`IntFormat::key`]'s words.
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|f| f.key() == key)
+    }
+
+    /// Words for a menu.
+    pub fn label(self) -> &'static str {
+        match self {
+            IntFormat::Decimal => "Decimal (26)",
+            IntFormat::Hex => "Hex (0x1A)",
+            IntFormat::Binary => "Binary (0b11010)",
+        }
+    }
+
+    /// Write `n` this way, with at least `digits` digits (padded with
+    /// zeros, like C's `%08X`; 0 for no padding). Negative numbers keep
+    /// their minus sign: `-0x1A`.
+    ///
+    /// ```
+    /// use raptaboard::widgets::IntFormat;
+    /// assert_eq!(IntFormat::Decimal.format(26, 0), "26");
+    /// assert_eq!(IntFormat::Hex.format(26, 0), "0x1A");
+    /// assert_eq!(IntFormat::Hex.format(26, 8), "0x0000001A");
+    /// assert_eq!(IntFormat::Binary.format(-5, 4), "-0b0101");
+    /// ```
+    pub fn format(self, n: i64, digits: usize) -> String {
+        let sign = if n < 0 { "-" } else { "" };
+        let m = n.unsigned_abs();
+        match self {
+            IntFormat::Decimal => format!("{sign}{m:0digits$}"),
+            IntFormat::Hex => format!("{sign}0x{m:0digits$X}"),
+            IntFormat::Binary => format!("{sign}0b{m:0digits$b}"),
+        }
+    }
+}
+
+/// The most digits `int_digits` pads to (a 64-bit number in binary).
+pub const MAX_INT_DIGITS: usize = 64;
+
+/// How a Text Display writes whole numbers: the `int_format` and
+/// `int_digits` settings together.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct IntStyle {
+    /// Decimal, hex or binary.
+    pub format: IntFormat,
+    /// At least this many digits, padded with zeros; 0 for no padding.
+    pub digits: usize,
+}
+
+impl IntStyle {
+    /// Write `n` in this style.
+    ///
+    /// ```
+    /// use raptaboard::widgets::{IntFormat, IntStyle};
+    /// let style = IntStyle { format: IntFormat::Hex, digits: 2 };
+    /// assert_eq!(style.write(10), "0x0A");
+    /// assert_eq!(style.write(4096), "0x1000");
+    /// ```
+    pub fn write(self, n: i64) -> String {
+        self.format.format(n, self.digits)
+    }
+}
+
+/// The `int_digits` setting, at most [`MAX_INT_DIGITS`]; 0 if not set.
+pub fn int_digits(properties: &serde_json::Map<String, Json>) -> usize {
+    properties
+        .get(keys::INT_DIGITS)
+        .and_then(Json::as_u64)
+        .map_or(0, |n| (n as usize).min(MAX_INT_DIGITS))
+}
+
+/// The `int_format` and `int_digits` settings together.
+///
+/// ```
+/// use raptaboard::widgets::{int_style, IntFormat};
+/// let props = serde_json::json!({"int_format": "hex", "int_digits": 8});
+/// let style = int_style(props.as_object().unwrap());
+/// assert_eq!((style.format, style.digits), (IntFormat::Hex, 8));
+/// ```
+pub fn int_style(properties: &serde_json::Map<String, Json>) -> IntStyle {
+    IntStyle {
+        format: int_format(properties),
+        digits: int_digits(properties),
+    }
+}
+
+/// What kind of value an NT type holds, for choosing which settings apply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueKind {
+    /// `double`, `float` and their arrays: decimal places apply.
+    Decimal,
+    /// `int` and `int[]`: hex and binary apply.
+    Whole,
+    /// Strings, booleans and anything else: no number settings.
+    Other,
+}
+
+impl ValueKind {
+    /// The kind for an NT type string.
+    ///
+    /// ```
+    /// use raptaboard::widgets::ValueKind;
+    /// assert_eq!(ValueKind::of("double[]"), ValueKind::Decimal);
+    /// assert_eq!(ValueKind::of("int"), ValueKind::Whole);
+    /// assert_eq!(ValueKind::of("string"), ValueKind::Other);
+    /// ```
+    pub fn of(nt_type: &str) -> Self {
+        match nt_type {
+            "double" | "float" | "double[]" | "float[]" => ValueKind::Decimal,
+            "int" | "int[]" => ValueKind::Whole,
+            _ => ValueKind::Other,
+        }
+    }
+}
+
+/// The `int_format` setting; [`IntFormat::Decimal`] if not set.
+///
+/// ```
+/// use raptaboard::widgets::{int_format, IntFormat};
+/// let props = serde_json::json!({"int_format": "hex"});
+/// assert_eq!(int_format(props.as_object().unwrap()), IntFormat::Hex);
+/// ```
+pub fn int_format(properties: &serde_json::Map<String, Json>) -> IntFormat {
+    properties
+        .get(keys::INT_FORMAT)
+        .and_then(Json::as_str)
+        .and_then(IntFormat::from_key)
+        .unwrap_or_default()
+}
 
 /// The widget types raptaboard can draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +248,30 @@ impl WidgetKind {
 
 /// Elastic's default widget update period, in seconds.
 pub const DEFAULT_PERIOD_S: f64 = 0.06;
+/// The shortest update period used, in seconds. A saved period of 0 would
+/// ask for every change, so shorter ones are raised to this.
+pub const MIN_PERIOD_S: f64 = 0.01;
+
+/// How often `widget` updates, in seconds: its `period`, or
+/// [`DEFAULT_PERIOD_S`] if not set, and at least [`MIN_PERIOD_S`].
+///
+/// ```
+/// use raptaboard::widgets::{for_topic, period_s};
+/// use raptaboard_layout::Rect;
+/// let at = Rect { x: 0.0, y: 0.0, width: 128.0, height: 128.0 };
+/// let mut w = for_topic("/Sine", "double", None, at).unwrap();
+/// assert_eq!(period_s(&w), 0.06);
+/// w.properties.insert("period".into(), 0.0.into());
+/// assert_eq!(period_s(&w), 0.01);
+/// ```
+pub fn period_s(widget: &WidgetContainer) -> f64 {
+    let period = widget.period().unwrap_or(DEFAULT_PERIOD_S);
+    if period.is_finite() {
+        period.max(MIN_PERIOD_S)
+    } else {
+        DEFAULT_PERIOD_S
+    }
+}
 
 /// The widget type to make for a topic dropped on the grid, by its NT type
 /// string: a Boolean Box for booleans, a Text Display for numbers, strings
@@ -101,14 +320,7 @@ pub fn for_topic(
     rect: LayoutRect,
 ) -> Option<WidgetContainer> {
     let widget_type = type_for_topic(nt_type)?;
-    let last = name
-        .rsplit('/')
-        .find(|part| !part.is_empty())
-        .unwrap_or(name);
-    let title = match field {
-        Some(field) => format!("{last}.{}", field.path.join(".")),
-        None => last.to_owned(),
-    };
+    let title = source_title(name, field);
     let mut properties = serde_json::Map::new();
     properties.insert("topic".into(), name.into());
     properties.insert("period".into(), DEFAULT_PERIOD_S.into());
@@ -125,14 +337,85 @@ pub fn for_topic(
     })
 }
 
+/// The title a widget gets from what it shows: the last part of the topic
+/// name, then the struct field's path if it shows one field of a struct.
+///
+/// ```
+/// use raptaboard::widgets::source_title;
+/// use raptaboard_layout::StructMeta;
+/// assert_eq!(source_title("/Drive/Health/ok", None), "ok");
+/// let x = StructMeta { path: vec!["translation".into(), "x".into()], schema_name: "Pose2d".into() };
+/// assert_eq!(source_title("/Drive/pose", Some(&x)), "pose.translation.x");
+/// ```
+pub fn source_title(name: &str, field: Option<&StructMeta>) -> String {
+    let last = name
+        .rsplit('/')
+        .find(|part| !part.is_empty())
+        .unwrap_or(name);
+    match field {
+        Some(field) => format!("{last}.{}", field.path.join(".")),
+        None => last.to_owned(),
+    }
+}
+
+/// The `decimal_places` setting: how many decimal places a Text Display
+/// shows numbers with, at most [`MAX_DECIMAL_PLACES`]. `None` if not set,
+/// for up to 4 places without trailing zeros.
+///
+/// ```
+/// use raptaboard::widgets::decimal_places;
+/// let props = serde_json::json!({"decimal_places": 2});
+/// assert_eq!(decimal_places(props.as_object().unwrap()), Some(2));
+/// assert_eq!(decimal_places(&serde_json::Map::new()), None);
+/// ```
+pub fn decimal_places(properties: &serde_json::Map<String, Json>) -> Option<usize> {
+    let n = properties.get(keys::DECIMAL_PLACES)?.as_u64()?;
+    Some((n as usize).min(MAX_DECIMAL_PLACES))
+}
+
+/// The `font_size` setting in points, kept between [`MIN_FONT_SIZE`] and
+/// [`MAX_FONT_SIZE`]; [`DEFAULT_FONT_SIZE`] if not set.
+///
+/// ```
+/// use raptaboard::widgets::{font_size, DEFAULT_FONT_SIZE};
+/// let props = serde_json::json!({"font_size": 30.0});
+/// assert_eq!(font_size(props.as_object().unwrap()), 30.0);
+/// assert_eq!(font_size(&serde_json::Map::new()), DEFAULT_FONT_SIZE);
+/// ```
+pub fn font_size(properties: &serde_json::Map<String, Json>) -> f32 {
+    properties
+        .get(keys::FONT_SIZE)
+        .and_then(Json::as_f64)
+        .filter(|f| f.is_finite())
+        .map_or(DEFAULT_FONT_SIZE, |f| {
+            (f as f32).clamp(MIN_FONT_SIZE, MAX_FONT_SIZE)
+        })
+}
+
+/// The `enum_display` setting; [`EnumDisplay::Name`] if not set.
+///
+/// ```
+/// use raptaboard::struct_view::EnumDisplay;
+/// use raptaboard::widgets::enum_display;
+/// let props = serde_json::json!({"enum_display": "both"});
+/// assert_eq!(enum_display(props.as_object().unwrap()), EnumDisplay::Both);
+/// ```
+pub fn enum_display(properties: &serde_json::Map<String, Json>) -> EnumDisplay {
+    properties
+        .get(keys::ENUM_DISPLAY)
+        .and_then(Json::as_str)
+        .and_then(EnumDisplay::from_key)
+        .unwrap_or_default()
+}
+
 /// What a widget body shows for a value. Kept apart from drawing so it can
 /// be tested without a window.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Body {
     /// Text, as in a Text Display.
     Text(String),
-    /// A solid color, as in a Boolean Box.
-    Fill(Color32),
+    /// A solid color, as in a Boolean Box, with text over it if set.
+    Fill(Color32, Option<String>),
     /// No value yet, or a value of the wrong type: says why in grey.
     NoData(&'static str),
 }
@@ -149,7 +432,7 @@ pub enum Body {
 /// );
 /// assert_eq!(
 ///     body(WidgetKind::BooleanBox, &props, Some(&Value::Boolean(true))),
-///     Body::Fill(DEFAULT_TRUE_COLOR)
+///     Body::Fill(DEFAULT_TRUE_COLOR, None)
 /// );
 /// assert_eq!(body(WidgetKind::BooleanBox, &props, None), Body::NoData("no value"));
 /// ```
@@ -162,39 +445,53 @@ pub fn body(
         return Body::NoData("no value");
     };
     match kind {
-        WidgetKind::TextDisplay => match text_of(value) {
-            Some(text) => Body::Text(text),
-            None => Body::NoData("not text"),
-        },
-        WidgetKind::BooleanBox => match value {
-            Value::Boolean(true) => {
-                Body::Fill(color_property(properties, "true_color").unwrap_or(DEFAULT_TRUE_COLOR))
+        WidgetKind::TextDisplay => {
+            match text_of(value, decimal_places(properties), int_style(properties)) {
+                Some(text) => Body::Text(text),
+                None => Body::NoData("not text"),
             }
-            Value::Boolean(false) => {
-                Body::Fill(color_property(properties, "false_color").unwrap_or(DEFAULT_FALSE_COLOR))
-            }
-            _ => Body::NoData("not a boolean"),
-        },
+        }
+        WidgetKind::BooleanBox => {
+            let Value::Boolean(on) = value else {
+                return Body::NoData("not a boolean");
+            };
+            let (color, text, default) = if *on {
+                (keys::TRUE_COLOR, keys::TRUE_TEXT, DEFAULT_TRUE_COLOR)
+            } else {
+                (keys::FALSE_COLOR, keys::FALSE_TEXT, DEFAULT_FALSE_COLOR)
+            };
+            let text = show_text(properties)
+                .then(|| properties.get(text).and_then(Json::as_str))
+                .flatten()
+                .filter(|t| !t.is_empty())
+                .map(str::to_owned);
+            Body::Fill(color_property(properties, color).unwrap_or(default), text)
+        }
     }
 }
 
-/// A value as a Text Display shows it: strings without quotes, numbers with
-/// up to 4 decimal places, arrays as `[a, b, c]`. Raw bytes (such as struct
-/// values) have no text form.
-fn text_of(value: &Value) -> Option<String> {
+/// A value as a Text Display shows it: strings without quotes, arrays as
+/// `[a, b, c]`, whole numbers as `ints` says, and other numbers with
+/// exactly `decimals` places, or up to 4 without trailing zeros if `None`.
+/// Raw bytes (such as struct values) have no text form.
+fn text_of(value: &Value, decimals: Option<usize>, ints: IntStyle) -> Option<String> {
     fn list<T>(items: &[T], one: impl Fn(&T) -> String) -> String {
         format!("[{}]", items.iter().map(one).collect::<Vec<_>>().join(", "))
     }
+    let number = |n: f64| match decimals {
+        Some(places) if n.is_finite() => format!("{n:.places$}"),
+        _ => format_number(n),
+    };
     Some(match value {
         Value::Boolean(b) => b.to_string(),
-        Value::Double(d) => format_number(*d),
-        Value::Float(f) => format_number(f64::from(*f)),
-        Value::Int(i) => i.to_string(),
+        Value::Double(d) => number(*d),
+        Value::Float(f) => number(f64::from(*f)),
+        Value::Int(i) => ints.write(*i),
         Value::String(s) => s.clone(),
         Value::BooleanArray(a) => list(a, |b| b.to_string()),
-        Value::DoubleArray(a) => list(a, |d| format_number(*d)),
-        Value::FloatArray(a) => list(a, |f| format_number(f64::from(*f))),
-        Value::IntArray(a) => list(a, |i| i.to_string()),
+        Value::DoubleArray(a) => list(a, |d| number(*d)),
+        Value::FloatArray(a) => list(a, |f| number(f64::from(*f))),
+        Value::IntArray(a) => list(a, |i| ints.write(*i)),
         Value::StringArray(a) => list(a, |s| s.clone()),
         Value::Raw(_) => return None,
     })
@@ -215,6 +512,47 @@ pub fn color_property(properties: &serde_json::Map<String, Json>, key: &str) -> 
     let argb = u32::try_from(properties.get(key)?.as_u64()?).ok()?;
     let [a, r, g, b] = argb.to_be_bytes();
     Some(Color32::from_rgba_unmultiplied(r, g, b, a))
+}
+
+/// The `show_text` setting: whether a Boolean Box writes its true or false
+/// text over the color. Off if not set.
+pub fn show_text(properties: &serde_json::Map<String, Json>) -> bool {
+    properties
+        .get(keys::SHOW_TEXT)
+        .and_then(Json::as_bool)
+        .unwrap_or(false)
+}
+
+/// Black or white, whichever is easier to read on `background`.
+///
+/// ```
+/// use eframe::egui::Color32;
+/// use raptaboard::widgets::text_color_on;
+/// assert_eq!(text_color_on(Color32::YELLOW), Color32::BLACK);
+/// assert_eq!(text_color_on(Color32::from_rgb(0x8B, 0x00, 0x00)), Color32::WHITE);
+/// ```
+pub fn text_color_on(background: Color32) -> Color32 {
+    // Relative luminance from sRGB, roughly: green looks brightest.
+    let [r, g, b, _] = background.to_srgba_unmultiplied();
+    let luminance = 0.299 * f32::from(r) + 0.587 * f32::from(g) + 0.114 * f32::from(b);
+    if luminance > 150.0 {
+        Color32::BLACK
+    } else {
+        Color32::WHITE
+    }
+}
+
+/// A color as Elastic saves it: a 32-bit ARGB number. The opposite of
+/// [`color_property`].
+///
+/// ```
+/// use eframe::egui::Color32;
+/// use raptaboard::widgets::color_json;
+/// assert_eq!(color_json(Color32::from_rgb(0x4C, 0xAF, 0x50)), serde_json::json!(4283215696u32));
+/// ```
+pub fn color_json(color: Color32) -> Json {
+    let [r, g, b, a] = color.to_srgba_unmultiplied();
+    u32::from_be_bytes([a, r, g, b]).into()
 }
 
 /// Draw an empty card with `title` in a strip along the top, and return
@@ -292,12 +630,21 @@ pub fn draw(
                 body_rect.center(),
                 egui::Align2::CENTER_CENTER,
                 text,
-                egui::FontId::monospace(16.0),
+                egui::FontId::monospace(font_size(&widget.properties)),
                 visuals.text_color(),
             );
         }
-        Body::Fill(color) => {
+        Body::Fill(color, text) => {
             painter.rect_filled(body_rect, CornerRadius::same(6), color);
+            if let Some(text) = text {
+                painter.text(
+                    body_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    text,
+                    egui::FontId::proportional(font_size(&widget.properties)),
+                    text_color_on(color),
+                );
+            }
         }
         Body::NoData(why) => {
             painter.text(
@@ -349,16 +696,16 @@ mod tests {
             props(serde_json::json!({"true_color": 4283215696u32, "false_color": 4294198070u32}));
         assert_eq!(
             body(WidgetKind::BooleanBox, &saved, Some(&Value::Boolean(true))),
-            Body::Fill(DEFAULT_TRUE_COLOR)
+            Body::Fill(DEFAULT_TRUE_COLOR, None)
         );
         assert_eq!(
             body(WidgetKind::BooleanBox, &saved, Some(&Value::Boolean(false))),
-            Body::Fill(DEFAULT_FALSE_COLOR)
+            Body::Fill(DEFAULT_FALSE_COLOR, None)
         );
         let blue = props(serde_json::json!({"true_color": 0xFF2196F3u32}));
         assert_eq!(
             body(WidgetKind::BooleanBox, &blue, Some(&Value::Boolean(true))),
-            Body::Fill(Color32::from_rgb(0x21, 0x96, 0xF3))
+            Body::Fill(Color32::from_rgb(0x21, 0x96, 0xF3), None)
         );
         assert_eq!(
             body(WidgetKind::BooleanBox, &blue, Some(&Value::Double(1.0))),
@@ -420,7 +767,122 @@ mod tests {
         assert_eq!(color_property(&bad, "false_color"), None);
         assert_eq!(
             body(WidgetKind::BooleanBox, &bad, Some(&Value::Boolean(false))),
-            Body::Fill(DEFAULT_FALSE_COLOR)
+            Body::Fill(DEFAULT_FALSE_COLOR, None)
         );
+    }
+
+    #[test]
+    fn text_display_settings() {
+        let two = props(serde_json::json!({"decimal_places": 2, "font_size": 500}));
+        let text = |v: Value| body(WidgetKind::TextDisplay, &two, Some(&v));
+        // Fixed places keep trailing zeros, so the number doesn't jump around.
+        assert_eq!(text(Value::Double(1.0)), Body::Text("1.00".into()));
+        assert_eq!(text(Value::Float(-0.125)), Body::Text("-0.12".into()));
+        assert_eq!(
+            text(Value::DoubleArray(vec![1.0, 2.555])),
+            Body::Text("[1.00, 2.56]".into())
+        );
+        // Whole numbers and non-numbers aren't changed.
+        assert_eq!(text(Value::Int(7)), Body::Text("7".into()));
+        assert_eq!(text(Value::Double(f64::NAN)), Body::Text("NaN".into()));
+        let zero = props(serde_json::json!({"decimal_places": 0}));
+        assert_eq!(
+            body(WidgetKind::TextDisplay, &zero, Some(&Value::Double(2.6))),
+            Body::Text("3".into())
+        );
+        // Out of range settings are kept in range; bad ones are ignored.
+        assert_eq!(font_size(&two), MAX_FONT_SIZE);
+        let bad = props(serde_json::json!({"decimal_places": -1, "font_size": "big",
+            "enum_display": "loud"}));
+        assert_eq!(decimal_places(&bad), None);
+        assert_eq!(font_size(&bad), DEFAULT_FONT_SIZE);
+        assert_eq!(enum_display(&bad), EnumDisplay::Name);
+        let many = props(serde_json::json!({"decimal_places": 99, "font_size": 1}));
+        assert_eq!(decimal_places(&many), Some(MAX_DECIMAL_PLACES));
+        assert_eq!(font_size(&many), MIN_FONT_SIZE);
+    }
+
+    #[test]
+    fn colors_round_trip_through_json() {
+        for color in [
+            DEFAULT_TRUE_COLOR,
+            DEFAULT_FALSE_COLOR,
+            Color32::from_rgb(1, 2, 3),
+        ] {
+            let mut p = serde_json::Map::new();
+            p.insert("c".into(), color_json(color));
+            assert_eq!(color_property(&p, "c"), Some(color));
+        }
+    }
+
+    #[test]
+    fn whole_numbers_in_hex_and_binary() {
+        let hex = props(serde_json::json!({"int_format": "hex", "decimal_places": 1}));
+        let text = |v: Value| body(WidgetKind::TextDisplay, &hex, Some(&v));
+        assert_eq!(text(Value::Int(255)), Body::Text("0xFF".into()));
+        assert_eq!(
+            text(Value::IntArray(vec![10, -1])),
+            Body::Text("[0xA, -0x1]".into())
+        );
+        // Fractional numbers ignore it and keep their decimal places.
+        assert_eq!(text(Value::Double(10.0)), Body::Text("10.0".into()));
+        let bin = props(serde_json::json!({"int_format": "binary"}));
+        assert_eq!(
+            body(WidgetKind::TextDisplay, &bin, Some(&Value::Int(5))),
+            Body::Text("0b101".into())
+        );
+        assert_eq!(IntFormat::Hex.format(i64::MIN, 0), "-0x8000000000000000");
+        // Padding, like %08X; numbers wider than it aren't cut.
+        let padded = props(serde_json::json!({"int_format": "hex", "int_digits": 4}));
+        assert_eq!(
+            body(
+                WidgetKind::TextDisplay,
+                &padded,
+                Some(&Value::IntArray(vec![26, 0x12345]))
+            ),
+            Body::Text("[0x001A, 0x12345]".into())
+        );
+        let decimal = props(serde_json::json!({"int_digits": 3}));
+        assert_eq!(
+            body(WidgetKind::TextDisplay, &decimal, Some(&Value::Int(-7))),
+            Body::Text("-007".into())
+        );
+        let huge = props(serde_json::json!({"int_digits": 1000}));
+        assert_eq!(int_digits(&huge), MAX_INT_DIGITS);
+        let bad = props(serde_json::json!({"int_format": 16}));
+        assert_eq!(int_format(&bad), IntFormat::Decimal);
+    }
+
+    #[test]
+    fn boolean_box_text() {
+        let both = props(serde_json::json!({
+            "show_text": true, "true_text": "Good", "false_text": "Bad"}));
+        let fill = |p: &serde_json::Map<String, Json>, on: bool| {
+            body(WidgetKind::BooleanBox, p, Some(&Value::Boolean(on)))
+        };
+        assert_eq!(
+            fill(&both, true),
+            Body::Fill(DEFAULT_TRUE_COLOR, Some("Good".into()))
+        );
+        assert_eq!(
+            fill(&both, false),
+            Body::Fill(DEFAULT_FALSE_COLOR, Some("Bad".into()))
+        );
+        // Text only when true, grey when false.
+        let one = props(serde_json::json!({
+            "show_text": true, "true_text": "Elevator moving", "false_text": "",
+            "false_color": 0xFF9E9E9Eu32}));
+        assert_eq!(
+            fill(&one, false),
+            Body::Fill(Color32::from_rgb(0x9E, 0x9E, 0x9E), None)
+        );
+        // Turned off: the text is kept in the file but not shown.
+        let off = props(serde_json::json!({"show_text": false, "true_text": "Good"}));
+        assert_eq!(fill(&off, true), Body::Fill(DEFAULT_TRUE_COLOR, None));
+        let bad = props(serde_json::json!({"show_text": "yes", "true_text": 5}));
+        assert_eq!(fill(&bad, true), Body::Fill(DEFAULT_TRUE_COLOR, None));
+        // The default colors get white text.
+        assert_eq!(text_color_on(DEFAULT_TRUE_COLOR), Color32::WHITE);
+        assert_eq!(text_color_on(DEFAULT_FALSE_COLOR), Color32::WHITE);
     }
 }

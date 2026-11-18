@@ -12,7 +12,7 @@ use nt4::proto::structs::StructDatabase;
 use raptaboard_layout::StructMeta;
 use raptaboard_plugin_host::path;
 
-use crate::struct_view::{self, Shown};
+use crate::struct_view::{self, FieldInfo, Shown};
 use crate::widgets;
 
 /// One topic as the tree shows it.
@@ -222,11 +222,23 @@ fn show_topic(
             }),
             _ => None,
         };
+        let fields = struct_view::struct_type(&topic.ty).map(|(schema, _)| Fields {
+            topic: &topic.name,
+            schema,
+            structs,
+        });
         egui::CollapsingHeader::new(format!("{key}  {summary}"))
             .id_salt(&topic.name)
             .default_open(false)
             .show(ui, |ui| {
-                show_children(ui, &topic.name, &children, source.as_ref(), &[])
+                show_children(
+                    ui,
+                    &topic.name,
+                    &children,
+                    fields.as_ref(),
+                    source.as_ref(),
+                    &[],
+                )
             })
             .header_response
             .on_hover_text(hover);
@@ -241,7 +253,7 @@ fn show_topic(
             .id_salt(&topic.name)
             .default_open(false)
             .show(ui, |ui| {
-                show_children(ui, &topic.name, &children, None, &[])
+                show_children(ui, &topic.name, &children, None, None, &[])
             })
             .header_response
             .on_hover_text(format!("{}\n{text}", topic.name));
@@ -273,13 +285,51 @@ struct FieldSource<'a> {
     structs: &'a StructDatabase,
 }
 
+/// A decoded struct topic, for looking up its fields' types.
+struct Fields<'a> {
+    topic: &'a str,
+    /// The struct's schema name, such as `Pose2d`.
+    schema: &'a str,
+    structs: &'a StructDatabase,
+}
+
+impl Fields<'_> {
+    /// The field at `path`, if the schema has it.
+    fn info(&self, path: &[String]) -> Option<FieldInfo> {
+        struct_view::field_info(self.structs, self.schema, path)
+    }
+
+    /// Hover text for the field at `path`: where it is, its type, and its
+    /// enum names, such as
+    /// `/Arm/state → mode` / `enum uint8 field of Arm` / `kStow = 0, kIntake = 3`.
+    fn hover(&self, path: &[String], info: Option<&FieldInfo>) -> String {
+        let mut where_ = String::new();
+        for name in path {
+            if !where_.is_empty() && !name.starts_with('[') {
+                where_.push('.');
+            }
+            where_.push_str(name);
+        }
+        let mut text = format!("{} → {where_}", self.topic);
+        if let Some(info) = info {
+            text.push_str(&format!("\n{} field of {}", info.label(), self.schema));
+            if info.is_enum() {
+                text.push_str(&format!("\n{}", info.enum_list()));
+            }
+        }
+        text
+    }
+}
+
 /// The fields of a decoded struct; nested structs and arrays open in turn.
-/// With `source`, plain fields (not array items) can be dragged onto the
-/// grid; `path` is the field names leading here.
+/// With `fields`, each field shows its type and has hover details. With
+/// `source`, plain fields (not array items) can be dragged onto the grid.
+/// `path` is the field names leading here.
 fn show_children(
     ui: &mut egui::Ui,
     id: &str,
     children: &[(String, Shown)],
+    fields: Option<&Fields<'_>>,
     source: Option<&FieldSource<'_>>,
     path: &[String],
 ) {
@@ -288,12 +338,17 @@ fn show_children(
         // Array items are named [0], [1], ...; they can't be bound to.
         let source = source.filter(|_| !name.starts_with('['));
         let field_path: Vec<String> = path.iter().cloned().chain([name.clone()]).collect();
+        let info = fields.and_then(|f| f.info(&field_path));
+        let hover = fields.map(|f| f.hover(&field_path, info.as_ref()));
         match shown {
             Shown::Leaf(text) => {
                 let row = |ui: &mut egui::Ui| {
                     ui.horizontal(|ui| {
                         ui.label(name);
                         ui.monospace(text);
+                        if let Some(info) = &info {
+                            ui.weak(info.label());
+                        }
                     })
                 };
                 let payload = source.and_then(|src| {
@@ -313,26 +368,55 @@ fn show_children(
                 match payload {
                     Some(payload) => {
                         let drag_id = egui::Id::unique(("nt_field", id, name));
+                        let hover = hover.map_or_else(String::new, |h| h + "\n\n");
                         ui.dnd_drag_source(drag_id, payload, |ui| {
                             ui.style_mut().interaction.selectable_labels = false;
                             row(ui)
                         })
                         .response
-                        .on_hover_text("Drag onto the grid to make a widget for this field");
+                        .on_hover_text(format!(
+                            "{hover}Drag onto the grid to make a widget for this field"
+                        ));
                     }
                     None => {
-                        row(ui);
+                        let row = row(ui).response;
+                        if let Some(hover) = hover {
+                            row.on_hover_text(hover);
+                        }
                     }
                 }
             }
             Shown::Node { summary, children } => {
                 let child_id = format!("{id}/{name}");
-                egui::CollapsingHeader::new(format!("{name}  {summary}"))
+                // The type after the value, greyed like a leaf row's.
+                let mut title = egui::text::LayoutJob::default();
+                let style = ui.style();
+                egui::RichText::new(format!("{name}  {summary}")).append_to(
+                    &mut title,
+                    style,
+                    egui::FontSelection::Default,
+                    egui::Align::Center,
+                );
+                if let Some(info) = &info {
+                    egui::RichText::new(format!("  {}", info.label()))
+                        .weak()
+                        .append_to(
+                            &mut title,
+                            style,
+                            egui::FontSelection::Default,
+                            egui::Align::Center,
+                        );
+                }
+                let header = egui::CollapsingHeader::new(title)
                     .id_salt(&child_id)
                     .default_open(true)
                     .show(ui, |ui| {
-                        show_children(ui, &child_id, children, source, &field_path)
-                    });
+                        show_children(ui, &child_id, children, fields, source, &field_path)
+                    })
+                    .header_response;
+                if let Some(hover) = hover {
+                    header.on_hover_text(hover);
+                }
             }
         }
     }
