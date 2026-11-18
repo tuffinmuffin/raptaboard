@@ -143,6 +143,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `show_text` | `builtin/boolean_box.rs` | Boolean Box | write the text below over the color | false |
 | `true_text`, `false_text` | `builtin/boolean_box.rs` | Boolean Box | text when true / false; empty for none | none |
 | `label_position` (Elastic) | `list_layout.rs` | List Layout | `TOP`, `LEFT`, `RIGHT`, `BOTTOM`, `HIDDEN` (any case read) | `TOP`; always written |
+| `label_inside` | `list_layout.rs` | List Layout | `true`: each label drawn over its value (on a see-through backing) instead of beside it | off |
 | `hidden` | `list_layout.rs` | a List Layout's child | `true`: kept in the list but not shown or subscribed | shown |
 
 Adding a setting: a key constant and a reader in the file that owns it, its row in that widget's
@@ -275,7 +276,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    the file. Next:
    - List Layout editing. Done: lists draw like Elastic's (children compact with no card each:
      a label placed by `label_position` and the child's body, each row its saved height less 48
-     and at least 32); Edit… or double-click on a list opens its settings (title, label position,
+     and at least 32); Edit… or double-click on a list opens its settings (title, label position and an Inside box that
+     draws labels over the values to save space,
      children in order with a Shown checkbox (unticked: kept but not drawn or subscribed), ↑/↓,
      Edit…, Delete); double-clicking a child opens its own settings. Dragging: a grid widget or a
      tree topic dropped over a list goes into it, where the green line shows; a child dragged
