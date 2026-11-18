@@ -127,24 +127,36 @@ Pixels at the saved grid size. `properties` always has `topic` and `period`; sin
 
 raptaboard adds its own keys to a widget's `properties`, next to Elastic's. Elastic ignores keys it
 doesn't know, so these files still open there (without these settings). A key at its default is
-left out of the file. The names are `widgets::keys` in `crates/app`; readers there clamp
-out-of-range values and ignore wrong types.
+left out of the file. Each key is a constant in the file that owns it under
+`crates/app/src/widgets/` (shared ones in `shared/props.rs` and `shared/format.rs`, the rest in the
+widget's own file in `builtin/`); readers there clamp out-of-range values and ignore wrong types.
 
-| Key | Widgets | Value | Default |
-| --- | --- | --- | --- |
-| `period` (Elastic) | all | update period, seconds (0.01–5) | 0.06 |
-| `true_color`, `false_color` (Elastic) | Boolean Box | ARGB number | green, red |
-| `show_text` | Boolean Box | write the text below over the color | false |
-| `true_text`, `false_text` | Boolean Box | text when true / false; empty for none | none |
-| `decimal_places` | Text Display (double, float) | fixed places, 0–10 | up to 4, trailing zeros cut |
-| `int_format` | Text Display (int, enum numbers) | `decimal`, `hex` (`0x1A`), `binary` (`0b11010`) | `decimal` |
-| `int_digits` | Text Display (int, enum numbers) | at least this many digits, zero-padded, 1–64 | no padding |
-| `enum_display` | Text Display (enum struct field) | `name`, `number`, `both` | `name` |
-| `font_size` | Text Display; Boolean Box text | points, 8–96 | 16 |
+| Key | Defined in | Widgets | Value | Default |
+| --- | --- | --- | --- | --- |
+| `period` (Elastic) | `shared/props.rs` | all | update period, seconds (0.01–5) | 0.06 |
+| `font_size` | `shared/props.rs` | Text Display; Boolean Box text | points, 8–96 | 16 |
+| `decimal_places` | `shared/format.rs` | Text Display (double, float) | fixed places, 0–10 | up to 4, trailing zeros cut |
+| `int_format` | `shared/format.rs` | Text Display (int, enum numbers) | `decimal`, `hex` (`0x1A`), `binary` (`0b11010`) | `decimal` |
+| `int_digits` | `shared/format.rs` | Text Display (int, enum numbers) | at least this many digits, zero-padded, 1–64 | no padding |
+| `enum_display` | `shared/format.rs` | Text Display (enum struct field) | `name`, `number`, `both` | `name` |
+| `true_color`, `false_color` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | ARGB number | green, red |
+| `show_text` | `builtin/boolean_box.rs` | Boolean Box | write the text below over the color | false |
+| `true_text`, `false_text` | `builtin/boolean_box.rs` | Boolean Box | text when true / false; empty for none | none |
 
-Adding a setting: add its key to `widgets::keys`, a reader in `widgets.rs`, its control in
-`widget_settings.rs` (and its key in `RESETTABLE` if "Reset settings" should clear it), and a row
-here.
+Adding a setting: a key constant and a reader in the file that owns it, its row in that widget's
+`WidgetType::settings` (shared rows: `props::text_size_row`, `props::color_row`, `format::rows`),
+the key in the widget's `setting_keys` so "Reset settings" clears it, and a row here.
+
+### Widget code
+
+Each widget type is one file in `crates/app/src/widgets/builtin/` implementing the `WidgetType` trait
+(`names` it's saved under, which dropped topics it `accepts`, `draw_body`, its `settings` rows,
+its `setting_keys`), listed in `widgets::TYPES`. The grid and the settings dialog only use that
+trait. The trait's default `draw` puts `draw_body` inside the standard card (`shared/card.rs`: rounded
+box, title on top); a widget that needs another frame or none (a camera view edge to edge)
+overrides `draw`, using `shared/card.rs`'s pieces as it likes. `shared/settings.rs` has the dialog's shared rows (title,
+period) and "Reset settings". Milestone 4 plugin widgets implement the same trait through an
+adapter: WIT `render` shapes drawn with egui, settings rows from `plugin.toml`.
 
 ### Remote layouts
 

@@ -17,5 +17,4 @@ pub mod struct_view;
 pub mod tabs;
 pub mod tree;
 pub mod ui;
-pub mod widget_settings;
 pub mod widgets;

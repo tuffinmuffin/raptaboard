@@ -12,7 +12,7 @@ use nt4::proto::structs::{
 };
 
 use crate::tree::format_number;
-use crate::widgets::IntStyle;
+use crate::widgets::shared::format::IntStyle;
 
 /// A decoded value, ready to draw.
 #[derive(Debug, Clone, PartialEq)]
@@ -155,7 +155,7 @@ impl EnumDisplay {
 /// use nt4::Value;
 /// use nt4::proto::structs::StructDatabase;
 /// use raptaboard::struct_view::{field_value, field_value_shown, EnumDisplay};
-/// use raptaboard::widgets::{IntFormat, IntStyle};
+/// use raptaboard::widgets::shared::format::{IntFormat, IntStyle};
 /// let mut db = StructDatabase::new();
 /// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode").unwrap();
 /// let mode = vec!["mode".to_string()];

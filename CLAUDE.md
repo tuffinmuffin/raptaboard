@@ -57,10 +57,14 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   and restarts it when the address changes; the UI only makes non-blocking calls), `tree.rs` the
   read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),
   `struct_view.rs` struct values decoded with the server's `/.schema/` topics
-  (`nt4::proto::structs::StructDatabase` + `DynamicStruct`), `widgets.rs` the grid widgets
-  (Text Display, Boolean Box; other types draw as placeholders; setting keys in `widgets::keys`, listed in
-  `docs/spec.md` under "raptaboard widget settings"; keep that table in step),
-  `widget_settings.rs` the widget settings dialog's controls (the dialog window is in `ui.rs`), `layout_file.rs` opening and saving layout files (atomic
+  (`nt4::proto::structs::StructDatabase` + `DynamicStruct`), `widgets/` the grid widgets,
+  one file per type implementing `widgets::WidgetType` and listed in `widgets::TYPES` (Text Display,
+  Boolean Box; other types draw as placeholders), widget files in `widgets/builtin/`, helpers in `widgets/shared/`:
+  `card.rs`, `format.rs` (number and
+  enum text), `props.rs` (period, font size, colors) and `settings.rs` (the settings dialog's shared
+  rows; the dialog window is in `ui.rs`); setting keys are constants in the file that owns them,
+  listed in `docs/spec.md` under "raptaboard widget settings" (keep that table in step); adding a
+  widget is a new file in `builtin/` (listed in `builtin/mod.rs`) plus one line in `TYPES`, `layout_file.rs` opening and saving layout files (atomic
   writes, Ctrl+O/S/Shift+S), `grid.rs` the snap-grid rules
   (snapping, overlap) and `tabs.rs` tab actions and their shortcuts, `edit.rs` undo/redo (`History`, which
   notices any layout change once a frame) and the widget editing shortcuts; the drag handling and lock live
