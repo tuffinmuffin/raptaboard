@@ -1,8 +1,8 @@
 # raptaboard
 
-An FRC driver dashboard written in Rust, from FRC Team 3200 (Raptacon). The goal is to do everything
-[Elastic](https://github.com/Gold872/elastic-dashboard) does, open Elastic layouts as they are, and
-add **widget plugins**: small WebAssembly modules that load without rebuilding the dashboard and draw
+An FRC driver dashboard written in Rust, from FRC Team 3200 (Raptacon). It started from
+[Elastic](https://github.com/Gold872/elastic-dashboard) and aims past it: everything Elastic does,
+a richer set of widget settings, and **widget plugins**: small WebAssembly modules that load without rebuilding the dashboard and draw
 a NetworkTables table, such as an arm subsystem.
 
 Status: **milestone 2 in progress.** The app opens an Elastic layout and shows its tabs and widgets

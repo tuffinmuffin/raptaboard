@@ -1,8 +1,9 @@
 //! Layout files for raptaboard.
 //!
-//! Milestone 1 reads and writes Elastic's layout JSON (`"version": 1.0`)
-//! without losing anything, so existing Elastic layouts open in raptaboard and
-//! a layout saved by raptaboard still opens in Elastic.
+//! Layouts are Elastic's JSON shape (`"version": 1.0`), read and written
+//! without losing anything, so Elastic layouts open in raptaboard and the
+//! other way round. That's a convenience, not a promise: raptaboard may
+//! grow its own format (see "Goal and decisions" in `docs/spec.md`).
 //!
 //! Widget settings live in each container's `properties` object. They are kept
 //! as raw JSON here; each widget reads the keys it knows and keeps the rest.
