@@ -144,7 +144,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `true_text`, `false_text` | `builtin/boolean_box.rs` | Boolean Box | text when true / false; empty for none | none |
 | `label_position` (Elastic) | `list_layout.rs` | List Layout | `TOP`, `LEFT`, `RIGHT`, `BOTTOM`, `HIDDEN` (any case read) | `TOP`; always written |
 | `label_inside` | `list_layout.rs` | List Layout | `true`: each label drawn over its value (on a see-through backing) instead of beside it | off |
-| `dividers` | `list_layout.rs` | List Layout | `true`: a thin line below each child (the last too) | off |
+| `dividers` | `list_layout.rs` | List Layout | `true`: a thin line above the first child and below each child | off |
 | `hidden` | `list_layout.rs` | a List Layout's child | `true`: kept in the list but not shown or subscribed | shown |
 
 Adding a setting: a key constant and a reader in the file that owns it, its row in that widget's
