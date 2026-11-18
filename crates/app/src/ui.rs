@@ -10,6 +10,7 @@ use raptaboard_layout::{ElasticLayout, GridLayout, Rect as LayoutRect, WidgetCon
 
 use crate::cli::StartupOptions;
 use crate::connection::{AddressMode, resolve};
+use crate::edit::{self, EditAction, History};
 use crate::grid::{self, Item};
 use crate::layout_file::{self, FileAction, LoadError};
 use crate::nt::{ConnectionStatus, NtConnection};
@@ -114,6 +115,14 @@ pub struct DashboardApp {
     renaming: Option<(usize, String, bool)>,
     /// A tab with widgets on it, waiting for the user to confirm closing it.
     confirm_close: Option<usize>,
+    /// The widget or List Layout picked on the open tab, for Delete and
+    /// Duplicate. Always `None` while locked.
+    selected: Option<Item>,
+    /// Earlier versions of the layout, for undo and redo.
+    history: History,
+    /// The visible grid's width and height last frame, in pixels, for
+    /// finding room for a duplicate.
+    grid_room: (f64, f64),
 }
 
 impl DashboardApp {
@@ -143,6 +152,9 @@ impl DashboardApp {
             drag: None,
             renaming: None,
             confirm_close: None,
+            selected: None,
+            history: History::new(&ElasticLayout::default()),
+            grid_room: (0.0, 0.0),
         };
         if let Some(path) = options.layout_path {
             let path = PathBuf::from(path);
@@ -184,6 +196,9 @@ impl DashboardApp {
         self.drag = None;
         self.renaming = None;
         self.confirm_close = None;
+        self.selected = None;
+        // Undo goes back to the file as opened, fixes included.
+        self.history = History::new(&self.layout);
     }
 
     /// Carry out Open, Save or Save as. Opening with unsaved changes asks
@@ -307,6 +322,7 @@ impl DashboardApp {
                 self.locked = !self.locked;
                 self.drag = None;
                 self.renaming = None;
+                self.selected = None;
             }
             ui.separator();
             ui.label("Team");
@@ -339,6 +355,24 @@ impl DashboardApp {
                     .clicked()
                 {
                     self.run_file_action(action);
+                }
+            }
+            ui.separator();
+            for (label, action, can) in [
+                ("Undo", EditAction::Undo, self.history.can_undo()),
+                ("Redo", EditAction::Redo, self.history.can_redo()),
+            ] {
+                let button = ui.add_enabled(!self.locked && can, egui::Button::new(label));
+                if button
+                    .on_hover_text(ctx.format_shortcut(&action.shortcut()))
+                    .on_disabled_hover_text(if self.locked {
+                        "Unlock to change the layout"
+                    } else {
+                        "Nothing to undo or redo"
+                    })
+                    .clicked()
+                {
+                    self.run_edit_action(&ctx, action);
                 }
             }
             ui.separator();
@@ -580,7 +614,62 @@ impl DashboardApp {
         }
         self.confirm_close = None;
         self.drag = None;
+        self.selected = None;
         self.current_tab = tabs::apply(&mut self.layout, self.current_tab, action);
+    }
+
+    /// Carry out an editing command: undo, redo, or Delete, Duplicate and
+    /// Deselect on the selected widget. Ignored while locked.
+    fn run_edit_action(&mut self, ctx: &egui::Context, action: EditAction) {
+        if self.locked {
+            return;
+        }
+        let undo_key = ctx.format_shortcut(&EditAction::Undo.shortcut());
+        match action {
+            EditAction::Undo | EditAction::Redo => {
+                let done = if action == EditAction::Undo {
+                    self.history.undo(&mut self.layout)
+                } else {
+                    self.history.redo(&mut self.layout)
+                };
+                if done {
+                    self.current_tab = self
+                        .current_tab
+                        .min(self.layout.tabs.len().saturating_sub(1));
+                    self.selected = None;
+                    self.drag = None;
+                    self.renaming = None;
+                    self.confirm_close = None;
+                }
+            }
+            EditAction::Delete => {
+                let Some(item) = self.selected.take() else {
+                    return;
+                };
+                let Some(tab) = self.layout.tabs.get_mut(self.current_tab) else {
+                    return;
+                };
+                let title = item.title(&tab.grid_layout).unwrap_or_default().to_owned();
+                item.remove(&mut tab.grid_layout);
+                self.drag = None;
+                self.status = format!("Deleted \"{title}\"; {undo_key} brings it back");
+            }
+            EditAction::Duplicate => {
+                let Some(item) = self.selected else { return };
+                let cell = f64::from(self.layout.grid_size());
+                let Some(tab) = self.layout.tabs.get_mut(self.current_tab) else {
+                    return;
+                };
+                match item.duplicate(&mut tab.grid_layout, cell, self.grid_room) {
+                    Some(copy) => self.selected = Some(copy),
+                    None => {
+                        let title = item.title(&tab.grid_layout).unwrap_or_default();
+                        self.status = format!("No free space for a copy of \"{title}\"");
+                    }
+                }
+            }
+            EditAction::Deselect => self.selected = None,
+        }
     }
 
     /// The "close this tab?" question, while one is open.
@@ -620,7 +709,11 @@ impl DashboardApp {
     /// move widgets and their bottom-right corner to resize them. Drops snap
     /// to the grid and are refused if they would cover another widget.
     fn grid(&mut self, ui: &mut egui::Ui, values: &HashMap<&str, &Value>) {
-        let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::hover());
+        // Clicking empty grid drops the selection.
+        let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click());
+        if response.clicked() {
+            self.selected = None;
+        }
         let area = response.rect;
         let origin = area.min;
         let cell = f64::from(self.layout.grid_size());
@@ -648,17 +741,19 @@ impl DashboardApp {
             )
         };
         let room = (f64::from(area.width()), f64::from(area.height()));
+        self.grid_room = room;
         let placed = grid::items(&tab.grid_layout);
 
         // Dragging. Each item's corner is registered after its body so the
         // corner wins where they overlap.
         let mut dropped = None;
+        let mut menu_action = None;
         if !self.locked {
             for &(item, r) in &placed {
                 let rect = to_screen(&r);
                 let id = ui.scope_id().with(("grid_item", self.current_tab, item));
                 let corner = Rect::from_min_max(rect.max - Vec2::splat(RESIZE_HANDLE), rect.max);
-                let body = ui.interact(rect, id, Sense::drag());
+                let body = ui.interact(rect, id, Sense::click_and_drag());
                 let corner = ui.interact(corner, id.with("resize"), Sense::drag());
                 for (handle, mode) in [(&body, DragMode::Move), (&corner, DragMode::Resize)] {
                     if handle.drag_started() {
@@ -679,6 +774,22 @@ impl DashboardApp {
                         }
                     }
                 }
+                if body.clicked() || body.secondary_clicked() || body.drag_started() {
+                    self.selected = Some(item);
+                }
+                body.context_menu(|ui| {
+                    let ctx = ui.ctx().clone();
+                    for (label, action, key) in [
+                        ("Duplicate", EditAction::Duplicate, EditAction::Duplicate),
+                        ("Delete", EditAction::Delete, EditAction::Delete),
+                    ] {
+                        let button = egui::Button::new(label)
+                            .shortcut_text(ctx.format_shortcut(&key.shortcut()));
+                        if ui.add(button).clicked() {
+                            menu_action = Some((item, action));
+                        }
+                    }
+                });
                 if corner.hovered() || corner.dragged() {
                     ui.ctx().set_cursor_icon(CursorIcon::ResizeNwSe);
                 } else if body.dragged() {
@@ -717,6 +828,18 @@ impl DashboardApp {
                     draw_resize_handle(&painter, &visuals, to_screen(&r));
                 }
             }
+        }
+        // The selected item gets an outline in the selection color.
+        if let Some(item) = self.selected
+            && Some(item) != dragging
+            && let Some(r) = item.rect(&tab.grid_layout)
+        {
+            painter.rect_stroke(
+                to_screen(&r).shrink(1.0),
+                egui::CornerRadius::same(10),
+                Stroke::new(2.0, visuals.selection.stroke.color),
+                egui::StrokeKind::Inside,
+            );
         }
         // The dragged item follows the pointer on top of everything, with an
         // outline where it will land: green if it fits, red if not.
@@ -757,6 +880,7 @@ impl DashboardApp {
                 && let Some(tab) = self.layout.tabs.get_mut(self.current_tab)
             {
                 tab.grid_layout.containers.push(widget);
+                self.selected = Some(Item::Widget(tab.grid_layout.containers.len() - 1));
             }
         }
 
@@ -767,6 +891,10 @@ impl DashboardApp {
             {
                 drag.item.set_rect(&mut tab.grid_layout, target);
             }
+        }
+        if let Some((item, action)) = menu_action {
+            self.selected = Some(item);
+            self.run_edit_action(ui.ctx(), action);
         }
     }
 }
@@ -882,6 +1010,9 @@ impl eframe::App for DashboardApp {
         if !dialog_open && let Some(action) = layout_file::shortcut(&ctx) {
             self.run_file_action(action);
         }
+        if !dialog_open && let Some(action) = edit::shortcut(&ctx) {
+            self.run_edit_action(&ctx, action);
+        }
         // Closing the window with unsaved changes asks first.
         if ctx.input(|i| i.viewport().close_requested()) && self.unsaved() && !self.allow_close {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -916,6 +1047,8 @@ impl eframe::App for DashboardApp {
             Vec::new()
         };
         egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values));
+        // Whatever changed the layout this frame can be undone.
+        self.history.record(&self.layout);
 
         self.nt.watch_values(tree_topics);
         let (widget_topics, period_s) = self.tab_topics();

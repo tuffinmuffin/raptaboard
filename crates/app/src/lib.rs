@@ -8,6 +8,7 @@
 
 pub mod cli;
 pub mod connection;
+pub mod edit;
 pub mod grid;
 pub mod layout_file;
 pub mod nt;
