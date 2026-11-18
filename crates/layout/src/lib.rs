@@ -24,6 +24,13 @@ use serde_json::{Map, Value};
 
 /// Elastic's default grid cell size in pixels.
 pub const DEFAULT_GRID_SIZE: u32 = 128;
+/// The smallest grid cell size [`ElasticLayout::sanitize`] keeps, in pixels.
+pub const MIN_GRID_SIZE: u32 = 16;
+/// The largest grid cell size [`ElasticLayout::sanitize`] keeps, in pixels.
+pub const MAX_GRID_SIZE: u32 = 1024;
+/// How far right or down a widget may reach, in grid cells. Anything past
+/// this is moved back by [`ElasticLayout::sanitize`]; no screen is that big.
+pub const MAX_GRID_CELLS: f64 = 100.0;
 
 /// Errors reading a layout file.
 #[derive(Debug, thiserror::Error)]
@@ -75,6 +82,33 @@ pub struct Rect {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+}
+
+impl Rect {
+    /// Whether two rectangles share any area. Rectangles that only touch
+    /// along an edge don't overlap.
+    ///
+    /// ```
+    /// use raptaboard_layout::Rect;
+    /// let a = Rect { x: 0.0, y: 0.0, width: 128.0, height: 128.0 };
+    /// let beside = Rect { x: 128.0, ..a };
+    /// let across = Rect { x: 64.0, y: 64.0, ..a };
+    /// assert!(!a.overlaps(&beside));
+    /// assert!(a.overlaps(&across));
+    /// ```
+    pub fn overlaps(&self, other: &Rect) -> bool {
+        // Old layouts can have sizes a hair off whole pixels; ignore slivers.
+        const SLACK: f64 = 0.5;
+        self.x + self.width - SLACK > other.x
+            && other.x + other.width - SLACK > self.x
+            && self.y + self.height - SLACK > other.y
+            && other.y + other.height - SLACK > self.y
+    }
+
+    /// Short text for messages: `128x256 at (0, 384)`.
+    fn describe(&self) -> String {
+        format!("{}x{} at ({}, {})", self.width, self.height, self.x, self.y)
+    }
 }
 
 /// One widget on the grid or inside a List Layout.
@@ -158,6 +192,50 @@ impl ElasticLayout {
             .expect("some number is free")
     }
 
+    /// Fix values raptaboard can't show, and return a plain-language line
+    /// for each fix. A layout Elastic saved normally needs no fixes and is
+    /// left exactly as it was.
+    ///
+    /// Fixes made:
+    /// - A grid size outside [`MIN_GRID_SIZE`] to [`MAX_GRID_SIZE`] becomes
+    ///   [`DEFAULT_GRID_SIZE`].
+    /// - A layout with no tabs gets the default "Teleoperated" and
+    ///   "Autonomous" tabs.
+    /// - Widths and heights of zero or less become one cell; ones over
+    ///   [`MAX_GRID_CELLS`] cells are cut to that.
+    /// - Negative positions become 0.
+    /// - A widget reaching past [`MAX_GRID_CELLS`] cells moves to the first
+    ///   free spot on its tab.
+    ///
+    /// ```
+    /// let json = r#"{"version": 1.0, "grid_size": 0, "tabs": []}"#;
+    /// let mut layout = raptaboard_layout::ElasticLayout::from_json(json).unwrap();
+    /// let fixes = layout.sanitize();
+    /// assert_eq!(fixes.len(), 2);
+    /// assert_eq!(layout.grid_size(), 128);
+    /// assert_eq!(layout.tabs.len(), 2);
+    /// ```
+    pub fn sanitize(&mut self) -> Vec<String> {
+        let mut fixes = Vec::new();
+        if let Some(size) = self.grid_size
+            && !(MIN_GRID_SIZE..=MAX_GRID_SIZE).contains(&size)
+        {
+            fixes.push(format!(
+                "grid size {size} is outside {MIN_GRID_SIZE} to {MAX_GRID_SIZE}; using {DEFAULT_GRID_SIZE}"
+            ));
+            self.grid_size = Some(DEFAULT_GRID_SIZE);
+        }
+        if self.tabs.is_empty() {
+            fixes.push("no tabs; added Teleoperated and Autonomous".to_owned());
+            self.tabs = ElasticLayout::default().tabs;
+        }
+        let cell = f64::from(self.grid_size());
+        for tab in &mut self.tabs {
+            tab.grid_layout.sanitize(cell, &tab.name, &mut fixes);
+        }
+        fixes
+    }
+
     /// Parse an Elastic layout file. Accepts any 1.x version.
     pub fn from_json(text: &str) -> Result<Self, LayoutError> {
         let layout: Self = serde_json::from_str(text)?;
@@ -186,6 +264,133 @@ impl ElasticLayout {
                 .chain(t.grid_layout.layouts.iter().flat_map(|l| l.children.iter()))
         })
     }
+}
+
+impl GridLayout {
+    /// [`ElasticLayout::sanitize`] for one tab, with `cell` the grid size in
+    /// pixels. Fixes are added to `fixes`.
+    fn sanitize(&mut self, cell: f64, tab: &str, fixes: &mut Vec<String>) {
+        let limit = cell * MAX_GRID_CELLS;
+        for w in &mut self.containers {
+            let what = format!("tab \"{tab}\", widget \"{}\"", w.title);
+            fix_rect(&mut w.rect, cell, limit, true, &what, fixes);
+        }
+        for l in &mut self.layouts {
+            let what = format!("tab \"{tab}\", list \"{}\"", l.title);
+            fix_rect(&mut l.rect, cell, limit, true, &what, fixes);
+            // Children are stacked by the list, so only their size matters.
+            for c in &mut l.children {
+                let what = format!("{what}, widget \"{}\"", c.title);
+                fix_rect(&mut c.rect, cell, limit, false, &what, fixes);
+            }
+        }
+
+        // Bring back anything reaching past the edge of the grid.
+        let count = self.containers.len() + self.layouts.len();
+        for i in 0..count {
+            let rect = self.rect_at(i);
+            if rect.x + rect.width <= limit && rect.y + rect.height <= limit {
+                continue;
+            }
+            let others: Vec<Rect> = (0..count)
+                .filter(|&j| j != i)
+                .map(|j| self.rect_at(j))
+                .collect();
+            let moved = free_spot(rect, cell, limit, &others);
+            *self.rect_at_mut(i) = moved;
+            fixes.push(format!(
+                "tab \"{tab}\", {}: off the grid at ({}, {}); moved to ({}, {})",
+                self.name_at(i),
+                rect.x,
+                rect.y,
+                moved.x,
+                moved.y
+            ));
+        }
+    }
+
+    /// Widgets then lists, counted together, for [`GridLayout::sanitize`].
+    fn rect_at(&self, i: usize) -> Rect {
+        match self.containers.get(i) {
+            Some(w) => w.rect,
+            None => self.layouts[i - self.containers.len()].rect,
+        }
+    }
+
+    fn rect_at_mut(&mut self, i: usize) -> &mut Rect {
+        let widgets = self.containers.len();
+        match self.containers.get_mut(i) {
+            Some(w) => &mut w.rect,
+            None => &mut self.layouts[i - widgets].rect,
+        }
+    }
+
+    /// `widget "Title"` or `list "Title"`, for messages.
+    fn name_at(&self, i: usize) -> String {
+        match self.containers.get(i) {
+            Some(w) => format!("widget \"{}\"", w.title),
+            None => format!("list \"{}\"", self.layouts[i - self.containers.len()].title),
+        }
+    }
+}
+
+/// Fix one rectangle's size, and its position if `has_position`, adding a
+/// line to `fixes` if anything changed. See [`ElasticLayout::sanitize`].
+fn fix_rect(
+    rect: &mut Rect,
+    cell: f64,
+    limit: f64,
+    has_position: bool,
+    what: &str,
+    fixes: &mut Vec<String>,
+) {
+    let old = *rect;
+    let size = |v: f64| {
+        if v.is_finite() && v > 0.0 {
+            v.min(limit)
+        } else {
+            cell
+        }
+    };
+    let position = |v: f64| if v.is_finite() && v >= 0.0 { v } else { 0.0 };
+    rect.width = size(rect.width);
+    rect.height = size(rect.height);
+    if has_position {
+        rect.x = position(rect.x);
+        rect.y = position(rect.y);
+    }
+    // Compare as text so a NaN that was replaced counts as a change.
+    if old.describe() != rect.describe() {
+        fixes.push(format!(
+            "{what}: {} became {}",
+            old.describe(),
+            rect.describe()
+        ));
+    }
+}
+
+/// The first cell corner, row by row from the top left, where `rect`'s size
+/// fits inside `limit` without covering any of `others`. The top left
+/// corner if there's no room anywhere.
+fn free_spot(rect: Rect, cell: f64, limit: f64, others: &[Rect]) -> Rect {
+    let steps = (limit / cell) as usize;
+    (0..steps)
+        .flat_map(|row| (0..steps).map(move |col| (col, row)))
+        .map(|(col, row)| Rect {
+            x: col as f64 * cell,
+            y: row as f64 * cell,
+            ..rect
+        })
+        .find(|r| {
+            r.x + r.width <= limit
+                && r.y + r.height <= limit
+                && !others.iter().any(|o| r.overlaps(o))
+        })
+        .unwrap_or(Rect {
+            x: 0.0,
+            y: 0.0,
+            ..rect
+        })
 }
 
 impl WidgetContainer {

@@ -107,17 +107,6 @@ pub fn snap_resize(rect: Rect, cell: f64) -> Rect {
     }
 }
 
-/// Whether two rectangles share any area. Rectangles that only touch along
-/// an edge don't overlap.
-pub fn overlaps(a: Rect, b: Rect) -> bool {
-    // Old layouts can have sizes a hair off whole pixels; ignore slivers.
-    const SLACK: f64 = 0.5;
-    a.x + a.width - SLACK > b.x
-        && b.x + b.width - SLACK > a.x
-        && a.y + a.height - SLACK > b.y
-        && b.y + b.height - SLACK > a.y
-}
-
 /// Whether `item` can go at `rect` on `grid` without covering anything else.
 ///
 /// ```
@@ -135,7 +124,7 @@ pub fn overlaps(a: Rect, b: Rect) -> bool {
 pub fn fits(grid: &GridLayout, item: Item, rect: Rect) -> bool {
     items(grid)
         .into_iter()
-        .all(|(other, r)| other == item || !overlaps(rect, r))
+        .all(|(other, r)| other == item || !rect.overlaps(&r))
 }
 
 #[cfg(test)]
@@ -203,16 +192,6 @@ mod tests {
             snap_resize(rect(0.0, 0.0, 100.0, 140.0), 64.0),
             rect(0.0, 0.0, 128.0, 128.0)
         );
-    }
-
-    #[test]
-    fn touching_edges_is_not_overlapping() {
-        let a = rect(0.0, 0.0, 128.0, 128.0);
-        assert!(!overlaps(a, rect(128.0, 0.0, 128.0, 128.0)));
-        assert!(!overlaps(a, rect(0.0, 128.0, 128.0, 128.0)));
-        assert!(overlaps(a, rect(64.0, 64.0, 128.0, 128.0)));
-        // One inside the other.
-        assert!(overlaps(rect(0.0, 0.0, 512.0, 512.0), a));
     }
 
     #[test]

@@ -90,6 +90,8 @@ pub struct DashboardApp {
     saved: ElasticLayout,
     /// The last thing that happened to the layout file, shown in the settings bar.
     status: String,
+    /// What [`ElasticLayout::sanitize`] fixed in the open file, until it's saved.
+    fixes: Vec<String>,
     /// Waiting for an answer to "save changes?" before doing this.
     unsaved_prompt: Option<AfterSaving>,
     /// The user chose to quit without saving, so let the window close.
@@ -125,6 +127,7 @@ impl DashboardApp {
             layout_path: None,
             saved: ElasticLayout::default(),
             status: String::new(),
+            fixes: Vec::new(),
             unsaved_prompt: None,
             allow_close: false,
             title: String::new(),
@@ -164,13 +167,18 @@ impl DashboardApp {
     }
 
     /// Show a layout just read from `path`.
+    /// Values raptaboard can't show are fixed first; the fixes count as
+    /// unsaved changes, so saving writes them to the file.
     fn show_layout(&mut self, layout: ElasticLayout, path: PathBuf) {
+        let plural = |n: usize, word: &str| format!("{n} {word}{}", if n == 1 { "" } else { "s" });
         self.status = format!(
-            "Opened {} tabs, {} widgets",
-            layout.tabs.len(),
-            layout.widgets().count()
+            "Opened {}, {}",
+            plural(layout.tabs.len(), "tab"),
+            plural(layout.widgets().count(), "widget")
         );
         self.saved = layout.clone();
+        let mut layout = layout;
+        self.fixes = layout.sanitize();
         self.layout = layout;
         self.layout_path = Some(path);
         self.current_tab = 0;
@@ -219,6 +227,7 @@ impl DashboardApp {
             Ok(()) => {
                 self.status = format!("Saved {}", path.display());
                 self.saved = self.layout.clone();
+                self.fixes.clear();
                 self.layout_path = Some(path);
                 true
             }
@@ -344,6 +353,32 @@ impl DashboardApp {
                     .on_hover_text("Unsaved changes");
             }
             ui.weak(&self.status);
+            if !self.fixes.is_empty() {
+                let n = self.fixes.len();
+                let list = self.fixes.join("\n");
+                let badge = ui
+                    .add(
+                        egui::Label::new(
+                            egui::RichText::new(format!(
+                                "⚠ fixed {n} problem{}",
+                                if n == 1 { "" } else { "s" }
+                            ))
+                            .color(Color32::from_rgb(230, 160, 40)),
+                        )
+                        .sense(Sense::click()),
+                    )
+                    .on_hover_text(format!("{list}\n\nRight-click to copy this list"));
+                // Copy the list so it can be pasted into a bug report or chat.
+                badge.context_menu(|ui| {
+                    if ui.button("Copy list").clicked() {
+                        ui.ctx().copy_text(list.clone());
+                        self.status = format!(
+                            "Copied {n} fix{} to the clipboard",
+                            if n == 1 { "" } else { "es" }
+                        );
+                    }
+                });
+            }
         });
     }
 

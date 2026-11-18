@@ -37,6 +37,8 @@ macOS. Run the same locally before pushing.
 - NetworkTables: the `nt4` crate from crates.io (`nt4::Client`, typed subscribers, `nt4::proto` for
   ports and URLs). Fix protocol bugs upstream in `nt4-rs`, not here.
 - `crates/layout`: Elastic v1 model. Unknown fields go in `extra` maps so files round-trip.
+  `ElasticLayout::sanitize` fixes values the app can't show (run on every opened file); it must
+  leave valid Elastic layouts unchanged (`tests/sanitize.rs`).
 - `crates/plugin-host`: manifest parsing and matching; `path` has topic path helpers
   (`.type` tables). wasmtime hosting comes in milestone 4.
 - `crates/app`: the eframe app. `ui.rs` holds the window, `connection.rs` the robot address modes,
