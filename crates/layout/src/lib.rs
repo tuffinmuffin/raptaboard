@@ -207,6 +207,9 @@ impl ElasticLayout {
     /// - Negative positions become 0.
     /// - A widget reaching past [`MAX_GRID_CELLS`] cells moves to the first
     ///   free spot on its tab.
+    /// - A widget or List Layout covering one before it on its tab (widgets
+    ///   first, then lists, in file order) moves to the free spot nearest
+    ///   where it was. With no free spot it stays, and the fix says so.
     ///
     /// ```
     /// let json = r#"{"version": 1.0, "grid_size": 0, "tabs": []}"#;
@@ -297,7 +300,11 @@ impl GridLayout {
                 .filter(|&j| j != i)
                 .map(|j| self.rect_at(j))
                 .collect();
-            let moved = free_spot(rect, cell, limit, &others);
+            let moved = free_spot(rect, cell, limit, &others).unwrap_or(Rect {
+                x: 0.0,
+                y: 0.0,
+                ..rect
+            });
             *self.rect_at_mut(i) = moved;
             fixes.push(format!(
                 "tab \"{tab}\", {}: off the grid at ({}, {}); moved to ({}, {})",
@@ -307,6 +314,39 @@ impl GridLayout {
                 moved.x,
                 moved.y
             ));
+        }
+
+        self.fix_overlaps(cell, limit, tab, fixes);
+    }
+
+    /// [`ElasticLayout::sanitize`]'s overlap fix for one tab: anything that
+    /// covers an item before it moves to the nearest free spot.
+    fn fix_overlaps(&mut self, cell: f64, limit: f64, tab: &str, fixes: &mut Vec<String>) {
+        let count = self.containers.len() + self.layouts.len();
+        for i in 0..count {
+            let rect = self.rect_at(i);
+            let Some(covered) = (0..i).find(|&j| rect.overlaps(&self.rect_at(j))) else {
+                continue;
+            };
+            let what = format!(
+                "tab \"{tab}\", {}: covers {}",
+                self.name_at(i),
+                self.name_at(covered)
+            );
+            let others: Vec<Rect> = (0..count)
+                .filter(|&j| j != i)
+                .map(|j| self.rect_at(j))
+                .collect();
+            match nearest_free_spot(rect, cell, limit, &others) {
+                Some(moved) => {
+                    *self.rect_at_mut(i) = moved;
+                    fixes.push(format!(
+                        "{what}; moved from ({}, {}) to ({}, {})",
+                        rect.x, rect.y, moved.x, moved.y
+                    ));
+                }
+                None => fixes.push(format!("{what}, and there's no free space; left there")),
+            }
         }
     }
 
@@ -370,28 +410,36 @@ fn fix_rect(
     }
 }
 
-/// The first cell corner, row by row from the top left, where `rect`'s size
-/// fits inside `limit` without covering any of `others`. The top left
-/// corner if there's no room anywhere.
-fn free_spot(rect: Rect, cell: f64, limit: f64, others: &[Rect]) -> Rect {
+/// Every cell corner where `rect`'s size fits inside `limit` without
+/// covering any of `others`, row by row from the top left.
+fn free_spots(rect: Rect, cell: f64, limit: f64, others: &[Rect]) -> impl Iterator<Item = Rect> {
     let steps = (limit / cell) as usize;
     (0..steps)
-        .flat_map(|row| (0..steps).map(move |col| (col, row)))
-        .map(|(col, row)| Rect {
+        .flat_map(move |row| (0..steps).map(move |col| (col, row)))
+        .map(move |(col, row)| Rect {
             x: col as f64 * cell,
             y: row as f64 * cell,
             ..rect
         })
-        .find(|r| {
+        .filter(move |r| {
             r.x + r.width <= limit
                 && r.y + r.height <= limit
                 && !others.iter().any(|o| r.overlaps(o))
         })
-        .unwrap_or(Rect {
-            x: 0.0,
-            y: 0.0,
-            ..rect
-        })
+}
+
+/// The first free spot for `rect`'s size, row by row from the top left.
+fn free_spot(rect: Rect, cell: f64, limit: f64, others: &[Rect]) -> Option<Rect> {
+    free_spots(rect, cell, limit, others).next()
+}
+
+/// The free spot for `rect`'s size closest to where it is. Ties go to the
+/// spot higher up, then further left.
+fn nearest_free_spot(rect: Rect, cell: f64, limit: f64, others: &[Rect]) -> Option<Rect> {
+    let distance = |r: &Rect| (r.x - rect.x).powi(2) + (r.y - rect.y).powi(2);
+    // Spots come row by row, so `min_by` keeping the first of equals breaks
+    // ties toward the top left.
+    free_spots(rect, cell, limit, others).min_by(|a, b| distance(a).total_cmp(&distance(b)))
 }
 
 /// Which field of a struct topic a widget shows: Elastic's `struct_meta`

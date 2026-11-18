@@ -231,7 +231,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    unsaved-changes dot and window title, and a "save changes?" question before opening another
    layout or quitting. Saves write a temporary file and rename it, so a failed save keeps the old
    file. Opened layouts are checked: a grid size outside 16 to 1024, no tabs, sizes of zero or less,
-   negative positions and widgets past 100 cells are fixed and listed ("fixed N problems"), and
+   negative positions, widgets past 100 cells and overlapping widgets (moved to the nearest free spot) are fixed and listed ("fixed N problems"), and
    files over 10 MB are refused; normal Elastic layouts come through unchanged. Drag from tree:
    dragging a topic onto the grid makes a one-cell widget there (Boolean Box for booleans, Text
    Display for the rest; saved with `topic`, `period` and `data_type` like Elastic). Fields inside a
