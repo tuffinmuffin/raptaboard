@@ -239,7 +239,13 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    raptaboard. Milestone 1 is done; the OpenGL (glow) fallback for laptops without DX12 is an option
    for milestone 2 if a team laptop needs it.
 2. Grid and layouts: tabs, snap grid, drag from tree, List Layout, lock, layout save, settings,
-   hotkeys. **Started**: tabs (add, close with a confirmation if it has widgets, rename, reorder;
+   hotkeys. **Done** apart from the polish items under Next. Settings are kept between runs: team,
+   address, port, tree shown, last layout, and window size and place, found in order from the
+   command line (this run only, never saved), `./.raptaboard/settings.toml`,
+   `~/.raptaboard/settings.toml` (made with the defaults on the first run), then defaults; each
+   file may set only some keys. Changes made in the app are saved (a second after the last change,
+   and on close) to the local file if it exists, else the home file; a file that can't be read is
+   noted and never overwritten. Also: tabs (add, close with a confirmation if it has widgets, rename, reorder;
    Ctrl+1..9 and Ctrl+Left/Right switch tabs; unlike Elastic, adding, closing and moving tabs have
    no shortcuts, since they're rare and hard to remember), moving and resizing
    widgets and List Layouts on the snap grid (no overlaps; a widget's top-left cell must show, but

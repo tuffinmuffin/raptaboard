@@ -13,6 +13,7 @@ pub mod grid;
 pub mod layout_file;
 pub mod nt;
 pub mod sampling;
+pub mod settings;
 pub mod struct_view;
 pub mod tabs;
 pub mod tree;

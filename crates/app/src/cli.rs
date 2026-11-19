@@ -1,10 +1,14 @@
-//! Command-line options, used until settings are saved between runs.
+//! Command-line options. They override the settings files for one run and
+//! are never saved (see [`crate::settings`]).
 //!
 //! ```text
 //! raptaboard [--team N] [--address ds|team|mdns|wifi|sim|<host>] [--port N] [--hide-tree] [layout.json]
 //! ```
 
+use std::path::PathBuf;
+
 use crate::connection::AddressMode;
+use crate::settings::{self, Loaded, Settings};
 
 /// Help text printed for `--help` or a bad option.
 pub const USAGE: &str = "\
@@ -25,12 +29,17 @@ Options:
   -h, --help        Show this help
 
 LAYOUT.json is an Elastic layout file to open. If it doesn't exist yet, the
-app starts with an empty layout and Save writes it there.";
+app starts with an empty layout and Save writes it there.
 
-/// What the app starts with.
-#[derive(Debug, Clone, PartialEq, Eq)]
+Settings are also read from ./.raptaboard/settings.toml, then
+~/.raptaboard/settings.toml (made on the first run). Options given here win
+for this run and aren't saved.";
+
+/// What the app starts with: every setting resolved, and where changes
+/// are saved.
+#[derive(Debug, Clone, PartialEq)]
 pub struct StartupOptions {
-    /// Elastic layout file to open, if any.
+    /// Layout file to open, if any.
     pub layout_path: Option<String>,
     /// FRC team number.
     pub team: u32,
@@ -42,18 +51,38 @@ pub struct StartupOptions {
     pub port: u16,
     /// Show the NetworkTables tree panel at startup.
     pub show_tree: bool,
+    /// The settings file changes go to.
+    pub store: settings::Store,
+    /// Things to tell the user at startup, such as a settings file that
+    /// couldn't be read.
+    pub notes: Vec<String>,
 }
 
 impl Default for StartupOptions {
-    /// No layout, team 3200, robot found by team number, port 5810, tree shown.
+    /// The defaults, with nowhere to save: team 3200, robot found by team
+    /// number, port 5810, tree shown, no layout.
     fn default() -> Self {
+        StartupOptions::from(Loaded {
+            settings: settings::defaults(),
+            ..Default::default()
+        })
+    }
+}
+
+impl From<Loaded> for StartupOptions {
+    fn from(loaded: Loaded) -> Self {
+        let s = loaded.settings.or(settings::defaults());
+        let (mode, custom_address) =
+            AddressMode::from_keyword(s.address.as_deref().unwrap_or("team"));
         StartupOptions {
-            layout_path: None,
-            team: 3200,
-            mode: AddressMode::TeamNumber,
-            custom_address: String::new(),
-            port: nt4::proto::ROBOT_CODE_PORT,
-            show_tree: true,
+            layout_path: s.layout,
+            team: s.team.unwrap_or(3200),
+            mode,
+            custom_address,
+            port: s.port.unwrap_or(nt4::proto::ROBOT_CODE_PORT),
+            show_tree: s.show_tree.unwrap_or(true),
+            store: loaded.store,
+            notes: loaded.notes,
         }
     }
 }
@@ -67,17 +96,18 @@ pub enum CliError {
     Invalid(String),
 }
 
-/// Read the options from the arguments after the program name.
+/// Read the options from the arguments after the program name. Only the
+/// options given are set; the rest come from the settings files.
 ///
 /// ```
 /// use raptaboard::cli::parse;
-/// use raptaboard::connection::AddressMode;
-/// let opts = parse(["--address", "sim", "layout.json"].map(String::from)).unwrap();
-/// assert_eq!(opts.mode, AddressMode::Localhost);
-/// assert_eq!(opts.layout_path.as_deref(), Some("layout.json"));
+/// let given = parse(["--address", "sim", "layout.json"].map(String::from)).unwrap();
+/// assert_eq!(given.address.as_deref(), Some("sim"));
+/// assert_eq!(given.team, None);
+/// assert!(given.layout.unwrap().ends_with("layout.json"));
 /// ```
-pub fn parse(args: impl IntoIterator<Item = String>) -> Result<StartupOptions, CliError> {
-    let mut opts = StartupOptions::default();
+pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Settings, CliError> {
+    let mut given = Settings::default();
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
         let mut value = |name: &str| {
@@ -88,47 +118,46 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<StartupOptions, C
             "-h" | "--help" => return Err(CliError::Help),
             "--team" => {
                 let v = value("--team")?;
-                opts.team = v
-                    .parse()
-                    .ok()
-                    .filter(|t| (1..=99999).contains(t))
-                    .ok_or_else(|| CliError::Invalid(format!("bad team number '{v}'")))?;
+                given.team = Some(
+                    v.parse()
+                        .ok()
+                        .filter(|t| (1..=99999).contains(t))
+                        .ok_or_else(|| CliError::Invalid(format!("bad team number '{v}'")))?,
+                );
             }
-            "--address" => {
-                let v = value("--address")?;
-                opts.mode = match v.as_str() {
-                    "ds" => AddressMode::DriverStation,
-                    "team" => AddressMode::TeamNumber,
-                    "mdns" => AddressMode::SystemCoreMdns,
-                    "wifi" => AddressMode::SystemCoreWifi,
-                    "sim" | "localhost" => AddressMode::Localhost,
-                    host => {
-                        opts.custom_address = host.to_owned();
-                        AddressMode::Custom
-                    }
-                };
-            }
-            "--hide-tree" => opts.show_tree = false,
+            "--address" => given.address = Some(value("--address")?),
+            "--hide-tree" => given.show_tree = Some(false),
             "--port" => {
                 let v = value("--port")?;
-                opts.port = v
-                    .parse()
-                    .ok()
-                    .filter(|p| *p != 0)
-                    .ok_or_else(|| CliError::Invalid(format!("bad port '{v}'")))?;
+                given.port = Some(
+                    v.parse()
+                        .ok()
+                        .filter(|p| *p != 0)
+                        .ok_or_else(|| CliError::Invalid(format!("bad port '{v}'")))?,
+                );
             }
             flag if flag.starts_with('-') => {
                 return Err(CliError::Invalid(format!("unknown option '{flag}'")));
             }
             path => {
-                if opts.layout_path.is_some() {
+                if given.layout.is_some() {
                     return Err(CliError::Invalid(format!("extra argument '{path}'")));
                 }
-                opts.layout_path = Some(path.to_owned());
+                given.layout = Some(absolute(path));
             }
         }
     }
-    Ok(opts)
+    Ok(given)
+}
+
+/// `path` made absolute against the current folder, so a remembered layout
+/// still opens when raptaboard starts somewhere else.
+fn absolute(path: &str) -> String {
+    let path = PathBuf::from(path);
+    std::path::absolute(&path)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .into_owned()
 }
 
 #[cfg(test)]
@@ -141,20 +170,28 @@ mod tests {
     }
 
     #[test]
-    fn no_arguments_gives_the_defaults() {
-        assert_eq!(parse(args(&[])).unwrap(), StartupOptions::default());
+    fn no_arguments_sets_nothing() {
+        assert_eq!(parse(args(&[])).unwrap(), Settings::default());
+        // Which leaves the defaults.
+        let start = StartupOptions::default();
+        assert_eq!(
+            (start.team, start.port, start.show_tree),
+            (3200, 5810, true)
+        );
+        assert_eq!(start.mode, AddressMode::TeamNumber);
     }
 
     #[test]
     fn hide_tree() {
-        assert!(parse(args(&[])).unwrap().show_tree);
-        assert!(!parse(args(&["--hide-tree"])).unwrap().show_tree);
+        assert_eq!(
+            parse(args(&["--hide-tree"])).unwrap().show_tree,
+            Some(false)
+        );
     }
 
     #[test]
     fn port_is_checked() {
-        assert_eq!(parse(args(&["--port", "6810"])).unwrap().port, 6810);
-        assert_eq!(parse(args(&[])).unwrap().port, 5810);
+        assert_eq!(parse(args(&["--port", "6810"])).unwrap().port, Some(6810));
         for bad in ["0", "70000", "x"] {
             assert!(matches!(
                 parse(args(&["--port", bad])),
@@ -164,9 +201,17 @@ mod tests {
     }
 
     #[test]
-    fn team_and_mode_keywords() {
-        let o = parse(args(&["--team", "254", "--address", "mdns"])).unwrap();
-        assert_eq!((o.team, o.mode), (254, AddressMode::SystemCoreMdns));
+    fn team_and_address_words() {
+        let given = parse(args(&["--team", "254", "--address", "mdns"])).unwrap();
+        assert_eq!(
+            (given.team, given.address.as_deref()),
+            (Some(254), Some("mdns"))
+        );
+        let start = StartupOptions::from(Loaded {
+            settings: given,
+            ..Default::default()
+        });
+        assert_eq!((start.team, start.mode), (254, AddressMode::SystemCoreMdns));
         for (word, mode) in [
             ("ds", AddressMode::DriverStation),
             ("team", AddressMode::TeamNumber),
@@ -174,15 +219,29 @@ mod tests {
             ("sim", AddressMode::Localhost),
             ("localhost", AddressMode::Localhost),
         ] {
-            assert_eq!(parse(args(&["--address", word])).unwrap().mode, mode);
+            assert_eq!(AddressMode::from_keyword(word).0, mode);
+            // Every mode reads back from its own word.
+            assert_eq!(AddressMode::from_keyword(&mode.keyword("")).0, mode);
         }
     }
 
     #[test]
     fn other_address_is_a_custom_host() {
-        let o = parse(args(&["--address", "10.0.0.5"])).unwrap();
-        assert_eq!(o.mode, AddressMode::Custom);
-        assert_eq!(o.custom_address, "10.0.0.5");
+        let given = parse(args(&["--address", "10.0.0.5"])).unwrap();
+        let start = StartupOptions::from(Loaded {
+            settings: given,
+            ..Default::default()
+        });
+        assert_eq!(start.mode, AddressMode::Custom);
+        assert_eq!(start.custom_address, "10.0.0.5");
+    }
+
+    #[test]
+    fn layout_paths_are_made_absolute() {
+        let given = parse(args(&["layouts/match.json"])).unwrap();
+        let path = PathBuf::from(given.layout.unwrap());
+        assert!(path.is_absolute());
+        assert!(path.ends_with("layouts/match.json"));
     }
 
     #[test]

@@ -42,6 +42,48 @@ impl AddressMode {
     }
 }
 
+impl AddressMode {
+    /// The mode for a word from the command line or settings file: `ds`,
+    /// `team`, `mdns`, `wifi`, `sim` (or `localhost`), or else a host name
+    /// or IP, which is [`AddressMode::Custom`] with that host.
+    ///
+    /// ```
+    /// use raptaboard::connection::AddressMode;
+    /// assert_eq!(AddressMode::from_keyword("sim"), (AddressMode::Localhost, String::new()));
+    /// assert_eq!(AddressMode::from_keyword("10.0.0.5"), (AddressMode::Custom, "10.0.0.5".into()));
+    /// ```
+    pub fn from_keyword(word: &str) -> (AddressMode, String) {
+        let mode = match word {
+            "ds" => AddressMode::DriverStation,
+            "team" => AddressMode::TeamNumber,
+            "mdns" => AddressMode::SystemCoreMdns,
+            "wifi" => AddressMode::SystemCoreWifi,
+            "sim" | "localhost" => AddressMode::Localhost,
+            host => return (AddressMode::Custom, host.to_owned()),
+        };
+        (mode, String::new())
+    }
+
+    /// The word [`AddressMode::from_keyword`] reads back as this mode
+    /// (`custom` is the host for [`AddressMode::Custom`]).
+    ///
+    /// ```
+    /// use raptaboard::connection::AddressMode;
+    /// assert_eq!(AddressMode::SystemCoreMdns.keyword(""), "mdns");
+    /// assert_eq!(AddressMode::Custom.keyword("10.0.0.5"), "10.0.0.5");
+    /// ```
+    pub fn keyword(self, custom: &str) -> String {
+        match self {
+            AddressMode::DriverStation => "ds".into(),
+            AddressMode::TeamNumber => "team".into(),
+            AddressMode::SystemCoreMdns => "mdns".into(),
+            AddressMode::SystemCoreWifi => "wifi".into(),
+            AddressMode::Localhost => "sim".into(),
+            AddressMode::Custom => custom.to_owned(),
+        }
+    }
+}
+
 /// The robot radio address for a team: team 3200 is `10.32.0.2`.
 ///
 /// ```

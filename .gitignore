@@ -3,3 +3,6 @@
 .DS_Store
 /.idea
 /.vscode
+
+# Local raptaboard settings (see crates/app/src/settings.rs)
+.raptaboard/
