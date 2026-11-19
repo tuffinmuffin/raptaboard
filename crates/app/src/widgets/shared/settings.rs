@@ -247,6 +247,13 @@ mod tests {
             ("Text Display", true, true),
             ("Boolean Box", false, false),
             ("Graph", false, false),
+            ("Large Text Display", false, false),
+            ("Number Bar", false, false),
+            ("Voltage View", false, false),
+            ("Radial Gauge", false, false),
+            ("Match Time", false, false),
+            ("Single Color View", false, false),
+            ("Multi Color View", false, false),
         ] {
             let mut w = widget(ty, field);
             let before = w.clone();

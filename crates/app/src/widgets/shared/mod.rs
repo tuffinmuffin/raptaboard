@@ -6,4 +6,5 @@
 pub mod card;
 pub mod format;
 pub mod props;
+pub mod scale;
 pub mod settings;

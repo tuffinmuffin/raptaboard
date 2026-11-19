@@ -2,18 +2,20 @@
 //! with the value written above and evenly spaced labels along the bar.
 //!
 //! The two are the same widget with different defaults: Number Bar runs
-//! from -1 to 1, Voltage View from 4 V to 13 V with a yellow bar and a "V"
-//! after the value, for battery voltage. Settings are Elastic's:
-//! `min_value`, `max_value`, `divisions` (how many labels), `inverted`
-//! (fill from the other end) and `orientation` (`horizontal` or
-//! `vertical`).
+//! from -1 to 1 in blue, Voltage View from 4 to 13 in yellow with the unit
+//! "V" (it's kept so Elastic layouts open; a Number Bar can do the same).
+//! Elastic's settings: `min_value`, `max_value`, `divisions` (how many
+//! labels), `inverted` (fill from the other end) and `orientation`
+//! (`horizontal` or `vertical`); and raptaboard's [`scale`] settings: fill
+//! color (solid or by value), unit, and labels on or off. A dot past an
+//! end of the bar shows the value is beyond it.
 
 use eframe::egui::{self, Color32, CornerRadius, Rect, Stroke};
 use nt4::Value;
 use serde_json::{Map, Value as Json};
 
 use crate::widgets::shared::format::{number_of, short_number};
-use crate::widgets::shared::{card, props};
+use crate::widgets::shared::{card, props, scale};
 use crate::widgets::{ValueInfo, WidgetType};
 
 /// The lowest value on the bar (Elastic).
@@ -27,7 +29,21 @@ pub const INVERTED: &str = "inverted";
 /// `horizontal` or `vertical` (Elastic).
 pub const ORIENTATION: &str = "orientation";
 
-const KEYS: [&str; 5] = [MIN_VALUE, MAX_VALUE, DIVISIONS, INVERTED, ORIENTATION];
+const KEYS: [&str; 13] = [
+    MIN_VALUE,
+    MAX_VALUE,
+    DIVISIONS,
+    INVERTED,
+    ORIENTATION,
+    scale::FILL_COLOR,
+    scale::GRADIENT,
+    scale::LOW_COLOR,
+    scale::MID_COLOR,
+    scale::MID_VALUE,
+    scale::HIGH_COLOR,
+    scale::UNIT,
+    scale::SHOW_LABELS,
+];
 
 /// Thickness of the bar, in points.
 const BAR_THICKNESS: f32 = 8.0;
@@ -37,6 +53,8 @@ const LABEL_SIZE: f32 = 11.0;
 const VALUE_SIZE: f32 = 16.0;
 /// Space around the bar, in points.
 const PAD: f32 = 6.0;
+/// How far past the bar's end the "past the end" dot sits, in points.
+const DOT_GAP: f32 = 7.0;
 
 /// The Number Bar widget (Elastic's `"Number Bar"`).
 pub struct NumberBar;
@@ -47,21 +65,21 @@ pub struct VoltageView;
 struct Style {
     min: f64,
     max: f64,
-    color: Option<Color32>,
+    color: Color32,
     unit: &'static str,
 }
 
 const NUMBER_BAR: Style = Style {
     min: -1.0,
     max: 1.0,
-    color: None,
+    color: Color32::from_rgb(0x21, 0x96, 0xF3),
     unit: "",
 };
 const VOLTAGE_VIEW: Style = Style {
     min: 4.0,
     max: 13.0,
-    color: Some(Color32::from_rgb(0xFF, 0xEB, 0x3B)),
-    unit: " V",
+    color: Color32::from_rgb(0xFF, 0xEB, 0x3B),
+    unit: "V",
 };
 
 /// How full the bar is for `value` between `min` and `max`, from 0 to 1.
@@ -93,16 +111,6 @@ pub fn labels(min: f64, max: f64, divisions: usize) -> Vec<f64> {
         .collect()
 }
 
-/// The number shown above the bar: 0 decimal places for whole-number
-/// topics, else 2, as Elastic shows it.
-fn value_text(value: f64, whole: bool, unit: &str) -> String {
-    if whole {
-        format!("{value:.0}{unit}")
-    } else {
-        format!("{value:.2}{unit}")
-    }
-}
-
 fn draw_bar(
     style: &Style,
     painter: &egui::Painter,
@@ -125,12 +133,14 @@ fn draw_bar(
     let inverted = props::flag(p, INVERTED, false);
     let vertical = props::text(p, ORIENTATION, "horizontal") == "vertical";
     let whole = matches!(value, Some(Value::Int(_)));
-    let fill_color = style.color.unwrap_or(visuals.selection.bg_fill);
+    let fill_color = scale::fill_color(p, v, min, max, style.color);
+    let show_labels = scale::show_labels(p);
+    let past = scale::past_end(v, min, max);
     let track_color = visuals.widgets.inactive.bg_fill;
     let label_color = visuals.weak_text_color();
     let label_font = egui::FontId::proportional(LABEL_SIZE);
     let amount = fraction(v, min, max);
-    let text = value_text(v, whole, style.unit);
+    let text = scale::value_with_unit(v, whole, p, style.unit);
     let steps = (labels(min, max, divisions).len() - 1) as f32;
 
     if vertical {
@@ -155,7 +165,23 @@ fn draw_bar(
             track.with_min_y(track.max.y - filled)
         };
         painter.rect_filled(fill, CornerRadius::same(4), fill_color);
-        for (i, n) in labels(min, max, divisions).into_iter().enumerate() {
+        // Past an end: a dot just beyond it.
+        if let Some(end) = past {
+            let low_end_at_bottom = !inverted;
+            let at_bottom = (end == scale::Past::Min) == low_end_at_bottom;
+            let y = if at_bottom {
+                track.max.y + DOT_GAP
+            } else {
+                track.min.y - DOT_GAP
+            };
+            scale::draw_past_dot(painter, egui::pos2(track.center().x, y));
+        }
+        let shown_labels = if show_labels {
+            labels(min, max, divisions)
+        } else {
+            Vec::new()
+        };
+        for (i, n) in shown_labels.into_iter().enumerate() {
             let t = i as f32 / steps;
             let y = if inverted {
                 track.min.y + track.height() * t
@@ -194,7 +220,21 @@ fn draw_bar(
             track.with_max_x(track.min.x + filled)
         };
         painter.rect_filled(fill, CornerRadius::same(4), fill_color);
-        for (i, n) in labels(min, max, divisions).into_iter().enumerate() {
+        if let Some(end) = past {
+            let at_left = (end == scale::Past::Min) != inverted;
+            let x = if at_left {
+                track.min.x - DOT_GAP
+            } else {
+                track.max.x + DOT_GAP
+            };
+            scale::draw_past_dot(painter, egui::pos2(x, track.center().y));
+        }
+        let shown_labels = if show_labels {
+            labels(min, max, divisions)
+        } else {
+            Vec::new()
+        };
+        for (i, n) in shown_labels.into_iter().enumerate() {
             let t = i as f32 / steps;
             let x = if inverted {
                 track.max.x - track.width() * t
@@ -227,6 +267,7 @@ fn settings_rows(style: &Style, ui: &mut egui::Ui, p: &mut Map<String, Json>) {
         "horizontal",
         &["horizontal", "vertical"],
     );
+    scale::rows(ui, p, style.unit, style.color);
 }
 
 /// The NT types bars show.
@@ -309,7 +350,8 @@ mod tests {
         assert_eq!(labels(4.0, 13.0, 4), [4.0, 7.0, 10.0, 13.0]);
         // At least the two ends.
         assert_eq!(labels(0.0, 1.0, 1), [0.0, 1.0]);
-        assert_eq!(value_text(12.345, false, " V"), "12.35 V");
-        assert_eq!(value_text(3.0, true, ""), "3");
+        let none = Map::new();
+        assert_eq!(scale::value_with_unit(12.345, false, &none, "V"), "12.35 V");
+        assert_eq!(scale::value_with_unit(3.0, true, &none, ""), "3");
     }
 }

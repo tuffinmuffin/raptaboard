@@ -6,16 +6,19 @@
 //! `start_angle` and `end_angle` (where the dial starts and ends, in
 //! degrees clockwise from straight up: -140 to 140), `number_of_labels`
 //! (8), `wrap_value` (wrap values outside the range around, as for an
-//! angle), `show_pointer` (the needle) and `show_ticks`.
+//! angle), `show_pointer` (the needle) and `show_ticks`; and raptaboard's
+//! [`scale`] settings: the arc's color (solid or by value), a unit, and
+//! labels on or off. A dot past an end of the dial shows the value is
+//! beyond it.
 
 use std::f32::consts::PI;
 
-use eframe::egui::{self, Pos2, Rect, Stroke};
+use eframe::egui::{self, Color32, Pos2, Rect, Stroke};
 use nt4::Value;
 use serde_json::{Map, Value as Json};
 
 use crate::widgets::shared::format::{number_of, short_number};
-use crate::widgets::shared::{card, props};
+use crate::widgets::shared::{card, props, scale};
 use crate::widgets::{ValueInfo, WidgetType};
 
 /// The value at the dial's start (Elastic).
@@ -35,7 +38,7 @@ pub const SHOW_POINTER: &str = "show_pointer";
 /// Draw tick marks at the labels (Elastic).
 pub const SHOW_TICKS: &str = "show_ticks";
 
-const KEYS: [&str; 8] = [
+const KEYS: [&str; 16] = [
     MIN_VALUE,
     MAX_VALUE,
     START_ANGLE,
@@ -44,7 +47,18 @@ const KEYS: [&str; 8] = [
     WRAP_VALUE,
     SHOW_POINTER,
     SHOW_TICKS,
+    scale::FILL_COLOR,
+    scale::GRADIENT,
+    scale::LOW_COLOR,
+    scale::MID_COLOR,
+    scale::MID_VALUE,
+    scale::HIGH_COLOR,
+    scale::UNIT,
+    scale::SHOW_LABELS,
 ];
+
+/// The value arc's color when none is set (Material blue 500).
+const DEFAULT_FILL: Color32 = Color32::from_rgb(0x21, 0x96, 0xF3);
 
 /// Elastic's defaults.
 const DEFAULT_MIN: f64 = 0.0;
@@ -61,6 +75,8 @@ const LABEL_ROOM: f32 = 14.0;
 const LABEL_SIZE: f32 = 10.0;
 /// Size of the value text, in points.
 const VALUE_SIZE: f32 = 16.0;
+/// How far past the dial's end the "past the end" dot sits, in degrees.
+const PAST_DOT_DEGREES: f64 = 8.0;
 
 /// The Radial Gauge widget (Elastic's `"Radial Gauge"`, also `"Simple Dial"`).
 pub struct RadialGauge;
@@ -172,7 +188,7 @@ impl WidgetType for RadialGauge {
         let center = rect.center();
         let radius = (rect.width().min(rect.height()) / 2.0 - LABEL_ROOM).max(4.0);
         let weak = visuals.weak_text_color();
-        let accent = visuals.selection.bg_fill;
+        let accent = scale::fill_color(p, v, min, max, DEFAULT_FILL);
 
         // The track, then the filled part: from the minimum, or from zero
         // when the range crosses it, as Elastic draws it.
@@ -187,11 +203,23 @@ impl WidgetType for RadialGauge {
             arc(center, radius, from, to),
             Stroke::new(TRACK_WIDTH, accent),
         );
+        // Past an end: a dot just beyond that end of the track.
+        if let Some(past) = scale::past_end(v, min, max) {
+            let (end_angle, away) = match past {
+                scale::Past::Min => (start, -(end - start).signum()),
+                scale::Past::Max => (end, (end - start).signum()),
+            };
+            scale::draw_past_dot(
+                painter,
+                point(center, end_angle + away * PAST_DOT_DEGREES, radius),
+            );
+        }
 
         // Labels and ticks around the outside.
         let full = ((end - start).abs() - 360.0).abs() < 1e-6;
         let font = egui::FontId::proportional(LABEL_SIZE);
         let ticks = props::flag(p, SHOW_TICKS, true);
+        let labels = scale::show_labels(p);
         for n in label_values(min, max, steps, full) {
             let a = angle_for(n, min, max, start, end);
             if ticks {
@@ -203,13 +231,15 @@ impl WidgetType for RadialGauge {
                     Stroke::new(1.0, weak),
                 );
             }
-            painter.text(
-                point(center, a, radius + LABEL_ROOM / 2.0 + 2.0),
-                egui::Align2::CENTER_CENTER,
-                short_number(n),
-                font.clone(),
-                weak,
-            );
+            if labels {
+                painter.text(
+                    point(center, a, radius + LABEL_ROOM / 2.0 + 2.0),
+                    egui::Align2::CENTER_CENTER,
+                    short_number(n),
+                    font.clone(),
+                    weak,
+                );
+            }
         }
 
         // The needle and its hub.
@@ -221,11 +251,7 @@ impl WidgetType for RadialGauge {
 
         // The value below the middle.
         let whole = matches!(value, Some(Value::Int(_)));
-        let text = if whole {
-            format!("{v:.0}")
-        } else {
-            format!("{v:.2}")
-        };
+        let text = scale::value_with_unit(v, whole, p, "");
         painter.text(
             center + egui::vec2(0.0, radius * 0.45),
             egui::Align2::CENTER_CENTER,
@@ -272,6 +298,7 @@ impl WidgetType for RadialGauge {
         );
         props::flag_row(ui, p, "Needle", "Show the needle", SHOW_POINTER, true);
         props::flag_row(ui, p, "Ticks", "Show tick marks", SHOW_TICKS, true);
+        scale::rows(ui, p, "", DEFAULT_FILL);
     }
 
     fn setting_keys(&self) -> &'static [&'static str] {

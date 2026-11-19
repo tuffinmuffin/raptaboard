@@ -152,6 +152,10 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `wrap_value`, `show_pointer`, `show_ticks` (Elastic) | `builtin/radial_gauge.rs` | Radial Gauge | wrap out-of-range values; needle; tick marks | false, true, true |
 | `time_display_mode` (Elastic) | `builtin/match_time.rs` | Match Time | `Minutes and Seconds`, `Seconds Only` | `Minutes and Seconds` |
 | `red_start_time`, `yellow_start_time` (Elastic) | `builtin/match_time.rs` | Match Time | seconds left when the time turns red / yellow | 20, 30 |
+| `fill_color` | `shared/scale.rs` | Number Bar, Voltage View, Radial Gauge | the fill, ARGB | blue (Voltage: yellow) |
+| `gradient`, `low_color`, `mid_color`, `mid_value`, `high_color` | `shared/scale.rs` | the same | blend the fill by value: low → middle (optional, at `mid_value`, else the range's middle) → high | off; red, none, green |
+| `unit` | `shared/scale.rs` | the same | text after the value (`V`, `m/s`) | none (Voltage: `V`) |
+| `show_labels` | `shared/scale.rs` | the same | show the scale's labels | true |
 | `label_inside` | `list_layout.rs` | List Layout | `true`: each label drawn over its value (on a see-through backing) instead of beside it | off |
 | `dividers` | `list_layout.rs` | List Layout | `true`: a thin line under the list's title and below each child | off |
 | `hidden` | `list_layout.rs` | a List Layout's child | `true`: kept in the list but not shown or subscribed | shown |
@@ -341,6 +345,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      widgets inside: group-level settings (font size, period, colors) that every child uses
      unless it sets its own, and resizing the group scales its children's sizes (and text) to
      match.
+   - Battery widget: a battery icon filled by charge (voltage between a low and high setting),
+     colored by level, for battery voltage instead of Voltage View.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      A built-in library of standard images (Elastic's `true_icon`/`false_icon` set: Checkmark, X,
      Exclamation Point, so its layouts keep their icons, plus more), and any PNG/SVG the team
@@ -350,7 +356,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
    **Started**: the read-only single-topic widgets: Large Text Display, Number Bar, Voltage View,
    Radial Gauge (also Simple Dial), Match Time, Single Color View, Multi Color View, with Elastic's
-   settings. A dropped topic still becomes a Text Display or Boolean Box; the settings dialog's
+   settings, plus raptaboard's scale settings for bars and gauges (fill color, solid or blended by
+   value low → middle → high; a unit; labels on or off; an amber dot past an end when the value is
+   beyond the scale). Voltage View is kept for Elastic layouts but is a Number Bar preset (4 to 13,
+   yellow, unit V). A dropped topic still becomes a Text Display or Boolean Box; the settings dialog's
    Widget choice switches to any type that can show the value (`WidgetType::shows`), keeping the
    other types' settings. Next: Graph, then the writing widgets (toggles, slider, editable Text
    Display), choosers, Alerts, Field, struct widgets.
