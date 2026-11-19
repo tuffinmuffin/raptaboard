@@ -42,8 +42,11 @@ for this run and aren't saved.";
 pub struct StartupOptions {
     /// Layout file to open, if any.
     pub layout_path: Option<String>,
-    /// Name of the tab to open in it, if it has one by that name.
+    /// The tab last open in it, by name and position (see
+    /// [`settings::pick_tab`]).
     pub tab: Option<String>,
+    /// See [`StartupOptions::tab`].
+    pub tab_index: Option<usize>,
     /// FRC team number.
     pub team: u32,
     /// How to find the robot.
@@ -82,6 +85,7 @@ impl From<Loaded> for StartupOptions {
         StartupOptions {
             layout_path: s.layout,
             tab: s.tab,
+            tab_index: s.tab_index,
             team: s.team.unwrap_or(3200),
             mode,
             custom_address,

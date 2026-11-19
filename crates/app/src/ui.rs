@@ -286,11 +286,8 @@ impl DashboardApp {
                 Err(e) => app.status = format!("Could not open {}: {e}", path.display()),
             }
         }
-        if let Some(name) = &options.tab
-            && let Some(i) = app.layout.tabs.iter().position(|t| &t.name == name)
-        {
-            app.current_tab = i;
-        }
+        let names: Vec<&str> = app.layout.tabs.iter().map(|t| t.name.as_str()).collect();
+        app.current_tab = settings::pick_tab(&names, options.tab.as_deref(), options.tab_index);
         if !options.notes.is_empty() {
             app.status = options.notes.join("; ");
         }
@@ -317,6 +314,7 @@ impl DashboardApp {
                 .tabs
                 .get(self.current_tab)
                 .map(|t| t.name.clone()),
+            tab_index: Some(self.current_tab),
             layout: self
                 .layout_path
                 .as_ref()
@@ -356,6 +354,7 @@ impl DashboardApp {
         note!(locked);
         note!(layout);
         note!(tab);
+        note!(tab_index);
         // The first size learned is the starting size, not a change.
         if self.seen.window.is_some() {
             note!(window);

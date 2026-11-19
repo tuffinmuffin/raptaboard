@@ -24,6 +24,7 @@
 //! locked = false
 //! layout = "/Users/me/layouts/match.json"
 //! tab = "Teleoperated"
+//! tab_index = 0
 //!
 //! [window]
 //! width = 1280.0
@@ -63,10 +64,14 @@ pub struct Settings {
     /// The layout file to open at start: the one last opened or saved.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<String>,
-    /// The tab last open, by name, so it still matches if tabs move. The
-    /// first tab opens if the layout has none by that name.
+    /// The tab last open, by name, so it still matches if tabs move. See
+    /// [`pick_tab`] for how it's found again.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tab: Option<String>,
+    /// The last open tab's position (0 for the first), to tell apart tabs
+    /// with the same name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tab_index: Option<usize>,
     /// The window's size and place.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub window: Option<Window>,
@@ -99,8 +104,34 @@ pub fn defaults() -> Settings {
         locked: Some(false),
         layout: None,
         tab: None,
+        tab_index: None,
         window: None,
     }
+}
+
+/// Which of `names` (a layout's tabs, in order) to open, given the tab
+/// last open: the one at `index` if it's still called `name` (two tabs may
+/// share a name), else the first called `name` (tabs moved), else the one
+/// at `index` (it was renamed), else the first.
+///
+/// ```
+/// use raptaboard::settings::pick_tab;
+/// let names = ["Teleop", "Pit", "Pit"];
+/// assert_eq!(pick_tab(&names, Some("Pit"), Some(2)), 2);
+/// assert_eq!(pick_tab(&names, Some("Pit"), Some(0)), 1);
+/// assert_eq!(pick_tab(&names, Some("Gone"), Some(1)), 1);
+/// assert_eq!(pick_tab(&names, None, None), 0);
+/// ```
+pub fn pick_tab(names: &[&str], name: Option<&str>, index: Option<usize>) -> usize {
+    let at_index = index.filter(|&i| i < names.len());
+    if let (Some(i), Some(n)) = (at_index, name)
+        && names[i] == n
+    {
+        return i;
+    }
+    name.and_then(|n| names.iter().position(|t| *t == n))
+        .or(at_index)
+        .unwrap_or(0)
 }
 
 impl Settings {
@@ -122,6 +153,7 @@ impl Settings {
             locked: self.locked.or(lower.locked),
             layout: self.layout.or(lower.layout),
             tab: self.tab.or(lower.tab),
+            tab_index: self.tab_index.or(lower.tab_index),
             window: self.window.or(lower.window),
         }
     }
@@ -350,6 +382,7 @@ mod tests {
                 locked: Some(true),
                 layout: Some("/tmp/match.json".into()),
                 tab: Some("Autonomous".into()),
+                tab_index: Some(1),
                 window: Some(Window {
                     width: 1400.0,
                     height: 900.0,
