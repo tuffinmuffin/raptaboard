@@ -11,7 +11,8 @@
 //!
 //! A graph can be paused (the ⏸ button): the picture freezes while values
 //! keep being recorded. While paused, clicking the plot places measuring
-//! cursors, A then B (a third click clears them), and a readout gives the
+//! cursors, A then B (a click on a cursor takes it away; a click elsewhere
+//! with both placed clears them), and a readout gives the
 //! time between them and each line's values there, like a scope's cursors.
 //!
 //! Elastic's settings: `time_displayed` (seconds shown, 5; older files say
@@ -86,6 +87,8 @@ const CURSOR_COLOR: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
 const HOVER_COLOR: Color32 = Color32::from_rgba_premultiplied(0x60, 0x60, 0x60, 0x80);
 /// Radius of the dots marking each line's value under the pointer, points.
 const HOVER_DOT: f32 = 3.5;
+/// How close a click must be to a cursor line to take it away, in points.
+const CURSOR_GRAB: f32 = 6.0;
 /// The pause button's size, in points.
 const BUTTON_SIZE: egui::Vec2 = egui::vec2(22.0, 18.0);
 
@@ -509,10 +512,30 @@ impl WidgetType for Graph {
                     }
                 }
             }
-            let clicked = plot_ui.response().clicked();
-            (pointer_x.filter(|_| clicked), hover_x)
+            // Near a cursor (in pixels, so the same at any zoom), a click
+            // takes that cursor away; the hand pointer says so.
+            let near = plot_ui.response().hover_pos().and_then(|pointer| {
+                cursors.iter().position(|&x| {
+                    let line = plot_ui.screen_from_plot(egui_plot::PlotPoint::new(x, 0.0));
+                    (line.x - pointer.x).abs() <= CURSOR_GRAB
+                })
+            });
+            if near.is_some() {
+                plot_ui
+                    .ctx()
+                    .set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            let click = if plot_ui.response().clicked() {
+                match near {
+                    Some(i) => Some(CursorClick::Remove(i)),
+                    None => pointer_x.map(CursorClick::Place),
+                }
+            } else {
+                None
+            };
+            (click, hover_x)
         });
-        let (clicked_at, hover_x) = clicked_at.inner;
+        let (click, hover_x) = clicked_at.inner;
         // The hovered values, bottom right, each in its line's color.
         if let Some(x) = hover_x {
             let mut job = egui::text::LayoutJob::default();
@@ -535,13 +558,15 @@ impl WidgetType for Graph {
             );
             ui.painter().galley(at, galley, ui.visuals().text_color());
         }
-        if let Some(x) = clicked_at {
-            // A, then B; a third click clears them.
-            if view.cursors.len() >= 2 {
-                view.cursors.clear();
-            } else {
-                view.cursors.push(x);
+        match click {
+            // On a cursor: take just that one away.
+            Some(CursorClick::Remove(i)) => {
+                view.cursors.remove(i);
             }
+            // Elsewhere: A, then B; with both placed, a click clears them.
+            Some(CursorClick::Place(_)) if view.cursors.len() >= 2 => view.cursors.clear(),
+            Some(CursorClick::Place(x)) => view.cursors.push(x),
+            None => {}
         }
 
         // The readout, bottom left, while measuring.
@@ -752,6 +777,14 @@ impl WidgetType for Graph {
         // Not the lines or their colors: Reset settings keeps what's shown.
         &KEYS
     }
+}
+
+/// A click on a paused plot.
+enum CursorClick {
+    /// Place a cursor at this time.
+    Place(f64),
+    /// Take away the cursor at this place in the list.
+    Remove(usize),
 }
 
 /// A change to a graph's lines, made after drawing the list.
@@ -985,7 +1018,14 @@ mod tests {
                 .any(|t| t.contains("Δt") && t.contains("speed")),
             "{texts:?}"
         );
-        // A third click clears them; a fourth starts again with A.
+        // Clicking on a cursor takes just that one away (B, at +60).
+        frame(click(body.center() + egui::vec2(61.0, 0.0)));
+        let after = frame(vec![]);
+        assert!(!after.iter().any(|t| t.contains("Δt")), "{after:?}");
+        assert!(after.iter().any(|t| t.starts_with("A ")), "{after:?}");
+        frame(click(body.center() + egui::vec2(60.0, 0.0)));
+        assert!(frame(vec![]).iter().any(|t| t.contains("Δt")));
+        // A click elsewhere with both placed clears them; the next places A.
         frame(click(body.center()));
         assert!(
             !frame(vec![])
