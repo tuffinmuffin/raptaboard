@@ -11,8 +11,8 @@
 //!
 //! A graph can be paused (the ⏸ button): the picture freezes while values
 //! keep being recorded. While paused, clicking the plot places measuring
-//! cursors, A then B, and a readout gives the time between them and each
-//! line's values there, like a scope's cursors.
+//! cursors, A then B (a third click clears them), and a readout gives the
+//! time between them and each line's values there, like a scope's cursors.
 //!
 //! Elastic's settings: `time_displayed` (seconds shown, 5; older files say
 //! `visibleTime`), `min_value` and `max_value` (a fixed range; both unset
@@ -356,7 +356,7 @@ pub fn value_at(points: &[[f64; 2]], x: f64) -> Option<f64> {
 /// use raptaboard::widgets::builtin::graph::readout;
 /// let lines = vec![("speed".to_string(), vec![[-2.0, 0.0], [0.0, 4.0]])];
 /// let text = readout(&[-2.0, -1.0], &lines);
-/// assert_eq!(text[0], "A -2.000 s   B -1.000 s   Δt 1.000 s");
+/// assert_eq!(text[0], "A -2.000 s   B -1.000 s   Δt 1.000 s   (click again to clear)");
 /// assert_eq!(text[1], "speed   0.000 → 2.000   Δ 2.000");
 /// ```
 pub fn readout(cursors: &[f64], lines: &[(String, Vec<[f64; 2]>)]) -> Vec<String> {
@@ -370,7 +370,7 @@ pub fn readout(cursors: &[f64], lines: &[(String, Vec<[f64; 2]>)]) -> Vec<String
         }
         [a, b, ..] => {
             text.push(format!(
-                "A {a:.3} s   B {b:.3} s   Δt {:.3} s",
+                "A {a:.3} s   B {b:.3} s   Δt {:.3} s   (click again to clear)",
                 (b - a).abs()
             ));
             for (name, points) in lines {
@@ -536,11 +536,12 @@ impl WidgetType for Graph {
             ui.painter().galley(at, galley, ui.visuals().text_color());
         }
         if let Some(x) = clicked_at {
-            // A, then B; a third click starts again from A.
+            // A, then B; a third click clears them.
             if view.cursors.len() >= 2 {
                 view.cursors.clear();
+            } else {
+                view.cursors.push(x);
             }
-            view.cursors.push(x);
         }
 
         // The readout, bottom left, while measuring.
@@ -852,7 +853,10 @@ mod tests {
         let one = readout(&[-3.0], &lines);
         assert_eq!(one, ["A -3.000 s   (click again for B)", "speed   2.000"]);
         let two = readout(&[-1.0, -4.0], &lines);
-        assert_eq!(two[0], "A -1.000 s   B -4.000 s   Δt 3.000 s");
+        assert_eq!(
+            two[0],
+            "A -1.000 s   B -4.000 s   Δt 3.000 s   (click again to clear)"
+        );
         assert_eq!(two[1], "speed   3.000 → 1.000   Δ -2.000");
         // Outside the recorded points: a dash.
         let gap = readout(&[-9.0, -1.0], &lines);
@@ -981,6 +985,15 @@ mod tests {
                 .any(|t| t.contains("Δt") && t.contains("speed")),
             "{texts:?}"
         );
+        // A third click clears them; a fourth starts again with A.
+        frame(click(body.center()));
+        assert!(
+            !frame(vec![])
+                .iter()
+                .any(|t| t.contains("Δt") || t.starts_with("A "))
+        );
+        frame(click(body.center()));
+        assert!(frame(vec![]).iter().any(|t| t.starts_with("A ")));
         // Back to live: no readout, the button is ⏸ again.
         frame(click(button));
         let texts = frame(vec![]);
