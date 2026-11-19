@@ -430,6 +430,59 @@
               "period": 0.06,
               "data_type": "string"
             }
+          },
+          {
+            "title": "Sine and orbit",
+            "x": 0.0,
+            "y": 512.0,
+            "width": 512.0,
+            "height": 256.0,
+            "type": "Graph",
+            "properties": {
+              "topic": "/DashTest/Sine",
+              "period": 0.033,
+              "data_type": "double",
+              "time_displayed": 10.0,
+              "series": [
+                {
+                  "topic": "/DashTest/OrbitPose",
+                  "data_type": "double",
+                  "struct_meta": {
+                    "path": [
+                      "translation",
+                      "x"
+                    ],
+                    "schema_name": "Pose2d",
+                    "type": "double"
+                  }
+                },
+                {
+                  "topic": "/DashTest/OrbitPose",
+                  "data_type": "double",
+                  "struct_meta": {
+                    "path": [
+                      "translation",
+                      "y"
+                    ],
+                    "schema_name": "Pose2d",
+                    "type": "double"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "title": "Seconds",
+            "x": 512.0,
+            "y": 512.0,
+            "width": 256.0,
+            "height": 256.0,
+            "type": "Graph",
+            "properties": {
+              "topic": "/DashTest/Seconds",
+              "period": 0.033,
+              "data_type": "int"
+            }
           }
         ]
       }

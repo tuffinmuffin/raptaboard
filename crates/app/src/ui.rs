@@ -21,7 +21,9 @@ use crate::sampling::Sampler;
 use crate::settings::{self, Settings};
 use crate::struct_view::{self, FieldInfo};
 use crate::tabs::{self, TabAction};
+use crate::traces::{SeriesKey, Traces};
 use crate::tree::{AddTo, DraggedTopics, Folder, TopicEntry, TreeSelection};
+use crate::widgets::builtin::graph;
 use crate::widgets::shared::settings as widget_settings;
 use crate::widgets::shared::{card, format, props};
 use crate::widgets::{self, list_layout};
@@ -51,6 +53,11 @@ const RESIZE_MARKS: [f32; 2] = [5.0, 9.0];
 const RESIZE_MARK_WIDTH: f32 = 1.5;
 /// How far the resize marks sit in from the card's corner, in points.
 const RESIZE_MARK_INSET: f32 = 4.0;
+/// The shortest time between redraws: about 60 a second.
+const MIN_REDRAW: Duration = Duration::from_millis(16);
+/// How often graphs' topics are sent when no graph says (seconds): about
+/// 60 a second, as a graph's default.
+const DEFAULT_TRACE_PERIOD_S: f64 = graph::DEFAULT_PERIOD_S;
 /// How dark the dim behind a settings dialog is, from 0 (none) to 255;
 /// light, so the widget being changed can be seen.
 const SETTINGS_BACKDROP_ALPHA: u8 = 40;
@@ -134,6 +141,9 @@ enum DropTarget {
     },
     /// Onto the grid at `rect`, if it's `free`.
     Grid { rect: LayoutRect, free: bool },
+    /// Into the graph at `index` in the tab's `containers`, as more lines;
+    /// `card` is the graph on screen.
+    Graph { index: usize, card: Rect },
 }
 
 /// A widget whose settings dialog is open.
@@ -226,6 +236,8 @@ pub struct DashboardApp {
     editing: Option<Editing>,
     /// The values widgets show, taken once per each widget's period.
     sampler: Sampler,
+    /// Recent values of the series graphs on the open tab show.
+    traces: Traces,
 }
 
 impl DashboardApp {
@@ -267,6 +279,7 @@ impl DashboardApp {
             grid_room: (0.0, 0.0),
             editing: None,
             sampler: Sampler::default(),
+            traces: Traces::default(),
         };
         if let Some(path) = options.layout_path {
             let path = PathBuf::from(path);
@@ -713,12 +726,91 @@ impl DashboardApp {
         for w in drawn {
             let Some(topic) = w.topic() else { continue };
             let period = props::period_s(w);
+            let mut wanted = vec![topic.to_owned()];
+            if let Some(ty) = widgets::find(&w.widget_type) {
+                wanted.extend(ty.extra_topics(&w.properties));
+            }
             match groups.iter_mut().find(|(p, _)| *p == period) {
-                Some((_, names)) => names.push(topic.to_owned()),
-                None => groups.push((period, vec![topic.to_owned()])),
+                Some((_, names)) => names.extend(wanted),
+                None => groups.push((period, wanted)),
             }
         }
         groups
+    }
+
+    /// Record the newest values of the series the open tab's graphs show,
+    /// and forget what no graph shows any more.
+    fn record_traces(&mut self, topics: &[Topic]) {
+        // Every value received since last frame, for the traced topics.
+        let arrived = self.nt.take_traced();
+        let Some(tab) = self.layout.tabs.get(self.current_tab) else {
+            return;
+        };
+        let grid = &tab.grid_layout;
+        let graphs = grid
+            .containers
+            .iter()
+            .chain(grid.layouts.iter().flat_map(|l| &l.children))
+            .filter(|w| w.widget_type == "Graph");
+        let mut wanted = Vec::new();
+        let mut fastest = f64::INFINITY;
+        for w in graphs {
+            let seconds = graph::time_displayed(&w.properties);
+            fastest = fastest.min(props::period_s(w));
+            wanted.extend(graph::series(w).into_iter().map(|s| (s.key, seconds)));
+        }
+        // Ask for every change of the graphs' topics, not only the newest.
+        let mut names: Vec<String> = wanted.iter().map(|(k, _)| k.topic.clone()).collect();
+        names.sort();
+        names.dedup();
+        let period = if fastest.is_finite() {
+            fastest
+        } else {
+            DEFAULT_TRACE_PERIOD_S
+        };
+        self.nt.trace(names, period);
+
+        let by_name: HashMap<&str, &Topic> = topics.iter().map(|t| (&*t.name, t)).collect();
+        let structs = self.nt.structs();
+        // A sample as a number to plot: a struct field decoded, booleans as
+        // 0 and 1.
+        let number_of = |key: &SeriesKey, value: &Value| -> Option<f64> {
+            let value = match (&key.field, value) {
+                (None, v) => Some(v.clone()),
+                (Some(path), Value::Raw(bytes)) => {
+                    let ty = by_name.get(key.topic.as_str())?.ty.to_string();
+                    let ((schema, _), db) = struct_view::struct_type(&ty).zip(structs)?;
+                    struct_view::field_value(db, schema, bytes, path)
+                }
+                (Some(_), _) => None,
+            }?;
+            match value {
+                Value::Boolean(b) => Some(f64::from(u8::from(b))),
+                v => format::number_of(&v),
+            }
+        };
+        for (key, seconds) in &wanted {
+            let new = self.traces.want(key, *seconds);
+            // A new line starts from the value now, so a topic that rarely
+            // changes still shows.
+            if new
+                && let Some(sample) = by_name
+                    .get(key.topic.as_str())
+                    .and_then(|t| t.value.as_ref())
+                && let Some(n) = number_of(key, &sample.value)
+            {
+                self.traces.record(key, sample.local_time_us, n);
+            }
+        }
+        for (name, sample) in &arrived {
+            for (key, _) in wanted.iter().filter(|(k, _)| k.topic == **name) {
+                if let Some(n) = number_of(key, &sample.value) {
+                    self.traces.record(key, sample.local_time_us, n);
+                }
+            }
+        }
+        let now_us = self.nt.client().map_or(0, |c| c.now_us());
+        self.traces.finish_frame(now_us);
     }
 
     /// The row of tabs. Click to switch; when unlocked, double-click to
@@ -1453,16 +1545,38 @@ impl DashboardApp {
             }
         };
         let dragging = self.drag.map(|d| d.item);
+        let now_us = self.nt.client().map_or(0, |c| c.now_us());
         for &(item, r) in &placed {
             if Some(item) != dragging {
-                draw_item(
-                    &painter,
-                    &visuals,
-                    to_screen(&r),
-                    &tab.grid_layout,
-                    item,
-                    &value_of,
-                );
+                // Single widgets get a Ui of their own, for those that need
+                // one (graphs); lists draw their children with a painter.
+                if let Item::Widget(i) = item
+                    && let Some(w) = tab.grid_layout.containers.get(i)
+                {
+                    let rect = to_screen(&r).shrink(CELL_GAP);
+                    let value = value_of(w);
+                    let live = widgets::Live {
+                        value: value.as_ref(),
+                        traces: &self.traces,
+                        now_us,
+                    };
+                    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt((
+                        "widget",
+                        self.current_tab,
+                        i,
+                    )));
+                    child.set_clip_rect(rect.intersect(painter.clip_rect()));
+                    card::show(&mut child, rect, w, &live);
+                } else {
+                    draw_item(
+                        &painter,
+                        &visuals,
+                        to_screen(&r),
+                        &tab.grid_layout,
+                        item,
+                        &value_of,
+                    );
+                }
                 if !self.locked {
                     draw_resize_handle(&painter, &visuals, to_screen(&r));
                 }
@@ -1618,7 +1732,26 @@ impl DashboardApp {
                 width: cell,
                 height: cell,
             };
-            let into_list = list_drop(p);
+            // Over a graph, the topics become more lines on it.
+            let at = to_grid(p);
+            let onto_graph = tab
+                .grid_layout
+                .containers
+                .iter()
+                .enumerate()
+                .find(|(_, w)| {
+                    let r = w.rect;
+                    w.widget_type == "Graph"
+                        && at.0 >= r.x
+                        && at.0 < r.x + r.width
+                        && at.1 >= r.y
+                        && at.1 < r.y + r.height
+                })
+                .map(|(index, w)| DropTarget::Graph {
+                    index,
+                    card: to_screen(&w.rect).shrink(CELL_GAP),
+                });
+            let into_list = onto_graph.or_else(|| list_drop(p));
             let target = grid::snap_move(under, cell, room);
             let free = grid::is_free(&tab.grid_layout, target);
             match &into_list {
@@ -1648,6 +1781,23 @@ impl DashboardApp {
                         let children = &mut grid.layouts[list].children;
                         children.splice(at..at, made);
                         self.selected = Some(Item::List(list));
+                    }
+                    Some(DropTarget::Graph { index, .. }) => {
+                        let graph = &mut grid.containers[index];
+                        let plottable = widgets::find("Graph").expect("graphs are built");
+                        let added = topics
+                            .0
+                            .iter()
+                            .filter(|t| plottable.shows(&t.ty))
+                            .filter(|t| graph::add_series(graph, &t.name, &t.ty, t.field.as_ref()))
+                            .count();
+                        self.selected = Some(Item::Widget(index));
+                        self.status = match added {
+                            0 => "Nothing new to add to that graph (numbers and booleans only)"
+                                .to_owned(),
+                            1 => format!("Added a line to \"{}\"", graph.title),
+                            n => format!("Added {n} lines to \"{}\"", graph.title),
+                        };
                     }
                     None => {
                         let placed = grid::place_near(grid, made, (target.x, target.y), cell, room);
@@ -1881,6 +2031,7 @@ fn draw_drop(
             painter.hline(body.x_range(), line_y, Stroke::new(OUTLINE_WIDTH, DROP_OK));
         }
         DropTarget::Grid { rect, free } => draw_landing(painter, to_screen(&rect), free),
+        DropTarget::Graph { card, .. } => draw_landing(painter, card, true),
     }
 }
 
@@ -1981,6 +2132,7 @@ impl eframe::App for DashboardApp {
         if !add.is_empty() && !self.locked {
             self.add_topics(&add, self.tree_sel.add_to);
         }
+        self.record_traces(&topics);
         let now = Instant::now();
         egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values, now));
         let next_value = self.sampler.finish_frame(now);
@@ -2002,8 +2154,10 @@ impl eframe::App for DashboardApp {
         // change. Redraw when the next widget is due for a new value, and at
         // least a few times a second so connection changes and first values
         // still show.
+        // At most about 60 a second: graphs' values are recorded as they
+        // arrive, so drawing them more often adds nothing.
         let idle = Duration::from_millis(250);
-        let wait = next_value.map_or(idle, |due| due.min(idle));
+        let wait = next_value.map_or(idle, |due| due.min(idle)).max(MIN_REDRAW);
         ui.ctx().request_repaint_after(wait);
     }
 }

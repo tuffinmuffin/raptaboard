@@ -39,6 +39,18 @@ use serde_json::{Map, Value as Json};
 use crate::struct_view::FieldInfo;
 use shared::{card, props};
 
+/// What a widget can draw from: its value now, and the recorded values of
+/// the series graphs show.
+#[derive(Clone, Copy)]
+pub struct Live<'a> {
+    /// The newest value of the widget's topic (or struct field), if any.
+    pub value: Option<&'a Value>,
+    /// Recorded values over time, for graphs.
+    pub traces: &'a crate::traces::Traces,
+    /// The time now, on the clock the traces use (microseconds).
+    pub now_us: i64,
+}
+
 /// What the settings dialog knows about the value a widget shows, so a
 /// widget offers only the settings that fit it.
 #[derive(Debug, Clone, Copy, Default)]
@@ -98,6 +110,25 @@ pub trait WidgetType: Sync {
         });
     }
 
+    /// Draw the widget in `rect` with a full [`egui::Ui`], for widgets that
+    /// need more than a painter (a plot, say) or the values over time in
+    /// `live`. The default is [`draw`](Self::draw).
+    fn show(&self, ui: &mut egui::Ui, rect: Rect, widget: &WidgetContainer, live: &Live<'_>) {
+        self.draw(ui.painter(), ui.visuals(), rect, widget, live.value);
+    }
+
+    /// How often this widget wants new values when its `period` isn't set,
+    /// in seconds: Elastic's 0.06 unless a widget needs more.
+    fn default_period(&self) -> f64 {
+        props::DEFAULT_PERIOD_S
+    }
+
+    /// Topics this widget needs values for besides its own `topic`, such as
+    /// a graph's other lines. None by default.
+    fn extra_topics(&self, _props: &Map<String, Json>) -> Vec<String> {
+        Vec::new()
+    }
+
     /// Draw the widget's body (the card below the title) in `rect`, for the
     /// newest `value` of its topic, if any. Only called by the default
     /// [`draw`](Self::draw).
@@ -135,6 +166,7 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::match_time::MatchTime,
     &builtin::color_view::SingleColorView,
     &builtin::color_view::MultiColorView,
+    &builtin::graph::Graph,
 ];
 
 /// The widget type saved as `type_name` (including Elastic's other names
@@ -144,7 +176,7 @@ pub static TYPES: &[&dyn WidgetType] = &[
 /// use raptaboard::widgets::find;
 /// assert_eq!(find("Text View").unwrap().names()[0], "Text Display");
 /// assert!(find("Boolean Box").is_some());
-/// assert!(find("Graph").is_none());
+/// assert!(find("Field").is_none());
 /// ```
 pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
     TYPES

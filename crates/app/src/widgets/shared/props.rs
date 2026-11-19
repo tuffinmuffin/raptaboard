@@ -52,8 +52,11 @@ pub fn set_property(props: &mut Map<String, Json>, key: &str, value: Option<Json
     }
 }
 
-/// How often `widget` updates, in seconds: its `period`, or
-/// [`DEFAULT_PERIOD_S`] if not set, and at least [`MIN_PERIOD_S`].
+/// How often `widget` updates, in seconds: its `period`, or its type's
+/// default ([`WidgetType::default_period`]; [`DEFAULT_PERIOD_S`] for most)
+/// if not set, and at least [`MIN_PERIOD_S`].
+///
+/// [`WidgetType::default_period`]: crate::widgets::WidgetType::default_period
 ///
 /// ```
 /// use raptaboard::widgets::for_topic;
@@ -66,11 +69,13 @@ pub fn set_property(props: &mut Map<String, Json>, key: &str, value: Option<Json
 /// assert_eq!(period_s(&w), 0.01);
 /// ```
 pub fn period_s(widget: &WidgetContainer) -> f64 {
-    let period = widget.period().unwrap_or(DEFAULT_PERIOD_S);
+    let default =
+        crate::widgets::find(&widget.widget_type).map_or(DEFAULT_PERIOD_S, |t| t.default_period());
+    let period = widget.period().unwrap_or(default);
     if period.is_finite() {
         period.max(MIN_PERIOD_S)
     } else {
-        DEFAULT_PERIOD_S
+        default
     }
 }
 

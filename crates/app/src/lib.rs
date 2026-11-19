@@ -16,6 +16,7 @@ pub mod sampling;
 pub mod settings;
 pub mod struct_view;
 pub mod tabs;
+pub mod traces;
 pub mod tree;
 pub mod ui;
 pub mod widgets;

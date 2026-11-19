@@ -158,6 +158,13 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `thickness` | `shared/scale.rs` | the same | bar or track thickness, points (1–200) | 8 bars, 6 gauges |
 | `show_value` | `shared/scale.rs` | the same | show the current value and unit | true |
 | `show_labels` | `shared/scale.rs` | the same | show the numbers along the scale | true |
+| `time_displayed` (Elastic; older `visibleTime`) | `builtin/graph.rs` | Graph | seconds shown | 5 |
+| `min_value`, `max_value` (Elastic) | `builtin/graph.rs` | Graph | a fixed range; both unset fits the values | unset |
+| `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
+| `series` | `builtin/graph.rs` | Graph | the lines after the main one: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
+| `show_legend` | `builtin/graph.rs` | Graph | show the legend | when there's more than one line |
+| `show_pause` | `builtin/graph.rs` | Graph | show the pause button (and measuring) | true |
+| `show_hover` | `builtin/graph.rs` | Graph | show values where the pointer is | true |
 | `label_inside` | `list_layout.rs` | List Layout | `true`: each label drawn over its value (on a see-through backing) instead of beside it | off |
 | `dividers` | `list_layout.rs` | List Layout | `true`: a thin line under the list's title and below each child | off |
 | `hidden` | `list_layout.rs` | a List Layout's child | `true`: kept in the list but not shown or subscribed | shown |
@@ -351,6 +358,21 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      seen instead of fixed `min_value`/`max_value` (widening as new extremes arrive; optionally only
      growing from the set range, and a reset in the right-click menu). Not saved as the range;
      starts fresh each run.
+   - Graph history review: while paused, scroll back and forward through time (drag or the scroll
+     wheel along the time axis, maybe zoom), beyond the window shown, for looking back at what led
+     up to an event. A per-graph "history kept" setting (expected use is up to 3–5 minutes; memory
+     is fine at that, about 1 MB per line at 100 Hz for 10 minutes; make the `traces.rs` cap follow
+     the setting instead of a fixed point count) sets how far back is recorded; the cursors measure
+     anywhere in it. Zoomed out over minutes, reduce each line to about one point per pixel column
+     before drawing, so a frame doesn't copy tens of thousands of points per line. Applies to X/Y and polar graphs
+     too.
+   - X/Y and polar graphs (`egui_plot`): pair two values recorded at the same time (x with y, or
+     angle with distance) and plot one against the other, for a joystick's position, an arm
+     joint's path or a turret's aim. Modes: a trail that fades out over a set time (time decay),
+     or just the current point (tracking). Several pairs per graph, like Graph's lines; pairs come
+     from two topics, two struct fields (Pose2d x/y, Translation2d), or a dropped struct with a
+     known pair. Angle units for polar (degrees or radians, zero direction, clockwise or not).
+     Shares Graph's recording (`traces.rs`), pause and measuring.
    - Battery widget: a battery icon filled by charge (voltage between a low and high setting),
      colored by level, for battery voltage instead of Voltage View.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
@@ -369,7 +391,18 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    Widget choice switches to any type that can show the value (`WidgetType::shows`), keeping the
    other types' settings. The settings dialogs (widget and list) are windows that can be dragged
    by their title bar out of the way of the widget being changed; they reopen where they were left
-   (for the run), and the grid behind stays blocked but only lightly dimmed. Next: Graph, then the writing widgets (toggles, slider, editable Text
+   (for the run), and the grid behind stays blocked but only lightly dimmed. Graph (with `egui_plot`): numbers and booleans over time, Elastic's
+   settings, and raptaboard's multiple lines on one graph (drop more topics or struct fields from
+   the tree onto it; a legend shows when there's more than one). All lines are equal: the
+   settings list them with ↑/↓ and Remove, the first being the main line, saved as the widget's own
+   `topic`/`color` as Elastic saves it. A pause button freezes the picture while values keep
+   recording; while paused, two clicks place measuring cursors A and B (scope style; with only A, clicking A takes it away; with both, any click clears them) and a readout
+   gives Δt and each line's values and Δ there. Values are recorded in
+   `traces.rs` for the series the open tab's graphs show, each for the longest window wanted:
+   every value received (an `all` subscription, read from the client's event stream), not one
+   per frame. Graphs default to a 0.016 s period (about 60 a second; other widgets keep 0.06), and
+   the window redraws at most about 60 times a second; graphs aren't meant for faster signals. A
+   plot only senses hover, so it never takes the drags that move the widget. Next: then the writing widgets (toggles, slider, editable Text
    Display), choosers, Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
