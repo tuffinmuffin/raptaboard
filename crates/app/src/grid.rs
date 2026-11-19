@@ -8,7 +8,7 @@
 
 use raptaboard_layout::{GridLayout, MAX_GRID_CELLS, Rect};
 
-use crate::widgets::list_layout::{NEW_LIST_CELLS, new_list};
+use crate::widgets::list_layout::{NEW_LIST_CELLS, cells_tall_for, labels, new_list};
 
 /// Something on a tab's grid: a single widget or a List Layout, by its index
 /// in [`GridLayout::containers`] or [`GridLayout::layouts`].
@@ -203,18 +203,41 @@ pub fn child_out_of_list(
 /// ```
 pub fn add_list(
     grid: &mut GridLayout,
-    (x, y): (f64, f64),
+    at: (f64, f64),
     cell: f64,
     area: (f64, f64),
 ) -> Option<usize> {
+    add_list_holding(grid, at, Vec::new(), cell, area)
+}
+
+/// Like [`add_list`], but the new list holds `children` and is tall
+/// enough to show them all ([`cells_tall_for`]). `None` (and the children
+/// are dropped) if there's no room.
+pub fn add_list_holding(
+    grid: &mut GridLayout,
+    (x, y): (f64, f64),
+    children: Vec<raptaboard_layout::WidgetContainer>,
+    cell: f64,
+    area: (f64, f64),
+) -> Option<usize> {
+    let mut list = new_list(
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        },
+        children,
+    );
+    let tall = cells_tall_for(&list.children, labels(&list.properties), cell);
     let at = Rect {
         x: (x / cell).floor() * cell,
         y: (y / cell).floor() * cell,
         width: NEW_LIST_CELLS * cell,
-        height: NEW_LIST_CELLS * cell,
+        height: tall * cell,
     };
-    let spot = free_spot_near(grid, at, cell, area)?;
-    grid.layouts.push(new_list(spot, Vec::new()));
+    list.rect = free_spot_near(grid, at, cell, area)?;
+    grid.layouts.push(list);
     Some(grid.layouts.len() - 1)
 }
 
@@ -800,6 +823,29 @@ mod tests {
                 2
             );
             assert!(place_near(&mut grid, new(1), (0.0, 0.0), g.cell, window).is_empty());
+        });
+    }
+
+    #[test]
+    fn new_lists_holding_topics_are_tall_enough() {
+        each_size(|g| {
+            let mut grid = g.grid(&[], &[]);
+            let one = g.at(0.0, 0.0, 1.0, 1.0);
+            let kids: Vec<raptaboard_layout::WidgetContainer> = (0..5)
+                .map(|i| crate::widgets::for_topic(&format!("/t{i}"), "double", None, one).unwrap())
+                .collect();
+            // Drawing sizes are in points, so small grids need many rows.
+            let window = g.window(8.0, 60.0);
+            let list = add_list_holding(&mut grid, (0.0, 0.0), kids, g.cell, window).unwrap();
+            let l = &grid.layouts[list];
+            assert_eq!(l.children.len(), 5);
+            assert_eq!(l.rect.width, 2.0 * g.cell);
+            assert_eq!(
+                l.rect.height,
+                cells_tall_for(&l.children, labels(&l.properties), g.cell) * g.cell
+            );
+            // Five one-cell children need more than an empty list's two cells.
+            assert!(l.rect.height > 2.0 * g.cell);
         });
     }
 }

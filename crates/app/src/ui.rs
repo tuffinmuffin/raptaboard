@@ -20,7 +20,7 @@ use crate::nt::{ConnectionStatus, NtConnection};
 use crate::sampling::Sampler;
 use crate::struct_view::{self, FieldInfo};
 use crate::tabs::{self, TabAction};
-use crate::tree::{DraggedTopics, Folder, TopicEntry, TreeSelection};
+use crate::tree::{AddTo, DraggedTopics, Folder, TopicEntry, TreeSelection};
 use crate::widgets::shared::{card, format, props, settings};
 use crate::widgets::{self, list_layout};
 use nt4::proto::structs::StructDatabase;
@@ -1019,10 +1019,10 @@ impl DashboardApp {
         list_layout::menu_names(&tab.grid_layout.layouts)
     }
 
-    /// Make widgets for `topics` on the open tab, one cell each: at the end
-    /// of List Layout `list` if given, or else in the free spots nearest the
-    /// tab's top left, saying if some didn't fit.
-    fn add_topics(&mut self, topics: &[crate::tree::DraggedTopic], list: Option<usize>) {
+    /// Make widgets for `topics` on the open tab, one cell each, where `to`
+    /// says: free spots nearest the tab's top left, the end of a list, or a
+    /// new list. The status line says what happened.
+    fn add_topics(&mut self, topics: &[crate::tree::DraggedTopic], to: AddTo) {
         let cell = f64::from(self.layout.grid_size());
         let one = LayoutRect {
             x: 0.0,
@@ -1039,7 +1039,20 @@ impl DashboardApp {
         let Some(tab) = self.layout.tabs.get_mut(self.current_tab) else {
             return;
         };
-        if let Some(i) = list
+        if to == AddTo::NewList {
+            match grid::add_list_holding(&mut tab.grid_layout, (0.0, 0.0), made, cell, room) {
+                Some(i) => {
+                    self.selected = Some(Item::List(i));
+                    self.status = format!(
+                        "Made a list of {wanted} widget{}",
+                        if wanted == 1 { "" } else { "s" }
+                    );
+                }
+                None => self.status = "No free space for a new list".to_owned(),
+            }
+            return;
+        }
+        if let AddTo::List(i) = to
             && let Some(l) = tab.grid_layout.layouts.get_mut(i)
         {
             l.children.extend(made);
@@ -1777,7 +1790,7 @@ impl eframe::App for DashboardApp {
         // free spots nearest the top left of the open tab.
         let add = std::mem::take(&mut self.tree_sel.add);
         if !add.is_empty() && !self.locked {
-            self.add_topics(&add, self.tree_sel.add_to_list);
+            self.add_topics(&add, self.tree_sel.add_to);
         }
         let now = Instant::now();
         egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values, now));

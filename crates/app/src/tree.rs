@@ -72,6 +72,18 @@ impl DraggedTopic {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DraggedTopics(pub Vec<DraggedTopic>);
 
+/// Where topics added from the tree's right-click menu go.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AddTo {
+    /// Free spots on the open tab's grid.
+    #[default]
+    Grid,
+    /// The end of the open tab's List Layout at this index.
+    List(usize),
+    /// A new List Layout holding them.
+    NewList,
+}
+
 /// Which tree rows are selected, for adding several topics at once and for
 /// highlighting their widgets. Only rows that can become a widget (topics
 /// and struct fields) can be selected.
@@ -102,9 +114,8 @@ pub struct TreeSelection {
     /// Rows whose "Add to grid" or "Add to list" was clicked this frame,
     /// for the window to add.
     pub add: Vec<DraggedTopic>,
-    /// For "Add to list": which list, by its place in [`TreeSelection::lists`];
-    /// `None` for "Add to grid".
-    pub add_to_list: Option<usize>,
+    /// Where [`TreeSelection::add`] goes.
+    pub add_to: AddTo,
     /// Names of the open tab's List Layouts, for the "Add to list" menu.
     /// The window sets these before drawing the tree.
     pub lists: Vec<String>,
@@ -165,7 +176,7 @@ impl TreeSelection {
     pub fn begin_frame(&mut self) {
         self.drawing.clear();
         self.add.clear();
-        self.add_to_list = None;
+        self.add_to = AddTo::Grid;
     }
 
     /// Call after drawing the tree each frame.
@@ -245,17 +256,26 @@ fn selectable_row(
             if ui.button(label).clicked() {
                 sel.add = group.clone();
             }
-            if !sel.lists.is_empty() {
-                let lists = sel.lists.clone();
-                ui.menu_button("Add to list", |ui| {
-                    for (i, name) in lists.iter().enumerate() {
-                        if ui.button(name).clicked() {
-                            sel.add = group.clone();
-                            sel.add_to_list = Some(i);
-                        }
+            let lists = sel.lists.clone();
+            ui.menu_button("Add to list", |ui| {
+                if ui
+                    .button("New list")
+                    .on_hover_text("A new List Layout holding these")
+                    .clicked()
+                {
+                    sel.add = group.clone();
+                    sel.add_to = AddTo::NewList;
+                }
+                if !lists.is_empty() {
+                    ui.separator();
+                }
+                for (i, name) in lists.iter().enumerate() {
+                    if ui.button(name).clicked() {
+                        sel.add = group.clone();
+                        sel.add_to = AddTo::List(i);
                     }
-                });
-            }
+                }
+            });
         });
     }
     response.on_hover_text(hover);
