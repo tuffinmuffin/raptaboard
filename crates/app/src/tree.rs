@@ -119,7 +119,23 @@ pub struct TreeSelection {
     /// Names of the open tab's List Layouts, for the "Add to list" menu.
     /// The window sets these before drawing the tree.
     pub lists: Vec<String>,
+    /// A row to open the tree to, scroll to and pick, set by
+    /// [`TreeSelection::reveal`].
+    reveal: Option<Reveal>,
 }
+
+/// A row the tree should show: a topic, and the field path for a struct
+/// field.
+#[derive(Debug, Clone)]
+struct Reveal {
+    name: String,
+    field: Option<Vec<String>>,
+    /// Frames left to find it (folders take a frame or two to open).
+    frames: u8,
+}
+
+/// How many frames [`TreeSelection::reveal`] keeps trying.
+const REVEAL_FRAMES: u8 = 30;
 
 impl TreeSelection {
     /// The selected rows, in the order they were selected.
@@ -166,6 +182,51 @@ impl TreeSelection {
         }
     }
 
+    /// Open the tree down to the row for topic `name` (and `field`, a
+    /// struct field's path), scroll it into view and pick it, over the next
+    /// few frames. For clicking a widget to find its topic. Nothing happens
+    /// if the row isn't in the tree (filtered out, say).
+    pub fn reveal(&mut self, name: &str, field: Option<Vec<String>>) {
+        self.reveal = Some(Reveal {
+            name: name.to_owned(),
+            field,
+            frames: REVEAL_FRAMES,
+        });
+    }
+
+    /// Whether the row being revealed is inside the folder at `path`
+    /// (`/Drive/Health`), so the folder should open.
+    fn reveals_in_folder(&self, path: &str) -> bool {
+        self.reveal.as_ref().is_some_and(|r| {
+            r.name
+                .strip_prefix(path)
+                .is_some_and(|rest| rest.starts_with('/'))
+        })
+    }
+
+    /// Whether the row being revealed is a field of struct topic `topic`
+    /// inside `path` (the fields leading to a nested struct; empty for the
+    /// topic itself), so that header should open.
+    fn reveals_in_struct(&self, topic: &str, path: &[String]) -> bool {
+        self.reveal.as_ref().is_some_and(|r| {
+            r.name == topic && r.field.as_ref().is_some_and(|f| f.starts_with(path))
+        })
+    }
+
+    /// If `row` is the one being revealed: pick it, stop revealing, and
+    /// return `true` so the caller scrolls to it.
+    fn reveal_hit(&mut self, row: &DraggedTopic) -> bool {
+        let hit = self.reveal.as_ref().is_some_and(|r| {
+            r.name == row.name && r.field == row.field.as_ref().map(|f| f.path.clone())
+        });
+        if hit {
+            self.reveal = None;
+            self.selected = vec![row.clone()];
+            self.anchor = Some(row.clone());
+        }
+        hit
+    }
+
     /// Unselect everything.
     pub fn clear(&mut self) {
         self.selected.clear();
@@ -182,6 +243,13 @@ impl TreeSelection {
     /// Call after drawing the tree each frame.
     pub fn end_frame(&mut self) {
         self.order = std::mem::take(&mut self.drawing);
+        // Give up on a row that never showed up.
+        if let Some(r) = &mut self.reveal {
+            r.frames = r.frames.saturating_sub(1);
+            if r.frames == 0 {
+                self.reveal = None;
+            }
+        }
     }
 
     /// Note that `row` was drawn, in order, for Shift+click ranges.
@@ -219,6 +287,9 @@ fn selectable_row(
         egui::Sense::click()
     };
     let response = ui.interact(rect, id, sense);
+    if sel.reveal_hit(&row) {
+        response.scroll_to_me(Some(egui::Align::Center));
+    }
     if sel.is_selected(&row) {
         ui.painter().set(
             shading,
@@ -397,7 +468,7 @@ impl Folder {
             let open = egui::CollapsingHeader::new(label)
                 .id_salt(&folder_path)
                 .default_open(false)
-                .open(expand_all.then_some(true))
+                .open((expand_all || sel.reveals_in_folder(&folder_path)).then_some(true))
                 .show(ui, |ui| {
                     folder.show(ui, &folder_path, expand_all, structs, draggable, sel)
                 });
@@ -502,6 +573,7 @@ fn show_topic(
         egui::CollapsingHeader::new(format!("{key}  {summary}"))
             .id_salt(&topic.name)
             .default_open(false)
+            .open(sel.reveals_in_struct(&topic.name, &[]).then_some(true))
             .show(ui, |ui| {
                 show_children(
                     ui,
@@ -685,9 +757,11 @@ fn show_children(
                             egui::Align::Center,
                         );
                 }
+                let open = source.is_some_and(|src| sel.reveals_in_struct(src.topic, &field_path));
                 let header = egui::CollapsingHeader::new(title)
                     .id_salt(&child_id)
                     .default_open(true)
+                    .open(open.then_some(true))
                     .show(ui, |ui| {
                         show_children(
                             ui,
@@ -944,5 +1018,39 @@ mod tests {
             ..field.clone()
         };
         assert!(!y.is_shown_by(&field_widget));
+    }
+
+    #[test]
+    fn revealing_opens_the_way_and_picks_the_row() {
+        let mut sel = TreeSelection::default();
+        let x = StructMeta {
+            path: vec!["translation".into(), "x".into()],
+            schema_name: "Pose2d".into(),
+        };
+        sel.reveal("/Drive/pose", Some(x.path.clone()));
+        assert!(sel.reveals_in_folder("/Drive"));
+        assert!(!sel.reveals_in_folder("/Dri"));
+        assert!(!sel.reveals_in_folder("/Arm"));
+        assert!(sel.reveals_in_struct("/Drive/pose", &[]));
+        assert!(sel.reveals_in_struct("/Drive/pose", &["translation".to_string()]));
+        assert!(!sel.reveals_in_struct("/Drive/pose", &["rotation".to_string()]));
+        // The whole topic isn't the field.
+        assert!(!sel.reveal_hit(&row("/Drive/pose")));
+        let field = DraggedTopic {
+            name: "/Drive/pose".into(),
+            ty: "double".into(),
+            field: Some(x),
+        };
+        assert!(sel.reveal_hit(&field));
+        assert_eq!(sel.selected(), std::slice::from_ref(&field));
+        // Found once; then it stops.
+        assert!(!sel.reveal_hit(&field));
+        // A row that never shows up is given up on.
+        sel.reveal("/Missing", None);
+        for _ in 0..REVEAL_FRAMES {
+            sel.begin_frame();
+            sel.end_frame();
+        }
+        assert!(!sel.reveals_in_folder(""));
     }
 }

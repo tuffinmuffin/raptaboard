@@ -1214,6 +1214,12 @@ impl DashboardApp {
                         if child.clicked() || child.secondary_clicked() || child.drag_started() {
                             self.selected = Some(item);
                         }
+                        if child.clicked()
+                            && let Some(w) = list.children.get(row.index)
+                            && let Some(topic) = w.topic()
+                        {
+                            self.tree_sel.reveal(topic, w.struct_meta().map(|m| m.path));
+                        }
                         if child.double_clicked() {
                             edit_child = Some((index, row.index));
                         }
@@ -1246,6 +1252,14 @@ impl DashboardApp {
                 }
                 if body.clicked() || body.secondary_clicked() || body.drag_started() {
                     self.selected = Some(item);
+                }
+                // Clicking a widget finds its topic in the tree.
+                if body.clicked()
+                    && let Item::Widget(i) = item
+                    && let Some(w) = tab.grid_layout.containers.get(i)
+                    && let Some(topic) = w.topic()
+                {
+                    self.tree_sel.reveal(topic, w.struct_meta().map(|m| m.path));
                 }
                 if body.double_clicked() {
                     menu_action = Some((item, EditAction::Edit));
