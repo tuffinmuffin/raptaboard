@@ -121,6 +121,119 @@ pub fn text_size_row(ui: &mut egui::Ui, props: &mut Map<String, Json>) {
     ui.end_row();
 }
 
+/// A number setting, or `default` if it's not set or not a number.
+///
+/// ```
+/// use raptaboard::widgets::shared::props::number;
+/// let props = serde_json::json!({"max_value": 13});
+/// let props = props.as_object().unwrap();
+/// assert_eq!(number(props, "max_value", 1.0), 13.0);
+/// assert_eq!(number(props, "min_value", -1.0), -1.0);
+/// ```
+pub fn number(props: &Map<String, Json>, key: &str, default: f64) -> f64 {
+    props
+        .get(key)
+        .and_then(Json::as_f64)
+        .filter(|n| n.is_finite())
+        .unwrap_or(default)
+}
+
+/// A yes/no setting, or `default` if it's not set or not a boolean.
+pub fn flag(props: &Map<String, Json>, key: &str, default: bool) -> bool {
+    props.get(key).and_then(Json::as_bool).unwrap_or(default)
+}
+
+/// A text setting, or `default` if it's not set or not text.
+pub fn text<'a>(props: &'a Map<String, Json>, key: &str, default: &'a str) -> &'a str {
+    props.get(key).and_then(Json::as_str).unwrap_or(default)
+}
+
+/// A settings dialog row editing a number setting. Back at `default`, the
+/// setting is removed. `range` limits what can be typed.
+pub fn number_row(
+    ui: &mut egui::Ui,
+    props: &mut Map<String, Json>,
+    label: &str,
+    key: &str,
+    default: f64,
+    range: std::ops::RangeInclusive<f64>,
+) {
+    ui.label(label);
+    let mut value = number(props, key, default);
+    if ui
+        .add(egui::DragValue::new(&mut value).range(range).speed(0.1))
+        .changed()
+    {
+        set_property(props, key, (value != default).then(|| value.into()));
+    }
+    ui.end_row();
+}
+
+/// A settings dialog row editing a whole-number setting, saved as an
+/// integer. Back at `default`, the setting is removed.
+pub fn whole_row(
+    ui: &mut egui::Ui,
+    props: &mut Map<String, Json>,
+    label: &str,
+    key: &str,
+    default: i64,
+    range: std::ops::RangeInclusive<i64>,
+) {
+    ui.label(label);
+    let mut value = number(props, key, default as f64).round() as i64;
+    if ui
+        .add(egui::DragValue::new(&mut value).range(range))
+        .changed()
+    {
+        set_property(props, key, (value != default).then(|| value.into()));
+    }
+    ui.end_row();
+}
+
+/// A settings dialog row with a checkbox for a yes/no setting. Back at
+/// `default`, the setting is removed.
+pub fn flag_row(
+    ui: &mut egui::Ui,
+    props: &mut Map<String, Json>,
+    label: &str,
+    text: &str,
+    key: &str,
+    default: bool,
+) {
+    ui.label(label);
+    let mut on = flag(props, key, default);
+    if ui.checkbox(&mut on, text).changed() {
+        set_property(props, key, (on != default).then(|| on.into()));
+    }
+    ui.end_row();
+}
+
+/// A settings dialog row choosing one of `choices` for a text setting.
+/// Back at `default`, the setting is removed.
+pub fn choice_row(
+    ui: &mut egui::Ui,
+    props: &mut Map<String, Json>,
+    label: &str,
+    key: &str,
+    default: &str,
+    choices: &[&str],
+) {
+    ui.label(label);
+    let current = text(props, key, default).to_owned();
+    let mut picked = current.clone();
+    egui::ComboBox::from_id_salt(key)
+        .selected_text(&picked)
+        .show_ui(ui, |ui| {
+            for choice in choices {
+                ui.selectable_value(&mut picked, (*choice).to_owned(), *choice);
+            }
+        });
+    if picked != current {
+        set_property(props, key, (picked != default).then(|| picked.into()));
+    }
+    ui.end_row();
+}
+
 /// Read a color saved by Elastic: a 32-bit ARGB number, such as
 /// `4283215696` (`0xFF4CAF50`, green).
 ///

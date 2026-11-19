@@ -13,7 +13,7 @@ use serde_json::Value as Json;
 
 use super::props::{self, DEFAULT_PERIOD_S, MAX_PERIOD_S, MIN_PERIOD_S, PERIOD, set_property};
 use crate::struct_view::FieldInfo;
-use crate::widgets::{ValueInfo, find, source_title};
+use crate::widgets::{TYPES, ValueInfo, find, source_title};
 
 /// Whether any of `widget`'s settings differ from the defaults, so
 /// [`reset_settings`] would change something. The title doesn't count.
@@ -108,22 +108,48 @@ pub fn show(
             });
             ui.end_row();
 
-            ui.label("Type");
+            // Which widget shows it: any type that can show this value (all
+            // of them if the value's type isn't known yet).
+            ui.label("Widget");
+            let current = ty
+                .map_or(widget.widget_type.as_str(), |t| t.names()[0])
+                .to_owned();
+            let mut picked = current.clone();
+            egui::ComboBox::from_id_salt("widget_type")
+                .selected_text(&picked)
+                .show_ui(ui, |ui| {
+                    if ty.is_none() {
+                        ui.selectable_value(&mut picked, current.clone(), &current);
+                    }
+                    for t in TYPES {
+                        if nt_type.is_none_or(|nt| t.shows(nt)) {
+                            let name = t.names()[0];
+                            ui.selectable_value(&mut picked, name.to_owned(), name);
+                        }
+                    }
+                })
+                .response
+                .on_hover_text("How the value is shown. Settings for other types are kept.");
+            if picked != current {
+                widget.widget_type = picked;
+            }
+            ui.end_row();
+
             // The schema's type for a struct field (`enum uint8`), else the
             // NT type (`double`).
             let value_type = field_info
                 .map(FieldInfo::label)
                 .or(nt_type.map(str::to_owned));
-            ui.vertical(|ui| {
-                match value_type {
-                    Some(t) => ui.label(format!("{}, {t}", widget.widget_type)),
-                    None => ui.label(&widget.widget_type),
-                };
-                if let Some(info) = field_info.filter(|f| f.is_enum()) {
-                    ui.weak(info.enum_list());
-                }
-            });
-            ui.end_row();
+            if let Some(value_type) = value_type {
+                ui.label("Value");
+                ui.vertical(|ui| {
+                    ui.label(value_type);
+                    if let Some(info) = field_info.filter(|f| f.is_enum()) {
+                        ui.weak(info.enum_list());
+                    }
+                });
+                ui.end_row();
+            }
 
             ui.label("Update period");
             let mut period = props::period_s(widget);
@@ -221,6 +247,13 @@ mod tests {
             ("Text Display", true, true),
             ("Boolean Box", false, false),
             ("Graph", false, false),
+            ("Large Text Display", false, false),
+            ("Number Bar", false, false),
+            ("Voltage View", false, false),
+            ("Radial Gauge", false, false),
+            ("Match Time", false, false),
+            ("Single Color View", false, false),
+            ("Multi Color View", false, false),
         ] {
             let mut w = widget(ty, field);
             let before = w.clone();
@@ -266,10 +299,7 @@ mod tests {
         );
         // The type row names the enum and lists its values.
         let labels = draw(&mut widget("Text Display", true), Some("int"), true);
-        assert!(
-            labels.iter().any(|l| l == "Text Display, enum uint8"),
-            "{labels:?}"
-        );
+        assert!(labels.iter().any(|l| l == "enum uint8"), "{labels:?}");
         assert!(
             labels.iter().any(|l| l == "kStow = 0, kIntake = 3"),
             "{labels:?}"

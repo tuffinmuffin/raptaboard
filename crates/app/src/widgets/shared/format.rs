@@ -216,6 +216,40 @@ pub fn enum_display(props: &Map<String, Json>) -> EnumDisplay {
         .unwrap_or_default()
 }
 
+/// A number value as a decimal: doubles, floats and ints. `None` for
+/// anything else.
+///
+/// ```
+/// use nt4::Value;
+/// use raptaboard::widgets::shared::format::number_of;
+/// assert_eq!(number_of(&Value::Int(3)), Some(3.0));
+/// assert_eq!(number_of(&Value::String("3".into())), None);
+/// ```
+pub fn number_of(value: &Value) -> Option<f64> {
+    match value {
+        Value::Double(d) => Some(*d),
+        Value::Float(f) => Some(f64::from(*f)),
+        Value::Int(i) => Some(*i as f64),
+        _ => None,
+    }
+}
+
+/// A number as Elastic's bars and gauges show it: whole numbers plainly,
+/// others with 2 decimal places.
+///
+/// ```
+/// use raptaboard::widgets::shared::format::short_number;
+/// assert_eq!(short_number(5.0), "5");
+/// assert_eq!(short_number(0.256), "0.26");
+/// ```
+pub fn short_number(n: f64) -> String {
+    if n.fract() == 0.0 {
+        format!("{n:.0}")
+    } else {
+        format!("{n:.2}")
+    }
+}
+
 /// A value as text, with the number settings in `props`: strings without
 /// quotes, arrays as `[a, b, c]`, whole numbers as `int_format` and
 /// `int_digits` say, and other numbers with exactly `decimal_places`

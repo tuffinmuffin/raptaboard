@@ -143,6 +143,21 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `show_text` | `builtin/boolean_box.rs` | Boolean Box | write the text below over the color | false |
 | `true_text`, `false_text` | `builtin/boolean_box.rs` | Boolean Box | text when true / false; empty for none | none |
 | `label_position` (Elastic) | `list_layout.rs` | List Layout | `TOP`, `LEFT`, `RIGHT`, `BOTTOM`, `HIDDEN` (any case read) | `TOP`; always written |
+| `min_value`, `max_value` (Elastic) | `builtin/number_bar.rs`, `radial_gauge.rs` | Number Bar, Voltage View, Radial Gauge | range | -1 to 1; Voltage 4 to 13; Gauge 0 to 100 |
+| `divisions` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | labels along the bar, ends included | 5 |
+| `inverted` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | fill from the far end | false |
+| `orientation` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | `horizontal`, `vertical` | `horizontal` |
+| `start_angle`, `end_angle` (Elastic) | `builtin/radial_gauge.rs` | Radial Gauge | degrees clockwise from straight up | -140, 140 |
+| `number_of_labels` (Elastic) | `builtin/radial_gauge.rs` | Radial Gauge | steps between labels | 8 |
+| `wrap_value`, `show_pointer`, `show_ticks` (Elastic) | `builtin/radial_gauge.rs` | Radial Gauge | wrap out-of-range values; needle; tick marks | false, true, true |
+| `time_display_mode` (Elastic) | `builtin/match_time.rs` | Match Time | `Minutes and Seconds`, `Seconds Only` | `Minutes and Seconds` |
+| `red_start_time`, `yellow_start_time` (Elastic) | `builtin/match_time.rs` | Match Time | seconds left when the time turns red / yellow | 20, 30 |
+| `fill_color` | `shared/scale.rs` | Number Bar, Voltage View, Radial Gauge | the fill, ARGB | blue (Voltage: yellow) |
+| `gradient`, `low_color`, `mid_color`, `mid_value`, `high_color` | `shared/scale.rs` | the same | blend the fill by value: low → middle (optional, at `mid_value`, else the range's middle) → high | off; red, none, green |
+| `unit` | `shared/scale.rs` | the same | text after the value (`V`, `m/s`) | none (Voltage: `V`) |
+| `thickness` | `shared/scale.rs` | the same | bar or track thickness, points (1–200) | 8 bars, 6 gauges |
+| `show_value` | `shared/scale.rs` | the same | show the current value and unit | true |
+| `show_labels` | `shared/scale.rs` | the same | show the numbers along the scale | true |
 | `label_inside` | `list_layout.rs` | List Layout | `true`: each label drawn over its value (on a see-through backing) instead of beside it | off |
 | `dividers` | `list_layout.rs` | List Layout | `true`: a thin line under the list's title and below each child | off |
 | `hidden` | `list_layout.rs` | a List Layout's child | `true`: kept in the list but not shown or subscribed | shown |
@@ -332,6 +347,12 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      widgets inside: group-level settings (font size, period, colors) that every child uses
      unless it sets its own, and resizing the group scales its children's sizes (and text) to
      match.
+   - Autoscale for bars and gauges: an option where the scale follows the lowest and highest values
+     seen instead of fixed `min_value`/`max_value` (widening as new extremes arrive; optionally only
+     growing from the set range, and a reset in the right-click menu). Not saved as the range;
+     starts fresh each run.
+   - Battery widget: a battery icon filled by charge (voltage between a low and high setting),
+     colored by level, for battery voltage instead of Voltage View.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      A built-in library of standard images (Elastic's `true_icon`/`false_icon` set: Checkmark, X,
      Exclamation Point, so its layouts keep their icons, plus more), and any PNG/SVG the team
@@ -339,6 +360,16 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      small fixed size so the file stays well under its 10 MB limit and is fully portable, and/or
      keep image files next to the layout or served by the robot.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
+   **Started**: the read-only single-topic widgets: Large Text Display, Number Bar, Voltage View,
+   Radial Gauge (also Simple Dial), Match Time, Single Color View, Multi Color View, with Elastic's
+   settings, plus raptaboard's scale settings for bars and gauges (fill color, solid or blended by
+   value low → middle → high; a unit; the value and the scale's labels each on or off; an amber dot past an end when the value is
+   beyond the scale). Voltage View is kept for Elastic layouts but is a Number Bar preset (4 to 13,
+   yellow, unit V). A dropped topic still becomes a Text Display or Boolean Box; the settings dialog's
+   Widget choice switches to any type that can show the value (`WidgetType::shows`), keeping the
+   other types' settings. Next: a movable settings window (the dialog sits over the widget being
+   edited, hiding the changes; it should be draggable and remember where it was put), Graph, then the writing widgets (toggles, slider, editable Text
+   Display), choosers, Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
    WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro, SwerveModuleState[] → swerve view.

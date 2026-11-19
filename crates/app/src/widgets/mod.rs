@@ -65,8 +65,17 @@ pub trait WidgetType: Sync {
     fn names(&self) -> &'static [&'static str];
 
     /// Whether a topic of NT type `nt_type` dragged from the tree becomes
-    /// this widget.
+    /// this widget (the default widget for that type).
     fn accepts(&self, nt_type: &str) -> bool;
+
+    /// Whether this widget can show a value of NT type `nt_type`, for the
+    /// settings dialog's choice of widget type. Every type it [`accepts`]
+    /// by default, and maybe more.
+    ///
+    /// [`accepts`]: WidgetType::accepts
+    fn shows(&self, nt_type: &str) -> bool {
+        self.accepts(nt_type)
+    }
 
     /// Draw the whole widget in `rect` (its grid cells, less a small gap),
     /// for the newest `value` of its topic, if any.
@@ -119,6 +128,13 @@ pub trait WidgetType: Sync {
 pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::boolean_box::BooleanBox,
     &builtin::text_display::TextDisplay,
+    &builtin::large_text_display::LargeTextDisplay,
+    &builtin::number_bar::NumberBar,
+    &builtin::number_bar::VoltageView,
+    &builtin::radial_gauge::RadialGauge,
+    &builtin::match_time::MatchTime,
+    &builtin::color_view::SingleColorView,
+    &builtin::color_view::MultiColorView,
 ];
 
 /// The widget type saved as `type_name` (including Elastic's other names
