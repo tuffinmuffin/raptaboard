@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, CursorIcon, Rect, Sense, Stroke, Vec2};
@@ -45,9 +45,6 @@ const OUTLINE_WIDTH: f32 = 2.0;
 const SELECTION_INSET: f32 = 1.0;
 /// How far inside its cells the drop outline is drawn, in points.
 const LANDING_INSET: f32 = 2.0;
-/// How long settings must be still before they're saved, so dragging the
-/// team number doesn't write the file every frame.
-const SETTINGS_SAVE_DELAY: Duration = Duration::from_secs(1);
 /// Lengths of the resize corner's two diagonal marks, in points.
 const RESIZE_MARKS: [f32; 2] = [5.0, 9.0];
 /// Width of the resize marks, in points.
@@ -207,13 +204,8 @@ pub struct DashboardApp {
     /// Whether the status line shows why a clicked widget couldn't be found
     /// in the tree, so the next click that finds one clears it.
     find_status: bool,
-    /// The settings file changes are saved to.
-    store: settings::Store,
-    /// The settings as they were last frame, to notice changes.
-    seen: Settings,
-    /// When a setting first changed since the last save; saved once things
-    /// have been still for [`SETTINGS_SAVE_DELAY`].
-    settings_changed: Option<Instant>,
+    /// Saves settings changed in the app to the settings file.
+    settings: settings::Tracker,
     /// The tab being renamed, the name typed so far, and whether its text
     /// box has been given the keyboard yet.
     renaming: Option<(usize, String, bool)>,
@@ -262,9 +254,9 @@ impl DashboardApp {
             menu_at: (0.0, 0.0),
             tree_sel: TreeSelection::default(),
             find_status: false,
-            store: options.store,
-            seen: Settings::default(),
-            settings_changed: None,
+            // A stand-in with nowhere to save, replaced below once the
+            // starting settings are known.
+            settings: settings::Tracker::new(settings::Store::default(), Settings::default()),
             renaming: None,
             confirm_close: None,
             selected: None,
@@ -291,12 +283,14 @@ impl DashboardApp {
         if !options.notes.is_empty() {
             app.status = options.notes.join("; ");
         }
-        // What the app started with isn't a change to save; the window's
-        // size is learned on the first frame.
-        app.seen = app.current_settings(None);
-        // Except the layout: the file opened is remembered however it was
-        // named, the command line included.
-        app.seen.layout = None;
+        // What the app started with isn't a change to save, except the
+        // layout: the file opened is remembered however it was named, the
+        // command line included.
+        let start = Settings {
+            layout: None,
+            ..app.current_settings(None)
+        };
+        app.settings = settings::Tracker::new(options.store, start);
         Ok(app)
     }
 
@@ -321,61 +315,6 @@ impl DashboardApp {
                 .map(|p| std::path::absolute(p).unwrap_or_else(|_| p.clone()))
                 .map(|p| p.to_string_lossy().into_owned()),
             window,
-        }
-    }
-
-    /// Notice settings changed in the app and save them to the settings
-    /// file once they've been still a moment, or right away when `closing`.
-    fn track_settings(&mut self, ctx: &egui::Context, closing: bool) {
-        let window = ctx.input(|i| {
-            let v = i.viewport();
-            v.inner_rect.map(|r| settings::Window {
-                width: r.width(),
-                height: r.height(),
-                x: v.outer_rect.map(|o| o.min.x),
-                y: v.outer_rect.map(|o| o.min.y),
-            })
-        });
-        let now = self.current_settings(window);
-        let own = &mut self.store.own;
-        let mut changed = false;
-        macro_rules! note {
-            ($field:ident) => {
-                if now.$field != self.seen.$field {
-                    own.$field = now.$field.clone();
-                    changed = true;
-                }
-            };
-        }
-        note!(team);
-        note!(address);
-        note!(port);
-        note!(show_tree);
-        note!(locked);
-        note!(layout);
-        note!(tab);
-        note!(tab_index);
-        // The first size learned is the starting size, not a change.
-        if self.seen.window.is_some() {
-            note!(window);
-        }
-        self.seen = now;
-        if changed {
-            self.settings_changed.get_or_insert_with(Instant::now);
-        }
-        if let Some(since) = self.settings_changed
-            && (closing || since.elapsed() >= SETTINGS_SAVE_DELAY)
-        {
-            self.save_settings();
-        }
-    }
-
-    /// Write the settings file now, saying so if it fails.
-    fn save_settings(&mut self) {
-        self.settings_changed = None;
-        if let Err(e) = self.store.save() {
-            let file = self.store.file.as_deref().unwrap_or(Path::new("settings"));
-            self.status = format!("Could not save {}: {e}", file.display());
         }
     }
 
@@ -1938,15 +1877,6 @@ fn status_label(ui: &mut egui::Ui, status: &ConnectionStatus, no_team: bool) {
     ui.label(text);
 }
 
-impl Drop for DashboardApp {
-    /// Save settings changed in the last moment before closing.
-    fn drop(&mut self) {
-        if self.settings_changed.is_some() {
-            self.save_settings();
-        }
-    }
-}
-
 impl eframe::App for DashboardApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let clicked = egui::Panel::top("settings")
@@ -2016,7 +1946,10 @@ impl eframe::App for DashboardApp {
         egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values, now));
         let next_value = self.sampler.finish_frame(now);
         let closing = ctx.input(|i| i.viewport().close_requested());
-        self.track_settings(&ctx, closing);
+        let now = self.current_settings(settings::window_of(&ctx));
+        if let Err(e) = self.settings.update(now, closing) {
+            self.status = e;
+        }
         // Whatever changed the layout this frame can be undone. Changes in
         // the settings dialog are recorded once, when it closes.
         if self.editing.is_none() {

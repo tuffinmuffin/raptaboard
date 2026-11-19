@@ -32,6 +32,7 @@
 //! ```
 
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -212,6 +213,138 @@ impl Store {
                 let _ = std::fs::remove_file(&temp);
             })
     }
+}
+
+/// How long settings must be still before they're saved, so dragging the
+/// team number doesn't write the file every frame.
+pub const SAVE_DELAY: Duration = Duration::from_secs(1);
+
+/// Keeps the settings file up to date while the app runs.
+///
+/// Each frame the app gives [`Tracker::update`] its settings as they are
+/// now. Values that changed since the last frame are set in the file's
+/// contents, and the file is written once things have been still for
+/// [`SAVE_DELAY`], when the window closes, or when the tracker is dropped.
+/// Values never changed in the app (from the command line, say) aren't
+/// written.
+///
+/// ```
+/// use std::time::{Duration, Instant};
+/// use raptaboard::settings::{Settings, Store, Tracker};
+/// let start = Settings { team: Some(254), ..Default::default() };
+/// let mut tracker = Tracker::new(Store::default(), start.clone());
+/// let t0 = Instant::now();
+/// let changed = Settings { team: Some(1678), ..start };
+/// tracker.update_at(changed, false, t0).unwrap();
+/// assert_eq!(tracker.store().own.team, Some(1678));
+/// assert!(tracker.has_unsaved());
+/// tracker.update_at(Settings { team: Some(1678), ..Default::default() }, false, t0 + Duration::from_secs(2)).unwrap();
+/// assert!(!tracker.has_unsaved());
+/// ```
+#[derive(Debug)]
+pub struct Tracker {
+    store: Store,
+    /// The settings as they were last frame.
+    seen: Settings,
+    /// When a value first changed since the last save.
+    changed_at: Option<Instant>,
+}
+
+impl Tracker {
+    /// Track changes to be saved to `store`, starting from `start`, the
+    /// settings the app opened with (which aren't changes). A `None` in
+    /// `start` makes the first value seen count as a change, except the
+    /// window's size, which is only learned on the first frame.
+    pub fn new(store: Store, start: Settings) -> Self {
+        Tracker {
+            store,
+            seen: start,
+            changed_at: None,
+        }
+    }
+
+    /// The settings file and what it holds.
+    pub fn store(&self) -> &Store {
+        &self.store
+    }
+
+    /// Whether there are changes not written yet.
+    pub fn has_unsaved(&self) -> bool {
+        self.changed_at.is_some()
+    }
+
+    /// Note the app's settings as they are `now`, and save if they've been
+    /// still long enough or the window is `closing`. An error says why the
+    /// file couldn't be written.
+    pub fn update(&mut self, now: Settings, closing: bool) -> Result<(), String> {
+        self.update_at(now, closing, Instant::now())
+    }
+
+    /// [`Tracker::update`] at time `at`, for tests.
+    pub fn update_at(&mut self, now: Settings, closing: bool, at: Instant) -> Result<(), String> {
+        let own = &mut self.store.own;
+        let mut changed = false;
+        macro_rules! note {
+            ($field:ident) => {
+                if now.$field != self.seen.$field {
+                    own.$field = now.$field.clone();
+                    changed = true;
+                }
+            };
+        }
+        note!(team);
+        note!(address);
+        note!(port);
+        note!(show_tree);
+        note!(locked);
+        note!(layout);
+        note!(tab);
+        note!(tab_index);
+        // The first size learned is the starting size, not a change.
+        if self.seen.window.is_some() {
+            note!(window);
+        }
+        self.seen = now;
+        if changed {
+            self.changed_at.get_or_insert(at);
+        }
+        match self.changed_at {
+            Some(since) if closing || at.duration_since(since) >= SAVE_DELAY => self.flush(),
+            _ => Ok(()),
+        }
+    }
+
+    /// Write any changes now.
+    pub fn flush(&mut self) -> Result<(), String> {
+        if self.changed_at.take().is_none() {
+            return Ok(());
+        }
+        self.store.save().map_err(|e| {
+            let file = self.store.file.as_deref().unwrap_or(Path::new("settings"));
+            format!("Could not save {}: {e}", file.display())
+        })
+    }
+}
+
+impl Drop for Tracker {
+    /// Save changes made in the last moment before closing.
+    fn drop(&mut self) {
+        let _ = self.flush();
+    }
+}
+
+/// The window's size and place on screen as egui last reported them, or
+/// `None` before it knows.
+pub fn window_of(ctx: &eframe::egui::Context) -> Option<Window> {
+    ctx.input(|i| {
+        let v = i.viewport();
+        v.inner_rect.map(|r| Window {
+            width: r.width(),
+            height: r.height(),
+            x: v.outer_rect.map(|o| o.min.x),
+            y: v.outer_rect.map(|o| o.min.y),
+        })
+    })
 }
 
 /// Settings gathered from every place, ready to start with.
@@ -412,5 +545,74 @@ mod tests {
         assert_eq!(loaded.store.file, None);
         assert!(loaded.notes.is_empty());
         loaded.store.save().unwrap();
+    }
+
+    #[test]
+    fn the_tracker_saves_changes_once_still() {
+        let (_, home) = folders("tracker");
+        let store = Store {
+            file: Some(file_in(&home)),
+            own: Settings::default(),
+            writable: true,
+        };
+        let start = Settings {
+            team: Some(254),
+            address: Some("sim".into()),
+            ..Default::default()
+        };
+        let mut tracker = Tracker::new(store, start.clone());
+        let t0 = Instant::now();
+        let at = |ms| t0 + Duration::from_millis(ms);
+        // Nothing changed: nothing to save.
+        tracker.update_at(start.clone(), false, at(0)).unwrap();
+        assert!(!tracker.has_unsaved());
+        // The window's size, first learned, isn't a change.
+        let window = Window {
+            width: 800.0,
+            height: 600.0,
+            x: None,
+            y: None,
+        };
+        let sized = Settings {
+            window: Some(window),
+            ..start.clone()
+        };
+        tracker.update_at(sized.clone(), false, at(10)).unwrap();
+        assert!(!tracker.has_unsaved());
+        // A change is set in the file's contents but waits to be written.
+        let locked = Settings {
+            locked: Some(true),
+            ..sized.clone()
+        };
+        tracker.update_at(locked.clone(), false, at(100)).unwrap();
+        assert!(tracker.has_unsaved());
+        assert!(!file_in(&home).exists());
+        // Still at 1.1 s after the change: written. Values the app started
+        // with (team, address) aren't.
+        tracker.update_at(locked.clone(), false, at(1100)).unwrap();
+        assert!(!tracker.has_unsaved());
+        let saved = Settings::from_toml(&std::fs::read_to_string(file_in(&home)).unwrap()).unwrap();
+        assert_eq!(
+            saved,
+            Settings {
+                locked: Some(true),
+                ..Default::default()
+            }
+        );
+        // Closing writes at once; so does dropping.
+        let resized = Settings {
+            window: Some(Window {
+                width: 1000.0,
+                ..window
+            }),
+            ..locked
+        };
+        tracker.update_at(resized, true, at(1200)).unwrap();
+        assert!(!tracker.has_unsaved());
+        assert!(
+            std::fs::read_to_string(file_in(&home))
+                .unwrap()
+                .contains("width = 1000.0")
+        );
     }
 }
