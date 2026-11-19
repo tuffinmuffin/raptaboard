@@ -51,6 +51,9 @@ const RESIZE_MARKS: [f32; 2] = [5.0, 9.0];
 const RESIZE_MARK_WIDTH: f32 = 1.5;
 /// How far the resize marks sit in from the card's corner, in points.
 const RESIZE_MARK_INSET: f32 = 4.0;
+/// How dark the dim behind a settings dialog is, from 0 (none) to 255;
+/// light, so the widget being changed can be seen.
+const SETTINGS_BACKDROP_ALPHA: u8 = 40;
 /// Color of a drop outline where the drop fits.
 const DROP_OK: Color32 = Color32::from_rgb(60, 180, 90);
 /// Color of a drop outline where the drop would cover something.
@@ -1066,9 +1069,7 @@ impl DashboardApp {
         };
         let mut close = None;
         let mut action = None;
-        egui::Modal::new(egui::Id::unique("list_settings")).show(ctx, |ui| {
-            ui.heading("List settings");
-            ui.add_space(4.0);
+        show_settings(ctx, "list_settings", "List settings", |ui| {
             action = list_layout::settings(ui, list);
             ui.add_space(4.0);
             ui.separator();
@@ -1742,6 +1743,46 @@ impl DashboardApp {
     }
 }
 
+/// Show a settings dialog titled `title`, which can be moved out of the
+/// way of the widget it's changing by dragging its title bar. It starts in
+/// the middle of the window and reopens where it was last left (for this
+/// run). The grid behind is blocked while it's open, as for any dialog, but
+/// only lightly dimmed, so changes can be seen. `name` tells dialogs apart.
+fn show_settings(
+    ctx: &egui::Context,
+    name: &str,
+    title: &str,
+    contents: impl FnOnce(&mut egui::Ui),
+) {
+    // A backdrop over everything but the dialog, catching clicks and drags
+    // so the grid can't be changed underneath.
+    let screen = ctx.content_rect();
+    egui::Area::new(egui::Id::unique((name, "backdrop")))
+        .order(egui::Order::Middle)
+        .fixed_pos(screen.min)
+        .interactable(true)
+        .show(ctx, |ui| {
+            let (rect, _) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
+            ui.painter().rect_filled(
+                rect,
+                0.0,
+                Color32::from_black_alpha(SETTINGS_BACKDROP_ALPHA),
+            );
+        });
+    egui::Window::new(title)
+        .id(egui::Id::unique(name))
+        .order(egui::Order::Foreground)
+        .collapsible(false)
+        .resizable(false)
+        .constrain(true)
+        .pivot(egui::Align2::CENTER_CENTER)
+        .default_pos(screen.center())
+        .show(ctx, |ui| {
+            ui.add_space(2.0);
+            contents(ui);
+        });
+}
+
 /// One widget's settings in a dialog titled `heading`, with Done, Cancel
 /// and Reset settings. Returns `Some(true)` for Done, `Some(false)` for
 /// Cancel or Esc, `None` while it stays open. Changes are made to `widget`
@@ -1754,9 +1795,7 @@ fn widget_window(
     field: Option<&FieldInfo>,
 ) -> Option<bool> {
     let mut close = None;
-    egui::Modal::new(egui::Id::unique("widget_settings")).show(ctx, |ui| {
-        ui.heading(heading);
-        ui.add_space(4.0);
+    show_settings(ctx, "widget_settings", heading, |ui| {
         widget_settings::show(ui, widget, nt_type, field);
         ui.add_space(4.0);
         ui.separator();
@@ -1966,5 +2005,64 @@ impl eframe::App for DashboardApp {
         let idle = Duration::from_millis(250);
         let wait = next_value.map_or(idle, |due| due.min(idle));
         ui.ctx().request_repaint_after(wait);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Tests written by Claude.
+    use super::*;
+    use eframe::egui::{Event, PointerButton, Pos2, RawInput};
+
+    /// One frame showing a settings dialog, with `events`; returns where
+    /// the dialog is.
+    fn frame(ctx: &egui::Context, events: Vec<Event>) -> Rect {
+        let raw = RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0))),
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(raw, |ui| {
+            let ctx = ui.ctx().clone();
+            show_settings(&ctx, "test_settings", "Settings", |ui| {
+                ui.label("A setting");
+            });
+        });
+        output.textures_delta.clear();
+        ctx.memory(|m| m.area_rect(egui::Id::unique("test_settings")))
+            .expect("the dialog was drawn")
+    }
+
+    #[test]
+    fn settings_dialogs_can_be_dragged_out_of_the_way() {
+        let ctx = egui::Context::default();
+        let start = frame(&ctx, vec![]);
+        frame(&ctx, vec![]);
+        // It starts in the middle of the window.
+        assert!(
+            (start.center() - Pos2::new(400.0, 300.0)).length() < 1.0,
+            "{start:?}"
+        );
+        // Drag its title bar 150 points right.
+        let grab = Pos2::new(start.center().x, start.min.y + 8.0);
+        let press = |down| Event::PointerButton {
+            pos: grab,
+            button: PointerButton::Primary,
+            pressed: down,
+            modifiers: Default::default(),
+        };
+        frame(&ctx, vec![Event::PointerMoved(grab), press(true)]);
+        for step in 1..=10 {
+            let at = grab + egui::vec2(15.0 * step as f32, 0.0);
+            frame(&ctx, vec![Event::PointerMoved(at)]);
+        }
+        frame(&ctx, vec![press(false)]);
+        let moved = frame(&ctx, vec![]);
+        assert!(
+            (moved.min.x - start.min.x - 150.0).abs() < 2.0,
+            "{start:?} -> {moved:?}"
+        );
+        // Only sideways (egui rounds to half points).
+        assert!((moved.min.y - start.min.y).abs() <= 1.0);
     }
 }
