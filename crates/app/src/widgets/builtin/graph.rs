@@ -20,7 +20,7 @@
 //! raptaboard's: `series`, `show_legend`, `show_pause` and `show_hover`.
 
 use eframe::egui::{self, Color32, Rect, Sense};
-use egui_plot::{Corner, Legend, Line, Plot, PlotPoints, VLine};
+use egui_plot::{Corner, Legend, Line, Plot, PlotPoints, Points, VLine};
 use nt4::Value;
 use raptaboard_layout::{StructMeta, WidgetContainer};
 use serde_json::{Map, Value as Json};
@@ -82,6 +82,10 @@ const PALETTE: [Color32; 8] = [
 ];
 /// The measuring cursors' color.
 const CURSOR_COLOR: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
+/// The hover guide line's color: faint grey.
+const HOVER_COLOR: Color32 = Color32::from_rgba_premultiplied(0x60, 0x60, 0x60, 0x80);
+/// Radius of the dots marking each line's value under the pointer, points.
+const HOVER_DOT: f32 = 3.5;
 /// The pause button's size, in points.
 const BUTTON_SIZE: egui::Vec2 = egui::vec2(22.0, 18.0);
 
@@ -462,9 +466,10 @@ impl WidgetType for Graph {
             .show_background(false)
             .width(body.width())
             .height(body.height());
-        if !props::flag(p, SHOW_HOVER, true) {
-            plot = plot.show_x(false).show_y(false);
-        }
+        // egui_plot's own hover shows the pointer's coordinates, not the
+        // lines'; ours below snaps to the lines instead.
+        plot = plot.show_x(false).show_y(false);
+        let hover = props::flag(p, SHOW_HOVER, true);
         if show_legend(p, shown.len()) {
             plot = plot.legend(Legend::default().position(Corner::LeftTop));
         }
@@ -486,13 +491,51 @@ impl WidgetType for Graph {
                 // No name: cursors stay out of the legend.
                 plot_ui.vline(VLine::new("", *x).color(CURSOR_COLOR).width(1.0));
             }
+            // Hovering: a faint line at the pointer's time and a dot on each
+            // line where it crosses, at the line's value there.
+            let hovered = plot_ui.response().hovered();
+            let pointer_x = plot_ui.pointer_coordinate().map(|p| p.x);
+            let hover_x = pointer_x.filter(|_| hover && hovered);
+            if let Some(x) = hover_x {
+                plot_ui.vline(VLine::new("", x).color(HOVER_COLOR).width(1.0));
+                for (_, color, points) in &shown {
+                    if let Some(y) = value_at(points, x) {
+                        plot_ui.points(
+                            Points::new("", vec![[x, y]])
+                                .color(*color)
+                                .radius(HOVER_DOT)
+                                .filled(true),
+                        );
+                    }
+                }
+            }
             let clicked = plot_ui.response().clicked();
-            plot_ui
-                .pointer_coordinate()
-                .filter(|_| clicked)
-                .map(|p| p.x)
+            (pointer_x.filter(|_| clicked), hover_x)
         });
-        if let Some(x) = clicked_at.inner {
+        let (clicked_at, hover_x) = clicked_at.inner;
+        // The hovered values, bottom right, each in its line's color.
+        if let Some(x) = hover_x {
+            let mut job = egui::text::LayoutJob::default();
+            let font = egui::FontId::monospace(11.0);
+            let mut add = |text: String, color: Color32| {
+                job.append(&text, 0.0, egui::TextFormat::simple(font.clone(), color));
+            };
+            add(format!("{x:.2} s"), ui.visuals().weak_text_color());
+            for (name, color, points) in &shown {
+                add(format!("\n{name} {}", show(value_at(points, x))), *color);
+            }
+            let galley = ui.painter().layout_job(job);
+            let size = galley.size();
+            let at = egui::pos2(body.max.x - size.x - 4.0, body.max.y - size.y - 22.0);
+            let back = Rect::from_min_size(at, size).expand(3.0);
+            ui.painter().rect_filled(
+                back,
+                egui::CornerRadius::same(3),
+                ui.visuals().extreme_bg_color.gamma_multiply(0.85),
+            );
+            ui.painter().galley(at, galley, ui.visuals().text_color());
+        }
+        if let Some(x) = clicked_at {
             // A, then B; a third click starts again from A.
             if view.cursors.len() >= 2 {
                 view.cursors.clear();
@@ -943,5 +986,59 @@ mod tests {
         let texts = frame(vec![]);
         assert!(texts.iter().any(|t| t == "⏸"));
         assert!(!texts.iter().any(|t| t.contains("Δt")));
+    }
+
+    #[test]
+    fn hovering_reads_the_lines_where_the_pointer_is() {
+        use egui::{Event, Pos2, RawInput};
+        let w = graph();
+        let mut traces = crate::traces::Traces::default();
+        let key = series(&w)[0].key.clone();
+        traces.want(&key, 5.0);
+        // A flat line at 7.5, so the value read is the same anywhere on it.
+        for i in 0..=50 {
+            traces.record(&key, i * 100_000, 7.5);
+        }
+        let ctx = egui::Context::default();
+        let rect = Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 300.0));
+        let frame = |events: Vec<Event>| -> String {
+            let raw = RawInput {
+                screen_rect: Some(rect),
+                events,
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(raw, |ui| {
+                let live = Live {
+                    value: None,
+                    traces: &traces,
+                    now_us: 5_000_000,
+                };
+                Graph.show(ui, rect, &w, &live);
+            });
+            output.textures_delta.clear();
+            let mut texts = String::new();
+            fn walk(shape: &egui::Shape, texts: &mut String) {
+                match shape {
+                    egui::Shape::Text(t) => {
+                        texts.push_str(t.galley.text());
+                        texts.push('|');
+                    }
+                    egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, texts)),
+                    _ => {}
+                }
+            }
+            for s in &output.shapes {
+                walk(&s.shape, &mut texts);
+            }
+            texts
+        };
+        frame(vec![]);
+        assert!(!frame(vec![]).contains("speed 7.500"));
+        // Over the plot: the line's value there, not the pointer's height.
+        frame(vec![Event::PointerMoved(
+            rect.center() + egui::vec2(0.0, 40.0),
+        )]);
+        let texts = frame(vec![]);
+        assert!(texts.contains("speed 7.500"), "{texts}");
     }
 }
