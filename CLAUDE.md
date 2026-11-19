@@ -110,6 +110,10 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   It also keeps widgets for things that don't exist, on purpose, to test that handling: "Never
   published" and "Missing text" (topics never sent), "Missing field" (a field `OrbitPose` doesn't
   have), and the "Missing child" row in Module CAN. Keep them when editing the layout.
+  Its Writing tab has a Toggle Switch and a Toggle Button on `/DashTest/Toggle` (published once
+  by the test topics, never overwritten) and a Boolean Box on `/DashTest/ToggleEcho` (the value
+  robot code read back), plus "Not published (fails)", a toggle on a topic that's never sent,
+  for the failed-write flash, tone and message; keep it too.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.
 - `plugins/arm`: example plugin; its `plugin.toml` is a test fixture.
 

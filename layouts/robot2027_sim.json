@@ -488,6 +488,69 @@
       }
     },
     {
+      "name": "Writing",
+      "grid_layout": {
+        "layouts": [],
+        "containers": [
+          {
+            "title": "Toggle (switch)",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Toggle Switch",
+            "properties": {
+              "topic": "/DashTest/Toggle",
+              "period": 0.06,
+              "data_type": "boolean"
+            }
+          },
+          {
+            "title": "Toggle (button)",
+            "x": 256.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Toggle Button",
+            "properties": {
+              "topic": "/DashTest/Toggle",
+              "period": 0.06,
+              "data_type": "boolean"
+            }
+          },
+          {
+            "title": "Robot echo",
+            "x": 512.0,
+            "y": 0.0,
+            "width": 128.0,
+            "height": 128.0,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/DashTest/ToggleEcho",
+              "period": 0.06,
+              "data_type": "boolean",
+              "show_text": true,
+              "true_text": "Robot: on",
+              "false_text": "Robot: off"
+            }
+          },
+          {
+            "title": "Not published (fails)",
+            "x": 0.0,
+            "y": 128.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Toggle Switch",
+            "properties": {
+              "topic": "/DashTest/NeverPublishedToggle",
+              "period": 0.06,
+              "data_type": "boolean"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "Empty",
       "grid_layout": {
         "layouts": [],
