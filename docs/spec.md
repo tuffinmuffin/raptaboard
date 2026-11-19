@@ -358,6 +358,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      seen instead of fixed `min_value`/`max_value` (widening as new extremes arrive; optionally only
      growing from the set range, and a reset in the right-click menu). Not saved as the range;
      starts fresh each run.
+   - Graph history review: while paused, scroll back and forward through time (drag or the scroll
+     wheel along the time axis, maybe zoom), beyond the window shown, for looking back at what led
+     up to an event. A per-graph "history kept" setting (say 60 s, up to the `traces.rs` cap) sets
+     how far back is recorded; the cursors measure anywhere in it. Applies to X/Y and polar graphs
+     too.
    - X/Y and polar graphs (`egui_plot`): pair two values recorded at the same time (x with y, or
      angle with distance) and plot one against the other, for a joystick's position, an arm
      joint's path or a turret's aim. Modes: a trail that fades out over a set time (time decay),
