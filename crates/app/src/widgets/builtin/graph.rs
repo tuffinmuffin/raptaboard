@@ -65,6 +65,12 @@ const KEYS: [&str; 7] = [
     SHOW_HOVER,
 ];
 
+/// How often a graph wants new values when its `period` isn't set, in
+/// seconds: about 60 a second, the most the window redraws. (Elastic's
+/// widgets default to 0.06, 0.033 for its graphs.) Values are recorded as
+/// they arrive; NetworkTables batches them, so graphs aren't for signals
+/// much faster than this anyway.
+pub const DEFAULT_PERIOD_S: f64 = 0.016;
 /// Elastic's default: 5 seconds shown.
 pub const DEFAULT_TIME: f64 = 5.0;
 /// Elastic's default line color (Material cyan 500).
@@ -439,11 +445,18 @@ impl WidgetType for Graph {
         let now: Vec<Drawn> = series(widget)
             .into_iter()
             .map(|line| {
-                let points = live
+                let mut points: Vec<[f64; 2]> = live
                     .traces
                     .points(&line.key)
                     .map(|(t, v)| [(t - live.now_us) as f64 / 1e6, v])
                     .collect();
+                // The last value holds until a new one arrives, so a line
+                // reaches "now" even for a topic that rarely changes.
+                if let Some(&[x, y]) = points.last()
+                    && x < 0.0
+                {
+                    points.push([0.0, y]);
+                }
                 (line.name, line.color, points)
             })
             .collect();
@@ -650,6 +663,11 @@ impl WidgetType for Graph {
         }
     }
 
+    /// About 60 a second: graphs show how values move.
+    fn default_period(&self) -> f64 {
+        DEFAULT_PERIOD_S
+    }
+
     fn extra_topics(&self, props: &Map<String, Json>) -> Vec<String> {
         entries(props)
             .into_iter()
@@ -815,6 +833,20 @@ mod tests {
 
     fn names(w: &WidgetContainer) -> Vec<String> {
         series(w).into_iter().map(|s| s.name).collect()
+    }
+
+    #[test]
+    fn graphs_default_to_about_60_a_second() {
+        let mut w = graph();
+        w.properties.remove("period");
+        assert_eq!(props::period_s(&w), DEFAULT_PERIOD_S);
+        // Other widgets keep Elastic's 0.06.
+        w.widget_type = "Text Display".into();
+        assert_eq!(props::period_s(&w), 0.06);
+        // A saved period wins.
+        w.widget_type = "Graph".into();
+        w.properties.insert("period".into(), 0.1.into());
+        assert_eq!(props::period_s(&w), 0.1);
     }
 
     #[test]

@@ -201,3 +201,57 @@ fn widget_values_keep_coming_when_the_tree_closes() {
     healthy.set(false);
     wait_value(&nt, false);
 }
+
+#[test]
+fn traced_topics_get_every_value_not_just_the_newest() {
+    let server_rt = tokio::runtime::Runtime::new().unwrap();
+    let server = server_rt
+        .block_on(Server::start(ServerConfig {
+            listen_address: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            port: 0,
+            persist_file: None,
+        }))
+        .unwrap();
+    let port = server.local_addr().port();
+    let speed = server.publish::<f64>("/Drive/speed");
+    let other = server.publish::<f64>("/Drive/other");
+    speed.set(-1.0);
+    other.set(0.0);
+
+    let mut nt = NtConnection::new().unwrap();
+    nt.set_target(Some("127.0.0.1"), port);
+    wait_for(
+        &nt,
+        |s| matches!(s, ConnectionStatus::Connected { topics, .. } if *topics >= 2),
+    );
+    nt.trace(vec!["/Drive/speed".into()], 0.01);
+    // Wait for the first value, so the subscription is in place.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while nt.take_traced().is_empty() {
+        assert!(Instant::now() < deadline, "no traced value arrived");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    // 50 values 2 ms apart, much faster than the 10 ms period: all of them
+    // should come through, not only the newest per period.
+    for i in 0..50 {
+        speed.set(f64::from(i));
+        other.set(f64::from(i));
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    let mut seen = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while seen.last() != Some(&49.0) {
+        assert!(Instant::now() < deadline, "got {seen:?}");
+        for (name, value) in nt.take_traced() {
+            // Only the traced topic.
+            assert_eq!(&*name, "/Drive/speed");
+            if let nt4::Value::Double(d) = value.value {
+                seen.push(d);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let expected: Vec<f64> = (0..50).map(f64::from).collect();
+    assert_eq!(seen, expected);
+}

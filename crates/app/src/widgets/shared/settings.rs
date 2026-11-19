@@ -131,6 +131,18 @@ pub fn show(
                 .response
                 .on_hover_text("How the value is shown. Settings for other types are kept.");
             if picked != current {
+                // A period left at the old type's default moves to the new
+                // type's (graphs want values faster); a chosen one stays.
+                let old_default = ty.map_or(DEFAULT_PERIOD_S, |t| t.default_period());
+                if widget.period() == Some(old_default)
+                    && let Some(new) = find(&picked)
+                {
+                    set_property(
+                        &mut widget.properties,
+                        PERIOD,
+                        Some(new.default_period().into()),
+                    );
+                }
                 widget.widget_type = picked;
             }
             ui.end_row();

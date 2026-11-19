@@ -117,6 +117,12 @@ pub trait WidgetType: Sync {
         self.draw(ui.painter(), ui.visuals(), rect, widget, live.value);
     }
 
+    /// How often this widget wants new values when its `period` isn't set,
+    /// in seconds: Elastic's 0.06 unless a widget needs more.
+    fn default_period(&self) -> f64 {
+        props::DEFAULT_PERIOD_S
+    }
+
     /// Topics this widget needs values for besides its own `topic`, such as
     /// a graph's other lines. None by default.
     fn extra_topics(&self, _props: &Map<String, Json>) -> Vec<String> {

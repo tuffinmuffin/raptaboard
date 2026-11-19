@@ -5,11 +5,15 @@
 //! the UI plain, non-blocking calls: point it at a host with
 //! [`NtConnection::set_target`] each frame and read [`NtConnection::status`].
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::Duration;
 
 use nt4::proto::structs::StructDatabase;
-use nt4::{Client, ClientConfig, SubscriptionHandle, SubscriptionOptions, Topic, Value};
+use nt4::{
+    Client, ClientConfig, Event, Events, SubscriptionHandle, SubscriptionOptions, Topic,
+    TopicValue, Value,
+};
 
 /// Client name sent to the server, so the server lists us as `/nt/raptaboard`.
 pub const CLIENT_NAME: &str = "raptaboard";
@@ -39,14 +43,26 @@ pub enum ConnectionStatus {
 struct Watch {
     names: Vec<String>,
     period_s: Option<f64>,
+    /// Every change, not only the newest per period.
+    all: bool,
     handle: Option<SubscriptionHandle>,
 }
 
 impl Watch {
-    fn set(&mut self, client: &Client, mut names: Vec<String>, period_s: Option<f64>) {
+    fn set(&mut self, client: &Client, names: Vec<String>, period_s: Option<f64>) {
+        self.set_with(client, names, period_s, false);
+    }
+
+    fn set_with(
+        &mut self,
+        client: &Client,
+        mut names: Vec<String>,
+        period_s: Option<f64>,
+        all: bool,
+    ) {
         names.sort();
         names.dedup();
-        if self.names == names && self.period_s == period_s {
+        if self.names == names && self.period_s == period_s && self.all == all {
             return;
         }
         // Drop the old subscription first; the new one replaces it.
@@ -56,12 +72,14 @@ impl Watch {
                 names.clone(),
                 SubscriptionOptions {
                     periodic: period_s,
+                    all,
                     ..Default::default()
                 },
             ));
         }
         self.names = names;
         self.period_s = period_s;
+        self.all = all;
     }
 }
 
@@ -82,6 +100,12 @@ struct Running {
     // Struct schemas from this server, and the bytes each was added from.
     structs: StructDatabase,
     schema_bytes: HashMap<String, Vec<u8>>,
+    // Every value the client receives, as it arrives, for recording graphs.
+    events: Events,
+    // Every change of the topics graphs record, not only the newest.
+    traced_values: Watch,
+    // The topics whose values `take_traced` returns.
+    traced: HashSet<String>,
 }
 
 /// The dashboard's NT connection: a tokio runtime plus at most one client.
@@ -155,6 +179,9 @@ impl NtConnection {
                     ..Default::default()
                 },
             );
+            // Every value as it arrives; taken from before any subscription
+            // can deliver one.
+            let events = client.events();
             self.running = Some(Running {
                 host: host.to_owned(),
                 port,
@@ -165,6 +192,9 @@ impl NtConnection {
                 _schemas: schemas,
                 structs: StructDatabase::new(),
                 schema_bytes: HashMap::new(),
+                events,
+                traced_values: Watch::default(),
+                traced: HashSet::new(),
             });
         }
     }
@@ -228,6 +258,35 @@ impl NtConnection {
                 Some(f64::from_bits(period)),
             );
         }
+    }
+
+    /// Record every value of these topics (full names), at up to one every
+    /// `period_s` seconds, for graphs: each change is sent, not only the
+    /// newest, and [`take_traced`](Self::take_traced) returns them all.
+    /// Cheap to call every frame. An empty list stops it.
+    pub fn trace(&mut self, names: Vec<String>, period_s: f64) {
+        let Some(r) = &mut self.running else { return };
+        r.traced = names.iter().cloned().collect();
+        r.traced_values
+            .set_with(&r.client, names, Some(period_s), true);
+    }
+
+    /// Every value of the [`trace`](Self::trace)d topics received since the
+    /// last call, oldest first, with its topic name. Call once a frame:
+    /// other values are thrown away here, so nothing piles up.
+    pub fn take_traced(&mut self) -> Vec<(Arc<str>, TopicValue)> {
+        let Some(r) = &mut self.running else {
+            return Vec::new();
+        };
+        let mut values = Vec::new();
+        while let Some(event) = r.events.try_recv() {
+            if let Event::Value { name, value, .. } = event
+                && r.traced.contains(&*name)
+            {
+                values.push((name, value));
+            }
+        }
+        values
     }
 
     /// Add any struct schemas in `topics` that are new or changed, so struct

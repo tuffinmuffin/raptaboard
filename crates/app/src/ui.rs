@@ -21,7 +21,7 @@ use crate::sampling::Sampler;
 use crate::settings::{self, Settings};
 use crate::struct_view::{self, FieldInfo};
 use crate::tabs::{self, TabAction};
-use crate::traces::Traces;
+use crate::traces::{SeriesKey, Traces};
 use crate::tree::{AddTo, DraggedTopics, Folder, TopicEntry, TreeSelection};
 use crate::widgets::builtin::graph;
 use crate::widgets::shared::settings as widget_settings;
@@ -53,6 +53,11 @@ const RESIZE_MARKS: [f32; 2] = [5.0, 9.0];
 const RESIZE_MARK_WIDTH: f32 = 1.5;
 /// How far the resize marks sit in from the card's corner, in points.
 const RESIZE_MARK_INSET: f32 = 4.0;
+/// The shortest time between redraws: about 60 a second.
+const MIN_REDRAW: Duration = Duration::from_millis(16);
+/// How often graphs' topics are sent when no graph says (seconds): about
+/// 60 a second, as a graph's default.
+const DEFAULT_TRACE_PERIOD_S: f64 = graph::DEFAULT_PERIOD_S;
 /// How dark the dim behind a settings dialog is, from 0 (none) to 255;
 /// light, so the widget being changed can be seen.
 const SETTINGS_BACKDROP_ALPHA: u8 = 40;
@@ -736,6 +741,8 @@ impl DashboardApp {
     /// Record the newest values of the series the open tab's graphs show,
     /// and forget what no graph shows any more.
     fn record_traces(&mut self, topics: &[Topic]) {
+        // Every value received since last frame, for the traced topics.
+        let arrived = self.nt.take_traced();
         let Some(tab) = self.layout.tabs.get(self.current_tab) else {
             return;
         };
@@ -746,37 +753,60 @@ impl DashboardApp {
             .chain(grid.layouts.iter().flat_map(|l| &l.children))
             .filter(|w| w.widget_type == "Graph");
         let mut wanted = Vec::new();
+        let mut fastest = f64::INFINITY;
         for w in graphs {
             let seconds = graph::time_displayed(&w.properties);
+            fastest = fastest.min(props::period_s(w));
             wanted.extend(graph::series(w).into_iter().map(|s| (s.key, seconds)));
         }
+        // Ask for every change of the graphs' topics, not only the newest.
+        let mut names: Vec<String> = wanted.iter().map(|(k, _)| k.topic.clone()).collect();
+        names.sort();
+        names.dedup();
+        let period = if fastest.is_finite() {
+            fastest
+        } else {
+            DEFAULT_TRACE_PERIOD_S
+        };
+        self.nt.trace(names, period);
+
         let by_name: HashMap<&str, &Topic> = topics.iter().map(|t| (&*t.name, t)).collect();
         let structs = self.nt.structs();
-        for (key, seconds) in &wanted {
-            self.traces.want(key, *seconds);
-            let Some(topic) = by_name.get(key.topic.as_str()) else {
-                continue;
-            };
-            let Some(sample) = &topic.value else { continue };
-            let value = match (&key.field, &sample.value) {
+        // A sample as a number to plot: a struct field decoded, booleans as
+        // 0 and 1.
+        let number_of = |key: &SeriesKey, value: &Value| -> Option<f64> {
+            let value = match (&key.field, value) {
                 (None, v) => Some(v.clone()),
                 (Some(path), Value::Raw(bytes)) => {
-                    let ty = topic.ty.to_string();
-                    struct_view::struct_type(&ty)
-                        .zip(structs)
-                        .and_then(|((schema, _), db)| {
-                            struct_view::field_value(db, schema, bytes, path)
-                        })
+                    let ty = by_name.get(key.topic.as_str())?.ty.to_string();
+                    let ((schema, _), db) = struct_view::struct_type(&ty).zip(structs)?;
+                    struct_view::field_value(db, schema, bytes, path)
                 }
                 (Some(_), _) => None,
-            };
-            let number = match value {
-                Some(Value::Boolean(b)) => Some(f64::from(u8::from(b))),
-                Some(v) => format::number_of(&v),
-                None => None,
-            };
-            if let Some(n) = number {
+            }?;
+            match value {
+                Value::Boolean(b) => Some(f64::from(u8::from(b))),
+                v => format::number_of(&v),
+            }
+        };
+        for (key, seconds) in &wanted {
+            let new = self.traces.want(key, *seconds);
+            // A new line starts from the value now, so a topic that rarely
+            // changes still shows.
+            if new
+                && let Some(sample) = by_name
+                    .get(key.topic.as_str())
+                    .and_then(|t| t.value.as_ref())
+                && let Some(n) = number_of(key, &sample.value)
+            {
                 self.traces.record(key, sample.local_time_us, n);
+            }
+        }
+        for (name, sample) in &arrived {
+            for (key, _) in wanted.iter().filter(|(k, _)| k.topic == **name) {
+                if let Some(n) = number_of(key, &sample.value) {
+                    self.traces.record(key, sample.local_time_us, n);
+                }
             }
         }
         let now_us = self.nt.client().map_or(0, |c| c.now_us());
@@ -2124,8 +2154,10 @@ impl eframe::App for DashboardApp {
         // change. Redraw when the next widget is due for a new value, and at
         // least a few times a second so connection changes and first values
         // still show.
+        // At most about 60 a second: graphs' values are recorded as they
+        // arrive, so drawing them more often adds nothing.
         let idle = Duration::from_millis(250);
-        let wait = next_value.map_or(idle, |due| due.min(idle));
+        let wait = next_value.map_or(idle, |due| due.min(idle)).max(MIN_REDRAW);
         ui.ctx().request_repaint_after(wait);
     }
 }

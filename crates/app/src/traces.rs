@@ -49,14 +49,17 @@ struct Trace {
 
 impl Traces {
     /// Keep recording `key` for at least `seconds` back. Call each frame for
-    /// every series a graph on the open tab shows.
-    pub fn want(&mut self, key: &SeriesKey, seconds: f64) {
+    /// every series a graph on the open tab shows. Returns `true` if the
+    /// series is new (nothing recorded yet), so the caller can start it off
+    /// with the value now.
+    pub fn want(&mut self, key: &SeriesKey, seconds: f64) -> bool {
         let trace = self.series.entry(key.clone()).or_default();
         if !trace.used {
             trace.keep_s = 0.0;
         }
         trace.keep_s = trace.keep_s.max(seconds);
         trace.used = true;
+        trace.points.is_empty()
     }
 
     /// Record `value` for `key`, received at `time_us` (local clock,

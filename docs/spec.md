@@ -396,7 +396,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    `topic`/`color` as Elastic saves it. A pause button freezes the picture while values keep
    recording; while paused, two clicks place measuring cursors A and B (scope style; with only A, clicking A takes it away; with both, any click clears them) and a readout
    gives Δt and each line's values and Δ there. Values are recorded in
-   `traces.rs` for the series the open tab's graphs show, each for the longest window wanted. A
+   `traces.rs` for the series the open tab's graphs show, each for the longest window wanted:
+   every value received (an `all` subscription, read from the client's event stream), not one
+   per frame. Graphs default to a 0.016 s period (about 60 a second; other widgets keep 0.06), and
+   the window redraws at most about 60 times a second; graphs aren't meant for faster signals. A
    plot only senses hover, so it never takes the drags that move the widget. Next: then the writing widgets (toggles, slider, editable Text
    Display), choosers, Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
