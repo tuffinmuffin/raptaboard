@@ -199,6 +199,9 @@ pub struct DashboardApp {
     /// The NT tree rows picked, for adding several at once and for
     /// highlighting their widgets.
     tree_sel: TreeSelection,
+    /// Whether the status line shows why a clicked widget couldn't be found
+    /// in the tree, so the next click that finds one clears it.
+    find_status: bool,
     /// The tab being renamed, the name typed so far, and whether its text
     /// box has been given the keyboard yet.
     renaming: Option<(usize, String, bool)>,
@@ -246,6 +249,7 @@ impl DashboardApp {
             child_drag: None,
             menu_at: (0.0, 0.0),
             tree_sel: TreeSelection::default(),
+            find_status: false,
             renaming: None,
             confirm_close: None,
             selected: None,
@@ -612,6 +616,7 @@ impl DashboardApp {
         if let Some(row) = &self.tree_sel.not_found {
             self.status =
                 format!("No row for {row} in the tree: not published, or hidden by the filter");
+            self.find_status = true;
         }
         drawn
     }
@@ -1125,8 +1130,16 @@ impl DashboardApp {
             Some(why) => {
                 self.tree_sel.clear();
                 self.status = why;
+                self.find_status = true;
             }
-            None => self.tree_sel.reveal(topic, field.map(|m| m.path)),
+            None => {
+                // A finding message from an earlier click is out of date now.
+                if self.find_status {
+                    self.status.clear();
+                    self.find_status = false;
+                }
+                self.tree_sel.reveal(topic, field.map(|m| m.path));
+            }
         }
     }
 
