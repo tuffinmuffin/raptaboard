@@ -1,0 +1,272 @@
+//! The settings bar (connection, lock, file) and the tab bar.
+
+use eframe::egui::{self, Color32, Sense};
+
+use crate::connection::{AddressMode, resolve};
+use crate::edit::EditAction;
+use crate::layout_file::{self, FileAction};
+use crate::nt::ConnectionStatus;
+use crate::tabs::{self, TabAction};
+
+use super::DashboardApp;
+
+/// Show the connection state as a colored dot and a line of text.
+/// `no_team` says the address is by team number but none is set.
+pub(super) fn status_label(ui: &mut egui::Ui, status: &ConnectionStatus, no_team: bool) {
+    let (color, text) = match status {
+        ConnectionStatus::NoTarget if no_team => (Color32::GRAY, "Set a team number".to_owned()),
+        ConnectionStatus::NoTarget => (Color32::GRAY, "Waiting for Driver Station".to_owned()),
+        ConnectionStatus::Connecting { host, port } => (
+            Color32::from_rgb(230, 160, 40),
+            format!("Connecting to {host}:{port}..."),
+        ),
+        ConnectionStatus::Connected { host, port, topics } => (
+            Color32::from_rgb(60, 180, 90),
+            format!("Connected to {host}:{port}, {topics} topics"),
+        ),
+    };
+    ui.label(egui::RichText::new("●").color(color));
+    ui.label(text);
+}
+
+impl DashboardApp {
+    pub(super) fn settings_bar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.strong("raptaboard");
+            let (label, hint) = if self.show_tree {
+                ("◀ Tree", "Hide the NetworkTables tree")
+            } else {
+                ("▶ Tree", "Show the NetworkTables tree")
+            };
+            if ui.button(label).on_hover_text(hint).clicked() {
+                self.show_tree = !self.show_tree;
+            }
+            let (label, hint) = if self.locked {
+                (
+                    "🔒 Locked",
+                    "Unlock to move, resize and edit widgets and tabs",
+                )
+            } else {
+                (
+                    "🔓 Unlocked",
+                    "Lock the layout so nothing moves by accident",
+                )
+            };
+            if ui.button(label).on_hover_text(hint).clicked() {
+                self.locked = !self.locked;
+                self.drag = None;
+                self.child_drag = None;
+                self.renaming = None;
+                self.selected = None;
+            }
+            ui.separator();
+            ui.label("Team");
+            // 0 is "no team yet", shown blank.
+            ui.add(
+                egui::DragValue::new(&mut self.team)
+                    .range(0..=99999)
+                    .custom_formatter(|n, _| {
+                        if n == 0.0 {
+                            String::new()
+                        } else {
+                            n.to_string()
+                        }
+                    })
+                    .custom_parser(|text| {
+                        let text = text.trim();
+                        if text.is_empty() {
+                            Some(0.0)
+                        } else {
+                            text.parse().ok()
+                        }
+                    })
+                    .min_decimals(0)
+                    .max_decimals(0),
+            )
+            .on_hover_text("Your FRC team number, for finding the robot at 10.TE.AM.2");
+            egui::ComboBox::from_id_salt("address_mode")
+                .selected_text(self.mode.label())
+                .show_ui(ui, |ui| {
+                    for mode in AddressMode::ALL {
+                        ui.selectable_value(&mut self.mode, mode, mode.label());
+                    }
+                });
+            if self.mode == AddressMode::Custom {
+                ui.text_edit_singleline(&mut self.custom_address);
+            }
+            let host = resolve(self.mode, self.team, &self.custom_address);
+            self.nt.set_target(host.as_deref(), self.port);
+            ui.separator();
+            let no_team = self.mode == AddressMode::TeamNumber && self.team == 0;
+            status_label(ui, &self.nt.status(), no_team);
+        });
+        ui.horizontal(|ui| {
+            let ctx = ui.ctx().clone();
+            for (label, action) in [
+                ("Open…", FileAction::Open),
+                ("Save", FileAction::Save),
+                ("Save as…", FileAction::SaveAs),
+            ] {
+                if ui
+                    .button(label)
+                    .on_hover_text(ctx.format_shortcut(&action.shortcut()))
+                    .clicked()
+                {
+                    self.run_file_action(action);
+                }
+            }
+            ui.separator();
+            for (label, action, can) in [
+                ("Undo", EditAction::Undo, self.history.can_undo()),
+                ("Redo", EditAction::Redo, self.history.can_redo()),
+            ] {
+                let button = ui.add_enabled(!self.locked && can, egui::Button::new(label));
+                if button
+                    .on_hover_text(ctx.format_shortcut(&action.shortcut()))
+                    .on_disabled_hover_text(if self.locked {
+                        "Unlock to change the layout"
+                    } else {
+                        "Nothing to undo or redo"
+                    })
+                    .clicked()
+                {
+                    self.run_edit_action(&ctx, action);
+                }
+            }
+            ui.separator();
+            let name = layout_file::display_name(self.layout_path.as_deref());
+            let name = ui.strong(name);
+            if let Some(path) = &self.layout_path {
+                name.on_hover_text(path.display().to_string());
+            }
+            if self.unsaved() {
+                ui.label(egui::RichText::new("●").color(Color32::from_rgb(230, 160, 40)))
+                    .on_hover_text("Unsaved changes");
+            }
+            ui.weak(&self.status);
+            if !self.fixes.is_empty() {
+                let n = self.fixes.len();
+                let list = self.fixes.join("\n");
+                let badge = ui
+                    .add(
+                        egui::Label::new(
+                            egui::RichText::new(format!(
+                                "⚠ fixed {n} problem{}",
+                                if n == 1 { "" } else { "s" }
+                            ))
+                            .color(Color32::from_rgb(230, 160, 40)),
+                        )
+                        .sense(Sense::click()),
+                    )
+                    .on_hover_text(format!("{list}\n\nRight-click to copy this list"));
+                // Copy the list so it can be pasted into a bug report or chat.
+                badge.context_menu(|ui| {
+                    if ui.button("Copy list").clicked() {
+                        ui.ctx().copy_text(list.clone());
+                        self.status = format!(
+                            "Copied {n} fix{} to the clipboard",
+                            if n == 1 { "" } else { "es" }
+                        );
+                    }
+                });
+            }
+        });
+    }
+
+    /// The row of tabs. Click to switch; when unlocked, double-click to
+    /// rename, right-click for more, and "+" adds a tab.
+    pub(super) fn tab_bar(&mut self, ui: &mut egui::Ui) -> Option<TabAction> {
+        let mut action = None;
+        let names: Vec<String> = self.layout.tabs.iter().map(|t| t.name.clone()).collect();
+        let count = names.len();
+        // Tabs with widgets for the topics picked in the tree get a mark.
+        let picked = self.tree_sel.selected();
+        let has_picked: Vec<bool> = self
+            .layout
+            .tabs
+            .iter()
+            .map(|t| {
+                let grid = &t.grid_layout;
+                grid.containers
+                    .iter()
+                    .chain(grid.layouts.iter().flat_map(|l| &l.children))
+                    .any(|w| picked.iter().any(|p| p.is_shown_by(w)))
+            })
+            .collect();
+        ui.horizontal(|ui| {
+            for (i, name) in names.iter().enumerate() {
+                if let Some((renaming, text, focused)) = &mut self.renaming
+                    && *renaming == i
+                {
+                    let edit = ui.add(egui::TextEdit::singleline(text).desired_width(120.0));
+                    // Focus the box once, when renaming starts. Asking every
+                    // frame would keep it from ever losing focus, so Enter
+                    // and clicking away would do nothing.
+                    if !*focused {
+                        edit.request_focus();
+                        *focused = true;
+                    }
+                    if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                        self.renaming = None;
+                    } else if edit.lost_focus() {
+                        action = Some(TabAction::Rename(i, text.clone()));
+                        self.renaming = None;
+                    }
+                    continue;
+                }
+                let marked = has_picked[i] && self.current_tab != i;
+                let label = if marked {
+                    egui::RichText::new(format!("{name} ●"))
+                } else {
+                    egui::RichText::new(name)
+                };
+                let mut hint = tabs::tab_hint(ui.ctx(), i, self.locked);
+                if marked {
+                    hint = format!("{hint}\nHas widgets for the topics picked in the tree");
+                }
+                let tab = ui
+                    .selectable_label(self.current_tab == i, label)
+                    .on_hover_text(hint);
+                if tab.clicked() {
+                    action = Some(TabAction::Select(i));
+                }
+                if self.locked {
+                    continue;
+                }
+                if tab.double_clicked() {
+                    self.renaming = Some((i, name.clone(), false));
+                }
+                tab.context_menu(|ui| {
+                    if ui.button("Rename").clicked() {
+                        self.renaming = Some((i, name.clone(), false));
+                    }
+                    if ui
+                        .add_enabled(i > 0, egui::Button::new("Move left"))
+                        .clicked()
+                    {
+                        // Moves act on the open tab, so open this one first.
+                        self.current_tab = i;
+                        action = Some(TabAction::MoveLeft);
+                    }
+                    if ui
+                        .add_enabled(i + 1 < count, egui::Button::new("Move right"))
+                        .clicked()
+                    {
+                        self.current_tab = i;
+                        action = Some(TabAction::MoveRight);
+                    }
+                    if ui
+                        .add_enabled(count > 1, egui::Button::new("Close"))
+                        .clicked()
+                    {
+                        action = Some(TabAction::Close(i));
+                    }
+                });
+            }
+            if !self.locked && ui.small_button("+").on_hover_text("New tab").clicked() {
+                action = Some(TabAction::New);
+            }
+        });
+        action
+    }
+}

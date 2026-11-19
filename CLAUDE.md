@@ -52,12 +52,16 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   valid layouts unchanged (`tests/sanitize.rs`).
 - `crates/plugin-host`: manifest parsing and matching; `path` has topic path helpers
   (`.type` tables). wasmtime hosting comes in milestone 4.
-- `crates/app`: the eframe app. `ui.rs` holds the window, `connection.rs` the robot address modes,
+- `crates/app`: the eframe app. `ui/` holds the window (`DashboardApp` in `ui/mod.rs` with file open/save and the edit and tab
+  actions; `panels.rs` the settings and tab bars; `tree_panel.rs` the tree panel and adding topics;
+  `grid_view.rs` the grid; `drag.rs` drag and drop; `dialogs.rs` the settings dialogs; `live.rs`
+  the topics the tab needs and graph recording; `style.rs` the drawing constants; each file adds
+  its own `impl DashboardApp` block), `connection.rs` the robot address modes,
   `cli.rs` the startup flags (`clap` derive, `cli::Args`: `--team`, `--address`, `--port`,
   `--hide-tree`; this run only),
   `settings.rs` settings kept between runs (command line, then `./.raptaboard/settings.toml`, then
   `~/.raptaboard/settings.toml`, made on the first run, then defaults; changes saved to the local file
-  if there is one, else the home file, by `settings::Tracker`; `ui.rs` only says what the current
+  if there is one, else the home file, by `settings::Tracker`; `ui/` only says what the current
   values are),
   `nt.rs` the live connection (`NtConnection`: a 1-thread tokio runtime that owns the `nt4::Client`
   and restarts it when the address changes; the UI only makes non-blocking calls), `tree.rs` the (row picking in `TreeSelection`, drag payload `DraggedTopics`)
@@ -70,16 +74,16 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   and its settings dialog), helpers in `widgets/shared/`:
   `card.rs`, `format.rs` (number and
   enum text), `props.rs` (period, font size, colors) and `settings.rs` (the settings dialog's shared
-  rows; the dialog window is in `ui.rs`); setting keys are constants in the file that owns them,
+  rows; the dialog window is in `ui/dialogs.rs`); setting keys are constants in the file that owns them,
   listed in `docs/spec.md` under "raptaboard widget settings" (keep that table in step); adding a
   widget is a new file in `builtin/` (listed in `builtin/mod.rs`) plus one line in `TYPES`, `layout_file.rs` opening and saving layout files (atomic
   writes, Ctrl+O/S/Shift+S), `grid.rs` the snap-grid rules
   (snapping, overlap) and `tabs.rs` tab actions and their shortcuts, `edit.rs` undo/redo (`History`, which
-  notices any layout change once a frame) and the widget editing shortcuts; the drag handling and lock live
-  in `ui.rs`. Widget values come from a
+  notices any layout change once a frame) and the widget editing shortcuts; the drag handling is in
+  `ui/drag.rs` and `ui/grid_view.rs`. Widget values come from a
   second set of subscriptions (`NtConnection::watch_widget_values`), one per `period` on the open
   tab, and `traces.rs` (`Traces`) records the values over time that graphs show (every value, from the NT client's event stream, fed by
-  `ui.rs::record_traces`; a growable ring buffer per series), `sampling.rs` (`Sampler`) has each widget take a new value only once per its period, so
+  `ui/live.rs` `record_traces`; a growable ring buffer per series), `sampling.rs` (`Sampler`) has each widget take a new value only once per its period, so
   fast redraws (mouse moves) or the tree watching the same topic don't make it jump ahead.
   `tests/cpu_load.rs` is the ignored 30-widgets-at-50-Hz CPU test (runs with the tree shown and
   hidden; prints % of one core and of the machine); its `other_dashboard` test runs the same load against Elastic for comparison
