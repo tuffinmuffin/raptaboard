@@ -1098,6 +1098,38 @@ impl DashboardApp {
         };
     }
 
+    /// Open the tree to `widget`'s topic (or struct field) and pick it, if
+    /// the server has it; otherwise leave the tree alone, unpick, and say
+    /// why in the status line.
+    fn find_in_tree(&mut self, widget: &WidgetContainer) {
+        let Some(topic) = widget.topic() else { return };
+        let field = widget.struct_meta();
+        let published = self.nt.client().and_then(|c| c.topic(topic)).is_some();
+        let missing = if !published {
+            Some(format!("{topic} isn't published"))
+        } else {
+            field.as_ref().and_then(|meta| {
+                let known = self
+                    .nt
+                    .structs()
+                    .and_then(|db| struct_view::field_info(db, &meta.schema_name, &meta.path));
+                known.is_none().then(|| {
+                    format!(
+                        "{topic} has no field {}",
+                        struct_view::path_text(&meta.path)
+                    )
+                })
+            })
+        };
+        match missing {
+            Some(why) => {
+                self.tree_sel.clear();
+                self.status = why;
+            }
+            None => self.tree_sel.reveal(topic, field.map(|m| m.path)),
+        }
+    }
+
     /// Leave a child's settings and go back to its list's.
     fn close_child(&mut self) {
         if let Some(Editing::List { child, .. }) = &mut self.editing {
@@ -1206,6 +1238,7 @@ impl DashboardApp {
         let mut menu_action = None;
         let mut edit_child = None;
         let mut wrap = None;
+        let mut find_in_tree = None;
         if !self.locked {
             for &(item, r) in &placed {
                 let rect = to_screen(&r);
@@ -1236,9 +1269,8 @@ impl DashboardApp {
                         }
                         if child.clicked()
                             && let Some(w) = list.children.get(row.index)
-                            && let Some(topic) = w.topic()
                         {
-                            self.tree_sel.reveal(topic, w.struct_meta().map(|m| m.path));
+                            find_in_tree = Some(w.clone());
                         }
                         if child.double_clicked() {
                             edit_child = Some((index, row.index));
@@ -1277,9 +1309,8 @@ impl DashboardApp {
                 if body.clicked()
                     && let Item::Widget(i) = item
                     && let Some(w) = tab.grid_layout.containers.get(i)
-                    && let Some(topic) = w.topic()
                 {
-                    self.tree_sel.reveal(topic, w.struct_meta().map(|m| m.path));
+                    find_in_tree = Some(w.clone());
                 }
                 if body.double_clicked() {
                     menu_action = Some((item, EditAction::Edit));
@@ -1620,6 +1651,9 @@ impl DashboardApp {
                 Some(list) => self.selected = Some(Item::List(list)),
                 None => self.status = "No free space for a new list".to_owned(),
             }
+        }
+        if let Some(widget) = find_in_tree {
+            self.find_in_tree(&widget);
         }
         if let Some((item, action)) = menu_action {
             self.selected = Some(item);
