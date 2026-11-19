@@ -29,7 +29,8 @@ pub const INVERTED: &str = "inverted";
 /// `horizontal` or `vertical` (Elastic).
 pub const ORIENTATION: &str = "orientation";
 
-const KEYS: [&str; 14] = [
+const KEYS: [&str; 15] = [
+    scale::THICKNESS,
     scale::SHOW_VALUE,
     MIN_VALUE,
     MAX_VALUE,
@@ -46,7 +47,7 @@ const KEYS: [&str; 14] = [
     scale::SHOW_LABELS,
 ];
 
-/// Thickness of the bar, in points.
+/// Thickness of the bar when `thickness` isn't set, in points.
 const BAR_THICKNESS: f32 = 8.0;
 /// Size of the labels along the bar, in points.
 const LABEL_SIZE: f32 = 11.0;
@@ -145,6 +146,8 @@ fn draw_bar(
     let steps = (labels(min, max, divisions).len() - 1) as f32;
 
     let show_value = scale::show_value(p);
+    let thick = scale::thickness(p, BAR_THICKNESS);
+    let round = CornerRadius::same((thick / 2.0).min(4.0) as u8);
     if vertical {
         // The value on the left, the bar beside it, labels to its right.
         // Without the value, the bar sits in the middle.
@@ -159,20 +162,20 @@ fn draw_bar(
             );
             bar_area
         } else {
-            rect.with_min_x(rect.center().x - BAR_THICKNESS / 2.0 - PAD)
+            rect.with_min_x(rect.center().x - thick / 2.0 - PAD)
         };
         let track = Rect::from_min_size(
             egui::pos2(bar_area.min.x + PAD, bar_area.min.y + PAD),
-            egui::vec2(BAR_THICKNESS, (bar_area.height() - 2.0 * PAD).max(0.0)),
+            egui::vec2(thick, (bar_area.height() - 2.0 * PAD).max(0.0)),
         );
-        painter.rect_filled(track, CornerRadius::same(4), track_color);
+        painter.rect_filled(track, round, track_color);
         let filled = track.height() * amount;
         let fill = if inverted {
             track.with_max_y(track.min.y + filled)
         } else {
             track.with_min_y(track.max.y - filled)
         };
-        painter.rect_filled(fill, CornerRadius::same(4), fill_color);
+        painter.rect_filled(fill, round, fill_color);
         // Past an end: a dot just beyond it.
         if let Some(end) = past {
             let low_end_at_bottom = !inverted;
@@ -223,16 +226,16 @@ fn draw_bar(
         };
         let track = Rect::from_min_size(
             egui::pos2(rect.min.x + PAD * 2.0, top),
-            egui::vec2((rect.width() - PAD * 4.0).max(0.0), BAR_THICKNESS),
+            egui::vec2((rect.width() - PAD * 4.0).max(0.0), thick),
         );
-        painter.rect_filled(track, CornerRadius::same(4), track_color);
+        painter.rect_filled(track, round, track_color);
         let filled = track.width() * amount;
         let fill = if inverted {
             track.with_min_x(track.max.x - filled)
         } else {
             track.with_max_x(track.min.x + filled)
         };
-        painter.rect_filled(fill, CornerRadius::same(4), fill_color);
+        painter.rect_filled(fill, round, fill_color);
         if let Some(end) = past {
             let at_left = (end == scale::Past::Min) != inverted;
             let x = if at_left {
@@ -280,7 +283,7 @@ fn settings_rows(style: &Style, ui: &mut egui::Ui, p: &mut Map<String, Json>) {
         "horizontal",
         &["horizontal", "vertical"],
     );
-    scale::rows(ui, p, style.unit, style.color);
+    scale::rows(ui, p, style.unit, style.color, BAR_THICKNESS);
 }
 
 /// The NT types bars show.

@@ -38,7 +38,8 @@ pub const SHOW_POINTER: &str = "show_pointer";
 /// Draw tick marks at the labels (Elastic).
 pub const SHOW_TICKS: &str = "show_ticks";
 
-const KEYS: [&str; 17] = [
+const KEYS: [&str; 18] = [
+    scale::THICKNESS,
     scale::SHOW_VALUE,
     MIN_VALUE,
     MAX_VALUE,
@@ -68,7 +69,7 @@ const DEFAULT_START: f64 = -140.0;
 const DEFAULT_END: f64 = 140.0;
 const DEFAULT_LABELS: i64 = 8;
 
-/// Thickness of the dial's track, in points.
+/// Thickness of the dial's track when `thickness` isn't set, in points.
 const TRACK_WIDTH: f32 = 6.0;
 /// Room left outside the track for labels, in points.
 const LABEL_ROOM: f32 = 14.0;
@@ -187,7 +188,12 @@ impl WidgetType for RadialGauge {
         }
         let shown = v.clamp(min.min(max), max.max(min));
         let center = rect.center();
-        let radius = (rect.width().min(rect.height()) / 2.0 - LABEL_ROOM).max(4.0);
+        let track = scale::thickness(p, TRACK_WIDTH);
+        // The track's outer edge stays inside the room left for labels.
+        let radius = (rect.width().min(rect.height()) / 2.0
+            - LABEL_ROOM
+            - (track - TRACK_WIDTH).max(0.0) / 2.0)
+            .max(4.0);
         let weak = visuals.weak_text_color();
         let accent = scale::fill_color(p, v, min, max, DEFAULT_FILL);
 
@@ -195,15 +201,12 @@ impl WidgetType for RadialGauge {
         // when the range crosses it, as Elastic draws it.
         painter.line(
             arc(center, radius, start, end),
-            Stroke::new(TRACK_WIDTH, visuals.widgets.inactive.bg_fill),
+            Stroke::new(track, visuals.widgets.inactive.bg_fill),
         );
         let origin = if min < 0.0 && max > 0.0 { 0.0 } else { min };
         let from = angle_for(origin, min, max, start, end);
         let to = angle_for(shown, min, max, start, end);
-        painter.line(
-            arc(center, radius, from, to),
-            Stroke::new(TRACK_WIDTH, accent),
-        );
+        painter.line(arc(center, radius, from, to), Stroke::new(track, accent));
         // Past an end: a dot just beyond that end of the track.
         if let Some(past) = scale::past_end(v, min, max) {
             let (end_angle, away) = match past {
@@ -226,8 +229,8 @@ impl WidgetType for RadialGauge {
             if ticks {
                 painter.line_segment(
                     [
-                        point(center, a, radius - TRACK_WIDTH),
-                        point(center, a, radius - TRACK_WIDTH - 5.0),
+                        point(center, a, radius - track),
+                        point(center, a, radius - track - 5.0),
                     ],
                     Stroke::new(1.0, weak),
                 );
@@ -301,7 +304,7 @@ impl WidgetType for RadialGauge {
         );
         props::flag_row(ui, p, "Needle", "Show the needle", SHOW_POINTER, true);
         props::flag_row(ui, p, "Ticks", "Show tick marks", SHOW_TICKS, true);
-        scale::rows(ui, p, "", DEFAULT_FILL);
+        scale::rows(ui, p, "", DEFAULT_FILL, TRACK_WIDTH);
     }
 
     fn setting_keys(&self) -> &'static [&'static str] {

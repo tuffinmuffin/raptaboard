@@ -31,9 +31,15 @@ pub const UNIT: &str = "unit";
 pub const SHOW_LABELS: &str = "show_labels";
 /// `false` hides the current value (and its unit), leaving just the scale.
 pub const SHOW_VALUE: &str = "show_value";
+/// How thick the bar or the gauge's track is, in points.
+pub const THICKNESS: &str = "thickness";
+
+/// The thickest a bar or track may be, in points.
+pub const MAX_THICKNESS: f64 = 200.0;
 
 /// Every setting key in this file.
-pub const KEYS: [&str; 9] = [
+pub const KEYS: [&str; 10] = [
+    THICKNESS,
     SHOW_VALUE,
     FILL_COLOR,
     GRADIENT,
@@ -135,6 +141,19 @@ pub fn value_with_unit(
     }
 }
 
+/// The `thickness` setting in points, between 1 and [`MAX_THICKNESS`];
+/// `default` if not set.
+///
+/// ```
+/// use raptaboard::widgets::shared::scale::thickness;
+/// let fat = serde_json::json!({"thickness": 40});
+/// assert_eq!(thickness(fat.as_object().unwrap(), 8.0), 40.0);
+/// assert_eq!(thickness(&serde_json::Map::new(), 8.0), 8.0);
+/// ```
+pub fn thickness(props: &Map<String, Json>, default: f32) -> f32 {
+    props::number(props, THICKNESS, f64::from(default)).clamp(1.0, MAX_THICKNESS) as f32
+}
+
 /// Whether the current value shows (`show_value`, on unless turned off).
 pub fn show_value(props: &Map<String, Json>) -> bool {
     props::flag(props, SHOW_VALUE, true)
@@ -180,7 +199,21 @@ pub fn draw_past_dot(painter: &egui::Painter, at: Pos2) {
 /// The settings dialog rows for these settings: unit, labels, and the
 /// fill color (solid, or blended low → middle → high). `default` is the
 /// solid color when none is set.
-pub fn rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, default_unit: &str, default: Color32) {
+pub fn rows(
+    ui: &mut egui::Ui,
+    p: &mut Map<String, Json>,
+    default_unit: &str,
+    default: Color32,
+    default_thickness: f32,
+) {
+    props::number_row(
+        ui,
+        p,
+        "Thickness (pt)",
+        THICKNESS,
+        f64::from(default_thickness),
+        1.0..=MAX_THICKNESS,
+    );
     ui.label("Unit");
     let mut unit = props::text(p, UNIT, default_unit).to_owned();
     if ui

@@ -155,6 +155,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `fill_color` | `shared/scale.rs` | Number Bar, Voltage View, Radial Gauge | the fill, ARGB | blue (Voltage: yellow) |
 | `gradient`, `low_color`, `mid_color`, `mid_value`, `high_color` | `shared/scale.rs` | the same | blend the fill by value: low → middle (optional, at `mid_value`, else the range's middle) → high | off; red, none, green |
 | `unit` | `shared/scale.rs` | the same | text after the value (`V`, `m/s`) | none (Voltage: `V`) |
+| `thickness` | `shared/scale.rs` | the same | bar or track thickness, points (1–200) | 8 bars, 6 gauges |
 | `show_value` | `shared/scale.rs` | the same | show the current value and unit | true |
 | `show_labels` | `shared/scale.rs` | the same | show the numbers along the scale | true |
 | `label_inside` | `list_layout.rs` | List Layout | `true`: each label drawn over its value (on a see-through backing) instead of beside it | off |
