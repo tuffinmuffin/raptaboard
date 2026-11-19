@@ -365,13 +365,123 @@ pub fn insert_line_y(rows: &[ChildRow], at: usize, body: Rect) -> f32 {
 }
 
 /// Draw a List Layout in `rect`: its card and title, then each child's
-/// label and value. `value_of` gives a child's value.
+/// label and value. `value_of` gives a child's value. For a list that's
+/// being dragged, say; on the grid, [`show`] lets children take input.
 pub fn draw(
     painter: &egui::Painter,
     visuals: &egui::Visuals,
     rect: Rect,
     list: &LayoutContainer,
     value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
+) {
+    draw_with(
+        painter,
+        visuals,
+        rect,
+        list,
+        &mut |painter, content, _, _, child| match find(&child.widget_type) {
+            Some(ty) => ty.draw_body(
+                painter,
+                visuals,
+                content,
+                &child.properties,
+                value_of(child).as_ref(),
+            ),
+            None => card::draw_message(painter, visuals, content, &child.widget_type),
+        },
+    );
+}
+
+/// Show a List Layout in `rect` with a [`Ui`](egui::Ui) for each child's
+/// body, so children that take input (a toggle) work in a list as they do
+/// on the grid. `live` is what the children draw from, but each child's
+/// value comes from `value_of`. Returns the values children want sent, as
+/// (child index, value).
+pub fn show(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    list: &LayoutContainer,
+    value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
+    live: &crate::widgets::Live<'_>,
+) -> Vec<(usize, Value)> {
+    let mut writes = Vec::new();
+    let painter = ui.painter().clone();
+    let visuals = ui.visuals().clone();
+    let position = labels(&list.properties).position;
+    draw_with(
+        &painter,
+        &visuals,
+        rect,
+        list,
+        &mut |painter, content, inside, index, child| {
+            let value = value_of(child);
+            // Unlocked, an inside label is the child's handle for dragging.
+            let input = match inside {
+                Some(label) if !live.locked => Some(beside_label(content, label, position)),
+                _ => None,
+            };
+            let child_live = crate::widgets::Live {
+                value: value.as_ref(),
+                input,
+                ..*live
+            };
+            let mut child_ui = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(content)
+                    .id_salt(("list_child", index)),
+            );
+            child_ui.set_clip_rect(content.intersect(painter.clip_rect()));
+            let sent = match find(&child.widget_type) {
+                Some(ty) => ty.show_body(&mut child_ui, content, child, &child_live),
+                None => {
+                    card::draw_message(painter, &visuals, content, &child.widget_type);
+                    None
+                }
+            };
+            if let Some(v) = sent {
+                writes.push((index, v));
+            }
+        },
+    );
+    writes
+}
+
+/// The part of `content` beside an inside `label`: below a label on top,
+/// right of one on the left, and so on.
+///
+/// ```
+/// use eframe::egui::{pos2, Rect};
+/// use raptaboard::widgets::list_layout::{beside_label, LabelPosition};
+/// let content = Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 50.0));
+/// let label = Rect::from_min_max(pos2(0.0, 0.0), pos2(40.0, 14.0));
+/// assert_eq!(beside_label(content, label, LabelPosition::Top).min.y, 14.0);
+/// assert_eq!(beside_label(content, label, LabelPosition::Left).min.x, 40.0);
+/// ```
+pub fn beside_label(content: Rect, label: Rect, position: LabelPosition) -> Rect {
+    let mut r = content;
+    match position {
+        LabelPosition::Top => r.min.y = label.max.y.min(r.max.y),
+        LabelPosition::Bottom => r.max.y = label.min.y.max(r.min.y),
+        LabelPosition::Left => r.min.x = label.max.x.min(r.max.x),
+        LabelPosition::Right => r.max.x = label.min.x.max(r.min.x),
+        LabelPosition::Hidden => {}
+    }
+    r
+}
+
+/// The function that draws one child's body for [`draw_with`]: given the
+/// painter, the content rect, the inside label's rect (if labels are
+/// inside), the child's index and the child.
+type ChildBody<'a> = dyn FnMut(&egui::Painter, Rect, Option<Rect>, usize, &WidgetContainer) + 'a;
+
+/// The list's card, title, labels and dividers, with each shown child's
+/// body drawn by `child_body`.
+fn draw_with(
+    painter: &egui::Painter,
+    visuals: &egui::Visuals,
+    rect: Rect,
+    list: &LayoutContainer,
+    child_body: &mut ChildBody<'_>,
 ) {
     let body = card::draw_card(painter, visuals, rect, &list.title);
     let labels = labels(&list.properties);
@@ -413,16 +523,8 @@ pub fn draw(
                         visuals.text_color(),
                     );
             }
-            match find(&child.widget_type) {
-                Some(ty) => ty.draw_body(
-                    painter,
-                    visuals,
-                    place.content,
-                    &child.properties,
-                    value_of(child).as_ref(),
-                ),
-                None => card::draw_message(painter, visuals, place.content, &child.widget_type),
-            }
+            let inside = place.label.filter(|_| labels.inside);
+            child_body(painter, place.content, inside, place.index, child);
             // Inside: over the value, on a backing so it reads over anything.
             if let Some(label) = place.label
                 && labels.inside

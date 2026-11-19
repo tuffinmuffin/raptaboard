@@ -19,6 +19,7 @@ use eframe::egui;
 use nt4::Value;
 use raptaboard_layout::ElasticLayout;
 
+use crate::alert::Alert;
 use crate::cli::StartupOptions;
 use crate::connection::AddressMode;
 use crate::edit::{self, EditAction, History};
@@ -33,6 +34,7 @@ use crate::tree::TreeSelection;
 
 use self::dialogs::Editing;
 use self::drag::{ChildDrag, Drag};
+use self::grid_view::Sender;
 
 /// The shortest time between redraws: about 60 a second.
 const MIN_REDRAW: Duration = Duration::from_millis(16);
@@ -107,6 +109,18 @@ pub struct DashboardApp {
     sampler: Sampler,
     /// Recent values of the series graphs on the open tab show.
     traces: Traces,
+    /// Whether a tone plays when a widget's value can't be sent.
+    alert_sound: bool,
+    /// Plays that tone.
+    alert: Alert,
+    /// When each widget (or list child) on a tab last failed to send its value: (tab,
+    /// sender) to the time, so its border flashes red for a moment.
+    write_failed: HashMap<(usize, Sender), Instant>,
+    /// The status message the last failed send left, so the next send that
+    /// works clears it (if it's still showing).
+    send_failure: Option<String>,
+    /// Where the grid was drawn last frame, in screen points.
+    grid_area: egui::Rect,
 }
 
 impl DashboardApp {
@@ -149,6 +163,11 @@ impl DashboardApp {
             editing: None,
             sampler: Sampler::default(),
             traces: Traces::default(),
+            alert_sound: options.alert_sound,
+            alert: Alert::new(),
+            write_failed: HashMap::new(),
+            send_failure: None,
+            grid_area: egui::Rect::NOTHING,
         };
         if let Some(path) = options.layout_path {
             let path = PathBuf::from(path);
@@ -188,6 +207,7 @@ impl DashboardApp {
             port: Some(self.port),
             show_tree: Some(self.show_tree),
             locked: Some(self.locked),
+            alert_sound: Some(self.alert_sound),
             tab: self
                 .layout
                 .tabs
@@ -425,6 +445,7 @@ impl DashboardApp {
                         index,
                         original: Box::new(l.clone()),
                         child: None,
+                        child_only: false,
                     }),
                     None => None,
                 };

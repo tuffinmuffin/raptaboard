@@ -5,7 +5,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::{Duration, Instant};
 
-use nt4::{Server, ServerConfig};
+use nt4::{Server, ServerConfig, Value};
 use raptaboard::nt::{ConnectionStatus, NtConnection};
 
 /// Poll `status` until `done` says yes, or fail after 10 s.
@@ -254,4 +254,90 @@ fn traced_topics_get_every_value_not_just_the_newest() {
     }
     let expected: Vec<f64> = (0..50).map(f64::from).collect();
     assert_eq!(seen, expected);
+}
+
+#[test]
+fn writes_reach_the_server_in_the_topics_own_type() {
+    use raptaboard::nt::WriteError;
+
+    let server_rt = tokio::runtime::Runtime::new().unwrap();
+    let server = server_rt
+        .block_on(Server::start(ServerConfig {
+            listen_address: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            port: 0,
+            persist_file: None,
+        }))
+        .unwrap();
+    let port = server.local_addr().port();
+    // What robot code publishes for the dashboard to change.
+    let enabled = server.publish::<bool>("/Tune/enabled");
+    enabled.set(false);
+    let count = server.publish::<i64>("/Tune/count");
+    count.set(1);
+    let name = server.publish::<String>("/Tune/name");
+    name.set("a".into());
+    server.add_schema("struct:Rotation2d", "structschema", b"double value");
+    let heading = server.publish_generic(
+        "/Tune/heading",
+        "struct:Rotation2d".parse().unwrap(),
+        nt4::Properties::new(),
+    );
+    heading
+        .set(nt4::Value::Raw(1.0f64.to_le_bytes().to_vec()))
+        .unwrap();
+    // What the server sees of them.
+    let seen_enabled = server.subscribe::<bool>("/Tune/enabled", Default::default());
+    let seen_count = server.subscribe::<i64>("/Tune/count", Default::default());
+    let seen_name = server.subscribe::<String>("/Tune/name", Default::default());
+
+    let mut nt = NtConnection::new().unwrap();
+    assert_eq!(
+        nt.write("/Tune/enabled", Value::Boolean(true)),
+        Err(WriteError::NotConnected)
+    );
+    nt.set_target(Some("127.0.0.1"), port);
+    wait_for(
+        &nt,
+        |s| matches!(s, ConnectionStatus::Connected { topics, .. } if *topics >= 4),
+    );
+
+    nt.write("/Tune/enabled", Value::Boolean(true)).unwrap();
+    // A number for an int topic is rounded; text is read as the type.
+    nt.write("/Tune/count", Value::Double(6.6)).unwrap();
+    nt.write("/Tune/name", Value::String("b".into())).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !(seen_enabled.get() == Some(true)
+        && seen_count.get() == Some(7)
+        && seen_name.get().as_deref() == Some("b"))
+    {
+        assert!(Instant::now() < deadline, "writes never reached the server");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // Writing again uses the same publisher.
+    nt.write("/Tune/count", Value::String(" 9 ".into()))
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while seen_count.get() != Some(9) {
+        assert!(Instant::now() < deadline, "second write never arrived");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    // Refused, with reasons a student can act on.
+    let err = nt.write("/Tune/missing", Value::Boolean(true)).unwrap_err();
+    assert_eq!(err, WriteError::NotPublished("/Tune/missing".into()));
+    assert_eq!(
+        err.to_string(),
+        "Can't send to /Tune/missing: the robot hasn't published it"
+    );
+    let err = nt.write("/Tune/heading", Value::Double(1.0)).unwrap_err();
+    assert_eq!(err, WriteError::Struct("/Tune/heading".into()));
+    let err = nt
+        .write("/Tune/enabled", Value::String("maybe".into()))
+        .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "Can't send \"maybe\" to /Tune/enabled: it's a boolean"
+    );
+    // The robot's own value is untouched by refused writes.
+    assert_eq!(seen_enabled.get(), Some(true));
 }

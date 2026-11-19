@@ -68,13 +68,20 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   if there is one, else the home file, by `settings::Tracker`; `ui/` only says what the current
   values are),
   `nt.rs` the live connection (`NtConnection`: a 1-thread tokio runtime that owns the `nt4::Client`
-  and restarts it when the address changes; the UI only makes non-blocking calls), `tree.rs` the (row picking in `TreeSelection`, drag payload `DraggedTopics`)
+  and restarts it when the address changes; the UI only makes non-blocking calls; `write` sends a
+  widget's value to an announced topic in that topic's type, or returns a `WriteError` saying why
+  not), `alert.rs` the tone played when a write fails (its own thread, `rodio`; `Alert::silent`
+  in tests), `tree.rs` the (row picking in `TreeSelection`, drag payload `DraggedTopics`)
   read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),
   `struct_view.rs` struct values decoded with the server's `/.schema/` topics
   (`nt4::proto::structs::StructDatabase` + `DynamicStruct`), `widgets/` the grid widgets,
   one file per type implementing `widgets::WidgetType` and listed in `widgets::TYPES` (Text Display,
   Boolean Box, Large Text Display, Number Bar, Voltage View, Radial Gauge, Match Time, Single and
-  Multi Color View, Graph (`egui_plot`; widgets needing a full `Ui` override `WidgetType::show`); other types draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing
+  Multi Color View, Graph (`egui_plot`; widgets needing a full `Ui` override `WidgetType::show`),
+  Toggle Switch and Toggle Button (`builtin/toggle.rs`; writing widgets return the value to send
+  from `show`, and `Live::locked` says whether their input covers the whole card; `show_body` is
+  the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
+  draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing
   and its settings dialog), helpers in `widgets/shared/`:
   `card.rs`, `format.rs` (number and
   enum text), `props.rs` (period, font size, colors) and `settings.rs` (the settings dialog's shared
@@ -104,6 +111,11 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   It also keeps widgets for things that don't exist, on purpose, to test that handling: "Never
   published" and "Missing text" (topics never sent), "Missing field" (a field `OrbitPose` doesn't
   have), and the "Missing child" row in Module CAN. Keep them when editing the layout.
+  Its Writing tab has a Toggle Switch and a Toggle Button on `/DashTest/Toggle` (published once
+  by the test topics, never overwritten) and a Boolean Box on `/DashTest/ToggleEcho` (the value
+  robot code read back), plus "Not published (fails)", a toggle on a topic that's never sent,
+  for the failed-write flash, tone and message; keep it too. "Toggles in a list" holds the same
+  three as List Layout children.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.
 - `plugins/arm`: example plugin; its `plugin.toml` is a test fixture.
 

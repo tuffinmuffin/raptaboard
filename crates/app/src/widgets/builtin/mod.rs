@@ -10,3 +10,4 @@ pub mod match_time;
 pub mod number_bar;
 pub mod radial_gauge;
 pub mod text_display;
+pub mod toggle;

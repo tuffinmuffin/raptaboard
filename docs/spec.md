@@ -366,6 +366,25 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      anywhere in it. Zoomed out over minutes, reduce each line to about one point per pixel column
      before drawing, so a frame doesn't copy tens of thousands of points per line. Applies to X/Y and polar graphs
      too.
+   - Graph sample statistics: an option (off by default) to show each line's min, max and average
+     over the samples in view: the time window shown, or between the A and B cursors when both
+     are placed (so a measurement gives them for just that stretch), and the frozen window while
+     paused. Shown with the legend or the readout, in each line's color; reduced points for
+     drawing (see history review) must not change them, so they're worked out from the recorded
+     samples.
+   - Min, max and average on number widgets (Text Display, Large Text Display, Number Bar, Radial
+     Gauge): an option (off by default) to show them next to the value, over a set time window
+     (such as the last 10 s) or since the last reset (a Reset in the widget's right-click menu,
+     and when the robot reconnects). Taken from every value received, as graphs record them
+     (`traces.rs`), not from the widget's sampled period, so short peaks count. Bars and gauges
+     could also mark the min and max on their scale.
+   - Sound clips on robot state changes: play a sound file when the robot is disabled (the first
+     one: the "I'm disabled" quote from The IT Crowd), and optionally on enable, the start of auto
+     and teleop, and e-stop. The state comes from WPILib's `/FMSInfo/FMSControlData` bits (check
+     the 2027 topics), only on a change, not at connect. A settings entry per event: a file path
+     (MP3 or WAV; `rodio` with its MP3 decoder) and on or off, plus a volume, and the bell
+     button mutes these too. The clip is the user's own file, not bundled: it's someone else's
+     recording. TODO: find the IT Crowd clip.
    - X/Y and polar graphs (`egui_plot`): pair two values recorded at the same time (x with y, or
      angle with distance) and plot one against the other, for a joystick's position, an arm
      joint's path or a turret's aim. Modes: a trail that fades out over a set time (time decay),
@@ -402,8 +421,36 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    every value received (an `all` subscription, read from the client's event stream), not one
    per frame. Graphs default to a 0.016 s period (about 60 a second; other widgets keep 0.06), and
    the window redraws at most about 60 times a second; graphs aren't meant for faster signals. A
-   plot only senses hover, so it never takes the drags that move the widget. Next: then the writing widgets (toggles, slider, editable Text
-   Display), choosers, Alerts, Field, struct widgets.
+   plot only senses hover, so it never takes the drags that move the widget.
+   Writing values (decided 2026-11-19): Toggle Switch and Toggle Button are built. Widgets return
+   the value to send from `WidgetType::show`, and the grid sends it with `NtConnection::write`.
+   As in Elastic, only a topic the server has announced is written, with the topic's own type
+   (numbers convert, ints round, text is parsed), published once and kept until the connection
+   restarts, without changing its properties; struct topics and fields aren't written. Unlike
+   Elastic, a write that can't happen says so: the widget's border flashes red three times,
+   an alert tone plays (`alert.rs`, `rodio`; the `alert_sound` setting and a bell button in the
+   settings bar turn it off), and the status line gives the reason ("the robot hasn't published
+   it", "struct values can't be changed", "it's a boolean", "not connected"). Input: the lock
+   only stops layout edits, controls always work; locked, input starts anywhere on the widget;
+   unlocked, the title bar moves the widget and the rest is input; a drag that starts in a
+   widget keeps adjusting it when the pointer leaves it (egui keeps the drag). A widget shows its
+   own write at once and the robot's (or another dashboard's) later change wins, which needs nt4
+   0.3 (a client sees its own values, as in ntcore). They work inside List Layouts too: each
+   child's body gets a `Ui` (`WidgetType::show_body`), and a child that can't send flashes its own
+   row. Unlocked, a child's label is its handle (like a widget's title bar): with labels inside,
+   input starts only beside the label (`Live::input`), so the label still selects and drags the
+   child; locked, the whole row is input. A failed send's message clears on the next send that works (unless something else has
+   said something since).
+   Enums (decided): an Enum Dropdown and an Enum Toggle (two named states instead of true and
+   false), bound to a SendableChooser table (`options`, `default`, `active`; writes `selected`),
+   or a string or int topic with the values listed in its settings; on creation the widget
+   guesses the source, and its settings can change it. The robot publishes the full list at the
+   start; if the list changes, the pick is dropped and the robot's value is used, and any change
+   of the value (robot or another dashboard) is shown. Uses: auto mode, a test in test mode.
+   Struct enum fields (schema `enum {..}`) stay display-only: writing one would mean rewriting the
+   robot's struct.
+   Next: Number Slider, editable Text Display, the enum widgets and choosers (with dragging a
+   chooser table from the tree), Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
    WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro, SwerveModuleState[] → swerve view.

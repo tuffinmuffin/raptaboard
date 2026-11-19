@@ -4,6 +4,10 @@
 //! tokio. [`NtConnection`] owns a small tokio runtime for the client and gives
 //! the UI plain, non-blocking calls: point it at a host with
 //! [`NtConnection::set_target`] each frame and read [`NtConnection::status`].
+//!
+//! Widgets that change values call [`NtConnection::write`]. As in Elastic,
+//! only topics the server has announced can be written, with the topic's
+//! own type (see [`convert`]); struct topics can't be written.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -11,8 +15,8 @@ use std::time::Duration;
 
 use nt4::proto::structs::StructDatabase;
 use nt4::{
-    Client, ClientConfig, Event, Events, SubscriptionHandle, SubscriptionOptions, Topic,
-    TopicValue, Value,
+    Client, ClientConfig, Event, Events, GenericPublisher, NtType, Properties, SubscriptionHandle,
+    SubscriptionOptions, Topic, TopicValue, Value,
 };
 
 /// Client name sent to the server, so the server lists us as `/nt/raptaboard`.
@@ -106,6 +110,102 @@ struct Running {
     traced_values: Watch,
     // The topics whose values `take_traced` returns.
     traced: HashSet<String>,
+    // Topics this dashboard has written, each published once with the
+    // type it was published with, and kept until the client restarts.
+    publishers: HashMap<String, (NtType, GenericPublisher)>,
+}
+
+/// Why a value couldn't be written, said so the user knows what to do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WriteError {
+    /// Not connected to a server.
+    NotConnected,
+    /// The server hasn't announced the topic, so its type isn't known.
+    NotPublished(String),
+    /// Struct topics (and their fields) can't be written from a dashboard.
+    Struct(String),
+    /// The value can't be turned into the topic's type.
+    WrongType {
+        /// The topic's name.
+        topic: String,
+        /// The topic's type, such as `boolean`.
+        topic_type: String,
+        /// What was written, such as `text "abc"`.
+        value: String,
+    },
+}
+
+impl std::fmt::Display for WriteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WriteError::NotConnected => write!(f, "Can't send: not connected to the robot"),
+            WriteError::NotPublished(topic) => {
+                write!(f, "Can't send to {topic}: the robot hasn't published it")
+            }
+            WriteError::Struct(topic) => {
+                write!(f, "Can't send to {topic}: struct values can't be changed")
+            }
+            WriteError::WrongType {
+                topic,
+                topic_type,
+                value,
+            } => write!(f, "Can't send {value} to {topic}: it's a {topic_type}"),
+        }
+    }
+}
+
+/// `value` as a value of NT type `to`, for writing to a topic of that type,
+/// or `None` if it can't be one: numbers become any number type (whole
+/// numbers are rounded), and text is read as the type (`"true"`, `"2.5"`).
+///
+/// ```
+/// use nt4::{NtType, Value};
+/// use raptaboard::nt::convert;
+/// assert_eq!(convert(Value::Double(2.6), &NtType::Int), Some(Value::Int(3)));
+/// assert_eq!(convert(Value::String("0.5".into()), &NtType::Double), Some(Value::Double(0.5)));
+/// assert_eq!(convert(Value::Boolean(true), &NtType::Double), None);
+/// ```
+pub fn convert(value: Value, to: &NtType) -> Option<Value> {
+    let number = |v: &Value| match v {
+        Value::Double(n) => Some(*n),
+        Value::Float(n) => Some(f64::from(*n)),
+        Value::Int(n) => Some(*n as f64),
+        Value::String(text) => text.trim().parse().ok(),
+        _ => None,
+    };
+    match to {
+        NtType::Boolean => match value {
+            Value::Boolean(b) => Some(Value::Boolean(b)),
+            Value::String(text) => match text.trim().to_lowercase().as_str() {
+                "true" => Some(Value::Boolean(true)),
+                "false" => Some(Value::Boolean(false)),
+                _ => None,
+            },
+            _ => None,
+        },
+        NtType::Double => number(&value).map(Value::Double),
+        NtType::Float => number(&value).map(|n| Value::Float(n as f32)),
+        NtType::Int => number(&value)
+            .filter(|n| n.is_finite())
+            .map(|n| Value::Int(n.round() as i64)),
+        NtType::String | NtType::Json => match value {
+            Value::String(text) => Some(Value::String(text)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// How a value is named in a [`WriteError`], such as `text "abc"`.
+fn describe(value: &Value) -> String {
+    match value {
+        Value::Boolean(b) => b.to_string(),
+        Value::Double(n) => n.to_string(),
+        Value::Float(n) => n.to_string(),
+        Value::Int(n) => n.to_string(),
+        Value::String(text) => format!("\"{text}\""),
+        _ => "that value".to_owned(),
+    }
 }
 
 /// The dashboard's NT connection: a tokio runtime plus at most one client.
@@ -195,6 +295,7 @@ impl NtConnection {
                 events,
                 traced_values: Watch::default(),
                 traced: HashSet::new(),
+                publishers: HashMap::new(),
             });
         }
     }
@@ -318,6 +419,53 @@ impl NtConnection {
     /// Struct schemas received from this server so far.
     pub fn structs(&self) -> Option<&StructDatabase> {
         self.running.as_ref().map(|r| &r.structs)
+    }
+
+    /// Send `value` to topic `name` (full name), as a widget does when it's
+    /// changed. The topic must be announced by the server; the value is
+    /// turned into the topic's type with [`convert`]. The first write to a
+    /// topic publishes it, without changing its properties, and it stays
+    /// published until the connection restarts. Never blocks.
+    pub fn write(&mut self, name: &str, value: Value) -> Result<(), WriteError> {
+        let Some(running) = &mut self.running else {
+            return Err(WriteError::NotConnected);
+        };
+        if !running.client.is_connected() {
+            return Err(WriteError::NotConnected);
+        }
+        let Some(topic) = running.client.topic(name) else {
+            return Err(WriteError::NotPublished(name.to_owned()));
+        };
+        if matches!(topic.ty, NtType::Struct { .. }) || name.starts_with(SCHEMA_PREFIX) {
+            return Err(WriteError::Struct(name.to_owned()));
+        }
+        let shown = describe(&value);
+        let Some(value) = convert(value, &topic.ty) else {
+            return Err(WriteError::WrongType {
+                topic: name.to_owned(),
+                topic_type: topic.ty.to_string(),
+                value: shown,
+            });
+        };
+        // Published again if the robot changed the topic's type.
+        let stale = running
+            .publishers
+            .get(name)
+            .is_some_and(|(ty, _)| *ty != topic.ty);
+        if stale || !running.publishers.contains_key(name) {
+            running.publishers.remove(name);
+            let publisher = running.client.publish_generic(
+                name,
+                topic.ty.clone(),
+                Properties::new(),
+                Default::default(),
+            );
+            running
+                .publishers
+                .insert(name.to_owned(), (topic.ty.clone(), publisher));
+        }
+        let (_, publisher) = &running.publishers[name];
+        publisher.set(value).map_err(|_| WriteError::NotConnected)
     }
 
     /// The running client, for subscribing widgets. `None` with no target.
