@@ -347,6 +347,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      widgets inside: group-level settings (font size, period, colors) that every child uses
      unless it sets its own, and resizing the group scales its children's sizes (and text) to
      match.
+   - Autoscale for bars and gauges: an option where the scale follows the lowest and highest values
+     seen instead of fixed `min_value`/`max_value` (widening as new extremes arrive; optionally only
+     growing from the set range, and a reset in the right-click menu). Not saved as the range;
+     starts fresh each run.
    - Battery widget: a battery icon filled by charge (voltage between a low and high setting),
      colored by level, for battery voltage instead of Voltage View.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
