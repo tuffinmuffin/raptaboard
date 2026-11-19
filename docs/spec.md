@@ -372,6 +372,12 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      paused. Shown with the legend or the readout, in each line's color; reduced points for
      drawing (see history review) must not change them, so they're worked out from the recorded
      samples.
+   - Min, max and average on number widgets (Text Display, Large Text Display, Number Bar, Radial
+     Gauge): an option (off by default) to show them next to the value, over a set time window
+     (such as the last 10 s) or since the last reset (a Reset in the widget's right-click menu,
+     and when the robot reconnects). Taken from every value received, as graphs record them
+     (`traces.rs`), not from the widget's sampled period, so short peaks count. Bars and gauges
+     could also mark the min and max on their scale.
    - X/Y and polar graphs (`egui_plot`): pair two values recorded at the same time (x with y, or
      angle with distance) and plot one against the other, for a joystick's position, an arm
      joint's path or a turret's aim. Modes: a trail that fades out over a set time (time decay),
