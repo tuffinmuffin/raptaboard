@@ -90,6 +90,14 @@ impl GridView {
     }
 }
 
+/// A widget that sends a value: one on the grid (its index in the tab's
+/// `containers`), or a List Layout's child.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum Sender {
+    Widget(usize),
+    Child { list: usize, child: usize },
+}
+
 /// What the grid's input asked for this frame, done by
 /// [`DashboardApp::apply`] once everything is drawn.
 #[derive(Default)]
@@ -111,8 +119,8 @@ struct Requests {
     wrap: Option<usize>,
     /// A widget clicked, to find its topic in the tree.
     find_in_tree: Option<WidgetContainer>,
-    /// Values widgets want sent: (widget index, value).
-    writes: Vec<(usize, Value)>,
+    /// Values widgets want sent, and which widget sent each.
+    writes: Vec<(Sender, Value)>,
 }
 
 impl DashboardApp {
@@ -338,15 +346,15 @@ impl DashboardApp {
     }
 
     /// Draw every item but the one being dragged (drawn on top later),
-    /// with resize corners when unlocked. Returns the values widgets want
-    /// sent, as (widget index, value).
+    /// with resize corners when unlocked. Returns the values widgets (and
+    /// list children) want sent.
     fn draw_items(
         &self,
         ui: &mut egui::Ui,
         painter: &egui::Painter,
         view: GridView,
         value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
-    ) -> Vec<(usize, Value)> {
+    ) -> Vec<(Sender, Value)> {
         let mut writes = Vec::new();
         let Some(tab) = self.tab() else {
             return writes;
@@ -359,7 +367,7 @@ impl DashboardApp {
                 continue;
             }
             // Single widgets get a Ui of their own, for those that need
-            // one (graphs); lists draw their children with a painter.
+            // one (graphs, toggles), and so does each list child.
             if let Item::Widget(i) = item
                 && let Some(w) = tab.grid_layout.containers.get(i)
             {
@@ -378,17 +386,27 @@ impl DashboardApp {
                 )));
                 child.set_clip_rect(rect.intersect(painter.clip_rect()));
                 if let Some(value) = card::show(&mut child, rect, w, &live) {
-                    writes.push((i, value));
+                    writes.push((Sender::Widget(i), value));
                 }
-            } else {
-                draw_item(
-                    painter,
-                    &visuals,
-                    view.to_screen(&r),
-                    &tab.grid_layout,
-                    item,
-                    value_of,
-                );
+            } else if let Item::List(i) = item
+                && let Some(l) = tab.grid_layout.layouts.get(i)
+            {
+                let rect = view.to_screen(&r).shrink(CELL_GAP);
+                let live = widgets::Live {
+                    value: None,
+                    traces: &self.traces,
+                    now_us,
+                    locked: self.locked,
+                };
+                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt((
+                    "list",
+                    self.current_tab,
+                    i,
+                )));
+                child.set_clip_rect(rect.intersect(painter.clip_rect()));
+                for (c, value) in list_layout::show(&mut child, rect, l, value_of, &live) {
+                    writes.push((Sender::Child { list: i, child: c }, value));
+                }
             }
             if !self.locked {
                 draw_resize_handle(painter, &visuals, view.to_screen(&r));
@@ -416,18 +434,43 @@ impl DashboardApp {
         }
         // Widgets whose value just failed to send flash red a few times.
         let now = Instant::now();
-        for (&(t, i), &when) in &self.write_failed {
+        for (&(t, sender), &when) in &self.write_failed {
             let age = now.duration_since(when).as_secs_f32();
-            let Some(w) = tab.grid_layout.containers.get(i) else {
-                continue;
-            };
             if t != self.current_tab || age >= FLASH_S {
                 continue;
             }
+            // The widget's card, or the list child's row.
+            let (outline, radius) = match sender {
+                Sender::Widget(i) => {
+                    let Some(w) = tab.grid_layout.containers.get(i) else {
+                        continue;
+                    };
+                    (
+                        view.to_screen(&w.rect).shrink(SELECTION_INSET),
+                        card::CORNER_RADIUS,
+                    )
+                }
+                Sender::Child { list, child } => {
+                    let Some(l) = tab.grid_layout.layouts.get(list) else {
+                        continue;
+                    };
+                    let card = view.to_screen(&l.rect).shrink(CELL_GAP);
+                    let Some(row) = list_layout::rows_on_screen(card, l)
+                        .into_iter()
+                        .find(|row| row.index == child)
+                    else {
+                        continue;
+                    };
+                    (
+                        row.row.expand(2.0).intersect(card),
+                        card::BODY_CORNER_RADIUS,
+                    )
+                }
+            };
             if ((age / FLASH_STEP_S) as u32).is_multiple_of(2) {
                 painter.rect_stroke(
-                    view.to_screen(&w.rect).shrink(SELECTION_INSET),
-                    egui::CornerRadius::same(card::CORNER_RADIUS),
+                    outline,
+                    egui::CornerRadius::same(radius),
                     Stroke::new(FLASH_WIDTH, FAILED_COLOR),
                     egui::StrokeKind::Inside,
                 );
@@ -669,8 +712,8 @@ impl DashboardApp {
             find_in_tree,
             writes,
         } = requests;
-        for (index, value) in writes {
-            self.send(index, value);
+        for (sender, value) in writes {
+            self.send(sender, value);
         }
         if let Some((topics, into, target)) = topics_dropped {
             self.add_dropped_topics(&topics, into, target, view);
@@ -765,8 +808,15 @@ impl DashboardApp {
     /// Send `value` from widget `index` on the open tab to its topic. If it
     /// can't be sent, say why in the status line, flash the widget's border
     /// red and play the alert tone.
-    fn send(&mut self, index: usize, value: Value) {
-        let Some(widget) = self.tab().and_then(|t| t.grid_layout.containers.get(index)) else {
+    fn send(&mut self, sender: Sender, value: Value) {
+        let grid = self.tab().map(|t| &t.grid_layout);
+        let widget = match sender {
+            Sender::Widget(i) => grid.and_then(|g| g.containers.get(i)),
+            Sender::Child { list, child } => grid
+                .and_then(|g| g.layouts.get(list))
+                .and_then(|l| l.children.get(child)),
+        };
+        let Some(widget) = widget else {
             return;
         };
         // Copied out, so the widget's borrow of the layout ends before the
@@ -780,12 +830,18 @@ impl DashboardApp {
         };
         match result {
             Ok(()) => {
-                self.write_failed.remove(&(self.current_tab, index));
+                self.write_failed.remove(&(self.current_tab, sender));
+                // A failure's message is out of date once a send works
+                // (unless something else has said something since).
+                if self.send_failure.take().is_some_and(|m| m == self.status) {
+                    self.status.clear();
+                }
             }
             Err(why) => {
                 self.status = why.to_string();
+                self.send_failure = Some(self.status.clone());
                 self.write_failed
-                    .insert((self.current_tab, index), Instant::now());
+                    .insert((self.current_tab, sender), Instant::now());
                 if self.alert_sound {
                     self.alert.play();
                 }

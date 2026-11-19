@@ -14,6 +14,7 @@ use serde_json::{Map, json};
 
 use super::DashboardApp;
 use super::dialogs::Editing;
+use super::grid_view::Sender;
 use crate::cli::StartupOptions;
 use crate::connection::AddressMode;
 use crate::edit::{EditAction, History};
@@ -753,7 +754,9 @@ fn the_right_click_menu_adds_the_selection_and_locking_stops_it() {
 
 /// A layout of writing widgets on one tab, each 256 pixels square along
 /// the top row: a Toggle Switch and a Toggle Button on `/Test/enabled`, a
-/// switch on a topic that's never sent, and one on a struct field.
+/// switch on a topic that's never sent, and one on a struct field. Below
+/// them, a List Layout holding a Toggle Button on `/Test/enabled` and a
+/// switch on a topic that's never sent.
 fn writing_layout() -> ElasticLayout {
     let at = |i: usize| LayoutRect {
         x: i as f64 * 256.0,
@@ -773,6 +776,19 @@ fn writing_layout() -> ElasticLayout {
         "struct_meta".into(),
         json!({ "path": ["translation", "x"], "schema_name": "Pose2d", "type": "double" }),
     );
+    let one = at(0);
+    grid.layouts.push(list_layout::new_list(
+        LayoutRect {
+            x: 0.0,
+            y: 256.0,
+            width: 256.0,
+            height: 512.0,
+        },
+        vec![
+            widget("Toggle Button", "/Test/enabled", "boolean", one),
+            widget("Toggle Switch", "/Test/never_sent", "boolean", one),
+        ],
+    ));
     ElasticLayout {
         tabs: vec![tab],
         ..ElasticLayout::default()
@@ -908,7 +924,7 @@ fn a_failed_send_flashes_beeps_and_says_why() {
         "Can't send to /Test/never_sent: the robot hasn't published it"
     );
     assert_eq!(app.alert.played(), 1);
-    assert!(app.write_failed.contains_key(&(0, 2)));
+    assert!(app.write_failed.contains_key(&(0, Sender::Widget(2))));
     // A struct field.
     let (body, _) = body_and_title(&harness, 3);
     click_at(&mut harness, body, primary, Modifiers::NONE);
@@ -926,10 +942,15 @@ fn a_failed_send_flashes_beeps_and_says_why() {
     harness
         .state_mut()
         .write_failed
-        .insert((0, 0), Instant::now());
+        .insert((0, Sender::Widget(0)), Instant::now());
     let (good, _) = body_and_title(&harness, 0);
     click_at(&mut harness, good, primary, Modifiers::NONE);
-    assert!(!harness.state().write_failed.contains_key(&(0, 0)));
+    assert!(
+        !harness
+            .state()
+            .write_failed
+            .contains_key(&(0, Sender::Widget(0)))
+    );
     // Disconnected: says so.
     harness.state_mut().custom_address = "".into();
     settle(&mut harness);
@@ -938,4 +959,74 @@ fn a_failed_send_flashes_beeps_and_says_why() {
         harness.state().status,
         "Can't send: not connected to the robot"
     );
+}
+
+/// The middle of list `list`'s child `child`, on screen.
+fn child_middle(harness: &Harness, list: usize, child: usize) -> Pos2 {
+    let app = harness.state();
+    let l = &app.layout.tabs[0].grid_layout.layouts[list];
+    let min = app.grid_area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
+    let card = Rect::from_min_size(min, egui::vec2(l.rect.width as f32, l.rect.height as f32))
+        .shrink(super::style::CELL_GAP);
+    list_layout::rows_on_screen(card, l)
+        .into_iter()
+        .find(|row| row.index == child)
+        .expect("the child is shown")
+        .row
+        .center()
+}
+
+#[test]
+fn toggles_work_inside_a_list() {
+    let robot = Robot::start();
+    let mut harness = writing_harness(&robot);
+    let primary = egui::PointerButton::Primary;
+    let button = child_middle(&harness, 0, 0);
+    // Locked and unlocked alike.
+    for locked in [true, false] {
+        harness.state_mut().locked = locked;
+        settle(&mut harness);
+        let want = robot.seen_enabled.get() != Some(true);
+        click_at(&mut harness, button, primary, Modifiers::NONE);
+        server_sees(&mut harness, &robot, want);
+    }
+    // The grid toggles on the same topic show what the list's sent.
+    let shown = harness
+        .state()
+        .nt
+        .client()
+        .and_then(|c| c.topic("/Test/enabled"))
+        .and_then(|t| t.value)
+        .map(|v| v.value);
+    assert_eq!(shown, robot.seen_enabled.get().map(nt4::Value::Boolean));
+    // A child that can't send flashes its row and says why.
+    let failing = child_middle(&harness, 0, 1);
+    click_at(&mut harness, failing, primary, Modifiers::NONE);
+    let app = harness.state();
+    assert!(
+        app.write_failed
+            .contains_key(&(0, Sender::Child { list: 0, child: 1 }))
+    );
+    assert_eq!(
+        app.status,
+        "Can't send to /Test/never_sent: the robot hasn't published it"
+    );
+}
+
+#[test]
+fn a_send_that_works_clears_the_last_failures_message() {
+    let robot = Robot::start();
+    let mut harness = writing_harness(&robot);
+    let primary = egui::PointerButton::Primary;
+    let (fails, _) = body_and_title(&harness, 2);
+    let (works, _) = body_and_title(&harness, 0);
+    click_at(&mut harness, fails, primary, Modifiers::NONE);
+    assert!(harness.state().status.contains("hasn't published"));
+    click_at(&mut harness, works, primary, Modifiers::NONE);
+    assert_eq!(harness.state().status, "");
+    // A message from something else since isn't the failure's to clear.
+    click_at(&mut harness, fails, primary, Modifiers::NONE);
+    harness.state_mut().status = "Opened match.json".into();
+    click_at(&mut harness, works, primary, Modifiers::NONE);
+    assert_eq!(harness.state().status, "Opened match.json");
 }

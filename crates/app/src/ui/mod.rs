@@ -34,6 +34,7 @@ use crate::tree::TreeSelection;
 
 use self::dialogs::Editing;
 use self::drag::{ChildDrag, Drag};
+use self::grid_view::Sender;
 
 /// The shortest time between redraws: about 60 a second.
 const MIN_REDRAW: Duration = Duration::from_millis(16);
@@ -112,9 +113,12 @@ pub struct DashboardApp {
     alert_sound: bool,
     /// Plays that tone.
     alert: Alert,
-    /// When each widget on a tab last failed to send its value: (tab,
-    /// widget index) to the time, so its border flashes red for a moment.
-    write_failed: HashMap<(usize, usize), Instant>,
+    /// When each widget (or list child) on a tab last failed to send its value: (tab,
+    /// sender) to the time, so its border flashes red for a moment.
+    write_failed: HashMap<(usize, Sender), Instant>,
+    /// The status message the last failed send left, so the next send that
+    /// works clears it (if it's still showing).
+    send_failure: Option<String>,
     /// Where the grid was drawn last frame, in screen points.
     grid_area: egui::Rect,
 }
@@ -162,6 +166,7 @@ impl DashboardApp {
             alert_sound: options.alert_sound,
             alert: Alert::new(),
             write_failed: HashMap::new(),
+            send_failure: None,
             grid_area: egui::Rect::NOTHING,
         };
         if let Some(path) = options.layout_path {

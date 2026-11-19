@@ -48,22 +48,45 @@ pub fn flipped(value: Option<&Value>) -> Value {
     Value::Boolean(!is_on(value))
 }
 
-/// The card, then a click area: the whole card when locked, the body below
-/// the title bar when not (the title bar moves the widget then). Returns the
-/// body and whether it was clicked this frame.
-fn card_and_click(
-    ui: &mut egui::Ui,
-    rect: Rect,
-    widget: &WidgetContainer,
-    locked: bool,
-) -> (Rect, bool) {
-    let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
-    let area = if locked { rect } else { body };
+/// A click area over `area`, with the pointing hand over it. Whether it
+/// was clicked this frame.
+fn clicked_in(ui: &mut egui::Ui, area: Rect) -> bool {
     let response = ui.interact(area, ui.scope_id().with("toggle"), Sense::click());
     if response.hovered() {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
-    (body, response.clicked())
+    response.clicked()
+}
+
+/// A toggle on the grid: its card, a click area (the whole card when
+/// locked; when not, the body below the title bar, which moves the widget
+/// then), and `paint(painter, body)` to draw it. The value to send if
+/// clicked.
+fn show_card(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    widget: &WidgetContainer,
+    live: &Live<'_>,
+    paint: impl FnOnce(&egui::Painter, Rect),
+) -> Option<Value> {
+    let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
+    let clicked = clicked_in(ui, if live.locked { rect } else { body });
+    let painter = ui.painter().with_clip_rect(body.intersect(ui.clip_rect()));
+    paint(&painter, body.shrink(card::BODY_MARGIN));
+    clicked.then(|| flipped(live.value))
+}
+
+/// A toggle as a list child: all of `rect` is the click area. The value to
+/// send if clicked.
+fn show_in(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    live: &Live<'_>,
+    paint: impl FnOnce(&egui::Painter, Rect),
+) -> Option<Value> {
+    let clicked = clicked_in(ui, rect);
+    paint(ui.painter(), rect);
+    clicked.then(|| flipped(live.value))
 }
 
 /// The Toggle Switch widget (Elastic's `"Toggle Switch"`): a switch that
@@ -90,16 +113,23 @@ impl WidgetType for ToggleSwitch {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        let (body, clicked) = card_and_click(ui, rect, widget, live.locked);
-        let painter = ui.painter().with_clip_rect(body.intersect(ui.clip_rect()));
-        self.draw_body(
-            &painter,
-            ui.visuals(),
-            body.shrink(card::BODY_MARGIN),
-            &widget.properties,
-            live.value,
-        );
-        clicked.then(|| flipped(live.value))
+        let visuals = ui.visuals().clone();
+        show_card(ui, rect, widget, live, |painter, body| {
+            self.draw_body(painter, &visuals, body, &widget.properties, live.value);
+        })
+    }
+
+    fn show_body(
+        &self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        widget: &WidgetContainer,
+        live: &Live<'_>,
+    ) -> Option<Value> {
+        let visuals = ui.visuals().clone();
+        show_in(ui, rect, live, |painter, body| {
+            self.draw_body(painter, &visuals, body, &widget.properties, live.value);
+        })
     }
 
     fn draw_body(
@@ -156,6 +186,29 @@ impl WidgetType for ToggleSwitch {
 /// lights up while on, labelled with the topic's last name part.
 pub struct ToggleButton;
 
+/// The button: filled while on, with its label in the middle.
+fn paint_button(
+    painter: &egui::Painter,
+    visuals: &egui::Visuals,
+    rect: Rect,
+    widget: &WidgetContainer,
+    value: Option<&Value>,
+) {
+    let fill = if is_on(value) {
+        visuals.selection.bg_fill
+    } else {
+        OFF_BUTTON
+    };
+    painter.rect_filled(rect, CornerRadius::same(card::BODY_CORNER_RADIUS), fill);
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        button_label(widget.topic(), &widget.title),
+        egui::FontId::proportional(16.0),
+        crate::widgets::shared::props::text_color_on(fill),
+    );
+}
+
 /// The button's label: the last part of the widget's topic name, as in
 /// Elastic (`/Arm/brake` is `brake`), or its title with no topic.
 ///
@@ -191,23 +244,23 @@ impl WidgetType for ToggleButton {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        let (body, clicked) = card_and_click(ui, rect, widget, live.locked);
-        let inside = body.shrink(card::BODY_MARGIN);
-        let painter = ui.painter().with_clip_rect(body.intersect(ui.clip_rect()));
-        let fill = if is_on(live.value) {
-            ui.visuals().selection.bg_fill
-        } else {
-            OFF_BUTTON
-        };
-        painter.rect_filled(inside, CornerRadius::same(card::BODY_CORNER_RADIUS), fill);
-        painter.text(
-            inside.center(),
-            egui::Align2::CENTER_CENTER,
-            button_label(widget.topic(), &widget.title),
-            egui::FontId::proportional(16.0),
-            crate::widgets::shared::props::text_color_on(fill),
-        );
-        clicked.then(|| flipped(live.value))
+        let visuals = ui.visuals().clone();
+        show_card(ui, rect, widget, live, |painter, body| {
+            paint_button(painter, &visuals, body, widget, live.value);
+        })
+    }
+
+    fn show_body(
+        &self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        widget: &WidgetContainer,
+        live: &Live<'_>,
+    ) -> Option<Value> {
+        let visuals = ui.visuals().clone();
+        show_in(ui, rect, live, |painter, body| {
+            paint_button(painter, &visuals, body, widget, live.value);
+        })
     }
 
     fn draw_body(

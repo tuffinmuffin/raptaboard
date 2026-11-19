@@ -136,6 +136,29 @@ pub trait WidgetType: Sync {
         None
     }
 
+    /// Show just the widget's body (no card or title) in `rect` with a
+    /// full [`egui::Ui`], as List Layout children are shown, and return a
+    /// value to send if the user changed it. Widgets that take input
+    /// override this (and build their [`show`](Self::show) on it, so they
+    /// work the same in a list and on the grid); the default is
+    /// [`draw_body`](Self::draw_body).
+    fn show_body(
+        &self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        widget: &WidgetContainer,
+        live: &Live<'_>,
+    ) -> Option<Value> {
+        self.draw_body(
+            ui.painter(),
+            ui.visuals(),
+            rect,
+            &widget.properties,
+            live.value,
+        );
+        None
+    }
+
     /// How often this widget wants new values when its `period` isn't set,
     /// in seconds: Elastic's 0.06 unless a widget needs more.
     fn default_period(&self) -> f64 {

@@ -79,7 +79,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   Boolean Box, Large Text Display, Number Bar, Voltage View, Radial Gauge, Match Time, Single and
   Multi Color View, Graph (`egui_plot`; widgets needing a full `Ui` override `WidgetType::show`),
   Toggle Switch and Toggle Button (`builtin/toggle.rs`; writing widgets return the value to send
-  from `show`, and `Live::locked` says whether their input covers the whole card); other types
+  from `show`, and `Live::locked` says whether their input covers the whole card; `show_body` is
+  the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
   draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing
   and its settings dialog), helpers in `widgets/shared/`:
   `card.rs`, `format.rs` (number and
@@ -113,7 +114,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   Its Writing tab has a Toggle Switch and a Toggle Button on `/DashTest/Toggle` (published once
   by the test topics, never overwritten) and a Boolean Box on `/DashTest/ToggleEcho` (the value
   robot code read back), plus "Not published (fails)", a toggle on a topic that's never sent,
-  for the failed-write flash, tone and message; keep it too.
+  for the failed-write flash, tone and message; keep it too. "Toggles in a list" holds the same
+  three as List Layout children.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.
 - `plugins/arm`: example plugin; its `plugin.toml` is a test fixture.
 
