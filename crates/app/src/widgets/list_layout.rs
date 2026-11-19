@@ -474,6 +474,59 @@ fn draw_inside_label(
     painter.galley(text_rect.min, galley, visuals.text_color());
 }
 
+/// How many grid cells tall a list must be to show all its `children`
+/// with `labels`, at grid size `cell` (pixels): its title, margins and every
+/// shown row, rounded up to whole cells, and at least [`NEW_LIST_CELLS`].
+/// A list with no children is [`NEW_LIST_CELLS`] tall, as Elastic makes it.
+///
+/// ```
+/// use raptaboard::widgets::list_layout::{cells_tall_for, Labels, LabelPosition};
+/// # let child = |t: &str| serde_json::from_value(serde_json::json!({"title": t,
+/// #     "x": 0.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "Text Display"})).unwrap();
+/// let inside = Labels { position: LabelPosition::Top, inside: true };
+/// assert_eq!(cells_tall_for(&[child("a")], inside, 128.0), 2.0);
+/// let five: Vec<_> = (0..5).map(|_| child("x")).collect();
+/// assert_eq!(cells_tall_for(&five, inside, 128.0), 4.0);
+/// ```
+pub fn cells_tall_for(children: &[WidgetContainer], labels: Labels, cell: f64) -> f64 {
+    if children.is_empty() {
+        return NEW_LIST_CELLS;
+    }
+    let top = card::TITLE_HEIGHT + card::BODY_MARGIN;
+    let body = Rect::from_min_size(egui::pos2(0.0, top), egui::vec2(100.0, f32::MAX / 2.0));
+    let bottom = rows(body, children, labels, |_| 0.0)
+        .last()
+        .map_or(top, |r| r.row.max.y);
+    let needed = f64::from(bottom + card::BODY_MARGIN);
+    (needed / cell).ceil().max(NEW_LIST_CELLS)
+}
+
+/// Names for `lists` in a menu, in order: their titles, with a number
+/// added where two share one.
+///
+/// ```
+/// use raptaboard::widgets::list_layout::{menu_names, new_list};
+/// use raptaboard_layout::Rect;
+/// let at = Rect { x: 0.0, y: 0.0, width: 256.0, height: 256.0 };
+/// let mut lists = vec![new_list(at, vec![]), new_list(at, vec![]), new_list(at, vec![])];
+/// lists[1].title = "Drive".into();
+/// assert_eq!(menu_names(&lists), ["List Layout (1)", "Drive", "List Layout (2)"]);
+/// ```
+pub fn menu_names(lists: &[LayoutContainer]) -> Vec<String> {
+    let title = |i: usize| lists[i].title.as_str();
+    (0..lists.len())
+        .map(|i| {
+            let same = (0..lists.len()).filter(|&j| title(j) == title(i)).count();
+            if same > 1 {
+                let nth = (0..=i).filter(|&j| title(j) == title(i)).count();
+                format!("{} ({nth})", title(i))
+            } else {
+                title(i).to_owned()
+            }
+        })
+        .collect()
+}
+
 /// Move the child at `from` to `to` in `list`, shifting the ones between.
 /// Does nothing if either is out of range.
 ///

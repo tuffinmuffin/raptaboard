@@ -68,6 +68,19 @@
                   "period": 0.06,
                   "data_type": "boolean"
                 }
+              },
+              {
+                "title": "Missing child",
+                "x": 0.0,
+                "y": 0.0,
+                "width": 256.0,
+                "height": 128.0,
+                "type": "Boolean Box",
+                "properties": {
+                  "topic": "/DashTest/MissingChild",
+                  "period": 0.06,
+                  "data_type": "boolean"
+                }
               }
             ]
           }
@@ -260,6 +273,39 @@
                 "type": "int"
               },
               "enum_display": "both"
+            }
+          },
+          {
+            "title": "Missing text",
+            "x": 512.0,
+            "y": 384.0,
+            "width": 128.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/DashTest/MissingText",
+              "period": 0.06,
+              "data_type": "double"
+            }
+          },
+          {
+            "title": "Missing field",
+            "x": 640.0,
+            "y": 256.0,
+            "width": 128.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/DashTest/OrbitPose",
+              "period": 0.06,
+              "data_type": "double",
+              "struct_meta": {
+                "path": [
+                  "nope"
+                ],
+                "schema_name": "Pose2d",
+                "type": "double"
+              }
             }
           }
         ]

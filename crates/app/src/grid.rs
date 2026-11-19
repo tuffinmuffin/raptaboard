@@ -8,7 +8,7 @@
 
 use raptaboard_layout::{GridLayout, MAX_GRID_CELLS, Rect};
 
-use crate::widgets::list_layout::{NEW_LIST_CELLS, new_list};
+use crate::widgets::list_layout::{NEW_LIST_CELLS, cells_tall_for, labels, new_list};
 
 /// Something on a tab's grid: a single widget or a List Layout, by its index
 /// in [`GridLayout::containers`] or [`GridLayout::layouts`].
@@ -203,18 +203,41 @@ pub fn child_out_of_list(
 /// ```
 pub fn add_list(
     grid: &mut GridLayout,
-    (x, y): (f64, f64),
+    at: (f64, f64),
     cell: f64,
     area: (f64, f64),
 ) -> Option<usize> {
+    add_list_holding(grid, at, Vec::new(), cell, area)
+}
+
+/// Like [`add_list`], but the new list holds `children` and is tall
+/// enough to show them all ([`cells_tall_for`]). `None` (and the children
+/// are dropped) if there's no room.
+pub fn add_list_holding(
+    grid: &mut GridLayout,
+    (x, y): (f64, f64),
+    children: Vec<raptaboard_layout::WidgetContainer>,
+    cell: f64,
+    area: (f64, f64),
+) -> Option<usize> {
+    let mut list = new_list(
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        },
+        children,
+    );
+    let tall = cells_tall_for(&list.children, labels(&list.properties), cell);
     let at = Rect {
         x: (x / cell).floor() * cell,
         y: (y / cell).floor() * cell,
         width: NEW_LIST_CELLS * cell,
-        height: NEW_LIST_CELLS * cell,
+        height: tall * cell,
     };
-    let spot = free_spot_near(grid, at, cell, area)?;
-    grid.layouts.push(new_list(spot, Vec::new()));
+    list.rect = free_spot_near(grid, at, cell, area)?;
+    grid.layouts.push(list);
     Some(grid.layouts.len() - 1)
 }
 
@@ -251,6 +274,45 @@ pub fn wrap_in_list(
     };
     grid.layouts.push(new_list(spot, vec![child]));
     Some(grid.layouts.len() - 1)
+}
+
+/// Put new `widgets` on `grid`, each in the free spot nearest the cell
+/// corner `near` (grid pixels), in order, within `area` (the visible grid's
+/// width and height in pixels). Each keeps its size. Stops when there's no
+/// room; returns the new widgets' indexes in `containers`.
+///
+/// ```
+/// use raptaboard::grid::place_near;
+/// use raptaboard::widgets::for_topic;
+/// use raptaboard_layout::{GridLayout, Rect};
+/// let one = Rect { x: 0.0, y: 0.0, width: 128.0, height: 128.0 };
+/// let new = ["/a", "/b"].map(|t| for_topic(t, "double", None, one).unwrap());
+/// let mut grid = GridLayout::default();
+/// assert_eq!(place_near(&mut grid, new.to_vec(), (128.0, 0.0), 128.0, (512.0, 512.0)), [0, 1]);
+/// assert_eq!(grid.containers[0].rect.x, 128.0);
+/// ```
+pub fn place_near(
+    grid: &mut GridLayout,
+    widgets: Vec<raptaboard_layout::WidgetContainer>,
+    near: (f64, f64),
+    cell: f64,
+    area: (f64, f64),
+) -> Vec<usize> {
+    let mut placed = Vec::new();
+    for mut widget in widgets {
+        let want = Rect {
+            x: near.0,
+            y: near.1,
+            ..widget.rect
+        };
+        let Some(spot) = free_spot_near(grid, want, cell, area) else {
+            break;
+        };
+        widget.rect = spot;
+        grid.containers.push(widget);
+        placed.push(grid.containers.len() - 1);
+    }
+    placed
 }
 
 /// The free spot for something `rect`'s size closest to `rect`, on whole
@@ -727,6 +789,63 @@ mod tests {
             let before = grid.clone();
             assert_eq!(wrap_in_list(&mut grid, 0, g.cell, g.window(2.0, 2.0)), None);
             assert_eq!(grid, before);
+        });
+    }
+
+    #[test]
+    fn several_new_widgets_fill_in_around_the_drop() {
+        each_size(|g| {
+            let one = g.at(0.0, 0.0, 1.0, 1.0);
+            let new = |n: usize| -> Vec<raptaboard_layout::WidgetContainer> {
+                (0..n)
+                    .map(|i| {
+                        crate::widgets::for_topic(&format!("/t{i}"), "double", None, one).unwrap()
+                    })
+                    .collect()
+            };
+            let mut grid = g.grid(&[("taken", g.at(1.0, 1.0, 1.0, 1.0))], &[]);
+            let window = g.window(3.0, 2.0);
+            // Dropped on the taken cell: they fill the nearest free ones.
+            let placed = place_near(&mut grid, new(3), (g.cell, g.cell), g.cell, window);
+            assert_eq!(placed, [1, 2, 3]);
+            let spots: Vec<Rect> = placed.iter().map(|&i| grid.containers[i].rect).collect();
+            assert_eq!(
+                spots,
+                [
+                    g.at(1.0, 0.0, 1.0, 1.0),
+                    g.at(0.0, 1.0, 1.0, 1.0),
+                    g.at(2.0, 1.0, 1.0, 1.0)
+                ]
+            );
+            // Two cells left; three more only place two.
+            assert_eq!(
+                place_near(&mut grid, new(3), (0.0, 0.0), g.cell, window).len(),
+                2
+            );
+            assert!(place_near(&mut grid, new(1), (0.0, 0.0), g.cell, window).is_empty());
+        });
+    }
+
+    #[test]
+    fn new_lists_holding_topics_are_tall_enough() {
+        each_size(|g| {
+            let mut grid = g.grid(&[], &[]);
+            let one = g.at(0.0, 0.0, 1.0, 1.0);
+            let kids: Vec<raptaboard_layout::WidgetContainer> = (0..5)
+                .map(|i| crate::widgets::for_topic(&format!("/t{i}"), "double", None, one).unwrap())
+                .collect();
+            // Drawing sizes are in points, so small grids need many rows.
+            let window = g.window(8.0, 60.0);
+            let list = add_list_holding(&mut grid, (0.0, 0.0), kids, g.cell, window).unwrap();
+            let l = &grid.layouts[list];
+            assert_eq!(l.children.len(), 5);
+            assert_eq!(l.rect.width, 2.0 * g.cell);
+            assert_eq!(
+                l.rect.height,
+                cells_tall_for(&l.children, labels(&l.properties), g.cell) * g.cell
+            );
+            // Five one-cell children need more than an empty list's two cells.
+            assert!(l.rect.height > 2.0 * g.cell);
         });
     }
 }

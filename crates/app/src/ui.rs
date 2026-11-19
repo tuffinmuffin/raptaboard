@@ -20,7 +20,7 @@ use crate::nt::{ConnectionStatus, NtConnection};
 use crate::sampling::Sampler;
 use crate::struct_view::{self, FieldInfo};
 use crate::tabs::{self, TabAction};
-use crate::tree::{DraggedTopic, Folder, TopicEntry};
+use crate::tree::{AddTo, DraggedTopics, Folder, TopicEntry, TreeSelection};
 use crate::widgets::shared::{card, format, props, settings};
 use crate::widgets::{self, list_layout};
 use nt4::proto::structs::StructDatabase;
@@ -53,6 +53,8 @@ const RESIZE_MARK_INSET: f32 = 4.0;
 const DROP_OK: Color32 = Color32::from_rgb(60, 180, 90);
 /// Color of a drop outline where the drop would cover something.
 const DROP_BLOCKED: Color32 = Color32::from_rgb(220, 60, 60);
+/// Color of the outline on widgets showing a topic picked in the tree.
+const FOUND_COLOR: Color32 = Color32::from_rgb(230, 160, 40);
 
 /// What a drag on the grid is doing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -194,6 +196,12 @@ pub struct DashboardApp {
     /// Where empty grid was last right-clicked, in grid pixels, for the
     /// menu's "New List Layout".
     menu_at: (f64, f64),
+    /// The NT tree rows picked, for adding several at once and for
+    /// highlighting their widgets.
+    tree_sel: TreeSelection,
+    /// Whether the status line shows why a clicked widget couldn't be found
+    /// in the tree, so the next click that finds one clears it.
+    find_status: bool,
     /// The tab being renamed, the name typed so far, and whether its text
     /// box has been given the keyboard yet.
     renaming: Option<(usize, String, bool)>,
@@ -240,6 +248,8 @@ impl DashboardApp {
             drag: None,
             child_drag: None,
             menu_at: (0.0, 0.0),
+            tree_sel: TreeSelection::default(),
+            find_status: false,
             renaming: None,
             confirm_close: None,
             selected: None,
@@ -578,13 +588,37 @@ impl DashboardApp {
             };
             ui.weak(format!("Showing {shown} of {total} topics ({why})"));
         }
-        egui::ScrollArea::vertical()
+        self.tree_sel.begin_frame();
+        self.tree_sel.lists = self.list_names();
+        let no_structs = StructDatabase::new();
+        let structs = self.nt.structs().unwrap_or(&no_structs);
+        let drawn = egui::ScrollArea::vertical()
             .auto_shrink([false, false])
-            .show(ui, |ui| match self.nt.structs() {
-                Some(structs) => tree.show(ui, "", filtering, structs, !self.locked),
-                None => tree.show(ui, "", filtering, &StructDatabase::new(), !self.locked),
+            .show(ui, |ui| {
+                // Rows are picked, not their text: no text cursor or text
+                // highlighting, which would look like picking.
+                ui.style_mut().interaction.selectable_labels = false;
+                let drawn = tree.show(ui, "", filtering, structs, !self.locked, &mut self.tree_sel);
+                // Clicking the empty space below the rows unpicks them.
+                let below = ui.allocate_response(ui.available_size(), Sense::click());
+                if below.clicked() {
+                    self.tree_sel.clear();
+                }
+                drawn
             })
-            .inner
+            .inner;
+        self.tree_sel.end_frame();
+        // Picking in the tree deselects the grid's widget, whose outline
+        // would otherwise linger beside the picked topic's.
+        if self.tree_sel.clicked {
+            self.selected = None;
+        }
+        if let Some(row) = &self.tree_sel.not_found {
+            self.status =
+                format!("No row for {row} in the tree: not published, or hidden by the filter");
+            self.find_status = true;
+        }
+        drawn
     }
 
     /// The topics the widgets on the open tab are bound to, grouped by how
@@ -623,6 +657,20 @@ impl DashboardApp {
         let mut action = None;
         let names: Vec<String> = self.layout.tabs.iter().map(|t| t.name.clone()).collect();
         let count = names.len();
+        // Tabs with widgets for the topics picked in the tree get a mark.
+        let picked = self.tree_sel.selected();
+        let has_picked: Vec<bool> = self
+            .layout
+            .tabs
+            .iter()
+            .map(|t| {
+                let grid = &t.grid_layout;
+                grid.containers
+                    .iter()
+                    .chain(grid.layouts.iter().flat_map(|l| &l.children))
+                    .any(|w| picked.iter().any(|p| p.is_shown_by(w)))
+            })
+            .collect();
         ui.horizontal(|ui| {
             for (i, name) in names.iter().enumerate() {
                 if let Some((renaming, text, focused)) = &mut self.renaming
@@ -644,9 +692,19 @@ impl DashboardApp {
                     }
                     continue;
                 }
+                let marked = has_picked[i] && self.current_tab != i;
+                let label = if marked {
+                    egui::RichText::new(format!("{name} ●"))
+                } else {
+                    egui::RichText::new(name)
+                };
+                let mut hint = tabs::tab_hint(ui.ctx(), i, self.locked);
+                if marked {
+                    hint = format!("{hint}\nHas widgets for the topics picked in the tree");
+                }
                 let tab = ui
-                    .selectable_label(self.current_tab == i, name)
-                    .on_hover_text(tabs::tab_hint(ui.ctx(), i, self.locked));
+                    .selectable_label(self.current_tab == i, label)
+                    .on_hover_text(hint);
                 if tab.clicked() {
                     action = Some(TabAction::Select(i));
                 }
@@ -715,6 +773,10 @@ impl DashboardApp {
     /// Carry out an editing command: undo, redo, or Delete, Duplicate and
     /// Deselect on the selected widget. Ignored while locked.
     fn run_edit_action(&mut self, ctx: &egui::Context, action: EditAction) {
+        // Esc also unpicks tree rows, which can be picked while locked.
+        if action == EditAction::Deselect {
+            self.tree_sel.clear();
+        }
         if self.locked {
             return;
         }
@@ -972,6 +1034,115 @@ impl DashboardApp {
         }
     }
 
+    /// Names for the open tab's List Layouts, in order: their titles, with
+    /// a number added where two share one ("List Layout (2)").
+    fn list_names(&self) -> Vec<String> {
+        let Some(tab) = self.layout.tabs.get(self.current_tab) else {
+            return Vec::new();
+        };
+        list_layout::menu_names(&tab.grid_layout.layouts)
+    }
+
+    /// Make widgets for `topics` on the open tab, one cell each, where `to`
+    /// says: free spots nearest the tab's top left, the end of a list, or a
+    /// new list. The status line says what happened.
+    fn add_topics(&mut self, topics: &[crate::tree::DraggedTopic], to: AddTo) {
+        let cell = f64::from(self.layout.grid_size());
+        let one = LayoutRect {
+            x: 0.0,
+            y: 0.0,
+            width: cell,
+            height: cell,
+        };
+        let made: Vec<WidgetContainer> = topics
+            .iter()
+            .filter_map(|t| widgets::for_topic(&t.name, &t.ty, t.field.as_ref(), one))
+            .collect();
+        let wanted = made.len();
+        let room = self.grid_room;
+        let Some(tab) = self.layout.tabs.get_mut(self.current_tab) else {
+            return;
+        };
+        if to == AddTo::NewList {
+            match grid::add_list_holding(&mut tab.grid_layout, (0.0, 0.0), made, cell, room) {
+                Some(i) => {
+                    self.selected = Some(Item::List(i));
+                    self.status = format!(
+                        "Made a list of {wanted} widget{}",
+                        if wanted == 1 { "" } else { "s" }
+                    );
+                }
+                None => self.status = "No free space for a new list".to_owned(),
+            }
+            return;
+        }
+        if let AddTo::List(i) = to
+            && let Some(l) = tab.grid_layout.layouts.get_mut(i)
+        {
+            l.children.extend(made);
+            self.selected = Some(Item::List(i));
+            self.status = format!(
+                "Added {wanted} widget{} to \"{}\"",
+                if wanted == 1 { "" } else { "s" },
+                l.title
+            );
+            return;
+        }
+        let placed = grid::place_near(&mut tab.grid_layout, made, (0.0, 0.0), cell, room);
+        self.selected = placed.first().map(|&i| Item::Widget(i));
+        self.status = if placed.len() < wanted {
+            format!(
+                "Added {} of {wanted} widgets; no free space for the rest",
+                placed.len()
+            )
+        } else {
+            format!(
+                "Added {wanted} widget{}",
+                if wanted == 1 { "" } else { "s" }
+            )
+        };
+    }
+
+    /// Open the tree to `widget`'s topic (or struct field) and pick it, if
+    /// the server has it; otherwise leave the tree alone, unpick, and say
+    /// why in the status line.
+    fn find_in_tree(&mut self, widget: &WidgetContainer) {
+        let Some(topic) = widget.topic() else { return };
+        let field = widget.struct_meta();
+        let published = self.nt.client().and_then(|c| c.topic(topic)).is_some();
+        let missing = if !published {
+            Some(format!("{topic} isn't published"))
+        } else {
+            field.as_ref().and_then(|meta| {
+                let known = self
+                    .nt
+                    .structs()
+                    .and_then(|db| struct_view::field_info(db, &meta.schema_name, &meta.path));
+                known.is_none().then(|| {
+                    format!(
+                        "{topic} has no field {}",
+                        struct_view::path_text(&meta.path)
+                    )
+                })
+            })
+        };
+        match missing {
+            Some(why) => {
+                self.tree_sel.clear();
+                self.status = why;
+                self.find_status = true;
+            }
+            None => {
+                // A finding message from an earlier click is out of date now.
+                if self.find_status {
+                    self.status.clear();
+                    self.find_status = false;
+                }
+                self.tree_sel.reveal(topic, field.map(|m| m.path));
+            }
+        }
+    }
+
     /// Leave a child's settings and go back to its list's.
     fn close_child(&mut self) {
         if let Some(Editing::List { child, .. }) = &mut self.editing {
@@ -1020,6 +1191,7 @@ impl DashboardApp {
         let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click());
         if response.clicked() {
             self.selected = None;
+            self.tree_sel.clear();
         }
         let area = response.rect;
         let origin = area.min;
@@ -1079,6 +1251,7 @@ impl DashboardApp {
         let mut menu_action = None;
         let mut edit_child = None;
         let mut wrap = None;
+        let mut find_in_tree = None;
         if !self.locked {
             for &(item, r) in &placed {
                 let rect = to_screen(&r);
@@ -1106,6 +1279,11 @@ impl DashboardApp {
                         }
                         if child.clicked() || child.secondary_clicked() || child.drag_started() {
                             self.selected = Some(item);
+                        }
+                        if child.clicked()
+                            && let Some(w) = list.children.get(row.index)
+                        {
+                            find_in_tree = Some(w.clone());
                         }
                         if child.double_clicked() {
                             edit_child = Some((index, row.index));
@@ -1139,6 +1317,13 @@ impl DashboardApp {
                 }
                 if body.clicked() || body.secondary_clicked() || body.drag_started() {
                     self.selected = Some(item);
+                }
+                // Clicking a widget finds its topic in the tree.
+                if body.clicked()
+                    && let Item::Widget(i) = item
+                    && let Some(w) = tab.grid_layout.containers.get(i)
+                {
+                    find_in_tree = Some(w.clone());
                 }
                 if body.double_clicked() {
                     menu_action = Some((item, EditAction::Edit));
@@ -1227,6 +1412,35 @@ impl DashboardApp {
                 egui::StrokeKind::Inside,
             );
         }
+        // Widgets showing the topics picked in the tree get an outline, so
+        // it's easy to see where a value is already shown.
+        let picked = self.tree_sel.selected();
+        if !picked.is_empty() {
+            let shows = |w: &WidgetContainer| picked.iter().any(|t| t.is_shown_by(w));
+            let stroke = Stroke::new(OUTLINE_WIDTH, FOUND_COLOR);
+            for w in tab.grid_layout.containers.iter().filter(|w| shows(w)) {
+                painter.rect_stroke(
+                    to_screen(&w.rect).shrink(SELECTION_INSET),
+                    egui::CornerRadius::same(card::CORNER_RADIUS),
+                    stroke,
+                    egui::StrokeKind::Inside,
+                );
+            }
+            for l in &tab.grid_layout.layouts {
+                let card = to_screen(&l.rect).shrink(CELL_GAP);
+                for row in list_layout::rows_on_screen(card, l) {
+                    if shows(&l.children[row.index]) {
+                        painter.rect_stroke(
+                            row.row.expand(2.0).intersect(card),
+                            egui::CornerRadius::same(card::BODY_CORNER_RADIUS),
+                            stroke,
+                            egui::StrokeKind::Inside,
+                        );
+                    }
+                }
+            }
+        }
+
         // Where the pointer is, in grid pixels, and the list under it as a
         // drop target, if any.
         let pointer_screen = ui.ctx().pointer_latest_pos();
@@ -1321,13 +1535,14 @@ impl DashboardApp {
             }
         }
 
-        // A topic dragged from the NT tree: show the cell under the pointer
-        // where its widget would go, and make the widget when it's dropped.
-        // Over a list, it goes into the list.
+        // Topics dragged from the NT tree: show the cell under the pointer
+        // where the first widget would go, and make the widgets when they're
+        // dropped, each in the free spot nearest there. Over a list, they go
+        // into the list.
         let pointer = ui.ctx().pointer_hover_pos().filter(|p| area.contains(*p));
         if !self.locked
             && let Some(p) = pointer
-            && let Some(topic) = egui::DragAndDrop::payload::<DraggedTopic>(ui.ctx())
+            && let Some(topics) = egui::DragAndDrop::payload::<DraggedTopics>(ui.ctx())
         {
             let under = LayoutRect {
                 x: f64::from(p.x - origin.x) - cell / 2.0,
@@ -1340,27 +1555,42 @@ impl DashboardApp {
             let free = grid::is_free(&tab.grid_layout, target);
             match &into_list {
                 Some(drop) => draw_drop(&painter, drop, &to_screen),
+                // Several go around the first, so only the first must fit.
                 None => draw_landing(&painter, to_screen(&target), free),
             }
             if ui.input(|i| i.pointer.any_released())
-                && let Some(widget) =
-                    widgets::for_topic(&topic.name, &topic.ty, topic.field.as_ref(), target)
                 && let Some(tab) = self.layout.tabs.get_mut(self.current_tab)
             {
+                // One cell each; in a list only the size matters.
+                let one = LayoutRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: cell,
+                    height: cell,
+                };
+                let made: Vec<WidgetContainer> = topics
+                    .0
+                    .iter()
+                    .filter_map(|t| widgets::for_topic(&t.name, &t.ty, t.field.as_ref(), one))
+                    .collect();
                 let grid = &mut tab.grid_layout;
                 match into_list {
                     Some(DropTarget::List { list, at, .. }) => {
-                        let mut widget = widget;
-                        // In a list only the size matters: one cell, as dropped.
-                        widget.rect.x = 0.0;
-                        widget.rect.y = 0.0;
                         let at = at.min(grid.layouts[list].children.len());
-                        grid.layouts[list].children.insert(at, widget);
+                        let children = &mut grid.layouts[list].children;
+                        children.splice(at..at, made);
                         self.selected = Some(Item::List(list));
                     }
-                    _ if free => {
-                        grid.containers.push(widget);
-                        self.selected = Some(Item::Widget(grid.containers.len() - 1));
+                    None => {
+                        let placed = grid::place_near(grid, made, (target.x, target.y), cell, room);
+                        self.selected = placed.first().map(|&i| Item::Widget(i));
+                        if placed.len() < topics.0.len() {
+                            self.status = format!(
+                                "Added {} of {} widgets; no free space for the rest",
+                                placed.len(),
+                                topics.0.len()
+                            );
+                        }
                     }
                     _ => {}
                 }
@@ -1434,6 +1664,9 @@ impl DashboardApp {
                 Some(list) => self.selected = Some(Item::List(list)),
                 None => self.status = "No free space for a new list".to_owned(),
             }
+        }
+        if let Some(widget) = find_in_tree {
+            self.find_in_tree(&widget);
         }
         if let Some((item, action)) = menu_action {
             self.selected = Some(item);
@@ -1634,6 +1867,12 @@ impl eframe::App for DashboardApp {
         } else {
             Vec::new()
         };
+        // "Add to grid" from the tree's right-click menu: widgets in the
+        // free spots nearest the top left of the open tab.
+        let add = std::mem::take(&mut self.tree_sel.add);
+        if !add.is_empty() && !self.locked {
+            self.add_topics(&add, self.tree_sel.add_to);
+        }
         let now = Instant::now();
         egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values, now));
         let next_value = self.sampler.finish_frame(now);

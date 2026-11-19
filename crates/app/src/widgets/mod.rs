@@ -209,6 +209,8 @@ pub fn for_topic(
 /// assert_eq!(source_title("/Drive/Health/ok", None), "ok");
 /// let x = StructMeta { path: vec!["translation".into(), "x".into()], schema_name: "Pose2d".into() };
 /// assert_eq!(source_title("/Drive/pose", Some(&x)), "pose.translation.x");
+/// let item = StructMeta { path: vec!["[2]".into(), "x".into()], schema_name: "Translation2d".into() };
+/// assert_eq!(source_title("/Fleet", Some(&item)), "Fleet[2].x");
 /// ```
 pub fn source_title(name: &str, field: Option<&StructMeta>) -> String {
     let last = name
@@ -216,7 +218,14 @@ pub fn source_title(name: &str, field: Option<&StructMeta>) -> String {
         .find(|part| !part.is_empty())
         .unwrap_or(name);
     match field {
-        Some(field) => format!("{last}.{}", field.path.join(".")),
+        Some(field) => {
+            let path = crate::struct_view::path_text(&field.path);
+            if path.starts_with('[') {
+                format!("{last}{path}")
+            } else {
+                format!("{last}.{path}")
+            }
+        }
         None => last.to_owned(),
     }
 }

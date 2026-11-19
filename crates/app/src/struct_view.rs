@@ -296,23 +296,67 @@ pub fn is_enum_field(db: &StructDatabase, schema: &str, path: &[String]) -> bool
     field_info(db, schema, path).is_some_and(|f| f.is_enum())
 }
 
-/// The struct holding the field `path` names, and that field.
+/// The array index in a path step written `[2]`, as the tree names array
+/// items.
+fn item_index(step: &str) -> Option<usize> {
+    step.strip_prefix('[')?.strip_suffix(']')?.parse().ok()
+}
+
+/// The struct holding the field `path` names, and that field. Steps like
+/// `[2]` pick an item: first in the path for a struct array topic
+/// (`Pose2d[]`), or after a field that's an array of structs.
 fn find_field<'a>(
     db: &'a StructDatabase,
     schema: &str,
     bytes: &'a [u8],
     path: &[String],
 ) -> Option<(DynamicStruct<'a>, &'a FieldDescriptor)> {
-    let (last, parents) = path.split_last()?;
-    let mut s = DynamicStruct::new(db, schema, bytes)?;
-    for name in parents {
-        match s.value(s.field(name)?)? {
-            FieldValue::Struct(inner) => s = inner,
-            _ => return None,
+    let (mut s, rest) = match path.first().and_then(|p| item_index(p)) {
+        Some(i) => (
+            DynamicStruct::array(db, schema, bytes)?
+                .into_iter()
+                .nth(i)?,
+            &path[1..],
+        ),
+        None => (DynamicStruct::new(db, schema, bytes)?, path),
+    };
+    let (last, parents) = rest.split_last()?;
+    let mut steps = parents.iter().peekable();
+    while let Some(name) = steps.next() {
+        let field = s.field(name)?;
+        match steps.peek().and_then(|next| item_index(next)) {
+            Some(i) => {
+                steps.next();
+                s = s.get_struct(field, i)?;
+            }
+            None => match s.value(field)? {
+                FieldValue::Struct(inner) => s = inner,
+                _ => return None,
+            },
         }
     }
     let field = s.field(last)?;
     Some((s, field))
+}
+
+/// A field path as one piece of text: `translation.x`, or `[2].translation.x`
+/// with array items written straight after what they index.
+///
+/// ```
+/// use raptaboard::struct_view::path_text;
+/// let path = ["[2]", "translation", "x"].map(String::from);
+/// assert_eq!(path_text(&path), "[2].translation.x");
+/// assert_eq!(path_text(&["points", "[1]", "y"].map(String::from)), "points[1].y");
+/// ```
+pub fn path_text(path: &[String]) -> String {
+    let mut text = String::new();
+    for step in path {
+        if !text.is_empty() && !step.starts_with('[') {
+            text.push('.');
+        }
+        text.push_str(step);
+    }
+    text
 }
 
 /// A struct field's value as an NT value. Whole structs and mixed arrays
@@ -786,5 +830,38 @@ mod tests {
         // A plain field has no fields inside it.
         assert_eq!(info(&["kind", "x"]), None);
         assert_eq!(info(&[]), None);
+    }
+
+    #[test]
+    fn fields_inside_struct_arrays() {
+        let mut db = StructDatabase::new();
+        db.add("Translation2d", "double x;double y").unwrap();
+        db.add("Path", "Translation2d points[2]; double speed")
+            .unwrap();
+        let path = |p: &[&str]| p.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        // A Translation2d[] topic: item 1's y.
+        let fleet: Vec<u8> = [1.0f64, 2.0, 3.0, 4.0]
+            .iter()
+            .flat_map(|d| d.to_le_bytes())
+            .collect();
+        let y1 = field_value(&db, "Translation2d", &fleet, &path(&["[1]", "y"]));
+        assert_eq!(y1, Some(Value::Double(4.0)));
+        assert_eq!(
+            field_value(&db, "Translation2d", &fleet, &path(&["[2]", "y"])),
+            None
+        );
+        // An array of structs inside a struct: points[1].x.
+        let p: Vec<u8> = [10.0f64, 11.0, 12.0, 13.0, 5.0]
+            .iter()
+            .flat_map(|d| d.to_le_bytes())
+            .collect();
+        let x1 = field_value(&db, "Path", &p, &path(&["points", "[1]", "x"]));
+        assert_eq!(x1, Some(Value::Double(12.0)));
+        assert_eq!(
+            field_value(&db, "Path", &p, &path(&["speed"])),
+            Some(Value::Double(5.0))
+        );
+        // A step that isn't an index where one's needed fails cleanly.
+        assert_eq!(field_value(&db, "Path", &p, &path(&["points", "x"])), None);
     }
 }

@@ -255,8 +255,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    dragging a topic onto the grid makes a one-cell widget there (Boolean Box for booleans, Text
    Display for the rest; saved with `topic`, `period` and `data_type` like Elastic). Fields inside a
    struct topic (Pose2d → translation → x) drag too: the widget keeps the struct topic and saves
-   Elastic's `struct_meta` (`path`, `schema_name`, `type`); fields inside struct arrays don't, as in
-   Elastic. Whole structs wait for their widgets. Dragging folders
+   Elastic's `struct_meta` (`path`, `schema_name`, `type`). Fields inside struct arrays drag too
+   (`Fleet[2].translation.x`, saved with `[2]` path steps; raptaboard only, Elastic can't bind them). Whole structs wait for their widgets. Dragging folders
    (tables with `.type`) waits for the widgets that draw tables in milestone 3. Editing widgets
    (unlocked): click to select (outlined), right-click for Duplicate and Delete; Delete or
    Backspace deletes, Ctrl+D duplicates into the nearest free spot, Esc deselects. Undo and redo
@@ -275,6 +275,14 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    to its default (period 0.06 s, default colors, no raptaboard settings) but keeps the title and
    the topic or field. Settings at their default are left out of
    the file. Next:
+   - NT tree rows (topics and struct fields that can be widgets) can be picked: click one,
+     Ctrl+click (Cmd on macOS) to add or remove, Shift+click for a range. Picked rows are shaded;
+     widgets showing them get an amber outline (list rows too), and other tabs with one get a ●.
+     The other way round: clicking a widget (or a list child) opens the tree to its topic or
+     field, scrolls to it and picks it.
+     Right-click → "Add to grid" (or "Add N to grid") puts them in the free spots nearest the top
+     left, and "Add to list ▸" adds them to a new list (sized to fit them; always offered) or to the end of
+     one of the tab's lists; dragging a picked row takes them all, onto the grid (around the drop) or into a list.
    - List Layout editing. Done: lists draw like Elastic's (children compact with no card each:
      a label placed by `label_position` and the child's body, each row its saved height less 48
      and at least 32); Edit… or double-click on a list opens its settings (title, label position and an Inside box that
@@ -322,14 +330,6 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      picks. Open (decide when built), likely both: embed the image in the layout, scaled down to a
      small fixed size so the file stays well under its 10 MB limit and is fully portable, and/or
      keep image files next to the layout or served by the robot.
-   - Find a topic's widgets: selecting a topic (or struct field) in the NT tree highlights every
-     widget on the open tab bound to it, and marks other tabs that have one, so it's easy to see
-     where a value is already shown before adding another.
-   - Add from the tree without dragging: right-click a topic or struct field → "Add to grid" puts
-     its widget in the first free spot on the open tab.
-   - Select several topics in the tree (Ctrl+click, Shift+click for a range) and add them all at
-     once, by dragging them together or with "Add to grid"; each gets its own widget, placed in free
-     spots starting where they're dropped.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
