@@ -161,8 +161,10 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `time_displayed` (Elastic; older `visibleTime`) | `builtin/graph.rs` | Graph | seconds shown | 5 |
 | `min_value`, `max_value` (Elastic) | `builtin/graph.rs` | Graph | a fixed range; both unset fits the values | unset |
 | `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
-| `series` | `builtin/graph.rs` | Graph | more lines: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
+| `series` | `builtin/graph.rs` | Graph | the lines after the main one: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
 | `show_legend` | `builtin/graph.rs` | Graph | show the legend | when there's more than one line |
+| `show_pause` | `builtin/graph.rs` | Graph | show the pause button (and measuring) | true |
+| `show_hover` | `builtin/graph.rs` | Graph | show values where the pointer is | true |
 | `label_inside` | `list_layout.rs` | List Layout | `true`: each label drawn over its value (on a see-through backing) instead of beside it | off |
 | `dividers` | `list_layout.rs` | List Layout | `true`: a thin line under the list's title and below each child | off |
 | `hidden` | `list_layout.rs` | a List Layout's child | `true`: kept in the list but not shown or subscribed | shown |
@@ -376,7 +378,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    by their title bar out of the way of the widget being changed; they reopen where they were left
    (for the run), and the grid behind stays blocked but only lightly dimmed. Graph (with `egui_plot`): numbers and booleans over time, Elastic's
    settings, and raptaboard's multiple lines on one graph (drop more topics or struct fields from
-   the tree onto it; a legend shows when there's more than one). Values are recorded in
+   the tree onto it; a legend shows when there's more than one). All lines are equal: the
+   settings list them with ↑/↓ and Remove, the first being the main line, saved as the widget's own
+   `topic`/`color` as Elastic saves it. A pause button freezes the picture while values keep
+   recording; while paused, two clicks place measuring cursors A and B (scope style) and a readout
+   gives Δt and each line's values and Δ there. Values are recorded in
    `traces.rs` for the series the open tab's graphs show, each for the longest window wanted. A
    plot only senses hover, so it never takes the drags that move the widget. Next: then the writing widgets (toggles, slider, editable Text
    Display), choosers, Alerts, Field, struct widgets.

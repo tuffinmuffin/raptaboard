@@ -1,19 +1,26 @@
 //! Graph: numbers over time, drawn with `egui_plot`. One graph can show
-//! several series, so values to compare sit on one plot; Elastic's graphs
+//! several lines, so values to compare sit on one plot; Elastic's graphs
 //! show one.
 //!
-//! The first series is the widget's own `topic` (or struct field), saved as
-//! Elastic saves a graph, so Elastic layouts open unchanged. More series go
-//! in raptaboard's `series` setting: drop a topic from the tree onto a graph
-//! to add one. A legend shows when there's more than one.
+//! All lines are equal: the first is the **main** line, saved in the
+//! widget's own `topic` (or struct field) and `color` as Elastic saves a
+//! graph, so Elastic layouts open unchanged; the rest go in raptaboard's
+//! `series` setting. Drop a topic from the tree onto a graph to add a line;
+//! reorder lines in the settings to change which is main. A legend shows
+//! when there's more than one.
+//!
+//! A graph can be paused (the ⏸ button): the picture freezes while values
+//! keep being recorded. While paused, clicking the plot places measuring
+//! cursors, A then B, and a readout gives the time between them and each
+//! line's values there, like a scope's cursors.
 //!
 //! Elastic's settings: `time_displayed` (seconds shown, 5; older files say
 //! `visibleTime`), `min_value` and `max_value` (a fixed range; both unset
-//! fits the values), `color` (the first series, cyan) and `line_width` (2).
-//! raptaboard's: `series` and `show_legend`.
+//! fits the values), `color` (the main line, cyan) and `line_width` (2).
+//! raptaboard's: `series`, `show_legend`, `show_pause` and `show_hover`.
 
 use eframe::egui::{self, Color32, Rect, Sense};
-use egui_plot::{Corner, Legend, Line, Plot, PlotPoints};
+use egui_plot::{Corner, Legend, Line, Plot, PlotPoints, VLine};
 use nt4::Value;
 use raptaboard_layout::{StructMeta, WidgetContainer};
 use serde_json::{Map, Value as Json};
@@ -21,7 +28,7 @@ use serde_json::{Map, Value as Json};
 use crate::traces::SeriesKey;
 use crate::widgets::shared::card;
 use crate::widgets::shared::format::number_of;
-use crate::widgets::shared::props::{self, set_property};
+use crate::widgets::shared::props::{self, DATA_TYPE, set_property};
 use crate::widgets::{Live, ValueInfo, WidgetType, source_title};
 
 /// Seconds of history shown (Elastic).
@@ -32,24 +39,29 @@ const VISIBLE_TIME: &str = "visibleTime";
 pub const MIN_VALUE: &str = "min_value";
 /// The top of a fixed range (Elastic). Unset: fit the values.
 pub const MAX_VALUE: &str = "max_value";
-/// The first series' color, as ARGB (Elastic).
+/// The main line's color, as ARGB (Elastic).
 pub const COLOR: &str = "color";
 /// Line width in points (Elastic).
 pub const LINE_WIDTH: &str = "line_width";
-/// More series: a list of `{"topic", "data_type", "struct_meta"?, "color"?,
-/// "name"?}` (raptaboard).
+/// The lines after the main one: a list of `{"topic", "data_type",
+/// "struct_meta"?, "color"?, "name"?}` (raptaboard).
 pub const SERIES: &str = "series";
-/// Show the legend; unset shows it when there's more than one series
+/// Show the legend; unset shows it when there's more than one line
 /// (raptaboard).
 pub const SHOW_LEGEND: &str = "show_legend";
+/// Show the pause button; on unless turned off (raptaboard).
+pub const SHOW_PAUSE: &str = "show_pause";
+/// Show values where the pointer is; on unless turned off (raptaboard).
+pub const SHOW_HOVER: &str = "show_hover";
 
-const KEYS: [&str; 6] = [
+const KEYS: [&str; 7] = [
     TIME_DISPLAYED,
     MIN_VALUE,
     MAX_VALUE,
     LINE_WIDTH,
     SHOW_LEGEND,
-    COLOR,
+    SHOW_PAUSE,
+    SHOW_HOVER,
 ];
 
 /// Elastic's default: 5 seconds shown.
@@ -57,7 +69,7 @@ pub const DEFAULT_TIME: f64 = 5.0;
 /// Elastic's default line color (Material cyan 500).
 pub const DEFAULT_COLOR: Color32 = Color32::from_rgb(0x00, 0xBC, 0xD4);
 const DEFAULT_WIDTH: f64 = 2.0;
-/// Colors for the series after the first, in order, until they repeat.
+/// Colors for the lines after the main one, in order, until they repeat.
 const PALETTE: [Color32; 8] = [
     Color32::from_rgb(0xFF, 0x98, 0x00),
     Color32::from_rgb(0x8B, 0xC3, 0x4A),
@@ -68,11 +80,52 @@ const PALETTE: [Color32; 8] = [
     Color32::from_rgb(0xFF, 0x57, 0x22),
     Color32::from_rgb(0x9E, 0x9E, 0x9E),
 ];
+/// The measuring cursors' color.
+const CURSOR_COLOR: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
+/// The pause button's size, in points.
+const BUTTON_SIZE: egui::Vec2 = egui::vec2(22.0, 18.0);
 
 /// The Graph widget (Elastic's `"Graph"`).
 pub struct Graph;
 
-/// One line on a graph.
+/// One line on a graph, as saved: what it shows and how it's drawn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Entry {
+    /// The topic.
+    pub topic: String,
+    /// The value's NT type, if known.
+    pub data_type: Option<String>,
+    /// For one field of a struct topic: Elastic's `struct_meta` object.
+    pub struct_meta: Option<Json>,
+    /// Its color.
+    pub color: Color32,
+    /// A name for the legend, if set; else from the topic.
+    pub name: Option<String>,
+}
+
+impl Entry {
+    /// The struct field this line shows, if any.
+    pub fn field(&self) -> Option<StructMeta> {
+        self.struct_meta.as_ref().and_then(struct_meta_of)
+    }
+
+    /// Its name in the legend.
+    pub fn label(&self) -> String {
+        self.name
+            .clone()
+            .unwrap_or_else(|| source_title(&self.topic, self.field().as_ref()))
+    }
+
+    /// What it shows, for recording its values.
+    pub fn key(&self) -> SeriesKey {
+        SeriesKey {
+            topic: self.topic.clone(),
+            field: self.field().map(|m| m.path),
+        }
+    }
+}
+
+/// One line as drawn.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Series {
     /// What it shows.
@@ -96,8 +149,82 @@ pub fn fixed_range(props: &Map<String, Json>) -> Option<(f64, f64)> {
     (low < high).then_some((low, high))
 }
 
-/// The series a graph widget shows: its own topic first, then any in its
-/// `series` setting.
+/// Every line in a graph's settings, main first.
+pub fn entries(props: &Map<String, Json>) -> Vec<Entry> {
+    let mut all = Vec::new();
+    if let Some(topic) = props.get("topic").and_then(Json::as_str) {
+        all.push(Entry {
+            topic: topic.to_owned(),
+            data_type: props
+                .get(DATA_TYPE)
+                .and_then(Json::as_str)
+                .map(str::to_owned),
+            struct_meta: props.get("struct_meta").cloned(),
+            color: props::color_property(props, COLOR).unwrap_or(DEFAULT_COLOR),
+            name: None,
+        });
+    }
+    let extra = props
+        .get(SERIES)
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten();
+    for (i, item) in extra.enumerate() {
+        let Some(topic) = item.get("topic").and_then(Json::as_str) else {
+            continue;
+        };
+        all.push(Entry {
+            topic: topic.to_owned(),
+            data_type: item
+                .get("data_type")
+                .and_then(Json::as_str)
+                .map(str::to_owned),
+            struct_meta: item.get("struct_meta").cloned(),
+            color: item
+                .as_object()
+                .and_then(|o| props::color_property(o, "color"))
+                .unwrap_or(PALETTE[i % PALETTE.len()]),
+            name: item.get("name").and_then(Json::as_str).map(str::to_owned),
+        });
+    }
+    all
+}
+
+/// Save `lines` into a graph's settings: the first as the main line (the
+/// widget's own `topic`, `data_type`, `struct_meta` and `color`), the rest
+/// as `series`. Colors are saved with each line, so a line keeps its color
+/// when the order changes. Does nothing with no lines: a graph always has
+/// one.
+pub fn write_entries(props: &mut Map<String, Json>, lines: &[Entry]) {
+    let Some((main, rest)) = lines.split_first() else {
+        return;
+    };
+    set_property(props, "topic", Some(main.topic.clone().into()));
+    set_property(props, DATA_TYPE, main.data_type.clone().map(Json::from));
+    set_property(props, "struct_meta", main.struct_meta.clone());
+    set_property(props, COLOR, Some(props::color_json(main.color)));
+    let extra: Vec<Json> = rest
+        .iter()
+        .map(|line| {
+            let mut item = Map::new();
+            item.insert("topic".into(), line.topic.clone().into());
+            if let Some(ty) = &line.data_type {
+                item.insert("data_type".into(), ty.clone().into());
+            }
+            if let Some(meta) = &line.struct_meta {
+                item.insert("struct_meta".into(), meta.clone());
+            }
+            item.insert("color".into(), props::color_json(line.color));
+            if let Some(name) = &line.name {
+                item.insert("name".into(), name.clone().into());
+            }
+            Json::Object(item)
+        })
+        .collect();
+    set_property(props, SERIES, (!extra.is_empty()).then(|| extra.into()));
+}
+
+/// The lines a graph widget shows, main first.
 ///
 /// ```
 /// use raptaboard::widgets::builtin::graph::series;
@@ -110,47 +237,14 @@ pub fn fixed_range(props: &Map<String, Json>) -> Option<(f64, f64)> {
 /// assert_eq!(names, ["speed", "target"]);
 /// ```
 pub fn series(widget: &WidgetContainer) -> Vec<Series> {
-    let mut all = Vec::new();
-    if let Some(topic) = widget.topic() {
-        let meta = widget.struct_meta();
-        all.push(Series {
-            key: SeriesKey {
-                topic: topic.to_owned(),
-                field: meta.as_ref().map(|m| m.path.clone()),
-            },
-            name: source_title(topic, meta.as_ref()),
-            color: props::color_property(&widget.properties, COLOR).unwrap_or(DEFAULT_COLOR),
-        });
-    }
-    let extra = widget
-        .properties
-        .get(SERIES)
-        .and_then(Json::as_array)
+    entries(&widget.properties)
         .into_iter()
-        .flatten();
-    for (i, entry) in extra.enumerate() {
-        let Some(topic) = entry.get("topic").and_then(Json::as_str) else {
-            continue;
-        };
-        let meta = entry.get("struct_meta").and_then(struct_meta_of);
-        let name = entry
-            .get("name")
-            .and_then(Json::as_str)
-            .map_or_else(|| source_title(topic, meta.as_ref()), str::to_owned);
-        let color = entry
-            .as_object()
-            .and_then(|o| props::color_property(o, "color"))
-            .unwrap_or(PALETTE[i % PALETTE.len()]);
-        all.push(Series {
-            key: SeriesKey {
-                topic: topic.to_owned(),
-                field: meta.map(|m| m.path),
-            },
-            name,
-            color,
-        });
-    }
-    all
+        .map(|e| Series {
+            key: e.key(),
+            name: e.label(),
+            color: e.color,
+        })
+        .collect()
 }
 
 /// A `struct_meta` object (Elastic's form), as a [`StructMeta`].
@@ -165,9 +259,9 @@ fn struct_meta_of(json: &Json) -> Option<StructMeta> {
     Some(StructMeta { path, schema_name })
 }
 
-/// Add a series to a graph: topic `topic` of NT type `nt_type`, or one of
-/// its struct `field`s. Returns `false` (adding nothing) if the graph
-/// already shows it.
+/// Add a line to a graph: topic `topic` of NT type `nt_type`, or one of its
+/// struct `field`s. Returns `false` (adding nothing) if the graph already
+/// shows it.
 ///
 /// ```
 /// use raptaboard::widgets::builtin::graph::{add_series, series};
@@ -185,46 +279,130 @@ pub fn add_series(
     nt_type: &str,
     field: Option<&StructMeta>,
 ) -> bool {
+    let mut lines = entries(&widget.properties);
     let key = SeriesKey {
         topic: topic.to_owned(),
         field: field.map(|f| f.path.clone()),
     };
-    if series(widget).iter().any(|s| s.key == key) {
+    if lines.iter().any(|l| l.key() == key) {
         return false;
     }
-    let mut entry = Map::new();
-    entry.insert("topic".into(), topic.into());
-    entry.insert("data_type".into(), nt_type.into());
-    if let Some(field) = field {
-        entry.insert("struct_meta".into(), field.to_json(nt_type));
-    }
-    let list = widget
-        .properties
-        .entry(SERIES)
-        .or_insert_with(|| Json::Array(Vec::new()));
-    match list.as_array_mut() {
-        Some(list) => list.push(Json::Object(entry)),
-        None => *list = Json::Array(vec![Json::Object(entry)]),
-    }
+    lines.push(Entry {
+        topic: topic.to_owned(),
+        data_type: Some(nt_type.to_owned()),
+        struct_meta: field.map(|f| f.to_json(nt_type)),
+        color: PALETTE[lines.len().saturating_sub(1) % PALETTE.len()],
+        name: None,
+    });
+    write_entries(&mut widget.properties, &lines);
     true
 }
 
-/// Remove the series at `index` in the `series` setting (the graph's own
-/// topic can't be removed). The setting goes when it's empty.
-pub fn remove_series(props: &mut Map<String, Json>, index: usize) {
-    if let Some(list) = props.get_mut(SERIES).and_then(Json::as_array_mut)
-        && index < list.len()
-    {
-        list.remove(index);
-        if list.is_empty() {
-            props.remove(SERIES);
-        }
+/// Move line `from` to place `to` (0 is main). Out of range does nothing.
+pub fn move_line(props: &mut Map<String, Json>, from: usize, to: usize) {
+    let mut lines = entries(props);
+    if from < lines.len() && to < lines.len() {
+        let line = lines.remove(from);
+        lines.insert(to, line);
+        write_entries(props, &lines);
     }
 }
 
-/// Whether the legend shows: as set, or when there's more than one series.
-fn show_legend(props: &Map<String, Json>, series: usize) -> bool {
-    props::flag(props, SHOW_LEGEND, series > 1)
+/// Remove line `index`, unless it's the last one left.
+pub fn remove_line(props: &mut Map<String, Json>, index: usize) {
+    let mut lines = entries(props);
+    if lines.len() > 1 && index < lines.len() {
+        lines.remove(index);
+        write_entries(props, &lines);
+    }
+}
+
+/// Whether the legend shows: as set, or when there's more than one line.
+fn show_legend(props: &Map<String, Json>, lines: usize) -> bool {
+    props::flag(props, SHOW_LEGEND, lines > 1)
+}
+
+/// `points` (sorted by time) read at time `x`: between two points, the
+/// straight line between them. `None` outside the points.
+///
+/// ```
+/// use raptaboard::widgets::builtin::graph::value_at;
+/// let points = [[0.0, 0.0], [1.0, 10.0], [2.0, 0.0]];
+/// assert_eq!(value_at(&points, 0.5), Some(5.0));
+/// assert_eq!(value_at(&points, 2.0), Some(0.0));
+/// assert_eq!(value_at(&points, 3.0), None);
+/// ```
+pub fn value_at(points: &[[f64; 2]], x: f64) -> Option<f64> {
+    let after = points.iter().position(|p| p[0] >= x)?;
+    let [x1, y1] = points[after];
+    if after == 0 {
+        return (x1 == x).then_some(y1);
+    }
+    let [x0, y0] = points[after - 1];
+    if x1 == x0 {
+        return Some(y1);
+    }
+    Some(y0 + (y1 - y0) * (x - x0) / (x1 - x0))
+}
+
+/// The cursor readout: the cursors' times, the time between them, and each
+/// line's values there, one line of text each.
+///
+/// ```
+/// use raptaboard::widgets::builtin::graph::readout;
+/// let lines = vec![("speed".to_string(), vec![[-2.0, 0.0], [0.0, 4.0]])];
+/// let text = readout(&[-2.0, -1.0], &lines);
+/// assert_eq!(text[0], "A -2.000 s   B -1.000 s   Δt 1.000 s");
+/// assert_eq!(text[1], "speed   0.000 → 2.000   Δ 2.000");
+/// ```
+pub fn readout(cursors: &[f64], lines: &[(String, Vec<[f64; 2]>)]) -> Vec<String> {
+    let mut text = Vec::new();
+    match cursors {
+        [a] => {
+            text.push(format!("A {a:.3} s   (click again for B)"));
+            for (name, points) in lines {
+                text.push(format!("{name}   {}", show(value_at(points, *a))));
+            }
+        }
+        [a, b, ..] => {
+            text.push(format!(
+                "A {a:.3} s   B {b:.3} s   Δt {:.3} s",
+                (b - a).abs()
+            ));
+            for (name, points) in lines {
+                let (va, vb) = (value_at(points, *a), value_at(points, *b));
+                let delta = va.zip(vb).map(|(va, vb)| vb - va);
+                text.push(format!(
+                    "{name}   {} → {}   Δ {}",
+                    show(va),
+                    show(vb),
+                    show(delta)
+                ));
+            }
+        }
+        [] => {}
+    }
+    text
+}
+
+/// A readout number, or a dash where there's no value.
+fn show(value: Option<f64>) -> String {
+    value.map_or_else(|| "—".to_owned(), |v| format!("{v:.3}"))
+}
+
+/// One line as drawn: its name, color and points (seconds before now,
+/// value).
+type Drawn = (String, Color32, Vec<[f64; 2]>);
+
+/// What a graph on screen is doing: frozen or live, and where the measuring
+/// cursors are. Kept in egui's memory for the widget, not in the layout.
+#[derive(Debug, Clone, Default)]
+struct View {
+    /// While paused: each line's name, color and points as they were (time
+    /// in seconds before the pause).
+    frozen: Option<Vec<Drawn>>,
+    /// Measuring cursors' times, in the same seconds: A, then B.
+    cursors: Vec<f64>,
 }
 
 impl WidgetType for Graph {
@@ -244,15 +422,37 @@ impl WidgetType for Graph {
         let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title)
             .shrink(card::BODY_MARGIN);
         let p = &widget.properties;
-        let lines = series(widget);
+        let view_id = ui.scope_id().with("graph_view");
+        let mut view: View = ui.ctx().data(|d| d.get_temp(view_id)).unwrap_or_default();
         let seconds = time_displayed(p);
         let range = fixed_range(p);
         let width = props::number(p, LINE_WIDTH, DEFAULT_WIDTH).clamp(0.5, 20.0) as f32;
+
+        // The lines: as frozen while paused, else live from the traces.
+        let now: Vec<Drawn> = series(widget)
+            .into_iter()
+            .map(|line| {
+                let points = live
+                    .traces
+                    .points(&line.key)
+                    .map(|(t, v)| [(t - live.now_us) as f64 / 1e6, v])
+                    .collect();
+                (line.name, line.color, points)
+            })
+            .collect();
+        let shown = view.frozen.clone().unwrap_or_else(|| now.clone());
+        let paused = view.frozen.is_some();
+
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body));
         child.set_clip_rect(body.intersect(ui.clip_rect()));
-        // Hover only: the plot never takes the drags that move the widget.
+        // Live, it only senses hover, so it never takes the drags that move
+        // the widget; paused, it takes clicks too, for the cursors.
         let mut plot = Plot::new("graph")
-            .sense(Sense::hover())
+            .sense(if paused {
+                Sense::click()
+            } else {
+                Sense::hover()
+            })
             .allow_drag(false)
             .allow_zoom(false)
             .allow_scroll(false)
@@ -262,28 +462,98 @@ impl WidgetType for Graph {
             .show_background(false)
             .width(body.width())
             .height(body.height());
-        if show_legend(p, lines.len()) {
+        if !props::flag(p, SHOW_HOVER, true) {
+            plot = plot.show_x(false).show_y(false);
+        }
+        if show_legend(p, shown.len()) {
             plot = plot.legend(Legend::default().position(Corner::LeftTop));
         }
-        plot.show(&mut child, |plot_ui| {
+        let cursors = view.cursors.clone();
+        let clicked_at = plot.show(&mut child, |plot_ui| {
             plot_ui.set_plot_bounds_x(-seconds..=0.0);
             match range {
                 Some((low, high)) => plot_ui.set_plot_bounds_y(low..=high),
                 None => plot_ui.set_auto_bounds([false, true]),
             }
-            for line in lines {
-                let points: Vec<[f64; 2]> = live
-                    .traces
-                    .points(&line.key)
-                    .map(|(t, v)| [(t - live.now_us) as f64 / 1e6, v])
-                    .collect();
+            for (name, color, points) in &shown {
                 plot_ui.line(
-                    Line::new(line.name, PlotPoints::new(points))
-                        .color(line.color)
+                    Line::new(name.clone(), PlotPoints::new(points.clone()))
+                        .color(*color)
                         .width(width),
                 );
             }
+            for x in &cursors {
+                // No name: cursors stay out of the legend.
+                plot_ui.vline(VLine::new("", *x).color(CURSOR_COLOR).width(1.0));
+            }
+            let clicked = plot_ui.response().clicked();
+            plot_ui
+                .pointer_coordinate()
+                .filter(|_| clicked)
+                .map(|p| p.x)
         });
+        if let Some(x) = clicked_at.inner {
+            // A, then B; a third click starts again from A.
+            if view.cursors.len() >= 2 {
+                view.cursors.clear();
+            }
+            view.cursors.push(x);
+        }
+
+        // The readout, bottom left, while measuring.
+        if paused && !view.cursors.is_empty() {
+            let lines: Vec<(String, Vec<[f64; 2]>)> = shown
+                .iter()
+                .map(|(name, _, points)| (name.clone(), points.clone()))
+                .collect();
+            let text = readout(&view.cursors, &lines).join("\n");
+            let galley = ui.painter().layout(
+                text,
+                egui::FontId::monospace(11.0),
+                ui.visuals().text_color(),
+                body.width(),
+            );
+            let at = egui::pos2(body.min.x + 4.0, body.max.y - galley.size().y - 22.0);
+            let back = Rect::from_min_size(at, galley.size()).expand(3.0);
+            ui.painter().rect_filled(
+                back,
+                egui::CornerRadius::same(3),
+                ui.visuals().extreme_bg_color.gamma_multiply(0.85),
+            );
+            ui.painter().galley(at, galley, ui.visuals().text_color());
+        }
+
+        // The pause button, top right.
+        if props::flag(p, SHOW_PAUSE, true) {
+            let place = Rect::from_min_size(
+                egui::pos2(body.max.x - BUTTON_SIZE.x, body.min.y),
+                BUTTON_SIZE,
+            );
+            let (label, hint) = if paused {
+                ("▶", "Back to live (values kept recording while paused)")
+            } else {
+                (
+                    "⏸",
+                    "Pause: freeze the picture; values keep recording. \
+                     Then click the plot twice to measure between two times.",
+                )
+            };
+            if ui
+                .put(place, egui::Button::new(label).small())
+                .on_hover_text(hint)
+                .clicked()
+            {
+                view = if paused {
+                    View::default()
+                } else {
+                    View {
+                        frozen: Some(now),
+                        cursors: Vec::new(),
+                    }
+                };
+            }
+        }
+        ui.ctx().data_mut(|d| d.insert_temp(view_id, view));
     }
 
     /// Without a full Ui (in a List Layout, or while dragged): the newest
@@ -311,12 +581,10 @@ impl WidgetType for Graph {
     }
 
     fn extra_topics(&self, props: &Map<String, Json>) -> Vec<String> {
-        props
-            .get(SERIES)
-            .and_then(Json::as_array)
+        entries(props)
             .into_iter()
-            .flatten()
-            .filter_map(|s| s.get("topic").and_then(Json::as_str).map(str::to_owned))
+            .skip(1)
+            .map(|e| e.topic)
             .collect()
     }
 
@@ -358,29 +626,34 @@ impl WidgetType for Graph {
         ui.end_row();
 
         props::number_row(ui, p, "Line width", LINE_WIDTH, DEFAULT_WIDTH, 0.5..=20.0);
-        props::color_row(ui, p, "Color", COLOR, DEFAULT_COLOR);
+        let count = entries(p).len();
+        props::flag_row(ui, p, "Legend", "Show the legend", SHOW_LEGEND, count > 1);
+        props::flag_row(
+            ui,
+            p,
+            "Pause",
+            "Show the pause button (and measuring)",
+            SHOW_PAUSE,
+            true,
+        );
+        props::flag_row(
+            ui,
+            p,
+            "Hover",
+            "Show values where the pointer is",
+            SHOW_HOVER,
+            true,
+        );
 
-        // The other series, with their colors and a way to remove them.
-        let count = p.get(SERIES).and_then(Json::as_array).map_or(0, Vec::len);
-        props::flag_row(ui, p, "Legend", "Show the legend", SHOW_LEGEND, count > 0);
-        ui.label("More series");
+        // Every line, main first: color, name, and buttons to reorder or
+        // remove it. Moving a line to the top makes it main.
+        ui.label("Lines");
         ui.vertical(|ui| {
-            if count == 0 {
-                ui.weak("Drop topics from the tree onto the graph to add them.");
-            }
-            let mut remove = None;
-            for i in 0..count {
-                let Some(entry) = p
-                    .get_mut(SERIES)
-                    .and_then(Json::as_array_mut)
-                    .and_then(|l| l.get_mut(i))
-                    .and_then(Json::as_object_mut)
-                else {
-                    continue;
-                };
+            let lines = entries(p);
+            let mut change = None;
+            for (i, line) in lines.iter().enumerate() {
                 ui.horizontal(|ui| {
-                    let mut color =
-                        props::color_property(entry, "color").unwrap_or(PALETTE[i % PALETTE.len()]);
+                    let mut color = line.color;
                     if egui::color_picker::color_edit_button_srgba(
                         ui,
                         &mut color,
@@ -388,28 +661,60 @@ impl WidgetType for Graph {
                     )
                     .changed()
                     {
-                        entry.insert("color".into(), props::color_json(color));
+                        change = Some(LineChange::Color(i, color));
                     }
-                    let topic = entry.get("topic").and_then(Json::as_str).unwrap_or("?");
-                    let meta = entry.get("struct_meta").and_then(struct_meta_of);
-                    ui.label(source_title(topic, meta.as_ref()))
-                        .on_hover_text(topic);
-                    if ui.small_button("Remove").clicked() {
-                        remove = Some(i);
+                    ui.label(line.label()).on_hover_text(&line.topic);
+                    if i == 0 {
+                        ui.weak("main")
+                            .on_hover_text("Saved as the widget's own topic, as Elastic saves it");
+                    }
+                    if ui
+                        .add_enabled(i > 0, egui::Button::new("↑").small())
+                        .clicked()
+                    {
+                        change = Some(LineChange::Move(i, i - 1));
+                    }
+                    if ui
+                        .add_enabled(i + 1 < lines.len(), egui::Button::new("↓").small())
+                        .clicked()
+                    {
+                        change = Some(LineChange::Move(i, i + 1));
+                    }
+                    if ui
+                        .add_enabled(lines.len() > 1, egui::Button::new("Remove").small())
+                        .on_disabled_hover_text("A graph needs one line")
+                        .clicked()
+                    {
+                        change = Some(LineChange::Remove(i));
                     }
                 });
             }
-            if let Some(i) = remove {
-                remove_series(p, i);
+            ui.weak("Drop topics from the tree onto the graph to add lines.");
+            match change {
+                Some(LineChange::Color(i, color)) => {
+                    let mut lines = lines;
+                    lines[i].color = color;
+                    write_entries(p, &lines);
+                }
+                Some(LineChange::Move(from, to)) => move_line(p, from, to),
+                Some(LineChange::Remove(i)) => remove_line(p, i),
+                None => {}
             }
         });
         ui.end_row();
     }
 
     fn setting_keys(&self) -> &'static [&'static str] {
-        // `series` isn't here: Reset settings keeps the lines shown.
+        // Not the lines or their colors: Reset settings keeps what's shown.
         &KEYS
     }
+}
+
+/// A change to a graph's lines, made after drawing the list.
+enum LineChange {
+    Color(usize, Color32),
+    Move(usize, usize),
+    Remove(usize),
 }
 
 #[cfg(test)]
@@ -428,6 +733,10 @@ mod tests {
         let mut w = crate::widgets::for_topic("/Drive/speed", "double", None, at).unwrap();
         w.widget_type = "Graph".into();
         w
+    }
+
+    fn names(w: &WidgetContainer) -> Vec<String> {
+        series(w).into_iter().map(|s| s.name).collect()
     }
 
     #[test]
@@ -450,7 +759,7 @@ mod tests {
     }
 
     #[test]
-    fn series_are_added_once_and_removed() {
+    fn lines_are_added_once_reordered_and_removed() {
         let mut w = graph();
         let x = StructMeta {
             path: vec!["translation".into(), "x".into()],
@@ -459,24 +768,52 @@ mod tests {
         assert!(add_series(&mut w, "/Drive/pose", "double", Some(&x)));
         assert!(add_series(&mut w, "/Drive/target", "double", None));
         assert!(!add_series(&mut w, "/Drive/pose", "double", Some(&x)));
-        let all = series(&w);
-        let names: Vec<&str> = all.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, ["speed", "pose.translation.x", "target"]);
-        // Each has its own color: cyan, then the palette.
-        assert_eq!(all[0].color, DEFAULT_COLOR);
-        assert_eq!(all[1].color, PALETTE[0]);
-        assert_eq!(all[2].color, PALETTE[1]);
-        assert_eq!(all[1].key.field, Some(x.path.clone()));
+        assert_eq!(names(&w), ["speed", "pose.translation.x", "target"]);
+        let colors: Vec<Color32> = series(&w).iter().map(|s| s.color).collect();
+        assert_eq!(colors, [DEFAULT_COLOR, PALETTE[0], PALETTE[1]]);
         assert_eq!(
             Graph.extra_topics(&w.properties),
             ["/Drive/pose", "/Drive/target"]
         );
-        // The legend shows itself once there's more than one.
-        assert!(show_legend(&w.properties, all.len()));
-        remove_series(&mut w.properties, 0);
-        remove_series(&mut w.properties, 0);
+        assert!(show_legend(&w.properties, 3));
+
+        // Moving the struct field to the top makes it the main line: the
+        // widget's own topic and struct_meta, as Elastic saves it. Each
+        // line keeps its color.
+        move_line(&mut w.properties, 1, 0);
+        assert_eq!(names(&w), ["pose.translation.x", "speed", "target"]);
+        assert_eq!(w.topic(), Some("/Drive/pose"));
+        assert_eq!(w.struct_meta(), Some(x));
+        let moved: Vec<Color32> = series(&w).iter().map(|s| s.color).collect();
+        assert_eq!(moved, [PALETTE[0], DEFAULT_COLOR, PALETTE[1]]);
+
+        // Removing the main line promotes the next; the last can't go.
+        remove_line(&mut w.properties, 0);
+        assert_eq!(names(&w), ["speed", "target"]);
+        assert_eq!(w.topic(), Some("/Drive/speed"));
+        assert!(w.struct_meta().is_none());
+        remove_line(&mut w.properties, 1);
         assert!(!w.properties.contains_key(SERIES));
-        assert!(!show_legend(&w.properties, series(&w).len()));
+        remove_line(&mut w.properties, 0);
+        assert_eq!(names(&w), ["speed"]);
+        assert!(!show_legend(&w.properties, 1));
+    }
+
+    #[test]
+    fn cursors_read_values_between_points() {
+        let points = vec![[-4.0, 1.0], [-2.0, 3.0], [0.0, 3.0]];
+        assert_eq!(value_at(&points, -3.0), Some(2.0));
+        assert_eq!(value_at(&points, -4.0), Some(1.0));
+        assert_eq!(value_at(&points, -5.0), None);
+        let lines = vec![("speed".to_string(), points)];
+        let one = readout(&[-3.0], &lines);
+        assert_eq!(one, ["A -3.000 s   (click again for B)", "speed   2.000"]);
+        let two = readout(&[-1.0, -4.0], &lines);
+        assert_eq!(two[0], "A -1.000 s   B -4.000 s   Δt 3.000 s");
+        assert_eq!(two[1], "speed   3.000 → 1.000   Δ -2.000");
+        // Outside the recorded points: a dash.
+        let gap = readout(&[-9.0, -1.0], &lines);
+        assert_eq!(gap[1], "speed   — → 3.000   Δ —");
     }
 
     #[test]
@@ -514,10 +851,97 @@ mod tests {
         for s in &output.shapes {
             walk(&s.shape, &mut texts, &mut paths);
         }
-        // The title, both names in the legend, and a line for each.
-        for name in ["speed", "target"] {
+        // Both names in the legend, a line for each, and the pause button.
+        for name in ["speed", "target", "⏸"] {
             assert!(texts.iter().any(|t| t == name), "{name} in {texts:?}");
         }
         assert!(paths >= 2, "{paths} lines drawn");
+    }
+
+    #[test]
+    fn pausing_then_clicking_twice_measures() {
+        use egui::{Event, PointerButton, Pos2, RawInput};
+        let w = graph();
+        let mut traces = crate::traces::Traces::default();
+        let key = series(&w)[0].key.clone();
+        traces.want(&key, 5.0);
+        for i in 0..50 {
+            traces.record(&key, i * 100_000, i as f64);
+        }
+        let ctx = egui::Context::default();
+        let rect = Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 300.0));
+        let mut frame = |events: Vec<Event>| -> Vec<String> {
+            let raw = RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 300.0))),
+                events,
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(raw, |ui| {
+                let live = Live {
+                    value: None,
+                    traces: &traces,
+                    now_us: 5_000_000,
+                };
+                Graph.show(ui, rect, &w, &live);
+            });
+            output.textures_delta.clear();
+            let mut texts = Vec::new();
+            fn walk(shape: &egui::Shape, texts: &mut Vec<String>) {
+                match shape {
+                    egui::Shape::Text(t) => texts.push(t.galley.text().to_owned()),
+                    egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, texts)),
+                    _ => {}
+                }
+            }
+            for s in &output.shapes {
+                walk(&s.shape, &mut texts);
+            }
+            texts
+        };
+        let click = |at: Pos2| {
+            vec![
+                Event::PointerMoved(at),
+                Event::PointerButton {
+                    pos: at,
+                    button: PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+                Event::PointerButton {
+                    pos: at,
+                    button: PointerButton::Primary,
+                    pressed: false,
+                    modifiers: Default::default(),
+                },
+            ]
+        };
+        // Where the card's body is: below the title, inside the margin.
+        let body = rect
+            .with_min_y(rect.min.y + card::TITLE_HEIGHT)
+            .shrink(card::BODY_MARGIN);
+        let button = egui::pos2(
+            body.max.x - BUTTON_SIZE.x / 2.0,
+            body.min.y + BUTTON_SIZE.y / 2.0,
+        );
+        frame(vec![]);
+        // Pause: the button turns to ▶.
+        frame(click(button));
+        assert!(frame(vec![]).iter().any(|t| t == "▶"));
+        // Two clicks on the plot: cursors A and B, and the readout.
+        frame(click(body.center() - egui::vec2(80.0, 0.0)));
+        frame(vec![]);
+        frame(click(body.center() + egui::vec2(60.0, 0.0)));
+        let texts = frame(vec![]);
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.contains("Δt") && t.contains("speed")),
+            "{texts:?}"
+        );
+        // Back to live: no readout, the button is ⏸ again.
+        frame(click(button));
+        let texts = frame(vec![]);
+        assert!(texts.iter().any(|t| t == "⏸"));
+        assert!(!texts.iter().any(|t| t.contains("Δt")));
     }
 }
