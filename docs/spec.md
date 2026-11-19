@@ -158,6 +158,11 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `thickness` | `shared/scale.rs` | the same | bar or track thickness, points (1–200) | 8 bars, 6 gauges |
 | `show_value` | `shared/scale.rs` | the same | show the current value and unit | true |
 | `show_labels` | `shared/scale.rs` | the same | show the numbers along the scale | true |
+| `time_displayed` (Elastic; older `visibleTime`) | `builtin/graph.rs` | Graph | seconds shown | 5 |
+| `min_value`, `max_value` (Elastic) | `builtin/graph.rs` | Graph | a fixed range; both unset fits the values | unset |
+| `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
+| `series` | `builtin/graph.rs` | Graph | more lines: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
+| `show_legend` | `builtin/graph.rs` | Graph | show the legend | when there's more than one line |
 | `label_inside` | `list_layout.rs` | List Layout | `true`: each label drawn over its value (on a see-through backing) instead of beside it | off |
 | `dividers` | `list_layout.rs` | List Layout | `true`: a thin line under the list's title and below each child | off |
 | `hidden` | `list_layout.rs` | a List Layout's child | `true`: kept in the list but not shown or subscribed | shown |
@@ -369,7 +374,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    Widget choice switches to any type that can show the value (`WidgetType::shows`), keeping the
    other types' settings. The settings dialogs (widget and list) are windows that can be dragged
    by their title bar out of the way of the widget being changed; they reopen where they were left
-   (for the run), and the grid behind stays blocked but only lightly dimmed. Next: Graph, then the writing widgets (toggles, slider, editable Text
+   (for the run), and the grid behind stays blocked but only lightly dimmed. Graph (with `egui_plot`): numbers and booleans over time, Elastic's
+   settings, and raptaboard's multiple lines on one graph (drop more topics or struct fields from
+   the tree onto it; a legend shows when there's more than one). Values are recorded in
+   `traces.rs` for the series the open tab's graphs show, each for the longest window wanted. A
+   plot only senses hover, so it never takes the drags that move the widget. Next: then the writing widgets (toggles, slider, editable Text
    Display), choosers, Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common

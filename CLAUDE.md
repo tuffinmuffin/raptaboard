@@ -66,7 +66,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   (`nt4::proto::structs::StructDatabase` + `DynamicStruct`), `widgets/` the grid widgets,
   one file per type implementing `widgets::WidgetType` and listed in `widgets::TYPES` (Text Display,
   Boolean Box, Large Text Display, Number Bar, Voltage View, Radial Gauge, Match Time, Single and
-  Multi Color View; other types draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing
+  Multi Color View, Graph (`egui_plot`; widgets needing a full `Ui` override `WidgetType::show`); other types draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing
   and its settings dialog), helpers in `widgets/shared/`:
   `card.rs`, `format.rs` (number and
   enum text), `props.rs` (period, font size, colors) and `settings.rs` (the settings dialog's shared
@@ -78,7 +78,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   notices any layout change once a frame) and the widget editing shortcuts; the drag handling and lock live
   in `ui.rs`. Widget values come from a
   second set of subscriptions (`NtConnection::watch_widget_values`), one per `period` on the open
-  tab, and `sampling.rs` (`Sampler`) has each widget take a new value only once per its period, so
+  tab, and `traces.rs` (`Traces`) records the values over time that graphs show (fed once a frame by
+  `ui.rs::record_traces`), `sampling.rs` (`Sampler`) has each widget take a new value only once per its period, so
   fast redraws (mouse moves) or the tree watching the same topic don't make it jump ahead.
   `tests/cpu_load.rs` is the ignored 30-widgets-at-50-Hz CPU test (runs with the tree shown and
   hidden; prints % of one core and of the machine); its `other_dashboard` test runs the same load against Elastic for comparison

@@ -247,6 +247,7 @@ mod tests {
             ("Text Display", true, true),
             ("Boolean Box", false, false),
             ("Graph", false, false),
+            ("Field", false, false),
             ("Large Text Display", false, false),
             ("Number Bar", false, false),
             ("Voltage View", false, false),
@@ -338,11 +339,23 @@ mod tests {
         assert!(!has_custom_settings(&field));
 
         // A type not built yet: only the period resets.
-        let mut graph = widget("Graph", false);
-        graph.properties.insert(PERIOD.into(), 0.033.into());
-        graph.properties.insert("window_seconds".into(), 30.into());
-        reset_settings(&mut graph);
-        assert_eq!(graph.period(), Some(DEFAULT_PERIOD_S));
-        assert_eq!(graph.properties["window_seconds"], 30);
+        let mut unbuilt = widget("Field", false);
+        unbuilt.properties.insert(PERIOD.into(), 0.033.into());
+        unbuilt
+            .properties
+            .insert("field_game".into(), "Crescendo".into());
+        reset_settings(&mut unbuilt);
+        assert_eq!(unbuilt.period(), Some(DEFAULT_PERIOD_S));
+        assert_eq!(unbuilt.properties["field_game"], "Crescendo");
+
+        // A graph keeps its extra lines through a reset.
+        let mut lines = widget("Graph", false);
+        lines
+            .properties
+            .insert("series".into(), serde_json::json!([{"topic": "/b"}]));
+        lines.properties.insert("line_width".into(), 5.into());
+        reset_settings(&mut lines);
+        assert!(lines.properties.contains_key("series"));
+        assert!(!lines.properties.contains_key("line_width"));
     }
 }

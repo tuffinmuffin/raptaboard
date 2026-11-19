@@ -68,6 +68,21 @@ pub fn draw_card(
     body_rect
 }
 
+/// Show a widget in `rect` with its type's
+/// [`show`](crate::widgets::WidgetType::show), given a [`Ui`](egui::Ui) for
+/// widgets that need one. Types not built yet get the placeholder card.
+pub fn show(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    widget: &WidgetContainer,
+    live: &crate::widgets::Live<'_>,
+) {
+    match crate::widgets::find(&widget.widget_type) {
+        Some(ty) => ty.show(ui, rect, widget, live),
+        None => draw(ui.painter(), ui.visuals(), rect, widget, live.value),
+    }
+}
+
 /// Run `draw` with a painter that can't draw outside `body`, and the body
 /// less a small margin, so long text stays inside the card.
 pub fn draw_clipped(painter: &egui::Painter, body: Rect, draw: impl FnOnce(&egui::Painter, Rect)) {
