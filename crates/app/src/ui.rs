@@ -256,7 +256,7 @@ impl DashboardApp {
             show_tree: options.show_tree,
             tree_filter: String::new(),
             show_metadata: false,
-            locked: false,
+            locked: options.locked,
             drag: None,
             child_drag: None,
             menu_at: (0.0, 0.0),
@@ -286,12 +286,20 @@ impl DashboardApp {
                 Err(e) => app.status = format!("Could not open {}: {e}", path.display()),
             }
         }
+        if let Some(name) = &options.tab
+            && let Some(i) = app.layout.tabs.iter().position(|t| &t.name == name)
+        {
+            app.current_tab = i;
+        }
         if !options.notes.is_empty() {
             app.status = options.notes.join("; ");
         }
         // What the app started with isn't a change to save; the window's
         // size is learned on the first frame.
         app.seen = app.current_settings(None);
+        // Except the layout: the file opened is remembered however it was
+        // named, the command line included.
+        app.seen.layout = None;
         Ok(app)
     }
 
@@ -303,6 +311,12 @@ impl DashboardApp {
             address: Some(self.mode.keyword(&self.custom_address)),
             port: Some(self.port),
             show_tree: Some(self.show_tree),
+            locked: Some(self.locked),
+            tab: self
+                .layout
+                .tabs
+                .get(self.current_tab)
+                .map(|t| t.name.clone()),
             layout: self
                 .layout_path
                 .as_ref()
@@ -339,7 +353,9 @@ impl DashboardApp {
         note!(address);
         note!(port);
         note!(show_tree);
+        note!(locked);
         note!(layout);
+        note!(tab);
         // The first size learned is the starting size, not a change.
         if self.seen.window.is_some() {
             note!(window);

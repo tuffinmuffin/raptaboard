@@ -240,7 +240,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    for milestone 2 if a team laptop needs it.
 2. Grid and layouts: tabs, snap grid, drag from tree, List Layout, lock, layout save, settings,
    hotkeys. **Done** apart from the polish items under Next. Settings are kept between runs: team,
-   address, port, tree shown, last layout, and window size and place, found in order from the
+   address, port, tree shown, locked, last layout (however it was opened, the command line
+   included) and its last tab (by name), and window size and place, found in order from the
    command line (this run only, never saved), `./.raptaboard/settings.toml`,
    `~/.raptaboard/settings.toml` (made with the defaults on the first run), then defaults; each
    file may set only some keys. Changes made in the app are saved (a second after the last change,

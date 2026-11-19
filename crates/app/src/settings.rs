@@ -1,6 +1,9 @@
 //! App settings kept between runs: team, robot address, port, the last
 //! layout file, whether the tree shows, and the window's size and place.
 //!
+//! The last layout opened or saved is always remembered, even one named on
+//! the command line: it's the file last used, not an option for one run.
+//!
 //! Settings come from four places, the first that sets a value winning:
 //!
 //! 1. Command-line flags (this run only; never saved).
@@ -18,7 +21,9 @@
 //! address = "team"   # ds, team, mdns, wifi, sim, or a host name or IP
 //! port = 5810
 //! show_tree = true
+//! locked = false
 //! layout = "/Users/me/layouts/match.json"
+//! tab = "Teleoperated"
 //!
 //! [window]
 //! width = 1280.0
@@ -52,9 +57,16 @@ pub struct Settings {
     /// Whether the NetworkTables tree panel shows.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_tree: Option<bool>,
+    /// Whether the layout is locked, so nothing moves by accident.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locked: Option<bool>,
     /// The layout file to open at start: the one last opened or saved.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<String>,
+    /// The tab last open, by name, so it still matches if tabs move. The
+    /// first tab opens if the layout has none by that name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tab: Option<String>,
     /// The window's size and place.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub window: Option<Window>,
@@ -76,14 +88,17 @@ pub struct Window {
 }
 
 /// The built-in defaults: team 3200, robot found by team number, port 5810
-/// (robot code's NetworkTables server), tree shown, no layout file.
+/// (robot code's NetworkTables server), tree shown, unlocked, no layout
+/// file.
 pub fn defaults() -> Settings {
     Settings {
         team: Some(3200),
         address: Some("team".into()),
         port: Some(nt4::proto::ROBOT_CODE_PORT),
         show_tree: Some(true),
+        locked: Some(false),
         layout: None,
+        tab: None,
         window: None,
     }
 }
@@ -104,7 +119,9 @@ impl Settings {
             address: self.address.or(lower.address),
             port: self.port.or(lower.port),
             show_tree: self.show_tree.or(lower.show_tree),
+            locked: self.locked.or(lower.locked),
             layout: self.layout.or(lower.layout),
+            tab: self.tab.or(lower.tab),
             window: self.window.or(lower.window),
         }
     }
@@ -330,7 +347,9 @@ mod tests {
             file: Some(file_in(&home)),
             own: Settings {
                 team: Some(254),
+                locked: Some(true),
                 layout: Some("/tmp/match.json".into()),
+                tab: Some("Autonomous".into()),
                 window: Some(Window {
                     width: 1400.0,
                     height: 900.0,

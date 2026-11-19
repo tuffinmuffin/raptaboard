@@ -1,5 +1,6 @@
 //! Command-line options. They override the settings files for one run and
-//! are never saved (see [`crate::settings`]).
+//! are never saved, except that a layout opened is remembered as the last
+//! layout (see [`crate::settings`]).
 //!
 //! ```text
 //! raptaboard [--team N] [--address ds|team|mdns|wifi|sim|<host>] [--port N] [--hide-tree] [layout.json]
@@ -41,6 +42,8 @@ for this run and aren't saved.";
 pub struct StartupOptions {
     /// Layout file to open, if any.
     pub layout_path: Option<String>,
+    /// Name of the tab to open in it, if it has one by that name.
+    pub tab: Option<String>,
     /// FRC team number.
     pub team: u32,
     /// How to find the robot.
@@ -51,6 +54,8 @@ pub struct StartupOptions {
     pub port: u16,
     /// Show the NetworkTables tree panel at startup.
     pub show_tree: bool,
+    /// Start with the layout locked.
+    pub locked: bool,
     /// The settings file changes go to.
     pub store: settings::Store,
     /// Things to tell the user at startup, such as a settings file that
@@ -76,11 +81,13 @@ impl From<Loaded> for StartupOptions {
             AddressMode::from_keyword(s.address.as_deref().unwrap_or("team"));
         StartupOptions {
             layout_path: s.layout,
+            tab: s.tab,
             team: s.team.unwrap_or(3200),
             mode,
             custom_address,
             port: s.port.unwrap_or(nt4::proto::ROBOT_CODE_PORT),
             show_tree: s.show_tree.unwrap_or(true),
+            locked: s.locked.unwrap_or(false),
             store: loaded.store,
             notes: loaded.notes,
         }
