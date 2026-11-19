@@ -444,10 +444,10 @@ fn show_topic(
     if let Some(Shown::Node { summary, children }) =
         bytes.and_then(|b| struct_view::decode(structs, &topic.ty, b))
     {
-        // Fields of a single struct can be dragged; Elastic doesn't bind to
-        // fields inside struct arrays either.
+        // Fields can become widgets, including fields of an item in a
+        // struct array (raptaboard only; Elastic can't bind those).
         let source = match (struct_view::struct_type(&topic.ty), bytes) {
-            (Some((schema, false)), Some(bytes)) => Some(FieldSource {
+            (Some((schema, _)), Some(bytes)) => Some(FieldSource {
                 topic: &topic.name,
                 schema,
                 bytes,
@@ -551,14 +551,7 @@ impl Fields<'_> {
     /// enum names, such as
     /// `/Arm/state → mode` / `enum uint8 field of Arm` / `kStow = 0, kIntake = 3`.
     fn hover(&self, path: &[String], info: Option<&FieldInfo>) -> String {
-        let mut where_ = String::new();
-        for name in path {
-            if !where_.is_empty() && !name.starts_with('[') {
-                where_.push('.');
-            }
-            where_.push_str(name);
-        }
-        let mut text = format!("{} → {where_}", self.topic);
+        let mut text = format!("{} → {}", self.topic, struct_view::path_text(path));
         if let Some(info) = info {
             text.push_str(&format!("\n{} field of {}", info.label(), self.schema));
             if info.is_enum() {
@@ -586,8 +579,6 @@ fn show_children(
     let Rows { sel, draggable } = rows;
     // Used for decoded values and for schemas; nested parts start open.
     for (name, shown) in children {
-        // Array items are named [0], [1], ...; they can't be bound to.
-        let source = source.filter(|_| !name.starts_with('['));
         let field_path: Vec<String> = path.iter().cloned().chain([name.clone()]).collect();
         let info = fields.and_then(|f| f.info(&field_path));
         let hover = fields.map(|f| f.hover(&field_path, info.as_ref()));

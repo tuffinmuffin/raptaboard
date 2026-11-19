@@ -255,8 +255,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    dragging a topic onto the grid makes a one-cell widget there (Boolean Box for booleans, Text
    Display for the rest; saved with `topic`, `period` and `data_type` like Elastic). Fields inside a
    struct topic (Pose2d → translation → x) drag too: the widget keeps the struct topic and saves
-   Elastic's `struct_meta` (`path`, `schema_name`, `type`); fields inside struct arrays don't, as in
-   Elastic. Whole structs wait for their widgets. Dragging folders
+   Elastic's `struct_meta` (`path`, `schema_name`, `type`). Fields inside struct arrays drag too
+   (`Fleet[2].translation.x`, saved with `[2]` path steps; raptaboard only, Elastic can't bind them). Whole structs wait for their widgets. Dragging folders
    (tables with `.type`) waits for the widgets that draw tables in milestone 3. Editing widgets
    (unlocked): click to select (outlined), right-click for Duplicate and Delete; Delete or
    Backspace deletes, Ctrl+D duplicates into the nearest free spot, Esc deselects. Undo and redo

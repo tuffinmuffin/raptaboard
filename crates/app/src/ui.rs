@@ -590,6 +590,9 @@ impl DashboardApp {
         let drawn = egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                // Rows are picked, not their text: no text cursor or text
+                // highlighting, which would look like picking.
+                ui.style_mut().interaction.selectable_labels = false;
                 tree.show(ui, "", filtering, structs, !self.locked, &mut self.tree_sel)
             })
             .inner;
