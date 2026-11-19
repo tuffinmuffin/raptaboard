@@ -5,7 +5,7 @@
 //! Settings are edited in the widget's `properties` as they change, so the
 //! grid shows them right away. A setting at its default value is removed
 //! instead of saved, which keeps layout files short. The window around
-//! these controls (Done, Cancel, Reset settings) is in `ui.rs`.
+//! these controls (Done, Cancel, Reset settings) is in `ui/dialogs.rs`.
 
 use eframe::egui;
 use raptaboard_layout::WidgetContainer;

@@ -178,7 +178,7 @@ the key in the widget's `setting_keys` so "Reset settings" clears it, and a row 
 `grid_size` is the cell size in pixels (Elastic's default 128); widget positions and sizes are
 saved in pixels at that size. The grid rules (`crates/app/src/grid.rs`, `sanitize`) all take the
 cell size, and their tests run at 16, 64, 128 and 256. Drawing sizes (card title 24 pt, gaps,
-outlines, corner radii; named constants in `ui.rs` and `widgets/shared/card.rs`) are screen
+outlines, corner radii; named constants in `ui/style.rs` and `widgets/shared/card.rs`) are screen
 points and don't change with the grid size. There's no setting to change the grid size yet. When
 there is one, it must:
 - Rescale every widget's position and size (pixels at the old size become pixels at the new),
