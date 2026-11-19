@@ -86,6 +86,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
 - `layouts/robot2027_sim.json`: a layout for trying widgets against the robot-2027 sim
   (`cargo run -p raptaboard -- --address sim layouts/robot2027_sim.json`). Its `/DashTest/`
   topics come from robot-2027's `utils/dashboard_test_topics.py` (sim only).
+  It also keeps widgets for things that don't exist, on purpose, to test that handling: "Never
+  published" and "Missing text" (topics never sent), "Missing field" (a field `OrbitPose` doesn't
+  have), and the "Missing child" row in Module CAN. Keep them when editing the layout.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.
 - `plugins/arm`: example plugin; its `plugin.toml` is a test fixture.
 

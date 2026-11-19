@@ -122,6 +122,10 @@ pub struct TreeSelection {
     /// A row to open the tree to, scroll to and pick, set by
     /// [`TreeSelection::reveal`].
     reveal: Option<Reveal>,
+    /// A row [`TreeSelection::reveal`] gave up on this frame, as the text
+    /// to show (`/Arm/angle` or `/Drive/pose → translation.x`), for the
+    /// window to say so.
+    pub not_found: Option<String>,
 }
 
 /// A row the tree should show: a topic, and the field path for a struct
@@ -243,10 +247,15 @@ impl TreeSelection {
     /// Call after drawing the tree each frame.
     pub fn end_frame(&mut self) {
         self.order = std::mem::take(&mut self.drawing);
-        // Give up on a row that never showed up.
+        // Give up on a row that never showed up, and say which.
+        self.not_found = None;
         if let Some(r) = &mut self.reveal {
             r.frames = r.frames.saturating_sub(1);
             if r.frames == 0 {
+                self.not_found = Some(match &r.field {
+                    Some(path) => format!("{} → {}", r.name, struct_view::path_text(path)),
+                    None => r.name.clone(),
+                });
                 self.reveal = None;
             }
         }
@@ -1052,5 +1061,8 @@ mod tests {
             sel.end_frame();
         }
         assert!(!sel.reveals_in_folder(""));
+        assert_eq!(sel.not_found.as_deref(), Some("/Missing"));
+        sel.end_frame();
+        assert_eq!(sel.not_found, None);
     }
 }

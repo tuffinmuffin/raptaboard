@@ -598,6 +598,10 @@ impl DashboardApp {
             })
             .inner;
         self.tree_sel.end_frame();
+        if let Some(row) = &self.tree_sel.not_found {
+            self.status =
+                format!("No row for {row} in the tree: not published, or hidden by the filter");
+        }
         drawn
     }
 
