@@ -1,40 +1,70 @@
-//! Command-line options. They override the settings files for one run and
-//! are never saved, except that a layout opened is remembered as the last
-//! layout (see [`crate::settings`]).
+//! Command-line options, read with `clap` ([`Args`]). They override the
+//! settings files for one run and are never saved, except that a layout
+//! opened is remembered as the last layout (see [`crate::settings`]).
 //!
 //! ```text
 //! raptaboard [--team N] [--address ds|team|mdns|wifi|sim|<host>] [--port N] [--hide-tree] [layout.json]
+//! raptaboard --help
 //! ```
 
 use std::path::PathBuf;
 
+use clap::Parser;
+
 use crate::connection::AddressMode;
 use crate::settings::{self, Loaded, Settings};
 
-/// Help text printed for `--help` or a bad option.
-pub const USAGE: &str = "\
-Usage: raptaboard [OPTIONS] [LAYOUT.json]
+/// What can be given on the command line. Each option overrides the
+/// settings files for this run only.
+#[derive(Debug, Clone, PartialEq, Eq, Parser)]
+#[command(
+    name = "raptaboard",
+    version,
+    about = "An FRC driver dashboard.",
+    after_help = "Settings are also read from ./.raptaboard/settings.toml, then \
+                  ~/.raptaboard/settings.toml (made on the first run). Options given here win \
+                  for this run and aren't saved."
+)]
+pub struct Args {
+    /// Team number (none until set here or in settings).
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..=99999))]
+    pub team: Option<u32>,
+    /// Where the robot is: ds, team, mdns, wifi, sim, or a host name or IP.
+    ///
+    ///   ds     ask the Driver Station on this computer
+    ///   team   10.TE.AM.2 from the team number
+    ///   mdns   SystemCore over mDNS (robot.local)
+    ///   wifi   SystemCore's own WiFi (172.30.0.1)
+    ///   sim    the simulator on this computer (localhost)
+    ///   any other value is used as a host name or IP
+    #[arg(long, value_name = "WHERE", verbatim_doc_comment)]
+    pub address: Option<String>,
+    /// NetworkTables server port (5810 for robot code; SystemCore's own
+    /// server is 6810).
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u16).range(1..))]
+    pub port: Option<u16>,
+    /// Start with the NetworkTables tree panel hidden.
+    #[arg(long)]
+    pub hide_tree: bool,
+    /// An Elastic layout file to open. If it doesn't exist yet, the app
+    /// starts with an empty layout and Save writes it there.
+    #[arg(value_name = "LAYOUT.json")]
+    pub layout: Option<PathBuf>,
+}
 
-Options:
-  --team N          Team number (none until set here or in settings)
-  --address WHERE   Where the robot is (default team):
-                      ds     ask the Driver Station on this computer
-                      team   10.TE.AM.2 from the team number
-                      mdns   SystemCore over mDNS (robot.local)
-                      wifi   SystemCore's own WiFi (172.30.0.1)
-                      sim    the simulator on this computer (localhost)
-                      any other value is used as a host name or IP
-  --port N          NetworkTables server port (default 5810, robot code;
-                    SystemCore's own server is 6810)
-  --hide-tree       Start with the NetworkTables tree panel hidden
-  -h, --help        Show this help
-
-LAYOUT.json is an Elastic layout file to open. If it doesn't exist yet, the
-app starts with an empty layout and Save writes it there.
-
-Settings are also read from ./.raptaboard/settings.toml, then
-~/.raptaboard/settings.toml (made on the first run). Options given here win
-for this run and aren't saved.";
+impl Args {
+    /// The settings these options give: only the ones set.
+    pub fn settings(&self) -> Settings {
+        Settings {
+            team: self.team,
+            address: self.address.clone(),
+            port: self.port,
+            show_tree: self.hide_tree.then_some(false),
+            layout: self.layout.as_deref().map(absolute),
+            ..Default::default()
+        }
+    }
+}
 
 /// What the app starts with: every setting resolved, and where changes
 /// are saved.
@@ -98,17 +128,10 @@ impl From<Loaded> for StartupOptions {
     }
 }
 
-/// Why the command line could not be used.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CliError {
-    /// `--help` was given: print [`USAGE`] and exit without an error.
-    Help,
-    /// Something was wrong; the message says what.
-    Invalid(String),
-}
-
 /// Read the options from the arguments after the program name. Only the
-/// options given are set; the rest come from the settings files.
+/// options given are set; the rest come from the settings files. A bad
+/// option, `--help` and `--version` come back as clap's error, which knows
+/// how to print itself and which exit code to use.
 ///
 /// ```
 /// use raptaboard::cli::parse;
@@ -117,56 +140,16 @@ pub enum CliError {
 /// assert_eq!(given.team, None);
 /// assert!(given.layout.unwrap().ends_with("layout.json"));
 /// ```
-pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Settings, CliError> {
-    let mut given = Settings::default();
-    let mut args = args.into_iter();
-    while let Some(arg) = args.next() {
-        let mut value = |name: &str| {
-            args.next()
-                .ok_or_else(|| CliError::Invalid(format!("{name} needs a value")))
-        };
-        match arg.as_str() {
-            "-h" | "--help" => return Err(CliError::Help),
-            "--team" => {
-                let v = value("--team")?;
-                given.team = Some(
-                    v.parse()
-                        .ok()
-                        .filter(|t| (1..=99999).contains(t))
-                        .ok_or_else(|| CliError::Invalid(format!("bad team number '{v}'")))?,
-                );
-            }
-            "--address" => given.address = Some(value("--address")?),
-            "--hide-tree" => given.show_tree = Some(false),
-            "--port" => {
-                let v = value("--port")?;
-                given.port = Some(
-                    v.parse()
-                        .ok()
-                        .filter(|p| *p != 0)
-                        .ok_or_else(|| CliError::Invalid(format!("bad port '{v}'")))?,
-                );
-            }
-            flag if flag.starts_with('-') => {
-                return Err(CliError::Invalid(format!("unknown option '{flag}'")));
-            }
-            path => {
-                if given.layout.is_some() {
-                    return Err(CliError::Invalid(format!("extra argument '{path}'")));
-                }
-                given.layout = Some(absolute(path));
-            }
-        }
-    }
-    Ok(given)
+pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Settings, clap::Error> {
+    let args = std::iter::once("raptaboard".to_owned()).chain(args);
+    Ok(Args::try_parse_from(args)?.settings())
 }
 
 /// `path` made absolute against the current folder, so a remembered layout
 /// still opens when raptaboard starts somewhere else.
-fn absolute(path: &str) -> String {
-    let path = PathBuf::from(path);
-    std::path::absolute(&path)
-        .unwrap_or(path)
+fn absolute(path: &std::path::Path) -> String {
+    std::path::absolute(path)
+        .unwrap_or_else(|_| path.to_owned())
         .to_string_lossy()
         .into_owned()
 }
@@ -175,9 +158,17 @@ fn absolute(path: &str) -> String {
 mod tests {
     // Tests written by Claude.
     use super::*;
+    use clap::error::ErrorKind;
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn the_options_are_well_formed() {
+        // clap checks the definition itself: names, values, help.
+        use clap::CommandFactory;
+        Args::command().debug_assert();
     }
 
     #[test]
@@ -201,10 +192,7 @@ mod tests {
     fn port_is_checked() {
         assert_eq!(parse(args(&["--port", "6810"])).unwrap().port, Some(6810));
         for bad in ["0", "70000", "x"] {
-            assert!(matches!(
-                parse(args(&["--port", bad])),
-                Err(CliError::Invalid(_))
-            ));
+            assert!(parse(args(&["--port", bad])).is_err(), "{bad}");
         }
     }
 
@@ -253,8 +241,10 @@ mod tests {
     }
 
     #[test]
-    fn mistakes_are_reported() {
-        assert_eq!(parse(args(&["--help"])), Err(CliError::Help));
+    fn mistakes_and_help_are_reported() {
+        let kind = |list: &[&str]| parse(args(list)).unwrap_err().kind();
+        assert_eq!(kind(&["--help"]), ErrorKind::DisplayHelp);
+        assert_eq!(kind(&["--version"]), ErrorKind::DisplayVersion);
         for bad in [
             &["--team"][..],
             &["--team", "abc"],
@@ -263,10 +253,7 @@ mod tests {
             &["--bogus"],
             &["a.json", "b.json"],
         ] {
-            assert!(
-                matches!(parse(args(bad)), Err(CliError::Invalid(_))),
-                "{bad:?} should fail"
-            );
+            assert!(parse(args(bad)).is_err(), "{bad:?} should fail");
         }
     }
 }

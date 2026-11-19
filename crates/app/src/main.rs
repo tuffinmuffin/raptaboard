@@ -7,21 +7,12 @@
 //! cargo run -p raptaboard -- --help
 //! ```
 
-use raptaboard::cli::{self, CliError, StartupOptions};
+use raptaboard::cli::{self, StartupOptions};
 use raptaboard::settings;
 
 fn main() -> eframe::Result {
-    let given = match cli::parse(std::env::args().skip(1)) {
-        Ok(given) => given,
-        Err(CliError::Help) => {
-            println!("{}", cli::USAGE);
-            return Ok(());
-        }
-        Err(CliError::Invalid(message)) => {
-            eprintln!("raptaboard: {message}\n\n{}", cli::USAGE);
-            std::process::exit(2);
-        }
-    };
+    // Bad options, --help and --version print and exit here.
+    let given = cli::parse(std::env::args().skip(1)).unwrap_or_else(|e| e.exit());
     let start = std::env::current_dir().ok();
     let home = std::env::home_dir();
     let loaded = settings::load(given, start.as_deref(), home.as_deref());

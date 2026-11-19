@@ -17,6 +17,7 @@ raptaboard-plugin-host.workspace = true
 nt4.workspace = true
 tokio.workspace = true
 rfd = "0.17.2"
+clap = { version = "4.6.8", features = ["derive"] }
 
 [lints]
 workspace = true
