@@ -7,6 +7,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Event, Key, Modifiers, Pos2, RawInput, Rect};
+use egui_kittest::kittest::Queryable;
 use nt4::{Publisher, Server, ServerConfig};
 use raptaboard_layout::{ElasticLayout, Rect as LayoutRect, Tab, WidgetContainer};
 use serde_json::{Map, json};
@@ -46,6 +47,7 @@ struct Robot {
         Publisher<Vec<String>>,
         Publisher<Vec<f64>>,
     ),
+    _structs: (nt4::GenericPublisher, nt4::GenericPublisher),
 }
 
 impl Robot {
@@ -71,6 +73,35 @@ impl Robot {
         colors.set(vec!["#FF0000".into(), "#00FF00".into()]);
         let numbers = server.publish::<Vec<f64>>("/Test/numbers");
         numbers.set(vec![1.0, 2.0]);
+        // Structs as robot code sends them: schemas, then bytes. A Pose2d
+        // has nested structs; the swerve states are a struct array.
+        server.add_schema("struct:Translation2d", "structschema", b"double x;double y");
+        server.add_schema("struct:Rotation2d", "structschema", b"double value");
+        server.add_schema(
+            "struct:Pose2d",
+            "structschema",
+            b"Translation2d translation;Rotation2d rotation",
+        );
+        server.add_schema(
+            "struct:SwerveModuleState",
+            "structschema",
+            b"double speed;Rotation2d angle",
+        );
+        let doubles = |values: &[f64]| -> nt4::Value {
+            nt4::Value::Raw(values.iter().flat_map(|v| v.to_le_bytes()).collect())
+        };
+        let pose = server.publish_generic(
+            "/Drive/pose",
+            "struct:Pose2d".parse().unwrap(),
+            nt4::Properties::new(),
+        );
+        pose.set(doubles(&[1.5, 2.5, 0.75])).unwrap();
+        let modules = server.publish_generic(
+            "/Drive/modules",
+            "struct:SwerveModuleState[]".parse().unwrap(),
+            nt4::Properties::new(),
+        );
+        modules.set(doubles(&[3.0, 0.1, 4.0, 0.2])).unwrap();
         Robot {
             _rt: rt,
             _server: server,
@@ -79,6 +110,7 @@ impl Robot {
             count,
             flag,
             _others: (color, colors, numbers),
+            _structs: (pose, modules),
         }
     }
 
@@ -427,4 +459,283 @@ fn saving_writes_the_file_and_clears_unsaved() {
     assert!(!app.unsaved());
     assert_eq!(app.layout.tabs[0].name, "Renamed");
     std::fs::remove_dir_all(&folder).ok();
+}
+
+/// The whole window in an egui_kittest harness, so tree rows can be found
+/// by their labels and clicked or dragged where they're drawn.
+type Harness = egui_kittest::Harness<'static, DashboardApp>;
+
+fn harness_for(robot: &Robot) -> Harness {
+    let mut harness = egui_kittest::Harness::builder()
+        .with_size(egui::vec2(1800.0, 1300.0))
+        // Symbols such as ◀ come from the computer's own fonts in the app
+        // (eframe's system_fonts); the harness has only egui's built-in ones.
+        .allow_missing_glyphs()
+        .build_ui_state(|ui, app: &mut DashboardApp| app.show(ui), app_for(robot));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    // Connected, with the struct schemas in.
+    while !(connected(harness.state())
+        && harness
+            .state()
+            .nt
+            .structs()
+            .is_some_and(|db| db.find("Pose2d").is_some()))
+    {
+        assert!(Instant::now() < deadline, "never connected");
+        harness.step();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    harness
+}
+
+/// The tree panel's right edge: it starts 300 points wide.
+const TREE_RIGHT: f32 = 300.0;
+
+/// Where the `nth` tree row labelled exactly `label` is, top to bottom.
+/// Rows in a folder are in name order, so `/Drive/modules` comes before
+/// `/Drive/pose`.
+fn row_at(harness: &Harness, label: &str, nth: usize) -> Rect {
+    let mut rows: Vec<Rect> = harness
+        .get_all_by_label(label)
+        .map(|n| n.rect())
+        .filter(|r| r.min.x < TREE_RIGHT)
+        .collect();
+    rows.sort_by(|a, b| a.min.y.total_cmp(&b.min.y));
+    *rows
+        .get(nth)
+        .unwrap_or_else(|| panic!("no tree row {nth} labelled {label:?}: {rows:?}"))
+}
+
+/// Click the `nth` tree row labelled `label`, holding `modifiers`.
+fn click_row(harness: &mut Harness, label: &str, nth: usize, modifiers: Modifiers) {
+    let pos = row_at(harness, label, nth).center();
+    click_at(harness, pos, egui::PointerButton::Primary, modifiers);
+}
+
+/// Right-click the `nth` tree row labelled `label`.
+fn right_click_row(harness: &mut Harness, label: &str, nth: usize) {
+    let pos = row_at(harness, label, nth).center();
+    click_at(
+        harness,
+        pos,
+        egui::PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+}
+
+/// Click at `pos` with `button`, holding `modifiers`.
+fn click_at(harness: &mut Harness, pos: Pos2, button: egui::PointerButton, modifiers: Modifiers) {
+    harness.hover_at(pos);
+    harness.step();
+    for pressed in [true, false] {
+        harness.event_modifiers(
+            Event::PointerButton {
+                pos,
+                button,
+                pressed,
+                modifiers,
+            },
+            modifiers,
+        );
+    }
+    settle(harness);
+}
+
+/// A few frames, with time for values asked for to arrive.
+fn settle(harness: &mut Harness) {
+    for _ in 0..6 {
+        harness.step();
+        std::thread::sleep(Duration::from_millis(15));
+    }
+}
+
+/// Open the folder or struct whose header starts with `start`.
+fn open(harness: &mut Harness, start: &str) {
+    harness.get_by_label_contains(start).click();
+    settle(harness);
+}
+
+/// What's selected in the tree, as topic names with their field paths.
+fn picked(harness: &Harness) -> Vec<String> {
+    harness
+        .state()
+        .tree_sel
+        .selected()
+        .iter()
+        .map(|t| match &t.field {
+            Some(f) => format!("{} {}", t.name, f.path.join(".")),
+            None => t.name.clone(),
+        })
+        .collect()
+}
+
+/// Open /Drive, its pose (nested structs) and its modules (a struct array).
+fn open_drive(harness: &mut Harness) {
+    open(harness, "Drive  (");
+    open(harness, "pose  ");
+    open(harness, "modules  ");
+}
+
+#[test]
+fn tree_rows_select_with_click_ctrl_and_shift() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    open(&mut harness, "Test  (");
+    let none = Modifiers::NONE;
+    click_row(&mut harness, "count", 0, none);
+    assert_eq!(picked(&harness), ["/Test/count"]);
+    // Ctrl (Cmd) adds one; clicking it again takes it out.
+    click_row(&mut harness, "number", 0, Modifiers::COMMAND);
+    assert_eq!(picked(&harness), ["/Test/count", "/Test/number"]);
+    click_row(&mut harness, "number", 0, Modifiers::COMMAND);
+    assert_eq!(picked(&harness), ["/Test/count"]);
+    // Shift takes the rows from the last one clicked (Ctrl clicks count
+    // too), in name order: count, flag, number.
+    click_row(&mut harness, "count", 0, none);
+    click_row(&mut harness, "number", 0, Modifiers::SHIFT);
+    assert_eq!(
+        picked(&harness),
+        ["/Test/count", "/Test/flag", "/Test/number"]
+    );
+    // And upwards, from the last click: number back to color.
+    click_row(&mut harness, "number", 0, none);
+    click_row(&mut harness, "color", 0, Modifiers::SHIFT);
+    assert_eq!(
+        picked(&harness),
+        [
+            "/Test/color",
+            "/Test/colors",
+            "/Test/count",
+            "/Test/flag",
+            "/Test/number"
+        ]
+    );
+    // A plain click picks just that row.
+    click_row(&mut harness, "flag", 0, none);
+    assert_eq!(picked(&harness), ["/Test/flag"]);
+    // A click on empty grid clears it.
+    click_at(
+        &mut harness,
+        Pos2::new(1700.0, 1250.0),
+        egui::PointerButton::Primary,
+        none,
+    );
+    assert!(picked(&harness).is_empty());
+}
+
+#[test]
+fn nested_struct_fields_and_struct_array_items_select() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    open_drive(&mut harness);
+    let none = Modifiers::NONE;
+    // A field inside a nested struct: pose → translation → x.
+    click_row(&mut harness, "x", 0, none);
+    assert_eq!(picked(&harness), ["/Drive/pose translation.x"]);
+    // Another branch of the same struct, added: pose → rotation → value
+    // (the third "value": both modules come first).
+    click_row(&mut harness, "value", 2, Modifiers::COMMAND);
+    assert_eq!(
+        picked(&harness),
+        ["/Drive/pose translation.x", "/Drive/pose rotation.value"]
+    );
+    // A field of one item of a struct array: modules → [1] → speed.
+    click_row(&mut harness, "speed", 1, none);
+    assert_eq!(picked(&harness), ["/Drive/modules [1].speed"]);
+    // A struct nested in an array item: modules → [0] → angle → value.
+    click_row(&mut harness, "value", 0, none);
+    assert_eq!(picked(&harness), ["/Drive/modules [0].angle.value"]);
+    // Ctrl across topics: the same field of the other item.
+    click_row(&mut harness, "value", 1, Modifiers::COMMAND);
+    assert_eq!(
+        picked(&harness),
+        [
+            "/Drive/modules [0].angle.value",
+            "/Drive/modules [1].angle.value"
+        ]
+    );
+}
+
+/// Drag the `nth` tree row labelled `label` to `to`.
+fn drag_row(harness: &mut Harness, label: &str, nth: usize, to: Pos2) {
+    let from = row_at(harness, label, nth).center();
+    harness.hover_at(from);
+    harness.step();
+    harness.drag_at(from);
+    harness.step();
+    for step in 1..=10 {
+        harness.hover_at(from + (to - from) * (step as f32 / 10.0));
+        harness.step();
+    }
+    harness.drop_at(to);
+    settle(harness);
+}
+
+#[test]
+fn struct_fields_drag_onto_the_grid_as_field_widgets() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    open_drive(&mut harness);
+    let widgets = |h: &Harness| h.state().layout.tabs[0].grid_layout.containers.clone();
+    let before = widgets(&harness).len();
+    // A nested field, onto empty grid below the test widgets.
+    drag_row(&mut harness, "y", 0, Pos2::new(1500.0, 1150.0));
+    assert_eq!(widgets(&harness).len(), before + 1);
+    let made = widgets(&harness).pop().unwrap();
+    assert_eq!(made.topic(), Some("/Drive/pose"));
+    let meta = made.struct_meta().expect("bound to a field");
+    assert_eq!(meta.path, ["translation", "y"]);
+    assert_eq!(meta.schema_name, "Pose2d");
+    // A field of a struct array item, somewhere else.
+    drag_row(&mut harness, "speed", 1, Pos2::new(1500.0, 900.0));
+    assert_eq!(widgets(&harness).len(), before + 2);
+    let made = widgets(&harness).pop().unwrap();
+    assert_eq!(made.topic(), Some("/Drive/modules"));
+    assert_eq!(made.struct_meta().unwrap().path, ["[1]", "speed"]);
+    // Dragging a selected row takes the whole selection with it.
+    click_row(&mut harness, "x", 0, Modifiers::NONE);
+    click_row(&mut harness, "value", 2, Modifiers::COMMAND);
+    drag_row(&mut harness, "x", 0, Pos2::new(1500.0, 650.0));
+    assert_eq!(widgets(&harness).len(), before + 4);
+}
+
+#[test]
+fn the_right_click_menu_adds_the_selection_and_locking_stops_it() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    open_drive(&mut harness);
+    let count = |h: &Harness| h.state().layout.tabs[0].grid_layout.containers.len();
+    let before = count(&harness);
+    // Select two fields in different structs, then right-click one.
+    click_row(&mut harness, "x", 0, Modifiers::NONE);
+    click_row(&mut harness, "speed", 0, Modifiers::COMMAND);
+    right_click_row(&mut harness, "x", 0);
+    harness.get_by_label("Add 2 to grid").click();
+    settle(&mut harness);
+    assert_eq!(count(&harness), before + 2);
+    // Right-clicking a row that isn't selected picks just it.
+    right_click_row(&mut harness, "y", 0);
+    assert_eq!(picked(&harness), ["/Drive/pose translation.y"]);
+    // Into a new list, through the submenu.
+    harness.get_by_label("Add to list").hover();
+    settle(&mut harness);
+    harness.get_by_label("New list").click();
+    settle(&mut harness);
+    let lists = harness.state().layout.tabs[0].grid_layout.layouts.clone();
+    assert_eq!(lists.len(), 2);
+    assert_eq!(
+        lists[1].children[0].struct_meta().unwrap().path,
+        ["translation", "y"]
+    );
+    // Locked: rows still select, but there's no menu and no dragging.
+    harness.state_mut().locked = true;
+    settle(&mut harness);
+    right_click_row(&mut harness, "x", 0);
+    assert_eq!(picked(&harness), ["/Drive/pose translation.x"]);
+    assert!(harness.query_by_label("Add to grid").is_none());
+    harness.key_press(Key::Escape);
+    settle(&mut harness);
+    let before = count(&harness);
+    drag_row(&mut harness, "y", 0, Pos2::new(1500.0, 1150.0));
+    assert_eq!(count(&harness), before);
 }

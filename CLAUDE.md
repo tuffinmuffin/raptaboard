@@ -57,7 +57,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `grid_view.rs` the grid; `drag.rs` drag and drop; `dialogs.rs` the settings dialogs; `live.rs`
   the topics the tab needs and graph recording; `style.rs` the drawing constants; each file adds
   its own `impl DashboardApp` block; `ui/tests.rs` runs the whole window headless against an
-  in-process `nt4::Server` with one widget of every type, the place for new UI tests;
+  in-process `nt4::Server` with one widget of every type (and struct and struct-array topics),
+  the place for new UI tests; its `egui_kittest` harness finds tree rows and menu items by label
+  and clicks or drags them;
   `DashboardApp::show` is one frame without an `eframe::Frame`), `connection.rs` the robot address modes,
   `cli.rs` the startup flags (`clap` derive, `cli::Args`: `--team`, `--address`, `--port`,
   `--hide-tree`; this run only),

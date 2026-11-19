@@ -84,15 +84,34 @@ impl DashboardApp {
                     .max_decimals(0),
             )
             .on_hover_text("Your FRC team number, for finding the robot at 10.TE.AM.2");
+            // Named for screen readers; on screen the choices say what it is.
             egui::ComboBox::from_id_salt("address_mode")
                 .selected_text(self.mode.label())
                 .show_ui(ui, |ui| {
                     for mode in AddressMode::ALL {
                         ui.selectable_value(&mut self.mode, mode, mode.label());
                     }
+                })
+                .response
+                .widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::accesskit::Role::ComboBox,
+                        true,
+                        "Robot address",
+                    )
                 });
             if self.mode == AddressMode::Custom {
-                ui.text_edit_singleline(&mut self.custom_address);
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.custom_address)
+                        .hint_text("Host name or IP address"),
+                )
+                .widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::accesskit::Role::TextInput,
+                        true,
+                        "Server address",
+                    )
+                });
             }
             let host = resolve(self.mode, self.team, &self.custom_address);
             self.nt.set_target(host.as_deref(), self.port);
