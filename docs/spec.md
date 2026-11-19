@@ -378,6 +378,13 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      and when the robot reconnects). Taken from every value received, as graphs record them
      (`traces.rs`), not from the widget's sampled period, so short peaks count. Bars and gauges
      could also mark the min and max on their scale.
+   - Sound clips on robot state changes: play a sound file when the robot is disabled (the first
+     one: the "I'm disabled" quote from The IT Crowd), and optionally on enable, the start of auto
+     and teleop, and e-stop. The state comes from WPILib's `/FMSInfo/FMSControlData` bits (check
+     the 2027 topics), only on a change, not at connect. A settings entry per event: a file path
+     (MP3 or WAV; `rodio` with its MP3 decoder) and on or off, plus a volume, and the bell
+     button mutes these too. The clip is the user's own file, not bundled: it's someone else's
+     recording. TODO: find the IT Crowd clip.
    - X/Y and polar graphs (`egui_plot`): pair two values recorded at the same time (x with y, or
      angle with distance) and plot one against the other, for a joystick's position, an arm
      joint's path or a turret's aim. Modes: a trail that fades out over a set time (time decay),
