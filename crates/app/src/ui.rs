@@ -594,7 +594,13 @@ impl DashboardApp {
                 // Rows are picked, not their text: no text cursor or text
                 // highlighting, which would look like picking.
                 ui.style_mut().interaction.selectable_labels = false;
-                tree.show(ui, "", filtering, structs, !self.locked, &mut self.tree_sel)
+                let drawn = tree.show(ui, "", filtering, structs, !self.locked, &mut self.tree_sel);
+                // Clicking the empty space below the rows unpicks them.
+                let below = ui.allocate_response(ui.available_size(), Sense::click());
+                if below.clicked() {
+                    self.tree_sel.clear();
+                }
+                drawn
             })
             .inner;
         self.tree_sel.end_frame();
@@ -757,6 +763,10 @@ impl DashboardApp {
     /// Carry out an editing command: undo, redo, or Delete, Duplicate and
     /// Deselect on the selected widget. Ignored while locked.
     fn run_edit_action(&mut self, ctx: &egui::Context, action: EditAction) {
+        // Esc also unpicks tree rows, which can be picked while locked.
+        if action == EditAction::Deselect {
+            self.tree_sel.clear();
+        }
         if self.locked {
             return;
         }
@@ -1131,6 +1141,7 @@ impl DashboardApp {
         let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click());
         if response.clicked() {
             self.selected = None;
+            self.tree_sel.clear();
         }
         let area = response.rect;
         let origin = area.min;
