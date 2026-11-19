@@ -2840,9 +2840,11 @@ dependencies = [
  "raptaboard-layout",
  "raptaboard-plugin-host",
  "rfd",
+ "serde",
  "serde_json",
  "sysinfo",
  "tokio",
+ "toml",
 ]
 
 [[package]]
