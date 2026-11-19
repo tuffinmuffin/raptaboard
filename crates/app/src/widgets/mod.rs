@@ -24,8 +24,9 @@
 //! 3. Add its settings to the table in `docs/spec.md`
 //!    ("raptaboard widget settings").
 //!
-//! Widgets are read-only for now: typing into a Text Display to publish a
-//! value comes later.
+//! Widgets that change values (Toggle Switch, Toggle Button) return the new
+//! value from [`WidgetType::show`]; the grid sends it with
+//! [`crate::nt::NtConnection::write`].
 
 pub mod builtin;
 pub mod list_layout;
@@ -49,6 +50,10 @@ pub struct Live<'a> {
     pub traces: &'a crate::traces::Traces,
     /// The time now, on the clock the traces use (microseconds).
     pub now_us: i64,
+    /// Whether the layout is locked. Locked, a widget that takes input
+    /// takes it anywhere on its card; unlocked, its title bar is left for
+    /// moving the widget.
+    pub locked: bool,
 }
 
 /// What the settings dialog knows about the value a widget shows, so a
@@ -111,10 +116,24 @@ pub trait WidgetType: Sync {
     }
 
     /// Draw the widget in `rect` with a full [`egui::Ui`], for widgets that
-    /// need more than a painter (a plot, say) or the values over time in
-    /// `live`. The default is [`draw`](Self::draw).
-    fn show(&self, ui: &mut egui::Ui, rect: Rect, widget: &WidgetContainer, live: &Live<'_>) {
+    /// need more than a painter (a plot, say), the values over time in
+    /// `live`, or input. The default is [`draw`](Self::draw).
+    ///
+    /// Widgets that change their value (a toggle, a slider) return the new
+    /// value when the user changes it, and the app sends it to the widget's
+    /// topic. Input works locked or not: the lock only stops layout edits.
+    /// A widget's input should cover its body, below the title bar, which
+    /// moves the widget while unlocked. egui keeps a drag going to the widget
+    /// it started on, even when the pointer leaves it.
+    fn show(
+        &self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        widget: &WidgetContainer,
+        live: &Live<'_>,
+    ) -> Option<Value> {
         self.draw(ui.painter(), ui.visuals(), rect, widget, live.value);
+        None
     }
 
     /// How often this widget wants new values when its `period` isn't set,
@@ -158,6 +177,8 @@ pub trait WidgetType: Sync {
 /// when more than one accepts a dropped topic.
 pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::boolean_box::BooleanBox,
+    &builtin::toggle::ToggleSwitch,
+    &builtin::toggle::ToggleButton,
     &builtin::text_display::TextDisplay,
     &builtin::large_text_display::LargeTextDisplay,
     &builtin::number_bar::NumberBar,

@@ -42,3 +42,12 @@ pub(super) const DROP_BLOCKED: Color32 = Color32::from_rgb(220, 60, 60);
 
 /// Color of the outline on widgets showing a topic picked in the tree.
 pub(super) const FOUND_COLOR: Color32 = Color32::from_rgb(230, 160, 40);
+/// Color of the border flash on a widget whose value couldn't be sent.
+pub(super) const FAILED_COLOR: Color32 = Color32::from_rgb(230, 50, 50);
+/// Width of that flash, in points: wider than an outline, to be seen.
+pub(super) const FLASH_WIDTH: f32 = 3.0;
+/// How long the flash lasts, in seconds.
+pub(super) const FLASH_S: f32 = 0.9;
+/// How long each on and off step of the flash is, in seconds: three
+/// flashes in all.
+pub(super) const FLASH_STEP_S: f32 = 0.15;

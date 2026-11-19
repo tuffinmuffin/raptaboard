@@ -431,7 +431,13 @@ impl WidgetType for Graph {
         matches!(nt_type, "double" | "float" | "int" | "boolean")
     }
 
-    fn show(&self, ui: &mut egui::Ui, rect: Rect, widget: &WidgetContainer, live: &Live<'_>) {
+    fn show(
+        &self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        widget: &WidgetContainer,
+        live: &Live<'_>,
+    ) -> Option<Value> {
         let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title)
             .shrink(card::BODY_MARGIN);
         let p = &widget.properties;
@@ -637,6 +643,7 @@ impl WidgetType for Graph {
             }
         }
         ui.ctx().data_mut(|d| d.insert_temp(view_id, view));
+        None
     }
 
     /// Without a full Ui (in a List Layout, or while dragged): the newest
@@ -947,6 +954,7 @@ mod tests {
                 value: None,
                 traces: &traces,
                 now_us: 2_000_000,
+                locked: false,
             };
             Graph.show(ui, rect, &w, &live);
         });
@@ -994,6 +1002,7 @@ mod tests {
                     value: None,
                     traces: &traces,
                     now_us: 5_000_000,
+                    locked: false,
                 };
                 Graph.show(ui, rect, &w, &live);
             });
@@ -1109,6 +1118,7 @@ mod tests {
                     value: None,
                     traces: &traces,
                     now_us: 5_000_000,
+                    locked: false,
                 };
                 Graph.show(ui, rect, &w, &live);
             });

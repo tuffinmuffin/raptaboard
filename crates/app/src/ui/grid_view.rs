@@ -17,6 +17,7 @@ use raptaboard_layout::{GridLayout, Rect as LayoutRect, Tab, WidgetContainer};
 
 use crate::edit::EditAction;
 use crate::grid::{self, Item};
+use crate::nt::WriteError;
 use crate::sampling::Sampler;
 use crate::struct_view;
 use crate::tree::DraggedTopics;
@@ -30,8 +31,8 @@ use super::drag::{
     ChildDrag, Drag, DragMode, DropTarget, draw_drop, draw_landing, draw_resize_handle,
 };
 use super::style::{
-    CELL_GAP, FOUND_COLOR, GRID_LINE_STRENGTH, GRID_LINE_WIDTH, OUTLINE_WIDTH, RESIZE_HANDLE,
-    SELECTION_INSET,
+    CELL_GAP, FAILED_COLOR, FLASH_S, FLASH_STEP_S, FLASH_WIDTH, FOUND_COLOR, GRID_LINE_STRENGTH,
+    GRID_LINE_WIDTH, OUTLINE_WIDTH, RESIZE_HANDLE, SELECTION_INSET,
 };
 
 /// Draw one grid item (a widget, or a List Layout with its children) in
@@ -110,6 +111,8 @@ struct Requests {
     wrap: Option<usize>,
     /// A widget clicked, to find its topic in the tree.
     find_in_tree: Option<WidgetContainer>,
+    /// Values widgets want sent: (widget index, value).
+    writes: Vec<(usize, Value)>,
 }
 
 impl DashboardApp {
@@ -124,6 +127,7 @@ impl DashboardApp {
             cell: f64::from(self.layout.grid_size()),
             room: (f64::from(area.width()), f64::from(area.height())),
         };
+        self.grid_area = area;
         let mut requests = Requests::default();
         self.empty_grid_input(&response, view, &mut requests);
         draw_lines(&painter, ui.visuals(), view);
@@ -139,7 +143,7 @@ impl DashboardApp {
         let sampler = RefCell::new(std::mem::take(&mut self.sampler));
         {
             let value_of = self.value_of(&sampler, values, now);
-            self.draw_items(ui, &painter, view, &value_of);
+            requests.writes = self.draw_items(ui, &painter, view, &value_of);
             self.draw_outlines(&painter, ui.visuals(), view);
             self.drag_preview(&painter, ui.visuals(), view, &value_of);
             self.child_drag_preview(ui, &painter, view, &value_of, &mut requests);
@@ -334,15 +338,19 @@ impl DashboardApp {
     }
 
     /// Draw every item but the one being dragged (drawn on top later),
-    /// with resize corners when unlocked.
+    /// with resize corners when unlocked. Returns the values widgets want
+    /// sent, as (widget index, value).
     fn draw_items(
         &self,
         ui: &mut egui::Ui,
         painter: &egui::Painter,
         view: GridView,
         value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
-    ) {
-        let Some(tab) = self.tab() else { return };
+    ) -> Vec<(usize, Value)> {
+        let mut writes = Vec::new();
+        let Some(tab) = self.tab() else {
+            return writes;
+        };
         let visuals = ui.visuals().clone();
         let dragging = self.drag.map(|d| d.item);
         let now_us = self.nt.client().map_or(0, |c| c.now_us());
@@ -361,6 +369,7 @@ impl DashboardApp {
                     value: value.as_ref(),
                     traces: &self.traces,
                     now_us,
+                    locked: self.locked,
                 };
                 let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt((
                     "widget",
@@ -368,7 +377,9 @@ impl DashboardApp {
                     i,
                 )));
                 child.set_clip_rect(rect.intersect(painter.clip_rect()));
-                card::show(&mut child, rect, w, &live);
+                if let Some(value) = card::show(&mut child, rect, w, &live) {
+                    writes.push((i, value));
+                }
             } else {
                 draw_item(
                     painter,
@@ -383,6 +394,7 @@ impl DashboardApp {
                 draw_resize_handle(painter, &visuals, view.to_screen(&r));
             }
         }
+        writes
     }
 
     /// Outlines: the selected item in the selection color, and widgets
@@ -401,6 +413,28 @@ impl DashboardApp {
                 Stroke::new(OUTLINE_WIDTH, visuals.selection.stroke.color),
                 egui::StrokeKind::Inside,
             );
+        }
+        // Widgets whose value just failed to send flash red a few times.
+        let now = Instant::now();
+        for (&(t, i), &when) in &self.write_failed {
+            let age = now.duration_since(when).as_secs_f32();
+            let Some(w) = tab.grid_layout.containers.get(i) else {
+                continue;
+            };
+            if t != self.current_tab || age >= FLASH_S {
+                continue;
+            }
+            if ((age / FLASH_STEP_S) as u32).is_multiple_of(2) {
+                painter.rect_stroke(
+                    view.to_screen(&w.rect).shrink(SELECTION_INSET),
+                    egui::CornerRadius::same(card::CORNER_RADIUS),
+                    Stroke::new(FLASH_WIDTH, FAILED_COLOR),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            painter
+                .ctx()
+                .request_repaint_after(std::time::Duration::from_millis(30));
         }
         let picked = self.tree_sel.selected();
         if picked.is_empty() {
@@ -633,7 +667,11 @@ impl DashboardApp {
             edit_child,
             wrap,
             find_in_tree,
+            writes,
         } = requests;
+        for (index, value) in writes {
+            self.send(index, value);
+        }
         if let Some((topics, into, target)) = topics_dropped {
             self.add_dropped_topics(&topics, into, target, view);
         }
@@ -719,6 +757,37 @@ impl DashboardApp {
                 let target = drag.target(view.cell, view.room);
                 if grid::fits(grid, drag.item, target) {
                     drag.item.set_rect(grid, target);
+                }
+            }
+        }
+    }
+
+    /// Send `value` from widget `index` on the open tab to its topic. If it
+    /// can't be sent, say why in the status line, flash the widget's border
+    /// red and play the alert tone.
+    fn send(&mut self, index: usize, value: Value) {
+        let Some(widget) = self.tab().and_then(|t| t.grid_layout.containers.get(index)) else {
+            return;
+        };
+        // Copied out, so the widget's borrow of the layout ends before the
+        // connection is used.
+        let topic = widget.topic().map(str::to_owned);
+        let is_field = widget.struct_meta().is_some();
+        let result = match (topic, is_field) {
+            (Some(topic), false) => self.nt.write(&topic, value),
+            (Some(topic), true) => Err(WriteError::Struct(topic)),
+            (None, _) => Err(WriteError::NotPublished("(no topic)".to_owned())),
+        };
+        match result {
+            Ok(()) => {
+                self.write_failed.remove(&(self.current_tab, index));
+            }
+            Err(why) => {
+                self.status = why.to_string();
+                self.write_failed
+                    .insert((self.current_tab, index), Instant::now());
+                if self.alert_sound {
+                    self.alert.play();
                 }
             }
         }

@@ -76,10 +76,13 @@ pub fn show(
     rect: Rect,
     widget: &WidgetContainer,
     live: &crate::widgets::Live<'_>,
-) {
+) -> Option<Value> {
     match crate::widgets::find(&widget.widget_type) {
         Some(ty) => ty.show(ui, rect, widget, live),
-        None => draw(ui.painter(), ui.visuals(), rect, widget, live.value),
+        None => {
+            draw(ui.painter(), ui.visuals(), rect, widget, live.value);
+            None
+        }
     }
 }
 

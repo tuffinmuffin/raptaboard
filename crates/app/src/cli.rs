@@ -89,6 +89,8 @@ pub struct StartupOptions {
     pub show_tree: bool,
     /// Start with the layout locked.
     pub locked: bool,
+    /// Play a tone when a widget's value can't be sent.
+    pub alert_sound: bool,
     /// The settings file changes go to.
     pub store: settings::Store,
     /// Things to tell the user at startup, such as a settings file that
@@ -122,6 +124,7 @@ impl From<Loaded> for StartupOptions {
             port: s.port.unwrap_or(nt4::proto::ROBOT_CODE_PORT),
             show_tree: s.show_tree.unwrap_or(true),
             locked: s.locked.unwrap_or(false),
+            alert_sound: s.alert_sound.unwrap_or(true),
             store: loaded.store,
             notes: loaded.notes,
         }

@@ -19,6 +19,7 @@ use eframe::egui;
 use nt4::Value;
 use raptaboard_layout::ElasticLayout;
 
+use crate::alert::Alert;
 use crate::cli::StartupOptions;
 use crate::connection::AddressMode;
 use crate::edit::{self, EditAction, History};
@@ -107,6 +108,15 @@ pub struct DashboardApp {
     sampler: Sampler,
     /// Recent values of the series graphs on the open tab show.
     traces: Traces,
+    /// Whether a tone plays when a widget's value can't be sent.
+    alert_sound: bool,
+    /// Plays that tone.
+    alert: Alert,
+    /// When each widget on a tab last failed to send its value: (tab,
+    /// widget index) to the time, so its border flashes red for a moment.
+    write_failed: HashMap<(usize, usize), Instant>,
+    /// Where the grid was drawn last frame, in screen points.
+    grid_area: egui::Rect,
 }
 
 impl DashboardApp {
@@ -149,6 +159,10 @@ impl DashboardApp {
             editing: None,
             sampler: Sampler::default(),
             traces: Traces::default(),
+            alert_sound: options.alert_sound,
+            alert: Alert::new(),
+            write_failed: HashMap::new(),
+            grid_area: egui::Rect::NOTHING,
         };
         if let Some(path) = options.layout_path {
             let path = PathBuf::from(path);
@@ -188,6 +202,7 @@ impl DashboardApp {
             port: Some(self.port),
             show_tree: Some(self.show_tree),
             locked: Some(self.locked),
+            alert_sound: Some(self.alert_sound),
             tab: self
                 .layout
                 .tabs

@@ -402,8 +402,32 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    every value received (an `all` subscription, read from the client's event stream), not one
    per frame. Graphs default to a 0.016 s period (about 60 a second; other widgets keep 0.06), and
    the window redraws at most about 60 times a second; graphs aren't meant for faster signals. A
-   plot only senses hover, so it never takes the drags that move the widget. Next: then the writing widgets (toggles, slider, editable Text
-   Display), choosers, Alerts, Field, struct widgets.
+   plot only senses hover, so it never takes the drags that move the widget.
+   Writing values (decided 2026-11-19): Toggle Switch and Toggle Button are built. Widgets return
+   the value to send from `WidgetType::show`, and the grid sends it with `NtConnection::write`.
+   As in Elastic, only a topic the server has announced is written, with the topic's own type
+   (numbers convert, ints round, text is parsed), published once and kept until the connection
+   restarts, without changing its properties; struct topics and fields aren't written. Unlike
+   Elastic, a write that can't happen says so: the widget's border flashes red three times,
+   an alert tone plays (`alert.rs`, `rodio`; the `alert_sound` setting and a bell button in the
+   settings bar turn it off), and the status line gives the reason ("the robot hasn't published
+   it", "struct values can't be changed", "it's a boolean", "not connected"). Input: the lock
+   only stops layout edits, controls always work; locked, input starts anywhere on the widget;
+   unlocked, the title bar moves the widget and the rest is input; a drag that starts in a
+   widget keeps adjusting it when the pointer leaves it (egui keeps the drag). A widget shows its
+   own write at once and the robot's (or another dashboard's) later change wins, which needs nt4
+   0.3 (a client sees its own values, as in ntcore). Writing widgets inside List Layouts come
+   later (list children are drawn with a painter, so they take no input yet).
+   Enums (decided): an Enum Dropdown and an Enum Toggle (two named states instead of true and
+   false), bound to a SendableChooser table (`options`, `default`, `active`; writes `selected`),
+   or a string or int topic with the values listed in its settings; on creation the widget
+   guesses the source, and its settings can change it. The robot publishes the full list at the
+   start; if the list changes, the pick is dropped and the robot's value is used, and any change
+   of the value (robot or another dashboard) is shown. Uses: auto mode, a test in test mode.
+   Struct enum fields (schema `enum {..}`) stay display-only: writing one would mean rewriting the
+   robot's struct.
+   Next: Number Slider, editable Text Display, the enum widgets and choosers (with dragging a
+   chooser table from the tree), Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
    WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro, SwerveModuleState[] → swerve view.

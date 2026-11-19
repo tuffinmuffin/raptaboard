@@ -22,6 +22,7 @@
 //! port = 5810
 //! show_tree = true
 //! locked = false
+//! alert_sound = true # a tone when a value can't be sent
 //! layout = "/Users/me/layouts/match.json"
 //! tab = "Teleoperated"
 //! tab_index = 0
@@ -62,6 +63,9 @@ pub struct Settings {
     /// Whether the layout is locked, so nothing moves by accident.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub locked: Option<bool>,
+    /// Whether a tone plays when a widget's value can't be sent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alert_sound: Option<bool>,
     /// The layout file to open at start: the one last opened or saved.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<String>,
@@ -104,6 +108,7 @@ pub fn defaults() -> Settings {
         port: Some(nt4::proto::ROBOT_CODE_PORT),
         show_tree: Some(true),
         locked: Some(false),
+        alert_sound: Some(true),
         layout: None,
         tab: None,
         tab_index: None,
@@ -153,6 +158,7 @@ impl Settings {
             port: self.port.or(lower.port),
             show_tree: self.show_tree.or(lower.show_tree),
             locked: self.locked.or(lower.locked),
+            alert_sound: self.alert_sound.or(lower.alert_sound),
             layout: self.layout.or(lower.layout),
             tab: self.tab.or(lower.tab),
             tab_index: self.tab_index.or(lower.tab_index),
@@ -297,6 +303,7 @@ impl Tracker {
         note!(port);
         note!(show_tree);
         note!(locked);
+        note!(alert_sound);
         note!(layout);
         note!(tab);
         note!(tab_index);

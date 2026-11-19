@@ -59,6 +59,20 @@ impl DashboardApp {
                 self.renaming = None;
                 self.selected = None;
             }
+            let (label, hint) = if self.alert_sound {
+                (
+                    "🔔",
+                    "A tone plays when a value can't be sent. Click to turn it off.",
+                )
+            } else {
+                (
+                    "🔕",
+                    "No tone when a value can't be sent. Click to turn it on.",
+                )
+            };
+            if ui.button(label).on_hover_text(hint).clicked() {
+                self.alert_sound = !self.alert_sound;
+            }
             ui.separator();
             ui.label("Team");
             // 0 is "no team yet", shown blank.
