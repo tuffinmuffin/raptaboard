@@ -1,7 +1,7 @@
 //! Settings shared by widgets that show a number on a scale (Number Bar,
 //! Voltage View, Radial Gauge): the fill color, solid or blended by value;
-//! a unit after the value; showing the scale's labels; and whether the
-//! value is past either end of the scale.
+//! a unit after the value; showing the value and the scale's labels; and
+//! whether the value is past either end of the scale.
 //!
 //! All are raptaboard's own settings; Elastic ignores them.
 
@@ -27,11 +27,14 @@ pub const MID_VALUE: &str = "mid_value";
 pub const HIGH_COLOR: &str = "high_color";
 /// Text after the value, such as `V` or `m/s`.
 pub const UNIT: &str = "unit";
-/// `false` hides the scale's labels.
+/// `false` hides the scale's labels (the numbers along it).
 pub const SHOW_LABELS: &str = "show_labels";
+/// `false` hides the current value (and its unit), leaving just the scale.
+pub const SHOW_VALUE: &str = "show_value";
 
 /// Every setting key in this file.
-pub const KEYS: [&str; 8] = [
+pub const KEYS: [&str; 9] = [
+    SHOW_VALUE,
     FILL_COLOR,
     GRADIENT,
     LOW_COLOR,
@@ -132,6 +135,11 @@ pub fn value_with_unit(
     }
 }
 
+/// Whether the current value shows (`show_value`, on unless turned off).
+pub fn show_value(props: &Map<String, Json>) -> bool {
+    props::flag(props, SHOW_VALUE, true)
+}
+
 /// Whether the scale's labels show (`show_labels`, on unless turned off).
 pub fn show_labels(props: &Map<String, Json>) -> bool {
     props::flag(props, SHOW_LABELS, true)
@@ -187,11 +195,12 @@ pub fn rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, default_unit: &str, de
     }
     ui.end_row();
 
+    props::flag_row(ui, p, "Value", "Show the value and unit", SHOW_VALUE, true);
     props::flag_row(
         ui,
         p,
         "Labels",
-        "Show the scale's labels",
+        "Show the numbers along the scale",
         SHOW_LABELS,
         true,
     );

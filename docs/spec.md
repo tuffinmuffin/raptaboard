@@ -155,7 +155,8 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `fill_color` | `shared/scale.rs` | Number Bar, Voltage View, Radial Gauge | the fill, ARGB | blue (Voltage: yellow) |
 | `gradient`, `low_color`, `mid_color`, `mid_value`, `high_color` | `shared/scale.rs` | the same | blend the fill by value: low → middle (optional, at `mid_value`, else the range's middle) → high | off; red, none, green |
 | `unit` | `shared/scale.rs` | the same | text after the value (`V`, `m/s`) | none (Voltage: `V`) |
-| `show_labels` | `shared/scale.rs` | the same | show the scale's labels | true |
+| `show_value` | `shared/scale.rs` | the same | show the current value and unit | true |
+| `show_labels` | `shared/scale.rs` | the same | show the numbers along the scale | true |
 | `label_inside` | `list_layout.rs` | List Layout | `true`: each label drawn over its value (on a see-through backing) instead of beside it | off |
 | `dividers` | `list_layout.rs` | List Layout | `true`: a thin line under the list's title and below each child | off |
 | `hidden` | `list_layout.rs` | a List Layout's child | `true`: kept in the list but not shown or subscribed | shown |
@@ -357,7 +358,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    **Started**: the read-only single-topic widgets: Large Text Display, Number Bar, Voltage View,
    Radial Gauge (also Simple Dial), Match Time, Single Color View, Multi Color View, with Elastic's
    settings, plus raptaboard's scale settings for bars and gauges (fill color, solid or blended by
-   value low → middle → high; a unit; labels on or off; an amber dot past an end when the value is
+   value low → middle → high; a unit; the value and the scale's labels each on or off; an amber dot past an end when the value is
    beyond the scale). Voltage View is kept for Elastic layouts but is a Number Bar preset (4 to 13,
    yellow, unit V). A dropped topic still becomes a Text Display or Boolean Box; the settings dialog's
    Widget choice switches to any type that can show the value (`WidgetType::shows`), keeping the

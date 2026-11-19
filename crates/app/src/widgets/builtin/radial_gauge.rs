@@ -38,7 +38,8 @@ pub const SHOW_POINTER: &str = "show_pointer";
 /// Draw tick marks at the labels (Elastic).
 pub const SHOW_TICKS: &str = "show_ticks";
 
-const KEYS: [&str; 16] = [
+const KEYS: [&str; 17] = [
+    scale::SHOW_VALUE,
     MIN_VALUE,
     MAX_VALUE,
     START_ANGLE,
@@ -250,15 +251,17 @@ impl WidgetType for RadialGauge {
         }
 
         // The value below the middle.
-        let whole = matches!(value, Some(Value::Int(_)));
-        let text = scale::value_with_unit(v, whole, p, "");
-        painter.text(
-            center + egui::vec2(0.0, radius * 0.45),
-            egui::Align2::CENTER_CENTER,
-            text,
-            egui::FontId::monospace(VALUE_SIZE),
-            visuals.text_color(),
-        );
+        if scale::show_value(p) {
+            let whole = matches!(value, Some(Value::Int(_)));
+            let text = scale::value_with_unit(v, whole, p, "");
+            painter.text(
+                center + egui::vec2(0.0, radius * 0.45),
+                egui::Align2::CENTER_CENTER,
+                text,
+                egui::FontId::monospace(VALUE_SIZE),
+                visuals.text_color(),
+            );
+        }
     }
 
     fn settings(&self, ui: &mut egui::Ui, p: &mut Map<String, Json>, _: ValueInfo<'_>) {

@@ -29,7 +29,8 @@ pub const INVERTED: &str = "inverted";
 /// `horizontal` or `vertical` (Elastic).
 pub const ORIENTATION: &str = "orientation";
 
-const KEYS: [&str; 13] = [
+const KEYS: [&str; 14] = [
+    scale::SHOW_VALUE,
     MIN_VALUE,
     MAX_VALUE,
     DIVISIONS,
@@ -143,16 +144,23 @@ fn draw_bar(
     let text = scale::value_with_unit(v, whole, p, style.unit);
     let steps = (labels(min, max, divisions).len() - 1) as f32;
 
+    let show_value = scale::show_value(p);
     if vertical {
         // The value on the left, the bar beside it, labels to its right.
-        let (text_area, bar_area) = rect.split_left_right_at_fraction(0.45);
-        painter.text(
-            text_area.center(),
-            egui::Align2::CENTER_CENTER,
-            text,
-            egui::FontId::monospace(VALUE_SIZE),
-            visuals.text_color(),
-        );
+        // Without the value, the bar sits in the middle.
+        let bar_area = if show_value {
+            let (text_area, bar_area) = rect.split_left_right_at_fraction(0.45);
+            painter.text(
+                text_area.center(),
+                egui::Align2::CENTER_CENTER,
+                text,
+                egui::FontId::monospace(VALUE_SIZE),
+                visuals.text_color(),
+            );
+            bar_area
+        } else {
+            rect.with_min_x(rect.center().x - BAR_THICKNESS / 2.0 - PAD)
+        };
         let track = Rect::from_min_size(
             egui::pos2(bar_area.min.x + PAD, bar_area.min.y + PAD),
             egui::vec2(BAR_THICKNESS, (bar_area.height() - 2.0 * PAD).max(0.0)),
@@ -200,14 +208,19 @@ fn draw_bar(
         }
     } else {
         // The value on top, the bar below it, labels under the bar.
-        painter.text(
-            egui::pos2(rect.center().x, rect.min.y + VALUE_SIZE * 0.75),
-            egui::Align2::CENTER_CENTER,
-            text,
-            egui::FontId::monospace(VALUE_SIZE),
-            visuals.text_color(),
-        );
-        let top = rect.min.y + VALUE_SIZE * 1.5 + PAD;
+        // Without the value, the bar moves up into its place.
+        let top = if show_value {
+            painter.text(
+                egui::pos2(rect.center().x, rect.min.y + VALUE_SIZE * 0.75),
+                egui::Align2::CENTER_CENTER,
+                text,
+                egui::FontId::monospace(VALUE_SIZE),
+                visuals.text_color(),
+            );
+            rect.min.y + VALUE_SIZE * 1.5 + PAD
+        } else {
+            rect.min.y + PAD
+        };
         let track = Rect::from_min_size(
             egui::pos2(rect.min.x + PAD * 2.0, top),
             egui::vec2((rect.width() - PAD * 4.0).max(0.0), BAR_THICKNESS),
