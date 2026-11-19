@@ -16,7 +16,7 @@ pub const USAGE: &str = "\
 Usage: raptaboard [OPTIONS] [LAYOUT.json]
 
 Options:
-  --team N          Team number (default 3200)
+  --team N          Team number (none until set here or in settings)
   --address WHERE   Where the robot is (default team):
                       ds     ask the Driver Station on this computer
                       team   10.TE.AM.2 from the team number
@@ -47,7 +47,7 @@ pub struct StartupOptions {
     pub tab: Option<String>,
     /// See [`StartupOptions::tab`].
     pub tab_index: Option<usize>,
-    /// FRC team number.
+    /// FRC team number; 0 if none has been set.
     pub team: u32,
     /// How to find the robot.
     pub mode: AddressMode,
@@ -67,7 +67,7 @@ pub struct StartupOptions {
 }
 
 impl Default for StartupOptions {
-    /// The defaults, with nowhere to save: team 3200, robot found by team
+    /// The defaults, with nowhere to save: no team (0), robot found by team
     /// number, port 5810, tree shown, no layout.
     fn default() -> Self {
         StartupOptions::from(Loaded {
@@ -86,7 +86,7 @@ impl From<Loaded> for StartupOptions {
             layout_path: s.layout,
             tab: s.tab,
             tab_index: s.tab_index,
-            team: s.team.unwrap_or(3200),
+            team: s.team.unwrap_or(0),
             mode,
             custom_address,
             port: s.port.unwrap_or(nt4::proto::ROBOT_CODE_PORT),
@@ -185,10 +185,7 @@ mod tests {
         assert_eq!(parse(args(&[])).unwrap(), Settings::default());
         // Which leaves the defaults.
         let start = StartupOptions::default();
-        assert_eq!(
-            (start.team, start.port, start.show_tree),
-            (3200, 5810, true)
-        );
+        assert_eq!((start.team, start.port, start.show_tree), (0, 5810, true));
         assert_eq!(start.mode, AddressMode::TeamNumber);
     }
 

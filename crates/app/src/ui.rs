@@ -535,7 +535,29 @@ impl DashboardApp {
             }
             ui.separator();
             ui.label("Team");
-            ui.add(egui::DragValue::new(&mut self.team).range(1..=99999));
+            // 0 is "no team yet", shown blank.
+            ui.add(
+                egui::DragValue::new(&mut self.team)
+                    .range(0..=99999)
+                    .custom_formatter(|n, _| {
+                        if n == 0.0 {
+                            String::new()
+                        } else {
+                            n.to_string()
+                        }
+                    })
+                    .custom_parser(|text| {
+                        let text = text.trim();
+                        if text.is_empty() {
+                            Some(0.0)
+                        } else {
+                            text.parse().ok()
+                        }
+                    })
+                    .min_decimals(0)
+                    .max_decimals(0),
+            )
+            .on_hover_text("Your FRC team number, for finding the robot at 10.TE.AM.2");
             egui::ComboBox::from_id_salt("address_mode")
                 .selected_text(self.mode.label())
                 .show_ui(ui, |ui| {
@@ -549,7 +571,8 @@ impl DashboardApp {
             let host = resolve(self.mode, self.team, &self.custom_address);
             self.nt.set_target(host.as_deref(), self.port);
             ui.separator();
-            status_label(ui, &self.nt.status());
+            let no_team = self.mode == AddressMode::TeamNumber && self.team == 0;
+            status_label(ui, &self.nt.status(), no_team);
         });
         ui.horizontal(|ui| {
             let ctx = ui.ctx().clone();
@@ -1897,8 +1920,10 @@ fn draw_resize_handle(painter: &egui::Painter, visuals: &egui::Visuals, rect: Re
 }
 
 /// Show the connection state as a colored dot and a line of text.
-fn status_label(ui: &mut egui::Ui, status: &ConnectionStatus) {
+/// `no_team` says the address is by team number but none is set.
+fn status_label(ui: &mut egui::Ui, status: &ConnectionStatus, no_team: bool) {
     let (color, text) = match status {
+        ConnectionStatus::NoTarget if no_team => (Color32::GRAY, "Set a team number".to_owned()),
         ConnectionStatus::NoTarget => (Color32::GRAY, "Waiting for Driver Station".to_owned()),
         ConnectionStatus::Connecting { host, port } => (
             Color32::from_rgb(230, 160, 40),

@@ -17,7 +17,7 @@
 //!
 //! ```toml
 //! # ~/.raptaboard/settings.toml
-//! team = 3200
+//! team = 254        # no team at first: raptaboard isn't tied to one
 //! address = "team"   # ds, team, mdns, wifi, sim, or a host name or IP
 //! port = 5810
 //! show_tree = true
@@ -92,12 +92,13 @@ pub struct Window {
     pub y: Option<f32>,
 }
 
-/// The built-in defaults: team 3200, robot found by team number, port 5810
-/// (robot code's NetworkTables server), tree shown, unlocked, no layout
-/// file.
+/// The built-in defaults: no team number (raptaboard isn't tied to one;
+/// set it in the settings bar or file), robot found by team number, port
+/// 5810 (robot code's NetworkTables server), tree shown, unlocked, no
+/// layout file.
 pub fn defaults() -> Settings {
     Settings {
-        team: Some(3200),
+        team: None,
         address: Some("team".into()),
         port: Some(nt4::proto::ROBOT_CODE_PORT),
         show_tree: Some(true),
@@ -355,7 +356,7 @@ mod tests {
         let (start, home) = folders("bad");
         write(&home, "team = \"lots\"\n");
         let loaded = load(Settings::default(), Some(&start), Some(&home));
-        assert_eq!(loaded.settings.team, Some(3200));
+        assert_eq!(loaded.settings.team, None);
         assert!(!loaded.store.writable);
         assert!(
             loaded.notes[0].starts_with("Ignored "),

@@ -95,11 +95,20 @@ pub fn team_address(team: u32) -> String {
     format!("10.{}.{}.2", team / 100, team % 100)
 }
 
-/// The host to connect to, or `None` while the Driver Station mode has not
-/// reported an address yet (that lookup is not built yet).
+/// The host to connect to, or `None` while there's none: the Driver Station
+/// mode has not reported an address yet (that lookup is not built yet), or
+/// the team number mode has no team (`team` is 0).
+///
+/// ```
+/// use raptaboard::connection::{resolve, AddressMode};
+/// assert_eq!(resolve(AddressMode::TeamNumber, 254, ""), Some("10.2.54.2".into()));
+/// assert_eq!(resolve(AddressMode::TeamNumber, 0, ""), None);
+/// ```
 pub fn resolve(mode: AddressMode, team: u32, custom: &str) -> Option<String> {
     match mode {
         AddressMode::DriverStation => None,
+        // 0 means no team number has been set.
+        AddressMode::TeamNumber if team == 0 => None,
         AddressMode::TeamNumber => Some(team_address(team)),
         AddressMode::SystemCoreMdns => Some("robot.local".into()),
         AddressMode::SystemCoreWifi => Some("172.30.0.1".into()),
