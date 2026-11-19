@@ -53,7 +53,12 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
 - `crates/plugin-host`: manifest parsing and matching; `path` has topic path helpers
   (`.type` tables). wasmtime hosting comes in milestone 4.
 - `crates/app`: the eframe app. `ui.rs` holds the window, `connection.rs` the robot address modes,
-  `cli.rs` the startup flags (`--team`, `--address`, `--port`, `--hide-tree`; stand-ins until settings persist),
+  `cli.rs` the startup flags (`clap` derive, `cli::Args`: `--team`, `--address`, `--port`,
+  `--hide-tree`; this run only),
+  `settings.rs` settings kept between runs (command line, then `./.raptaboard/settings.toml`, then
+  `~/.raptaboard/settings.toml`, made on the first run, then defaults; changes saved to the local file
+  if there is one, else the home file, by `settings::Tracker`; `ui.rs` only says what the current
+  values are),
   `nt.rs` the live connection (`NtConnection`: a 1-thread tokio runtime that owns the `nt4::Client`
   and restarts it when the address changes; the UI only makes non-blocking calls), `tree.rs` the (row picking in `TreeSelection`, drag payload `DraggedTopics`)
   read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),

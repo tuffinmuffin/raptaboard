@@ -18,10 +18,12 @@ use crate::grid::{self, Item};
 use crate::layout_file::{self, FileAction, LoadError};
 use crate::nt::{ConnectionStatus, NtConnection};
 use crate::sampling::Sampler;
+use crate::settings::{self, Settings};
 use crate::struct_view::{self, FieldInfo};
 use crate::tabs::{self, TabAction};
 use crate::tree::{AddTo, DraggedTopics, Folder, TopicEntry, TreeSelection};
-use crate::widgets::shared::{card, format, props, settings};
+use crate::widgets::shared::settings as widget_settings;
+use crate::widgets::shared::{card, format, props};
 use crate::widgets::{self, list_layout};
 use nt4::proto::structs::StructDatabase;
 
@@ -202,6 +204,8 @@ pub struct DashboardApp {
     /// Whether the status line shows why a clicked widget couldn't be found
     /// in the tree, so the next click that finds one clears it.
     find_status: bool,
+    /// Saves settings changed in the app to the settings file.
+    settings: settings::Tracker,
     /// The tab being renamed, the name typed so far, and whether its text
     /// box has been given the keyboard yet.
     renaming: Option<(usize, String, bool)>,
@@ -244,12 +248,15 @@ impl DashboardApp {
             show_tree: options.show_tree,
             tree_filter: String::new(),
             show_metadata: false,
-            locked: false,
+            locked: options.locked,
             drag: None,
             child_drag: None,
             menu_at: (0.0, 0.0),
             tree_sel: TreeSelection::default(),
             find_status: false,
+            // A stand-in with nowhere to save, replaced below once the
+            // starting settings are known.
+            settings: settings::Tracker::new(settings::Store::default(), Settings::default()),
             renaming: None,
             confirm_close: None,
             selected: None,
@@ -271,7 +278,44 @@ impl DashboardApp {
                 Err(e) => app.status = format!("Could not open {}: {e}", path.display()),
             }
         }
+        let names: Vec<&str> = app.layout.tabs.iter().map(|t| t.name.as_str()).collect();
+        app.current_tab = settings::pick_tab(&names, options.tab.as_deref(), options.tab_index);
+        if !options.notes.is_empty() {
+            app.status = options.notes.join("; ");
+        }
+        // What the app started with isn't a change to save, except the
+        // layout: the file opened is remembered however it was named, the
+        // command line included.
+        let start = Settings {
+            layout: None,
+            ..app.current_settings(None)
+        };
+        app.settings = settings::Tracker::new(options.store, start);
         Ok(app)
+    }
+
+    /// The settings as the app has them now. `window` is the window's size
+    /// and place, if known.
+    fn current_settings(&self, window: Option<settings::Window>) -> Settings {
+        Settings {
+            team: Some(self.team),
+            address: Some(self.mode.keyword(&self.custom_address)),
+            port: Some(self.port),
+            show_tree: Some(self.show_tree),
+            locked: Some(self.locked),
+            tab: self
+                .layout
+                .tabs
+                .get(self.current_tab)
+                .map(|t| t.name.clone()),
+            tab_index: Some(self.current_tab),
+            layout: self
+                .layout_path
+                .as_ref()
+                .map(|p| std::path::absolute(p).unwrap_or_else(|_| p.clone()))
+                .map(|p| p.to_string_lossy().into_owned()),
+            window,
+        }
     }
 
     /// Whether the layout has changed since it was opened or saved.
@@ -430,7 +474,29 @@ impl DashboardApp {
             }
             ui.separator();
             ui.label("Team");
-            ui.add(egui::DragValue::new(&mut self.team).range(1..=99999));
+            // 0 is "no team yet", shown blank.
+            ui.add(
+                egui::DragValue::new(&mut self.team)
+                    .range(0..=99999)
+                    .custom_formatter(|n, _| {
+                        if n == 0.0 {
+                            String::new()
+                        } else {
+                            n.to_string()
+                        }
+                    })
+                    .custom_parser(|text| {
+                        let text = text.trim();
+                        if text.is_empty() {
+                            Some(0.0)
+                        } else {
+                            text.parse().ok()
+                        }
+                    })
+                    .min_decimals(0)
+                    .max_decimals(0),
+            )
+            .on_hover_text("Your FRC team number, for finding the robot at 10.TE.AM.2");
             egui::ComboBox::from_id_salt("address_mode")
                 .selected_text(self.mode.label())
                 .show_ui(ui, |ui| {
@@ -444,7 +510,8 @@ impl DashboardApp {
             let host = resolve(self.mode, self.team, &self.custom_address);
             self.nt.set_target(host.as_deref(), self.port);
             ui.separator();
-            status_label(ui, &self.nt.status());
+            let no_team = self.mode == AddressMode::TeamNumber && self.team == 0;
+            status_label(ui, &self.nt.status(), no_team);
         });
         ui.horizontal(|ui| {
             let ctx = ui.ctx().clone();
@@ -1690,7 +1757,7 @@ fn widget_window(
     egui::Modal::new(egui::Id::unique("widget_settings")).show(ctx, |ui| {
         ui.heading(heading);
         ui.add_space(4.0);
-        settings::show(ui, widget, nt_type, field);
+        widget_settings::show(ui, widget, nt_type, field);
         ui.add_space(4.0);
         ui.separator();
         ui.horizontal(|ui| {
@@ -1701,7 +1768,7 @@ fn widget_window(
                 close = Some(false);
             }
             ui.separator();
-            let custom = settings::has_custom_settings(widget);
+            let custom = widget_settings::has_custom_settings(widget);
             if ui
                 .add_enabled(custom, egui::Button::new("Reset settings"))
                 .on_hover_text(
@@ -1711,7 +1778,7 @@ fn widget_window(
                 .on_disabled_hover_text("All settings are at their defaults")
                 .clicked()
             {
-                settings::reset_settings(widget);
+                widget_settings::reset_settings(widget);
             }
         });
     });
@@ -1792,8 +1859,10 @@ fn draw_resize_handle(painter: &egui::Painter, visuals: &egui::Visuals, rect: Re
 }
 
 /// Show the connection state as a colored dot and a line of text.
-fn status_label(ui: &mut egui::Ui, status: &ConnectionStatus) {
+/// `no_team` says the address is by team number but none is set.
+fn status_label(ui: &mut egui::Ui, status: &ConnectionStatus, no_team: bool) {
     let (color, text) = match status {
+        ConnectionStatus::NoTarget if no_team => (Color32::GRAY, "Set a team number".to_owned()),
         ConnectionStatus::NoTarget => (Color32::GRAY, "Waiting for Driver Station".to_owned()),
         ConnectionStatus::Connecting { host, port } => (
             Color32::from_rgb(230, 160, 40),
@@ -1876,6 +1945,11 @@ impl eframe::App for DashboardApp {
         let now = Instant::now();
         egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values, now));
         let next_value = self.sampler.finish_frame(now);
+        let closing = ctx.input(|i| i.viewport().close_requested());
+        let now = self.current_settings(settings::window_of(&ctx));
+        if let Err(e) = self.settings.update(now, closing) {
+            self.status = e;
+        }
         // Whatever changed the layout this frame can be undone. Changes in
         // the settings dialog are recorded once, when it closes.
         if self.editing.is_none() {
