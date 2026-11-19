@@ -188,9 +188,11 @@ impl TreeSelection {
 
     /// Open the tree down to the row for topic `name` (and `field`, a
     /// struct field's path), scroll it into view and pick it, over the next
-    /// few frames. For clicking a widget to find its topic. Nothing happens
-    /// if the row isn't in the tree (filtered out, say).
+    /// few frames. For clicking a widget to find its topic. What was picked
+    /// before is unpicked at once, so if the row isn't in the tree (not
+    /// published, or filtered out) nothing is left picked.
     pub fn reveal(&mut self, name: &str, field: Option<Vec<String>>) {
+        self.clear();
         self.reveal = Some(Reveal {
             name: name.to_owned(),
             field,
@@ -1031,12 +1033,15 @@ mod tests {
 
     #[test]
     fn revealing_opens_the_way_and_picks_the_row() {
-        let mut sel = TreeSelection::default();
+        let mut sel = drawn(&["/Elsewhere"]);
+        sel.click(&row("/Elsewhere"), false, false);
         let x = StructMeta {
             path: vec!["translation".into(), "x".into()],
             schema_name: "Pose2d".into(),
         };
         sel.reveal("/Drive/pose", Some(x.path.clone()));
+        // The old pick goes at once, before the row is found.
+        assert!(sel.selected().is_empty());
         assert!(sel.reveals_in_folder("/Drive"));
         assert!(!sel.reveals_in_folder("/Dri"));
         assert!(!sel.reveals_in_folder("/Arm"));
