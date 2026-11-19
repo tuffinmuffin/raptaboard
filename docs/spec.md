@@ -381,7 +381,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    the tree onto it; a legend shows when there's more than one). All lines are equal: the
    settings list them with ↑/↓ and Remove, the first being the main line, saved as the widget's own
    `topic`/`color` as Elastic saves it. A pause button freezes the picture while values keep
-   recording; while paused, two clicks place measuring cursors A and B (scope style; clicking a cursor takes it away, and a click elsewhere with both placed clears them) and a readout
+   recording; while paused, two clicks place measuring cursors A and B (scope style; with only A, clicking A takes it away; with both, any click clears them) and a readout
    gives Δt and each line's values and Δ there. Values are recorded in
    `traces.rs` for the series the open tab's graphs show, each for the longest window wanted. A
    plot only senses hover, so it never takes the drags that move the widget. Next: then the writing widgets (toggles, slider, editable Text

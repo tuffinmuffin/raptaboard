@@ -11,8 +11,8 @@
 //!
 //! A graph can be paused (the ⏸ button): the picture freezes while values
 //! keep being recorded. While paused, clicking the plot places measuring
-//! cursors, A then B (a click on a cursor takes it away; a click elsewhere
-//! with both placed clears them), and a readout gives the
+//! cursors, A then B (with only A, clicking A takes it away; with both,
+//! any click clears them), and a readout gives the
 //! time between them and each line's values there, like a scope's cursors.
 //!
 //! Elastic's settings: `time_displayed` (seconds shown, 5; older files say
@@ -559,12 +559,13 @@ impl WidgetType for Graph {
             ui.painter().galley(at, galley, ui.visuals().text_color());
         }
         match click {
-            // On a cursor: take just that one away.
+            // With A and B placed, any click clears both.
+            Some(_) if view.cursors.len() >= 2 => view.cursors.clear(),
+            // With only A: a click on it takes it away...
             Some(CursorClick::Remove(i)) => {
                 view.cursors.remove(i);
             }
-            // Elsewhere: A, then B; with both placed, a click clears them.
-            Some(CursorClick::Place(_)) if view.cursors.len() >= 2 => view.cursors.clear(),
+            // ...and anywhere else places the next.
             Some(CursorClick::Place(x)) => view.cursors.push(x),
             None => {}
         }
@@ -1018,14 +1019,25 @@ mod tests {
                 .any(|t| t.contains("Δt") && t.contains("speed")),
             "{texts:?}"
         );
-        // Clicking on a cursor takes just that one away (B, at +60).
+        // With both placed, a click on one of them clears both.
         frame(click(body.center() + egui::vec2(61.0, 0.0)));
         let after = frame(vec![]);
-        assert!(!after.iter().any(|t| t.contains("Δt")), "{after:?}");
-        assert!(after.iter().any(|t| t.starts_with("A ")), "{after:?}");
+        assert!(
+            !after
+                .iter()
+                .any(|t| t.contains("Δt") || t.starts_with("A ")),
+            "{after:?}"
+        );
+        // With only A, clicking on A takes it away.
+        frame(click(body.center()));
+        assert!(frame(vec![]).iter().any(|t| t.starts_with("A ")));
+        frame(click(body.center() + egui::vec2(1.0, 0.0)));
+        assert!(!frame(vec![]).iter().any(|t| t.starts_with("A ")));
+        // Place both again; a click elsewhere clears them too.
+        frame(click(body.center() - egui::vec2(80.0, 0.0)));
+        frame(vec![]);
         frame(click(body.center() + egui::vec2(60.0, 0.0)));
         assert!(frame(vec![]).iter().any(|t| t.contains("Δt")));
-        // A click elsewhere with both placed clears them; the next places A.
         frame(click(body.center()));
         assert!(
             !frame(vec![])
