@@ -24,5 +24,6 @@ egui_plot = "0.38.0"
 workspace = true
 
 [dev-dependencies]
+egui_kittest = "0.37"
 nt4 = { workspace = true, features = ["server"] }
 sysinfo = { version = "0.40.4", default-features = false, features = ["system"] }

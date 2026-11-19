@@ -56,7 +56,11 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   actions; `panels.rs` the settings and tab bars; `tree_panel.rs` the tree panel and adding topics;
   `grid_view.rs` the grid; `drag.rs` drag and drop; `dialogs.rs` the settings dialogs; `live.rs`
   the topics the tab needs and graph recording; `style.rs` the drawing constants; each file adds
-  its own `impl DashboardApp` block), `connection.rs` the robot address modes,
+  its own `impl DashboardApp` block; `ui/tests.rs` runs the whole window headless against an
+  in-process `nt4::Server` with one widget of every type (and struct and struct-array topics),
+  the place for new UI tests; its `egui_kittest` harness finds tree rows and menu items by label
+  and clicks or drags them;
+  `DashboardApp::show` is one frame without an `eframe::Frame`), `connection.rs` the robot address modes,
   `cli.rs` the startup flags (`clap` derive, `cli::Args`: `--team`, `--address`, `--port`,
   `--hide-tree`; this run only),
   `settings.rs` settings kept between runs (command line, then `./.raptaboard/settings.toml`, then

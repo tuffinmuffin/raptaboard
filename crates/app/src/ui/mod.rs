@@ -8,6 +8,9 @@ mod panels;
 mod style;
 mod tree_panel;
 
+#[cfg(test)]
+mod tests;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -434,6 +437,16 @@ impl DashboardApp {
 
 impl eframe::App for DashboardApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.show(ui);
+    }
+}
+
+impl DashboardApp {
+    /// One frame of the whole window: bars, tree, grid and dialogs, and
+    /// saving settings and asking for values. Kept apart from
+    /// [`eframe::App::ui`] so tests can run frames without an
+    /// [`eframe::Frame`].
+    fn show(&mut self, ui: &mut egui::Ui) {
         let clicked = egui::Panel::top("settings")
             .show(ui, |ui| {
                 self.settings_bar(ui);
