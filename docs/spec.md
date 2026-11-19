@@ -362,7 +362,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    beyond the scale). Voltage View is kept for Elastic layouts but is a Number Bar preset (4 to 13,
    yellow, unit V). A dropped topic still becomes a Text Display or Boolean Box; the settings dialog's
    Widget choice switches to any type that can show the value (`WidgetType::shows`), keeping the
-   other types' settings. Next: Graph, then the writing widgets (toggles, slider, editable Text
+   other types' settings. Next: a movable settings window (the dialog sits over the widget being
+   edited, hiding the changes; it should be draggable and remember where it was put), Graph, then the writing widgets (toggles, slider, editable Text
    Display), choosers, Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
