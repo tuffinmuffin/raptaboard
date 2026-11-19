@@ -1030,3 +1030,66 @@ fn a_send_that_works_clears_the_last_failures_message() {
     click_at(&mut harness, works, primary, Modifiers::NONE);
     assert_eq!(harness.state().status, "Opened match.json");
 }
+
+/// List `list`'s child `child`'s inside label, on screen.
+fn child_label(harness: &Harness, list: usize, child: usize) -> Rect {
+    let app = harness.state();
+    let l = &app.layout.tabs[0].grid_layout.layouts[list];
+    let min = app.grid_area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
+    let card = Rect::from_min_size(min, egui::vec2(l.rect.width as f32, l.rect.height as f32))
+        .shrink(super::style::CELL_GAP);
+    list_layout::rows_on_screen(card, l)
+        .into_iter()
+        .find(|row| row.index == child)
+        .and_then(|row| row.label)
+        .expect("the child has a label")
+}
+
+#[test]
+fn unlocked_a_list_childs_label_drags_it_and_the_rest_toggles() {
+    let robot = Robot::start();
+    let mut harness = writing_harness(&robot);
+    let primary = egui::PointerButton::Primary;
+    harness.state_mut().locked = false;
+    settle(&mut harness);
+    let before = robot.seen_enabled.get();
+    // A click on the label selects; it doesn't toggle.
+    let label = child_label(&harness, 0, 0).center();
+    click_at(&mut harness, label, primary, Modifiers::NONE);
+    assert_eq!(harness.state().selected, Some(Item::List(0)));
+    std::thread::sleep(Duration::from_millis(200));
+    settle(&mut harness);
+    assert_eq!(robot.seen_enabled.get(), before);
+    // Below the label, it toggles.
+    let below = child_label(&harness, 0, 0).center_bottom() + egui::vec2(0.0, 20.0);
+    click_at(&mut harness, below, primary, Modifiers::NONE);
+    server_sees(&mut harness, &robot, before != Some(true));
+    // Locked, the label toggles too.
+    harness.state_mut().locked = true;
+    settle(&mut harness);
+    let now = robot.seen_enabled.get();
+    click_at(&mut harness, label, primary, Modifiers::NONE);
+    server_sees(&mut harness, &robot, now != Some(true));
+    // Unlocked again: dragged by its label, the child leaves the list for
+    // the grid.
+    harness.state_mut().locked = false;
+    settle(&mut harness);
+    let grid = |h: &Harness| h.state().layout.tabs[0].grid_layout.clone();
+    let (widgets, children) = (
+        grid(&harness).containers.len(),
+        grid(&harness).layouts[0].children.len(),
+    );
+    let to = harness.state().grid_area.min + egui::vec2(640.0, 400.0);
+    harness.hover_at(label);
+    harness.step();
+    harness.drag_at(label);
+    harness.step();
+    for step in 1..=10 {
+        harness.hover_at(label + (to - label) * (step as f32 / 10.0));
+        harness.step();
+    }
+    harness.drop_at(to);
+    settle(&mut harness);
+    assert_eq!(grid(&harness).layouts[0].children.len(), children - 1);
+    assert_eq!(grid(&harness).containers.len(), widgets + 1);
+}

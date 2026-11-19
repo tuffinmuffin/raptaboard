@@ -955,6 +955,7 @@ mod tests {
                 traces: &traces,
                 now_us: 2_000_000,
                 locked: false,
+                input: None,
             };
             Graph.show(ui, rect, &w, &live);
         });
@@ -1003,6 +1004,7 @@ mod tests {
                     traces: &traces,
                     now_us: 5_000_000,
                     locked: false,
+                    input: None,
                 };
                 Graph.show(ui, rect, &w, &live);
             });
@@ -1119,6 +1121,7 @@ mod tests {
                     traces: &traces,
                     now_us: 5_000_000,
                     locked: false,
+                    input: None,
                 };
                 Graph.show(ui, rect, &w, &live);
             });

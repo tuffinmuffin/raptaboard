@@ -437,7 +437,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    own write at once and the robot's (or another dashboard's) later change wins, which needs nt4
    0.3 (a client sees its own values, as in ntcore). They work inside List Layouts too: each
    child's body gets a `Ui` (`WidgetType::show_body`), and a child that can't send flashes its own
-   row. A failed send's message clears on the next send that works (unless something else has
+   row. Unlocked, a child's label is its handle (like a widget's title bar): with labels inside,
+   input starts only beside the label (`Live::input`), so the label still selects and drags the
+   child; locked, the whole row is input. A failed send's message clears on the next send that works (unless something else has
    said something since).
    Enums (decided): an Enum Dropdown and an Enum Toggle (two named states instead of true and
    false), bound to a SendableChooser table (`options`, `default`, `active`; writes `selected`),

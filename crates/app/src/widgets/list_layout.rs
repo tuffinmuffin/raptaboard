@@ -379,7 +379,7 @@ pub fn draw(
         visuals,
         rect,
         list,
-        &mut |painter, content, _, child| match find(&child.widget_type) {
+        &mut |painter, content, _, _, child| match find(&child.widget_type) {
             Some(ty) => ty.draw_body(
                 painter,
                 visuals,
@@ -407,15 +407,22 @@ pub fn show(
     let mut writes = Vec::new();
     let painter = ui.painter().clone();
     let visuals = ui.visuals().clone();
+    let position = labels(&list.properties).position;
     draw_with(
         &painter,
         &visuals,
         rect,
         list,
-        &mut |painter, content, index, child| {
+        &mut |painter, content, inside, index, child| {
             let value = value_of(child);
+            // Unlocked, an inside label is the child's handle for dragging.
+            let input = match inside {
+                Some(label) if !live.locked => Some(beside_label(content, label, position)),
+                _ => None,
+            };
             let child_live = crate::widgets::Live {
                 value: value.as_ref(),
+                input,
                 ..*live
             };
             let mut child_ui = ui.new_child(
@@ -439,14 +446,42 @@ pub fn show(
     writes
 }
 
+/// The part of `content` beside an inside `label`: below a label on top,
+/// right of one on the left, and so on.
+///
+/// ```
+/// use eframe::egui::{pos2, Rect};
+/// use raptaboard::widgets::list_layout::{beside_label, LabelPosition};
+/// let content = Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 50.0));
+/// let label = Rect::from_min_max(pos2(0.0, 0.0), pos2(40.0, 14.0));
+/// assert_eq!(beside_label(content, label, LabelPosition::Top).min.y, 14.0);
+/// assert_eq!(beside_label(content, label, LabelPosition::Left).min.x, 40.0);
+/// ```
+pub fn beside_label(content: Rect, label: Rect, position: LabelPosition) -> Rect {
+    let mut r = content;
+    match position {
+        LabelPosition::Top => r.min.y = label.max.y.min(r.max.y),
+        LabelPosition::Bottom => r.max.y = label.min.y.max(r.min.y),
+        LabelPosition::Left => r.min.x = label.max.x.min(r.max.x),
+        LabelPosition::Right => r.max.x = label.min.x.max(r.min.x),
+        LabelPosition::Hidden => {}
+    }
+    r
+}
+
+/// The function that draws one child's body for [`draw_with`]: given the
+/// painter, the content rect, the inside label's rect (if labels are
+/// inside), the child's index and the child.
+type ChildBody<'a> = dyn FnMut(&egui::Painter, Rect, Option<Rect>, usize, &WidgetContainer) + 'a;
+
 /// The list's card, title, labels and dividers, with each shown child's
-/// body drawn by `child_body(painter, content rect, child index, child)`.
+/// body drawn by `child_body`.
 fn draw_with(
     painter: &egui::Painter,
     visuals: &egui::Visuals,
     rect: Rect,
     list: &LayoutContainer,
-    child_body: &mut dyn FnMut(&egui::Painter, Rect, usize, &WidgetContainer),
+    child_body: &mut ChildBody<'_>,
 ) {
     let body = card::draw_card(painter, visuals, rect, &list.title);
     let labels = labels(&list.properties);
@@ -488,7 +523,8 @@ fn draw_with(
                         visuals.text_color(),
                     );
             }
-            child_body(painter, place.content, place.index, child);
+            let inside = place.label.filter(|_| labels.inside);
+            child_body(painter, place.content, inside, place.index, child);
             // Inside: over the value, on a backing so it reads over anything.
             if let Some(label) = place.label
                 && labels.inside

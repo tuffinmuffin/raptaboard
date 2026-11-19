@@ -54,6 +54,10 @@ pub struct Live<'a> {
     /// takes it anywhere on its card; unlocked, its title bar is left for
     /// moving the widget.
     pub locked: bool,
+    /// Where input may start, if not all of the rect the widget is given:
+    /// a List Layout child's row less its inside label while unlocked, so
+    /// the label still drags the child. `None` for all of it.
+    pub input: Option<Rect>,
 }
 
 /// What the settings dialog knows about the value a widget shows, so a

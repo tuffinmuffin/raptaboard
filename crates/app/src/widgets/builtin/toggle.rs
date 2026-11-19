@@ -76,15 +76,15 @@ fn show_card(
     clicked.then(|| flipped(live.value))
 }
 
-/// A toggle as a list child: all of `rect` is the click area. The value to
-/// send if clicked.
+/// A toggle as a list child: `rect` is the click area, or `live.input` if
+/// the list leaves its label for dragging. The value to send if clicked.
 fn show_in(
     ui: &mut egui::Ui,
     rect: Rect,
     live: &Live<'_>,
     paint: impl FnOnce(&egui::Painter, Rect),
 ) -> Option<Value> {
-    let clicked = clicked_in(ui, rect);
+    let clicked = clicked_in(ui, live.input.unwrap_or(rect));
     paint(ui.painter(), rect);
     clicked.then(|| flipped(live.value))
 }

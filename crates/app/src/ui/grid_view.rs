@@ -378,6 +378,7 @@ impl DashboardApp {
                     traces: &self.traces,
                     now_us,
                     locked: self.locked,
+                    input: None,
                 };
                 let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt((
                     "widget",
@@ -397,6 +398,7 @@ impl DashboardApp {
                     traces: &self.traces,
                     now_us,
                     locked: self.locked,
+                    input: None,
                 };
                 let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt((
                     "list",
