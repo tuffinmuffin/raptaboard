@@ -99,8 +99,15 @@ pub struct TreeSelection {
     order: Vec<DraggedTopic>,
     /// The same, being collected this frame.
     drawing: Vec<DraggedTopic>,
-    /// Rows whose "Add to grid" was clicked this frame, for the window to add.
+    /// Rows whose "Add to grid" or "Add to list" was clicked this frame,
+    /// for the window to add.
     pub add: Vec<DraggedTopic>,
+    /// For "Add to list": which list, by its place in [`TreeSelection::lists`];
+    /// `None` for "Add to grid".
+    pub add_to_list: Option<usize>,
+    /// Names of the open tab's List Layouts, for the "Add to list" menu.
+    /// The window sets these before drawing the tree.
+    pub lists: Vec<String>,
 }
 
 impl TreeSelection {
@@ -158,6 +165,7 @@ impl TreeSelection {
     pub fn begin_frame(&mut self) {
         self.drawing.clear();
         self.add.clear();
+        self.add_to_list = None;
     }
 
     /// Call after drawing the tree each frame.
@@ -235,7 +243,18 @@ fn selectable_row(
                 n => format!("Add {n} to grid"),
             };
             if ui.button(label).clicked() {
-                sel.add = group;
+                sel.add = group.clone();
+            }
+            if !sel.lists.is_empty() {
+                let lists = sel.lists.clone();
+                ui.menu_button("Add to list", |ui| {
+                    for (i, name) in lists.iter().enumerate() {
+                        if ui.button(name).clicked() {
+                            sel.add = group.clone();
+                            sel.add_to_list = Some(i);
+                        }
+                    }
+                });
             }
         });
     }

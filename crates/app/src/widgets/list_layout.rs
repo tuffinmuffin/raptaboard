@@ -474,6 +474,32 @@ fn draw_inside_label(
     painter.galley(text_rect.min, galley, visuals.text_color());
 }
 
+/// Names for `lists` in a menu, in order: their titles, with a number
+/// added where two share one.
+///
+/// ```
+/// use raptaboard::widgets::list_layout::{menu_names, new_list};
+/// use raptaboard_layout::Rect;
+/// let at = Rect { x: 0.0, y: 0.0, width: 256.0, height: 256.0 };
+/// let mut lists = vec![new_list(at, vec![]), new_list(at, vec![]), new_list(at, vec![])];
+/// lists[1].title = "Drive".into();
+/// assert_eq!(menu_names(&lists), ["List Layout (1)", "Drive", "List Layout (2)"]);
+/// ```
+pub fn menu_names(lists: &[LayoutContainer]) -> Vec<String> {
+    let title = |i: usize| lists[i].title.as_str();
+    (0..lists.len())
+        .map(|i| {
+            let same = (0..lists.len()).filter(|&j| title(j) == title(i)).count();
+            if same > 1 {
+                let nth = (0..=i).filter(|&j| title(j) == title(i)).count();
+                format!("{} ({nth})", title(i))
+            } else {
+                title(i).to_owned()
+            }
+        })
+        .collect()
+}
+
 /// Move the child at `from` to `to` in `list`, shifting the ones between.
 /// Does nothing if either is out of range.
 ///

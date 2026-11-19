@@ -585,6 +585,7 @@ impl DashboardApp {
             ui.weak(format!("Showing {shown} of {total} topics ({why})"));
         }
         self.tree_sel.begin_frame();
+        self.tree_sel.lists = self.list_names();
         let no_structs = StructDatabase::new();
         let structs = self.nt.structs().unwrap_or(&no_structs);
         let drawn = egui::ScrollArea::vertical()
@@ -1009,9 +1010,19 @@ impl DashboardApp {
         }
     }
 
-    /// Make widgets for `topics` on the open tab, one cell each, in the free
-    /// spots nearest its top left, and say if some didn't fit.
-    fn add_topics(&mut self, topics: &[crate::tree::DraggedTopic]) {
+    /// Names for the open tab's List Layouts, in order: their titles, with
+    /// a number added where two share one ("List Layout (2)").
+    fn list_names(&self) -> Vec<String> {
+        let Some(tab) = self.layout.tabs.get(self.current_tab) else {
+            return Vec::new();
+        };
+        list_layout::menu_names(&tab.grid_layout.layouts)
+    }
+
+    /// Make widgets for `topics` on the open tab, one cell each: at the end
+    /// of List Layout `list` if given, or else in the free spots nearest the
+    /// tab's top left, saying if some didn't fit.
+    fn add_topics(&mut self, topics: &[crate::tree::DraggedTopic], list: Option<usize>) {
         let cell = f64::from(self.layout.grid_size());
         let one = LayoutRect {
             x: 0.0,
@@ -1028,6 +1039,18 @@ impl DashboardApp {
         let Some(tab) = self.layout.tabs.get_mut(self.current_tab) else {
             return;
         };
+        if let Some(i) = list
+            && let Some(l) = tab.grid_layout.layouts.get_mut(i)
+        {
+            l.children.extend(made);
+            self.selected = Some(Item::List(i));
+            self.status = format!(
+                "Added {wanted} widget{} to \"{}\"",
+                if wanted == 1 { "" } else { "s" },
+                l.title
+            );
+            return;
+        }
         let placed = grid::place_near(&mut tab.grid_layout, made, (0.0, 0.0), cell, room);
         self.selected = placed.first().map(|&i| Item::Widget(i));
         self.status = if placed.len() < wanted {
@@ -1754,7 +1777,7 @@ impl eframe::App for DashboardApp {
         // free spots nearest the top left of the open tab.
         let add = std::mem::take(&mut self.tree_sel.add);
         if !add.is_empty() && !self.locked {
-            self.add_topics(&add);
+            self.add_topics(&add, self.tree_sel.add_to_list);
         }
         let now = Instant::now();
         egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values, now));

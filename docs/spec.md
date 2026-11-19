@@ -279,7 +279,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      Ctrl+click (Cmd on macOS) to add or remove, Shift+click for a range. Picked rows are shaded;
      widgets showing them get an amber outline (list rows too), and other tabs with one get a ●.
      Right-click → "Add to grid" (or "Add N to grid") puts them in the free spots nearest the top
-     left; dragging a picked row takes them all, onto the grid (around the drop) or into a list.
+     left, and "Add to list ▸" adds them to the end of one of the tab's lists; dragging a picked row takes them all, onto the grid (around the drop) or into a list.
    - List Layout editing. Done: lists draw like Elastic's (children compact with no card each:
      a label placed by `label_position` and the child's body, each row its saved height less 48
      and at least 32); Edit… or double-click on a list opens its settings (title, label position and an Inside box that
