@@ -122,6 +122,9 @@ pub struct TreeSelection {
     /// A row to open the tree to, scroll to and pick, set by
     /// [`TreeSelection::reveal`].
     reveal: Option<Reveal>,
+    /// Whether a row was clicked (or right-clicked) in the tree this frame,
+    /// so the window can drop its own selection.
+    pub clicked: bool,
     /// A row [`TreeSelection::reveal`] gave up on this frame, as the text
     /// to show (`/Arm/angle` or `/Drive/pose → translation.x`), for the
     /// window to say so.
@@ -241,6 +244,7 @@ impl TreeSelection {
 
     /// Call before drawing the tree each frame.
     pub fn begin_frame(&mut self) {
+        self.clicked = false;
         self.drawing.clear();
         self.add.clear();
         self.add_to = AddTo::Grid;
@@ -314,10 +318,12 @@ fn selectable_row(
     if response.clicked() {
         let held = ui.input(|i| i.modifiers);
         sel.click(&row, held.command, held.shift);
+        sel.clicked = true;
     }
     // Right-clicking a row that isn't selected selects just it first.
     if response.secondary_clicked() && !sel.is_selected(&row) {
         sel.click(&row, false, false);
+        sel.clicked = true;
     }
     if draggable {
         if response.drag_started() {

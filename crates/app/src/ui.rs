@@ -604,6 +604,11 @@ impl DashboardApp {
             })
             .inner;
         self.tree_sel.end_frame();
+        // Picking in the tree deselects the grid's widget, whose outline
+        // would otherwise linger beside the picked topic's.
+        if self.tree_sel.clicked {
+            self.selected = None;
+        }
         if let Some(row) = &self.tree_sel.not_found {
             self.status =
                 format!("No row for {row} in the tree: not published, or hidden by the filter");
