@@ -1,7 +1,9 @@
 //! Recent values of the topics graphs show, for drawing them over time.
 //!
 //! The NT client keeps only each topic's newest value, so the app records
-//! values here as they arrive, once a frame. Only the series some graph on
+//! every value graphs want here, taken from the client's event stream so none
+//! are lost between frames. Each series is a ring buffer (`VecDeque`) that
+//! grows as needed up to [`MAX_POINTS`]. Only the series some graph on
 //! the open tab wants are kept, each for the longest time window a graph
 //! wants it for; a series no graph wants any more is forgotten.
 

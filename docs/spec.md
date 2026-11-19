@@ -361,8 +361,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Graph history review: while paused, scroll back and forward through time (drag or the scroll
      wheel along the time axis, maybe zoom), beyond the window shown, for looking back at what led
      up to an event. A per-graph "history kept" setting (expected use is up to 3–5 minutes; memory
-     is fine at that, about 1 MB per line at 100 Hz for 10 minutes, so raise the `traces.rs` cap
-     to fit) sets how far back is recorded; the cursors measure anywhere in it. Applies to X/Y and polar graphs
+     is fine at that, about 1 MB per line at 100 Hz for 10 minutes; make the `traces.rs` cap follow
+     the setting instead of a fixed point count) sets how far back is recorded; the cursors measure
+     anywhere in it. Zoomed out over minutes, reduce each line to about one point per pixel column
+     before drawing, so a frame doesn't copy tens of thousands of points per line. Applies to X/Y and polar graphs
      too.
    - X/Y and polar graphs (`egui_plot`): pair two values recorded at the same time (x with y, or
      angle with distance) and plot one against the other, for a joystick's position, an arm
