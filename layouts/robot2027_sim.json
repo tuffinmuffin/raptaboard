@@ -312,6 +312,129 @@
       }
     },
     {
+      "name": "More widgets",
+      "grid_layout": {
+        "layouts": [],
+        "containers": [
+          {
+            "title": "Sine (large)",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Large Text Display",
+            "properties": {
+              "topic": "/DashTest/Sine",
+              "period": 0.06,
+              "data_type": "double"
+            }
+          },
+          {
+            "title": "Sine bar",
+            "x": 256.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Number Bar",
+            "properties": {
+              "topic": "/DashTest/Sine",
+              "period": 0.06,
+              "data_type": "double"
+            }
+          },
+          {
+            "title": "Sine bar (vertical)",
+            "x": 512.0,
+            "y": 0.0,
+            "width": 128.0,
+            "height": 256.0,
+            "type": "Number Bar",
+            "properties": {
+              "topic": "/DashTest/Sine",
+              "period": 0.06,
+              "data_type": "double",
+              "orientation": "vertical"
+            }
+          },
+          {
+            "title": "Sine as voltage",
+            "x": 0.0,
+            "y": 128.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Voltage View",
+            "properties": {
+              "topic": "/DashTest/Sine",
+              "period": 0.06,
+              "data_type": "double",
+              "min_value": -1.0,
+              "max_value": 1.0
+            }
+          },
+          {
+            "title": "Seconds (match time)",
+            "x": 256.0,
+            "y": 128.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Match Time",
+            "properties": {
+              "topic": "/DashTest/Seconds",
+              "period": 0.06,
+              "data_type": "int"
+            }
+          },
+          {
+            "title": "Sine gauge",
+            "x": 0.0,
+            "y": 256.0,
+            "width": 256.0,
+            "height": 256.0,
+            "type": "Radial Gauge",
+            "properties": {
+              "topic": "/DashTest/Sine",
+              "period": 0.06,
+              "data_type": "double",
+              "min_value": -1.0,
+              "max_value": 1.0
+            }
+          },
+          {
+            "title": "Seconds dial (wraps at 60)",
+            "x": 256.0,
+            "y": 256.0,
+            "width": 256.0,
+            "height": 256.0,
+            "type": "Radial Gauge",
+            "properties": {
+              "topic": "/DashTest/Seconds",
+              "period": 0.06,
+              "data_type": "int",
+              "min_value": 0.0,
+              "max_value": 60.0,
+              "start_angle": 0.0,
+              "end_angle": 360.0,
+              "wrap_value": true,
+              "number_of_labels": 12
+            }
+          },
+          {
+            "title": "Not a color",
+            "x": 512.0,
+            "y": 256.0,
+            "width": 128.0,
+            "height": 128.0,
+            "type": "Single Color View",
+            "properties": {
+              "topic": "/DashTest/ModeName",
+              "period": 0.06,
+              "data_type": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "Empty",
       "grid_layout": {
         "layouts": [],

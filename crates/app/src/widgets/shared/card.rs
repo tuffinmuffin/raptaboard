@@ -108,6 +108,28 @@ pub fn draw(
     });
 }
 
+/// Draw `text` as large as fits in `rect`, centered, in `color`. For
+/// widgets whose whole body is one value (Large Text Display, Match Time).
+pub fn draw_fitted(painter: &egui::Painter, rect: Rect, text: &str, color: egui::Color32) {
+    // Measure at a known size, then scale to fit both ways.
+    const MEASURE: f32 = 100.0;
+    let galley =
+        painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(MEASURE), color);
+    let size = galley.size();
+    if size.x <= 0.0 || size.y <= 0.0 {
+        return;
+    }
+    let scale = (rect.width() / size.x).min(rect.height() / size.y);
+    let font = (MEASURE * scale).clamp(4.0, 400.0);
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        text,
+        egui::FontId::proportional(font),
+        color,
+    );
+}
+
 /// Say in grey why a widget has nothing to show: `"no value"` yet, or a
 /// value of the wrong type.
 pub fn draw_message(painter: &egui::Painter, visuals: &egui::Visuals, rect: Rect, why: &str) {

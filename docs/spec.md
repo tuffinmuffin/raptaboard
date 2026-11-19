@@ -143,6 +143,15 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `show_text` | `builtin/boolean_box.rs` | Boolean Box | write the text below over the color | false |
 | `true_text`, `false_text` | `builtin/boolean_box.rs` | Boolean Box | text when true / false; empty for none | none |
 | `label_position` (Elastic) | `list_layout.rs` | List Layout | `TOP`, `LEFT`, `RIGHT`, `BOTTOM`, `HIDDEN` (any case read) | `TOP`; always written |
+| `min_value`, `max_value` (Elastic) | `builtin/number_bar.rs`, `radial_gauge.rs` | Number Bar, Voltage View, Radial Gauge | range | -1 to 1; Voltage 4 to 13; Gauge 0 to 100 |
+| `divisions` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | labels along the bar, ends included | 5 |
+| `inverted` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | fill from the far end | false |
+| `orientation` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | `horizontal`, `vertical` | `horizontal` |
+| `start_angle`, `end_angle` (Elastic) | `builtin/radial_gauge.rs` | Radial Gauge | degrees clockwise from straight up | -140, 140 |
+| `number_of_labels` (Elastic) | `builtin/radial_gauge.rs` | Radial Gauge | steps between labels | 8 |
+| `wrap_value`, `show_pointer`, `show_ticks` (Elastic) | `builtin/radial_gauge.rs` | Radial Gauge | wrap out-of-range values; needle; tick marks | false, true, true |
+| `time_display_mode` (Elastic) | `builtin/match_time.rs` | Match Time | `Minutes and Seconds`, `Seconds Only` | `Minutes and Seconds` |
+| `red_start_time`, `yellow_start_time` (Elastic) | `builtin/match_time.rs` | Match Time | seconds left when the time turns red / yellow | 20, 30 |
 | `label_inside` | `list_layout.rs` | List Layout | `true`: each label drawn over its value (on a see-through backing) instead of beside it | off |
 | `dividers` | `list_layout.rs` | List Layout | `true`: a thin line under the list's title and below each child | off |
 | `hidden` | `list_layout.rs` | a List Layout's child | `true`: kept in the list but not shown or subscribed | shown |
@@ -339,6 +348,12 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      small fixed size so the file stays well under its 10 MB limit and is fully portable, and/or
      keep image files next to the layout or served by the robot.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
+   **Started**: the read-only single-topic widgets: Large Text Display, Number Bar, Voltage View,
+   Radial Gauge (also Simple Dial), Match Time, Single Color View, Multi Color View, with Elastic's
+   settings. A dropped topic still becomes a Text Display or Boolean Box; the settings dialog's
+   Widget choice switches to any type that can show the value (`WidgetType::shows`), keeping the
+   other types' settings. Next: Graph, then the writing widgets (toggles, slider, editable Text
+   Display), choosers, Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
    WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro, SwerveModuleState[] → swerve view.

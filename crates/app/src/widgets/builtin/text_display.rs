@@ -48,6 +48,10 @@ impl WidgetType for TextDisplay {
         )
     }
 
+    fn shows(&self, nt_type: &str) -> bool {
+        self.accepts(nt_type) || nt_type == "boolean"
+    }
+
     fn draw_body(
         &self,
         painter: &egui::Painter,

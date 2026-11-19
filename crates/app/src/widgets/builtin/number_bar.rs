@@ -1,0 +1,315 @@
+//! Number Bar and Voltage View: a number as a bar filled from the minimum,
+//! with the value written above and evenly spaced labels along the bar.
+//!
+//! The two are the same widget with different defaults: Number Bar runs
+//! from -1 to 1, Voltage View from 4 V to 13 V with a yellow bar and a "V"
+//! after the value, for battery voltage. Settings are Elastic's:
+//! `min_value`, `max_value`, `divisions` (how many labels), `inverted`
+//! (fill from the other end) and `orientation` (`horizontal` or
+//! `vertical`).
+
+use eframe::egui::{self, Color32, CornerRadius, Rect, Stroke};
+use nt4::Value;
+use serde_json::{Map, Value as Json};
+
+use crate::widgets::shared::format::{number_of, short_number};
+use crate::widgets::shared::{card, props};
+use crate::widgets::{ValueInfo, WidgetType};
+
+/// The lowest value on the bar (Elastic).
+pub const MIN_VALUE: &str = "min_value";
+/// The highest value on the bar (Elastic).
+pub const MAX_VALUE: &str = "max_value";
+/// How many labels along the bar, ends included (Elastic).
+pub const DIVISIONS: &str = "divisions";
+/// Fill from the far end (Elastic).
+pub const INVERTED: &str = "inverted";
+/// `horizontal` or `vertical` (Elastic).
+pub const ORIENTATION: &str = "orientation";
+
+const KEYS: [&str; 5] = [MIN_VALUE, MAX_VALUE, DIVISIONS, INVERTED, ORIENTATION];
+
+/// Thickness of the bar, in points.
+const BAR_THICKNESS: f32 = 8.0;
+/// Size of the labels along the bar, in points.
+const LABEL_SIZE: f32 = 11.0;
+/// Size of the value text, in points.
+const VALUE_SIZE: f32 = 16.0;
+/// Space around the bar, in points.
+const PAD: f32 = 6.0;
+
+/// The Number Bar widget (Elastic's `"Number Bar"`).
+pub struct NumberBar;
+/// The Voltage View widget (Elastic's `"Voltage View"`).
+pub struct VoltageView;
+
+/// What differs between Number Bar and Voltage View.
+struct Style {
+    min: f64,
+    max: f64,
+    color: Option<Color32>,
+    unit: &'static str,
+}
+
+const NUMBER_BAR: Style = Style {
+    min: -1.0,
+    max: 1.0,
+    color: None,
+    unit: "",
+};
+const VOLTAGE_VIEW: Style = Style {
+    min: 4.0,
+    max: 13.0,
+    color: Some(Color32::from_rgb(0xFF, 0xEB, 0x3B)),
+    unit: " V",
+};
+
+/// How full the bar is for `value` between `min` and `max`, from 0 to 1.
+///
+/// ```
+/// use raptaboard::widgets::builtin::number_bar::fraction;
+/// assert_eq!(fraction(0.0, -1.0, 1.0), 0.5);
+/// assert_eq!(fraction(5.0, -1.0, 1.0), 1.0);
+/// assert_eq!(fraction(1.0, 1.0, 1.0), 0.0);
+/// ```
+pub fn fraction(value: f64, min: f64, max: f64) -> f32 {
+    if max <= min {
+        return 0.0;
+    }
+    ((value - min) / (max - min)).clamp(0.0, 1.0) as f32
+}
+
+/// The label values along a bar: `divisions` evenly spaced from `min` to
+/// `max`, ends included (at least the two ends).
+///
+/// ```
+/// use raptaboard::widgets::builtin::number_bar::labels;
+/// assert_eq!(labels(-1.0, 1.0, 5), [-1.0, -0.5, 0.0, 0.5, 1.0]);
+/// ```
+pub fn labels(min: f64, max: f64, divisions: usize) -> Vec<f64> {
+    let n = divisions.max(2);
+    (0..n)
+        .map(|i| min + (max - min) * i as f64 / (n - 1) as f64)
+        .collect()
+}
+
+/// The number shown above the bar: 0 decimal places for whole-number
+/// topics, else 2, as Elastic shows it.
+fn value_text(value: f64, whole: bool, unit: &str) -> String {
+    if whole {
+        format!("{value:.0}{unit}")
+    } else {
+        format!("{value:.2}{unit}")
+    }
+}
+
+fn draw_bar(
+    style: &Style,
+    painter: &egui::Painter,
+    visuals: &egui::Visuals,
+    rect: Rect,
+    p: &Map<String, Json>,
+    value: Option<&Value>,
+) {
+    let Some(v) = value.and_then(number_of) else {
+        let why = if value.is_some() {
+            "not a number"
+        } else {
+            "no value"
+        };
+        return card::draw_message(painter, visuals, rect, why);
+    };
+    let min = props::number(p, MIN_VALUE, style.min);
+    let max = props::number(p, MAX_VALUE, style.max);
+    let divisions = props::number(p, DIVISIONS, 5.0).clamp(2.0, 50.0) as usize;
+    let inverted = props::flag(p, INVERTED, false);
+    let vertical = props::text(p, ORIENTATION, "horizontal") == "vertical";
+    let whole = matches!(value, Some(Value::Int(_)));
+    let fill_color = style.color.unwrap_or(visuals.selection.bg_fill);
+    let track_color = visuals.widgets.inactive.bg_fill;
+    let label_color = visuals.weak_text_color();
+    let label_font = egui::FontId::proportional(LABEL_SIZE);
+    let amount = fraction(v, min, max);
+    let text = value_text(v, whole, style.unit);
+    let steps = (labels(min, max, divisions).len() - 1) as f32;
+
+    if vertical {
+        // The value on the left, the bar beside it, labels to its right.
+        let (text_area, bar_area) = rect.split_left_right_at_fraction(0.45);
+        painter.text(
+            text_area.center(),
+            egui::Align2::CENTER_CENTER,
+            text,
+            egui::FontId::monospace(VALUE_SIZE),
+            visuals.text_color(),
+        );
+        let track = Rect::from_min_size(
+            egui::pos2(bar_area.min.x + PAD, bar_area.min.y + PAD),
+            egui::vec2(BAR_THICKNESS, (bar_area.height() - 2.0 * PAD).max(0.0)),
+        );
+        painter.rect_filled(track, CornerRadius::same(4), track_color);
+        let filled = track.height() * amount;
+        let fill = if inverted {
+            track.with_max_y(track.min.y + filled)
+        } else {
+            track.with_min_y(track.max.y - filled)
+        };
+        painter.rect_filled(fill, CornerRadius::same(4), fill_color);
+        for (i, n) in labels(min, max, divisions).into_iter().enumerate() {
+            let t = i as f32 / steps;
+            let y = if inverted {
+                track.min.y + track.height() * t
+            } else {
+                track.max.y - track.height() * t
+            };
+            let x = track.max.x + 4.0;
+            painter.hline(track.max.x..=x, y, Stroke::new(1.0, label_color));
+            painter.text(
+                egui::pos2(x + 2.0, y),
+                egui::Align2::LEFT_CENTER,
+                short_number(n),
+                label_font.clone(),
+                label_color,
+            );
+        }
+    } else {
+        // The value on top, the bar below it, labels under the bar.
+        painter.text(
+            egui::pos2(rect.center().x, rect.min.y + VALUE_SIZE * 0.75),
+            egui::Align2::CENTER_CENTER,
+            text,
+            egui::FontId::monospace(VALUE_SIZE),
+            visuals.text_color(),
+        );
+        let top = rect.min.y + VALUE_SIZE * 1.5 + PAD;
+        let track = Rect::from_min_size(
+            egui::pos2(rect.min.x + PAD * 2.0, top),
+            egui::vec2((rect.width() - PAD * 4.0).max(0.0), BAR_THICKNESS),
+        );
+        painter.rect_filled(track, CornerRadius::same(4), track_color);
+        let filled = track.width() * amount;
+        let fill = if inverted {
+            track.with_min_x(track.max.x - filled)
+        } else {
+            track.with_max_x(track.min.x + filled)
+        };
+        painter.rect_filled(fill, CornerRadius::same(4), fill_color);
+        for (i, n) in labels(min, max, divisions).into_iter().enumerate() {
+            let t = i as f32 / steps;
+            let x = if inverted {
+                track.max.x - track.width() * t
+            } else {
+                track.min.x + track.width() * t
+            };
+            let y = track.max.y + 4.0;
+            painter.vline(x, track.max.y..=y, Stroke::new(1.0, label_color));
+            painter.text(
+                egui::pos2(x, y + 1.0),
+                egui::Align2::CENTER_TOP,
+                short_number(n),
+                label_font.clone(),
+                label_color,
+            );
+        }
+    }
+}
+
+fn settings_rows(style: &Style, ui: &mut egui::Ui, p: &mut Map<String, Json>) {
+    props::number_row(ui, p, "Minimum", MIN_VALUE, style.min, -1e9..=1e9);
+    props::number_row(ui, p, "Maximum", MAX_VALUE, style.max, -1e9..=1e9);
+    props::whole_row(ui, p, "Labels", DIVISIONS, 5, 2..=50);
+    props::flag_row(ui, p, "Direction", "Fill from the far end", INVERTED, false);
+    props::choice_row(
+        ui,
+        p,
+        "Orientation",
+        ORIENTATION,
+        "horizontal",
+        &["horizontal", "vertical"],
+    );
+}
+
+/// The NT types bars show.
+fn is_number(nt_type: &str) -> bool {
+    matches!(nt_type, "double" | "float" | "int")
+}
+
+impl WidgetType for NumberBar {
+    fn names(&self) -> &'static [&'static str] {
+        &["Number Bar"]
+    }
+    fn accepts(&self, _: &str) -> bool {
+        false
+    }
+    fn shows(&self, nt_type: &str) -> bool {
+        is_number(nt_type)
+    }
+    fn draw_body(
+        &self,
+        painter: &egui::Painter,
+        visuals: &egui::Visuals,
+        rect: Rect,
+        props: &Map<String, Json>,
+        value: Option<&Value>,
+    ) {
+        draw_bar(&NUMBER_BAR, painter, visuals, rect, props, value);
+    }
+    fn settings(&self, ui: &mut egui::Ui, props: &mut Map<String, Json>, _: ValueInfo<'_>) {
+        settings_rows(&NUMBER_BAR, ui, props);
+    }
+    fn setting_keys(&self) -> &'static [&'static str] {
+        &KEYS
+    }
+}
+
+impl WidgetType for VoltageView {
+    fn names(&self) -> &'static [&'static str] {
+        &["Voltage View"]
+    }
+    fn accepts(&self, _: &str) -> bool {
+        false
+    }
+    fn shows(&self, nt_type: &str) -> bool {
+        is_number(nt_type)
+    }
+    fn draw_body(
+        &self,
+        painter: &egui::Painter,
+        visuals: &egui::Visuals,
+        rect: Rect,
+        props: &Map<String, Json>,
+        value: Option<&Value>,
+    ) {
+        draw_bar(&VOLTAGE_VIEW, painter, visuals, rect, props, value);
+    }
+    fn settings(&self, ui: &mut egui::Ui, props: &mut Map<String, Json>, _: ValueInfo<'_>) {
+        settings_rows(&VOLTAGE_VIEW, ui, props);
+    }
+    fn setting_keys(&self) -> &'static [&'static str] {
+        &KEYS
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Tests written by Claude.
+    use super::*;
+
+    #[test]
+    fn the_bar_fills_between_its_ends() {
+        assert_eq!(fraction(-1.0, -1.0, 1.0), 0.0);
+        assert_eq!(fraction(12.0, 4.0, 13.0), 8.0 / 9.0);
+        assert_eq!(fraction(-50.0, -1.0, 1.0), 0.0);
+        // A backwards range draws an empty bar rather than nonsense.
+        assert_eq!(fraction(0.5, 1.0, -1.0), 0.0);
+    }
+
+    #[test]
+    fn labels_are_evenly_spaced() {
+        assert_eq!(labels(4.0, 13.0, 4), [4.0, 7.0, 10.0, 13.0]);
+        // At least the two ends.
+        assert_eq!(labels(0.0, 1.0, 1), [0.0, 1.0]);
+        assert_eq!(value_text(12.345, false, " V"), "12.35 V");
+        assert_eq!(value_text(3.0, true, ""), "3");
+    }
+}
