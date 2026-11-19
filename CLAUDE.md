@@ -55,7 +55,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
 - `crates/app`: the eframe app. `ui.rs` holds the window, `connection.rs` the robot address modes,
   `cli.rs` the startup flags (`--team`, `--address`, `--port`, `--hide-tree`; stand-ins until settings persist),
   `nt.rs` the live connection (`NtConnection`: a 1-thread tokio runtime that owns the `nt4::Client`
-  and restarts it when the address changes; the UI only makes non-blocking calls), `tree.rs` the
+  and restarts it when the address changes; the UI only makes non-blocking calls), `tree.rs` the (row picking in `TreeSelection`, drag payload `DraggedTopics`)
   read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),
   `struct_view.rs` struct values decoded with the server's `/.schema/` topics
   (`nt4::proto::structs::StructDatabase` + `DynamicStruct`), `widgets/` the grid widgets,

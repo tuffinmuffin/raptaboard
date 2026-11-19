@@ -49,6 +49,222 @@ pub struct DraggedTopic {
     pub field: Option<StructMeta>,
 }
 
+impl DraggedTopic {
+    /// Whether `widget` shows this topic (or struct field).
+    ///
+    /// ```
+    /// use raptaboard::tree::DraggedTopic;
+    /// use raptaboard::widgets::for_topic;
+    /// use raptaboard_layout::Rect;
+    /// let at = Rect { x: 0.0, y: 0.0, width: 128.0, height: 128.0 };
+    /// let w = for_topic("/Arm/angle", "double", None, at).unwrap();
+    /// let t = DraggedTopic { name: "/Arm/angle".into(), ty: "double".into(), field: None };
+    /// assert!(t.is_shown_by(&w));
+    /// ```
+    pub fn is_shown_by(&self, widget: &raptaboard_layout::WidgetContainer) -> bool {
+        widget.topic() == Some(self.name.as_str())
+            && widget.struct_meta().map(|m| m.path) == self.field.as_ref().map(|f| f.path.clone())
+    }
+}
+
+/// Topics dragged out of the tree together: one row, or every selected row
+/// when a selected one is dragged. This is the drag-and-drop payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DraggedTopics(pub Vec<DraggedTopic>);
+
+/// Which tree rows are selected, for adding several topics at once and for
+/// highlighting their widgets. Only rows that can become a widget (topics
+/// and struct fields) can be selected.
+///
+/// Click selects one row; Ctrl+click (Cmd on macOS) adds or removes a row;
+/// Shift+click selects every row from the last one clicked to this one, in
+/// the order the tree shows them.
+///
+/// ```
+/// use raptaboard::tree::{DraggedTopic, TreeSelection};
+/// let t = |n: &str| DraggedTopic { name: n.into(), ty: "double".into(), field: None };
+/// let mut sel = TreeSelection::default();
+/// sel.click(&t("/a"), false, false);
+/// sel.click(&t("/b"), true, false);
+/// assert_eq!(sel.selected().len(), 2);
+/// sel.click(&t("/c"), false, false);
+/// assert_eq!(sel.selected(), [t("/c")]);
+/// ```
+#[derive(Debug, Default)]
+pub struct TreeSelection {
+    selected: Vec<DraggedTopic>,
+    /// The row Shift+click ranges start from.
+    anchor: Option<DraggedTopic>,
+    /// Selectable rows in the order they were drawn last frame.
+    order: Vec<DraggedTopic>,
+    /// The same, being collected this frame.
+    drawing: Vec<DraggedTopic>,
+    /// Rows whose "Add to grid" was clicked this frame, for the window to add.
+    pub add: Vec<DraggedTopic>,
+}
+
+impl TreeSelection {
+    /// The selected rows, in the order they were selected.
+    pub fn selected(&self) -> &[DraggedTopic] {
+        &self.selected
+    }
+
+    /// Whether `row` is selected.
+    pub fn is_selected(&self, row: &DraggedTopic) -> bool {
+        self.selected.contains(row)
+    }
+
+    /// A click on `row`. `toggle` is Ctrl (Cmd) held, `range` is Shift held.
+    pub fn click(&mut self, row: &DraggedTopic, toggle: bool, range: bool) {
+        let position = |r: &DraggedTopic| self.order.iter().position(|o| o == r);
+        if range
+            && let Some(from) = self.anchor.as_ref().and_then(position)
+            && let Some(to) = position(row)
+        {
+            let (a, b) = (from.min(to), from.max(to));
+            self.selected = self.order[a..=b].to_vec();
+            return;
+        }
+        if toggle {
+            match self.selected.iter().position(|s| s == row) {
+                Some(i) => {
+                    self.selected.remove(i);
+                }
+                None => self.selected.push(row.clone()),
+            }
+        } else {
+            self.selected = vec![row.clone()];
+        }
+        self.anchor = Some(row.clone());
+    }
+
+    /// What dragging or adding `row` takes: the whole selection if `row` is
+    /// in it, otherwise just `row`.
+    pub fn group(&self, row: &DraggedTopic) -> Vec<DraggedTopic> {
+        if self.is_selected(row) {
+            self.selected.clone()
+        } else {
+            vec![row.clone()]
+        }
+    }
+
+    /// Unselect everything.
+    pub fn clear(&mut self) {
+        self.selected.clear();
+        self.anchor = None;
+    }
+
+    /// Call before drawing the tree each frame.
+    pub fn begin_frame(&mut self) {
+        self.drawing.clear();
+        self.add.clear();
+    }
+
+    /// Call after drawing the tree each frame.
+    pub fn end_frame(&mut self) {
+        self.order = std::mem::take(&mut self.drawing);
+    }
+
+    /// Note that `row` was drawn, in order, for Shift+click ranges.
+    fn drew(&mut self, row: &DraggedTopic) {
+        self.drawing.push(row.clone());
+    }
+}
+
+/// A tree row that can be selected, dragged onto the grid (when
+/// `draggable`) and added from its right-click menu. `contents` draws the
+/// row; `hover` is its tooltip.
+fn selectable_row(
+    ui: &mut egui::Ui,
+    sel: &mut TreeSelection,
+    row: DraggedTopic,
+    draggable: bool,
+    hover: &str,
+    contents: impl FnOnce(&mut egui::Ui),
+) {
+    // A slot under the row for its selection shading, filled in once the
+    // row's size is known.
+    let shading = ui.painter().add(egui::Shape::Noop);
+    let drawn = ui.scope(|ui| {
+        // Plain labels, so the pointer shows the grab hand rather than the
+        // text cursor.
+        ui.style_mut().interaction.selectable_labels = false;
+        contents(ui);
+    });
+    let rect = drawn.response.rect;
+    let field = row.field.as_ref().map(|f| f.path.clone());
+    let id = egui::Id::unique(("tree_row", &row.name, field));
+    let sense = if draggable {
+        egui::Sense::click_and_drag()
+    } else {
+        egui::Sense::click()
+    };
+    let response = ui.interact(rect, id, sense);
+    if sel.is_selected(&row) {
+        ui.painter().set(
+            shading,
+            egui::Shape::rect_filled(
+                rect.expand(1.0),
+                egui::CornerRadius::same(2),
+                ui.visuals().selection.bg_fill,
+            ),
+        );
+    }
+    if response.clicked() {
+        let held = ui.input(|i| i.modifiers);
+        sel.click(&row, held.command, held.shift);
+    }
+    // Right-clicking a row that isn't selected selects just it first.
+    if response.secondary_clicked() && !sel.is_selected(&row) {
+        sel.click(&row, false, false);
+    }
+    if draggable {
+        if response.drag_started() {
+            egui::DragAndDrop::set_payload(ui.ctx(), DraggedTopics(sel.group(&row)));
+        }
+        if response.dragged() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            drag_preview(ui.ctx(), id, &sel.group(&row));
+        } else if response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+        }
+        response.context_menu(|ui| {
+            let group = sel.group(&row);
+            let label = match group.len() {
+                1 => "Add to grid".to_owned(),
+                n => format!("Add {n} to grid"),
+            };
+            if ui.button(label).clicked() {
+                sel.add = group;
+            }
+        });
+    }
+    response.on_hover_text(hover);
+    sel.drew(&row);
+}
+
+/// A small label following the pointer while rows are dragged: the topic's
+/// name, or how many there are.
+fn drag_preview(ctx: &egui::Context, id: egui::Id, rows: &[DraggedTopic]) {
+    let Some(pointer) = ctx.pointer_interact_pos() else {
+        return;
+    };
+    let text = match rows {
+        [one] => match &one.field {
+            Some(field) => format!("{} → {}", one.name, field.path.join(".")),
+            None => one.name.clone(),
+        },
+        many => format!("{} topics", many.len()),
+    };
+    egui::Area::new(id.with("drag_preview"))
+        .order(egui::Order::Tooltip)
+        .fixed_pos(pointer + egui::vec2(12.0, 12.0))
+        .interactable(false)
+        .show(ctx, |ui| {
+            egui::Frame::popup(ui.style()).show(ui, |ui| ui.label(text));
+        });
+}
+
 /// A folder: sub-folders and topics, each sorted by name.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Folder {
@@ -118,9 +334,11 @@ impl Folder {
     /// `structs` holds the struct schemas the server has sent, used to open struct topics
     /// such as `Pose2d` into their fields.
     ///
-    /// When `draggable` is set (the layout isn't locked), rows for topics
-    /// that have a widget type can be dragged onto the grid; see
-    /// [`DraggedTopic`] and [`widgets::type_for_topic`].
+    /// Rows for topics (and struct fields) that have a widget type can be
+    /// selected in `sel`; when `draggable` is set (the layout isn't
+    /// locked) they can also be dragged onto the grid or added from their
+    /// right-click menu. See [`DraggedTopic`] and
+    /// [`widgets::type_for_topic`].
     ///
     /// Returns the full names of the topics that were drawn, that is, those
     /// in open folders, so their values can be requested from the server.
@@ -131,6 +349,7 @@ impl Folder {
         expand_all: bool,
         structs: &StructDatabase,
         draggable: bool,
+        sel: &mut TreeSelection,
     ) -> Vec<String> {
         let mut visible = Vec::new();
         for (name, folder) in &self.folders {
@@ -141,31 +360,25 @@ impl Folder {
                 .default_open(false)
                 .open(expand_all.then_some(true))
                 .show(ui, |ui| {
-                    folder.show(ui, &folder_path, expand_all, structs, draggable)
+                    folder.show(ui, &folder_path, expand_all, structs, draggable, sel)
                 });
             visible.extend(open.body_returned.unwrap_or_default());
         }
         for (key, topic) in &self.topics {
             let has_widget = widgets::type_for_topic(&topic.ty).is_some();
-            if draggable && has_widget {
-                let payload = DraggedTopic {
+            if has_widget {
+                let row = DraggedTopic {
                     name: topic.name.clone(),
                     ty: topic.ty.clone(),
                     field: None,
                 };
-                let id = egui::Id::unique(("nt_topic", &topic.name));
-                ui.dnd_drag_source(id, payload, |ui| {
-                    // Plain labels, so the pointer shows the grab hand rather
-                    // than the text cursor.
-                    ui.style_mut().interaction.selectable_labels = false;
-                    show_topic(
-                        ui,
-                        key,
-                        topic,
-                        structs,
-                        "Drag onto the grid to make a widget",
-                        false,
-                    );
+                let hover = if draggable {
+                    format!("{}\n{DRAG_HINT}", topic.name)
+                } else {
+                    topic.name.clone()
+                };
+                selectable_row(ui, sel, row, draggable, &hover, |ui| {
+                    plain_row(ui, key, topic);
                 });
             } else {
                 // Rows that open (structs, schemas) must not be drag sources:
@@ -175,7 +388,7 @@ impl Folder {
                 } else {
                     format!("No widget for {} yet", topic.ty)
                 };
-                show_topic(ui, key, topic, structs, &note, draggable);
+                show_topic(ui, key, topic, structs, &note, draggable, sel);
             }
             visible.push(topic.name.clone());
         }
@@ -183,9 +396,28 @@ impl Folder {
     }
 }
 
-/// One topic row. Struct values that can be decoded open into their fields,
-/// which can be dragged onto the grid when `draggable` is set. `note`, if
-/// not empty, is added to the hover text.
+/// The hover hint on rows that can become widgets.
+const DRAG_HINT: &str = "Drag onto the grid, or right-click to add. Ctrl+click or Shift+click \
+                         to select several.";
+
+/// A topic's name, value and type on one line.
+fn plain_row(ui: &mut egui::Ui, key: &str, topic: &TopicEntry) {
+    let value = match &topic.value {
+        Some(v) => format_value(v),
+        None => "…".into(),
+    };
+    ui.horizontal(|ui| {
+        ui.label(key);
+        ui.monospace(value);
+        ui.weak(&topic.ty);
+    });
+}
+
+/// One topic row that isn't a widget source itself: struct values that can
+/// be decoded open into their fields (which can be selected, and dragged
+/// onto the grid when `draggable` is set), schemas open into their parts,
+/// and anything else is a plain row. `note`, if not empty, is added to the
+/// hover text.
 fn show_topic(
     ui: &mut egui::Ui,
     key: &str,
@@ -193,6 +425,7 @@ fn show_topic(
     structs: &StructDatabase,
     note: &str,
     draggable: bool,
+    sel: &mut TreeSelection,
 ) {
     let bytes = match &topic.value {
         Some(Value::Raw(bytes)) => Some(bytes.as_slice()),
@@ -214,7 +447,7 @@ fn show_topic(
         // Fields of a single struct can be dragged; Elastic doesn't bind to
         // fields inside struct arrays either.
         let source = match (struct_view::struct_type(&topic.ty), bytes) {
-            (Some((schema, false)), Some(bytes)) if draggable => Some(FieldSource {
+            (Some((schema, false)), Some(bytes)) => Some(FieldSource {
                 topic: &topic.name,
                 schema,
                 bytes,
@@ -238,6 +471,7 @@ fn show_topic(
                     fields.as_ref(),
                     source.as_ref(),
                     &[],
+                    Rows { sel, draggable },
                 )
             })
             .header_response
@@ -253,7 +487,15 @@ fn show_topic(
             .id_salt(&topic.name)
             .default_open(false)
             .show(ui, |ui| {
-                show_children(ui, &topic.name, &children, None, None, &[])
+                show_children(
+                    ui,
+                    &topic.name,
+                    &children,
+                    None,
+                    None,
+                    &[],
+                    Rows { sel, draggable },
+                )
             })
             .header_response
             .on_hover_text(format!("{}\n{text}", topic.name));
@@ -276,7 +518,13 @@ fn show_topic(
     .on_hover_text(hover);
 }
 
-/// A struct topic whose field rows can be dragged onto the grid.
+/// What field rows need for selecting and dragging.
+struct Rows<'s> {
+    sel: &'s mut TreeSelection,
+    draggable: bool,
+}
+
+/// A struct topic whose field rows can become widgets.
 struct FieldSource<'a> {
     topic: &'a str,
     /// The struct's schema name, such as `Pose2d`.
@@ -323,8 +571,9 @@ impl Fields<'_> {
 
 /// The fields of a decoded struct; nested structs and arrays open in turn.
 /// With `fields`, each field shows its type and has hover details. With
-/// `source`, plain fields (not array items) can be dragged onto the grid.
-/// `path` is the field names leading here.
+/// `source`, plain fields (not array items) can be selected, and dragged
+/// onto the grid or added when `rows.draggable`. `path` is the field names
+/// leading here.
 fn show_children(
     ui: &mut egui::Ui,
     id: &str,
@@ -332,7 +581,9 @@ fn show_children(
     fields: Option<&Fields<'_>>,
     source: Option<&FieldSource<'_>>,
     path: &[String],
+    rows: Rows<'_>,
 ) {
+    let Rows { sel, draggable } = rows;
     // Used for decoded values and for schemas; nested parts start open.
     for (name, shown) in children {
         // Array items are named [0], [1], ...; they can't be bound to.
@@ -367,16 +618,13 @@ fn show_children(
                 });
                 match payload {
                     Some(payload) => {
-                        let drag_id = egui::Id::unique(("nt_field", id, name));
-                        let hover = hover.map_or_else(String::new, |h| h + "\n\n");
-                        ui.dnd_drag_source(drag_id, payload, |ui| {
-                            ui.style_mut().interaction.selectable_labels = false;
-                            row(ui)
-                        })
-                        .response
-                        .on_hover_text(format!(
-                            "{hover}Drag onto the grid to make a widget for this field"
-                        ));
+                        let mut hover = hover.unwrap_or_default();
+                        if draggable {
+                            hover = format!("{hover}\n\n{DRAG_HINT}");
+                        }
+                        selectable_row(ui, sel, payload, draggable, &hover, |ui| {
+                            row(ui);
+                        });
                     }
                     None => {
                         let row = row(ui).response;
@@ -411,7 +659,18 @@ fn show_children(
                     .id_salt(&child_id)
                     .default_open(true)
                     .show(ui, |ui| {
-                        show_children(ui, &child_id, children, fields, source, &field_path)
+                        show_children(
+                            ui,
+                            &child_id,
+                            children,
+                            fields,
+                            source,
+                            &field_path,
+                            Rows {
+                                sel: &mut *sel,
+                                draggable,
+                            },
+                        )
                     })
                     .header_response;
                 if let Some(hover) = hover {
@@ -567,5 +826,93 @@ mod tests {
             "[1, 2, 3, 4, 5, 6, … +2]"
         );
         assert_eq!(format_value(&Value::DoubleArray(vec![])), "[]");
+    }
+
+    fn row(name: &str) -> DraggedTopic {
+        DraggedTopic {
+            name: name.into(),
+            ty: "double".into(),
+            field: None,
+        }
+    }
+
+    /// A selection that has seen `rows` drawn, in order.
+    fn drawn(rows: &[&str]) -> TreeSelection {
+        let mut sel = TreeSelection::default();
+        sel.begin_frame();
+        for r in rows {
+            sel.drew(&row(r));
+        }
+        sel.end_frame();
+        sel
+    }
+
+    #[test]
+    fn shift_click_selects_a_range_either_way() {
+        let mut sel = drawn(&["/a", "/b", "/c", "/d"]);
+        sel.click(&row("/b"), false, false);
+        sel.click(&row("/d"), false, true);
+        assert_eq!(sel.selected(), [row("/b"), row("/c"), row("/d")]);
+        // The range is from the same start: back up to "/a".
+        sel.click(&row("/a"), false, true);
+        assert_eq!(sel.selected(), [row("/a"), row("/b")]);
+        // Shift with nothing clicked before is a plain click.
+        let mut fresh = drawn(&["/a", "/b"]);
+        fresh.click(&row("/b"), false, true);
+        assert_eq!(fresh.selected(), [row("/b")]);
+    }
+
+    #[test]
+    fn ctrl_click_adds_and_removes() {
+        let mut sel = drawn(&["/a", "/b", "/c"]);
+        sel.click(&row("/a"), true, false);
+        sel.click(&row("/c"), true, false);
+        assert_eq!(sel.selected(), [row("/a"), row("/c")]);
+        sel.click(&row("/a"), true, false);
+        assert_eq!(sel.selected(), [row("/c")]);
+        sel.clear();
+        assert!(sel.selected().is_empty());
+    }
+
+    #[test]
+    fn dragging_a_selected_row_takes_the_selection() {
+        let mut sel = drawn(&["/a", "/b", "/c"]);
+        sel.click(&row("/a"), false, false);
+        sel.click(&row("/b"), true, false);
+        assert_eq!(sel.group(&row("/b")), [row("/a"), row("/b")]);
+        // A row outside the selection goes alone.
+        assert_eq!(sel.group(&row("/c")), [row("/c")]);
+    }
+
+    #[test]
+    fn widgets_are_matched_by_topic_and_field() {
+        use raptaboard_layout::Rect;
+        let at = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 128.0,
+            height: 128.0,
+        };
+        let x = StructMeta {
+            path: vec!["x".into()],
+            schema_name: "Translation2d".into(),
+        };
+        let field_widget = widgets::for_topic("/pose", "double", Some(&x), at).unwrap();
+        let field = DraggedTopic {
+            name: "/pose".into(),
+            ty: "double".into(),
+            field: Some(x),
+        };
+        assert!(field.is_shown_by(&field_widget));
+        // The same topic without the field, or another field, doesn't match.
+        assert!(!row("/pose").is_shown_by(&field_widget));
+        let y = DraggedTopic {
+            field: Some(StructMeta {
+                path: vec!["y".into()],
+                schema_name: "Translation2d".into(),
+            }),
+            ..field.clone()
+        };
+        assert!(!y.is_shown_by(&field_widget));
     }
 }
