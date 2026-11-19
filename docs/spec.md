@@ -366,6 +366,12 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      anywhere in it. Zoomed out over minutes, reduce each line to about one point per pixel column
      before drawing, so a frame doesn't copy tens of thousands of points per line. Applies to X/Y and polar graphs
      too.
+   - Graph sample statistics: an option (off by default) to show each line's min, max and average
+     over the samples in view: the time window shown, or between the A and B cursors when both
+     are placed (so a measurement gives them for just that stretch), and the frozen window while
+     paused. Shown with the legend or the readout, in each line's color; reduced points for
+     drawing (see history review) must not change them, so they're worked out from the recorded
+     samples.
    - X/Y and polar graphs (`egui_plot`): pair two values recorded at the same time (x with y, or
      angle with distance) and plot one against the other, for a joystick's position, an arm
      joint's path or a turret's aim. Modes: a trail that fades out over a set time (time decay),
