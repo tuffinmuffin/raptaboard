@@ -358,6 +358,13 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      seen instead of fixed `min_value`/`max_value` (widening as new extremes arrive; optionally only
      growing from the set range, and a reset in the right-click menu). Not saved as the range;
      starts fresh each run.
+   - X/Y and polar graphs (`egui_plot`): pair two values recorded at the same time (x with y, or
+     angle with distance) and plot one against the other, for a joystick's position, an arm
+     joint's path or a turret's aim. Modes: a trail that fades out over a set time (time decay),
+     or just the current point (tracking). Several pairs per graph, like Graph's lines; pairs come
+     from two topics, two struct fields (Pose2d x/y, Translation2d), or a dropped struct with a
+     known pair. Angle units for polar (degrees or radians, zero direction, clockwise or not).
+     Shares Graph's recording (`traces.rs`), pause and measuring.
    - Battery widget: a battery icon filled by charge (voltage between a low and high setting),
      colored by level, for battery voltage instead of Voltage View.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
