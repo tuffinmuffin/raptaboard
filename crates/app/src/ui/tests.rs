@@ -333,10 +333,15 @@ fn every_widget_settings_dialog_opens_and_escape_cancels() {
     }
     frame(&ctx, &mut app, vec![]);
     frame(&ctx, &mut app, vec![]);
-    for _ in 0..2 {
-        frame(&ctx, &mut app, key(Key::Escape, Modifiers::NONE));
-        frame(&ctx, &mut app, vec![]);
-    }
+    // Opened from the list's dialog, Escape goes back to it, then closes it.
+    frame(&ctx, &mut app, key(Key::Escape, Modifiers::NONE));
+    frame(&ctx, &mut app, vec![]);
+    assert!(
+        matches!(app.editing, Some(Editing::List { child: None, .. })),
+        "back to the list's settings"
+    );
+    frame(&ctx, &mut app, key(Key::Escape, Modifiers::NONE));
+    frame(&ctx, &mut app, vec![]);
     assert!(app.editing.is_none());
     // Cancelled every time: nothing changed.
     assert_eq!(app.layout, before);
@@ -482,6 +487,9 @@ fn harness_for(robot: &Robot) -> Harness {
         // Symbols such as ◀ come from the computer's own fonts in the app
         // (eframe's system_fonts); the harness has only egui's built-in ones.
         .allow_missing_glyphs()
+        // Frames as the app draws them (about 60 a second), so egui's
+        // timing (double-clicks within 0.3 s) works as it does for real.
+        .with_step_dt(1.0 / 60.0)
         .build_ui_state(|ui, app: &mut DashboardApp| app.show(ui), app_for(robot));
     let deadline = Instant::now() + Duration::from_secs(10);
     // Connected, with the struct schemas in.
@@ -1092,4 +1100,42 @@ fn unlocked_a_list_childs_label_drags_it_and_the_rest_toggles() {
     settle(&mut harness);
     assert_eq!(grid(&harness).layouts[0].children.len(), children - 1);
     assert_eq!(grid(&harness).containers.len(), widgets + 1);
+}
+
+#[test]
+fn double_clicking_a_list_child_opens_only_its_settings() {
+    let robot = Robot::start();
+    let mut harness = writing_harness(&robot);
+    let primary = egui::PointerButton::Primary;
+    harness.state_mut().locked = false;
+    settle(&mut harness);
+    // Double-click the child's label (its handle while unlocked): two
+    // clicks a frame apart, well within egui's 0.3 s.
+    let label = child_label(&harness, 0, 0).center();
+    harness.hover_at(label);
+    harness.step();
+    for _ in 0..2 {
+        for pressed in [true, false] {
+            harness.event(Event::PointerButton {
+                pos: label,
+                button: primary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            });
+        }
+        harness.step();
+    }
+    settle(&mut harness);
+    assert!(matches!(
+        harness.state().editing,
+        Some(Editing::List {
+            child: Some((0, _)),
+            child_only: true,
+            ..
+        })
+    ));
+    // Closing it closes the dialog: the list's settings weren't asked for.
+    harness.key_press(Key::Escape);
+    settle(&mut harness);
+    assert!(harness.state().editing.is_none());
 }

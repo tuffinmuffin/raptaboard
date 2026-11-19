@@ -445,6 +445,7 @@ impl DashboardApp {
                         index,
                         original: Box::new(l.clone()),
                         child: None,
+                        child_only: false,
                     }),
                     None => None,
                 };

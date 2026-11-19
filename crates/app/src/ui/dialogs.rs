@@ -24,12 +24,15 @@ pub(super) enum Editing {
     /// A List Layout: its tab, its index in the tab's `layouts`, and the
     /// list (with its children) as it was, for Cancel. `child` is the child
     /// whose settings are open inside the list's dialog, with that child as
-    /// it was when they opened.
+    /// it was when they opened. `child_only` is set when they were opened
+    /// by double-clicking the child: closing them then closes the dialog,
+    /// rather than going back to the list's settings.
     List {
         tab: usize,
         index: usize,
         original: Box<LayoutContainer>,
         child: Option<(usize, WidgetContainer)>,
+        child_only: bool,
     },
 }
 
@@ -315,9 +318,15 @@ impl DashboardApp {
     }
 
     /// Leave a child's settings and go back to its list's.
+    /// Close a list child's settings: back to the list's, or (opened by
+    /// double-clicking the child) close the dialog.
     pub(super) fn close_child(&mut self) {
-        if let Some(Editing::List { child, .. }) = &mut self.editing {
-            *child = None;
+        match &mut self.editing {
+            Some(Editing::List {
+                child_only: true, ..
+            }) => self.editing = None,
+            Some(Editing::List { child, .. }) => *child = None,
+            _ => {}
         }
     }
 

@@ -754,13 +754,15 @@ impl DashboardApp {
                 .and_then(|t| t.grid_layout.layouts.get(list))
             && let Some(c) = l.children.get(child)
         {
-            // Straight to the child's settings; Done goes back to the list's.
+            // Straight to the child's settings, and closing them closes
+            // the dialog (the list's settings weren't asked for).
             self.selected = Some(Item::List(list));
             self.editing = Some(Editing::List {
                 tab: self.current_tab,
                 index: list,
                 original: Box::new(l.clone()),
                 child: Some((child, c.clone())),
+                child_only: true,
             });
         }
         if (new_list || wrap.is_some())
