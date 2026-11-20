@@ -673,8 +673,15 @@ fn settle(harness: &mut Harness) {
     }
 }
 
-/// Open the folder or struct whose header starts with `start`.
+/// Open the folder or struct whose header starts with `start`, waiting for
+/// it to be drawn first: a struct's row shows once its value has arrived,
+/// which a slow machine (CI's Windows) takes longer to do.
 fn open(harness: &mut Harness, start: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while harness.query_by_label_contains(start).is_none() {
+        assert!(Instant::now() < deadline, "no row starting {start:?}");
+        settle(harness);
+    }
     harness.get_by_label_contains(start).click();
     settle(harness);
 }
