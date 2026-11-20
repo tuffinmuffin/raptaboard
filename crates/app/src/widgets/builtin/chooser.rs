@@ -44,9 +44,10 @@ const ROW_PER_FONT: f32 = 1.7;
 const FIT_HEIGHT: f32 = 0.33;
 /// Room beside the text for the drop-down's arrow and padding, in points.
 const ARROW_ROOM: f32 = 40.0;
-/// The smallest and largest fitted text, in points.
-const MIN_FIT: f32 = 12.0;
-const MAX_FIT: f32 = 36.0;
+/// The smallest fitted text, in points.
+pub const MIN_FIT: f32 = 12.0;
+/// The largest fitted text, in points.
+pub const MAX_FIT: f32 = 36.0;
 /// Size of the note under the choice, in points.
 const NOTE_SIZE: f32 = 12.0;
 /// Space between buttons, in points.
@@ -116,7 +117,8 @@ fn fitted_size(painter: &egui::Painter, rect: Rect, options: &[String]) -> f32 {
     fit_between(by_height.min(by_width))
 }
 
-/// A fitted text size kept usable: between 12 and 36 points.
+/// A fitted text size kept usable: between [`MIN_FIT`] and [`MAX_FIT`]
+/// points.
 ///
 /// ```
 /// use raptaboard::widgets::builtin::chooser::fit_between;
