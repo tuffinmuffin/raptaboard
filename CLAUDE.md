@@ -37,6 +37,11 @@ cargo run -p raptaboard -- --help
 cargo test -p raptaboard --release --test cpu_load -- --ignored --nocapture
 ```
 
+Release builds (`--release`) use full LTO and one codegen unit and strip the program (about
+11.5 MB instead of 20 MB; about a minute to build). Debug info goes to a file beside it
+(`raptaboard.dSYM` on macOS, `.pdb` on Windows, `.dwp` on Linux) for decoding crash dumps; keep it with
+each build handed out. Day-to-day work uses debug builds, which the release profile doesn't touch.
+
 CI (`.github/workflows/ci.yml`) runs fmt, clippy with `-D warnings` and tests on Linux, Windows and
 macOS. Run the same locally before pushing. Its `coverage` job (cargo-llvm-cov, as in nt4-rs) posts a
 coverage report on each PR, compared with the base branch, via `scripts/coverage_summary.py`

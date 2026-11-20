@@ -25,3 +25,16 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+
+# Release builds (`cargo build --release`): smaller and faster, slower to
+# build. Day-to-day work uses debug builds, which this doesn't change.
+# Debug info goes to a file beside the program instead of inside it
+# (macOS: raptaboard.dSYM, Windows: raptaboard.pdb, Linux: raptaboard.dwp),
+# so a crash dump can still be decoded with function names and line
+# numbers; keep that file with each build that's handed out.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+debug = "line-tables-only"
+split-debuginfo = "packed"
+strip = "symbols"
