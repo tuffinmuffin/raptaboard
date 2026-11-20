@@ -534,7 +534,7 @@ impl DashboardApp {
 
 impl eframe::App for DashboardApp {
     /// Before egui reads a frame's input: a touchscreen tap's move back to
-    /// the mouse waits a frame, so the tap lands where it was (see [`taps`]).
+    /// the mouse waits a frame, so the tap lands where it was (see `ui/taps.rs`).
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         taps::hold_after_taps(&mut self.taps, ctx, raw_input);
     }
