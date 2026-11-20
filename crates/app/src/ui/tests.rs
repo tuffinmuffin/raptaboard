@@ -2058,3 +2058,22 @@ fn changing_a_widget_to_an_enum_guesses_its_names() {
     assert_eq!(w.properties["enum_source"], "topic");
     assert_eq!(w.properties["options_topic"], "/Test/modeOptions");
 }
+
+#[test]
+fn right_clicking_a_tab_opens_its_menu() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    harness.state_mut().locked = false;
+    settle(&mut harness);
+    let tab = harness.get_by_label("Empty").rect().center();
+    click_at(
+        &mut harness,
+        tab,
+        egui::PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    assert!(
+        harness.query_by_label("Rename").is_some(),
+        "no menu on the tab"
+    );
+}

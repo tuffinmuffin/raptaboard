@@ -386,6 +386,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      and when the robot reconnects). Taken from every value received, as graphs record them
      (`traces.rs`), not from the widget's sampled period, so short peaks count. Bars and gauges
      could also mark the min and max on their scale.
+   - Drag tabs to reorder them: unlocked, drag a tab along the tab bar, with a marker where it
+     will land, and drop it to move it (one step for undo, like Move left and Move right in the
+     tab's right-click menu, which stay). Tabs can only be reordered from that menu now, and
+     dragging is what people try first.
    - Sound clips on robot state changes: play a sound file when the robot is disabled (the first
      one: the "I'm disabled" quote from The IT Crowd), and optionally on enable, the start of auto
      and teleop, and e-stop. The state comes from WPILib's `/FMSInfo/FMSControlData` bits (check
