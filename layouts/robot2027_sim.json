@@ -725,6 +725,18 @@
               "topic": "/SmartDashboard/DashTest Auto",
               "period": 0.06
             }
+          },
+          {
+            "title": "Manual chooser (no SmartDashboard)",
+            "x": 1024.0,
+            "y": 128.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "Dropdown Chooser",
+            "properties": {
+              "topic": "/DashTest/ManualChooser",
+              "period": 0.06
+            }
           }
         ]
       }
