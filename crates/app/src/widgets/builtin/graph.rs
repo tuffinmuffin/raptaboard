@@ -987,6 +987,7 @@ mod tests {
                 others: &others,
                 connected: true,
                 effects: &effects,
+                structs: None,
             };
             let live = frame.live(None, Place::default());
             Graph.show(ui, rect, &w, &live);
@@ -1038,6 +1039,7 @@ mod tests {
                     others: &others,
                     connected: true,
                     effects: &effects,
+                    structs: None,
                 };
                 let live = frame.live(None, Place::default());
                 Graph.show(ui, rect, &w, &live);
@@ -1157,6 +1159,7 @@ mod tests {
                     others: &others,
                     connected: true,
                     effects: &effects,
+                    structs: None,
                 };
                 let live = frame.live(None, Place::default());
                 Graph.show(ui, rect, &w, &live);

@@ -690,6 +690,7 @@ mod tests {
             others: &others,
             connected: true,
             effects: &effects,
+            structs: None,
         };
         let place = crate::widgets::Place {
             locked: true,

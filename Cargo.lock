@@ -1925,6 +1925,8 @@ dependencies = [
  "num-traits",
  "png",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]
@@ -3227,6 +3229,7 @@ dependencies = [
  "eframe",
  "egui_kittest",
  "egui_plot",
+ "image",
  "nt4",
  "raptaboard-layout",
  "raptaboard-plugin-host",

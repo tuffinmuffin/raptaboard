@@ -11,6 +11,7 @@ pub mod binding;
 pub mod cli;
 pub mod connection;
 pub mod edit;
+pub mod fields;
 pub mod grid;
 pub mod layout_file;
 pub mod nt;

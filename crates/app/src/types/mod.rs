@@ -8,12 +8,14 @@
 //!   selected).
 //! - [`structs`]: WPILib struct values, decoded with the schemas the server
 //!   sends, as labelled fields.
+//! - [`field`]: a field (size, image, AprilTags) and poses on it.
 //! - [`enums`]: named states on a string or int topic, and where their
 //!   names come from.
 
 pub mod alerts;
 pub mod chooser;
 pub mod enums;
+pub mod field;
 pub mod structs;
 
 /// A number with up to 4 decimal places and no trailing zeros, as the

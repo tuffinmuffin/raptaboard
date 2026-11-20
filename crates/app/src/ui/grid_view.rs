@@ -388,6 +388,7 @@ impl DashboardApp {
                 crate::nt::ConnectionStatus::Connected { .. }
             ),
             effects,
+            structs: self.nt.structs(),
         };
         let place = widgets::Place {
             locked: self.locked,

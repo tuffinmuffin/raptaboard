@@ -7,6 +7,7 @@ pub mod boolean_box;
 pub mod chooser;
 pub mod color_view;
 pub mod enums;
+pub mod field;
 pub mod graph;
 pub mod large_text_display;
 pub mod match_time;

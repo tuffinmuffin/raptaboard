@@ -6,6 +6,7 @@
 mod alerts;
 mod choosers;
 mod enums;
+mod field;
 mod files;
 mod sliders;
 mod tree;
@@ -41,6 +42,7 @@ const TOPICS: &[(&str, &str)] = &[
     ("/Test/color", "string"),
     ("/Test/colors", "string[]"),
     ("/Test/numbers", "double[]"),
+    ("/Drive/pose", "struct:Pose2d"),
 ];
 
 /// A server publishing [`TOPICS`], on its own runtime as robot code would
@@ -261,8 +263,9 @@ fn every_widget_layout() -> ElasticLayout {
     let mut tab = Tab::new("Widgets");
     let grid = &mut tab.grid_layout;
     for (i, ty) in widgets::TYPES.iter().enumerate() {
-        // Choosers show the chooser table.
-        if !ty.table_types().is_empty() {
+        // Choosers and alerts show the chooser table (a Field shows a
+        // Pose2d topic instead).
+        if !ty.table_types().is_empty() && !TOPICS.iter().any(|(_, t)| ty.shows(t)) {
             let mut w = widget(ty.names()[0], "/Test/Auto", "", at(i));
             w.properties.remove("data_type");
             grid.containers.push(w);
@@ -709,5 +712,14 @@ fn chooser_layout() -> ElasticLayout {
     ElasticLayout {
         tabs: vec![tab],
         ..ElasticLayout::default()
+    }
+}
+
+/// Wait until something is labelled exactly `label`.
+fn labelled_soon(harness: &mut Harness, label: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while harness.query_by_label(label).is_none() {
+        assert!(Instant::now() < deadline, "nothing labelled {label:?}");
+        settle(harness);
     }
 }
