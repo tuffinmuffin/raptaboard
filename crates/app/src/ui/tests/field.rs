@@ -280,3 +280,30 @@ fn objects_draw_on_the_field_or_from_the_robot() {
     let mut harness = field_harness(&robot, lost);
     labelled_soon(&mut harness, "Field: no robot pose");
 }
+
+#[test]
+fn cameras_and_a_part_ride_on_the_robot() {
+    let robot = Robot::start();
+    let out = robot._server.publish::<bool>("/Sim/intakeOut");
+    out.set(true);
+    let mut field = pose_field();
+    field.properties.insert(
+        "attachments".into(),
+        json!([
+            {"kind": "camera", "name": "Side", "x": -0.15, "y": 0.3, "yaw": 90},
+            {"kind": "camera", "name": "Back", "x": -0.23, "y": 0.19, "yaw": 180},
+            {"kind": "part", "name": "Intake", "x": 0.34, "shown_by": "/Sim/intakeOut"}
+        ]),
+    );
+    let mut harness = field_harness(&robot, field);
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°; 2 cameras; 1 part",
+    );
+    // Stowed: the intake isn't drawn, the cameras still are.
+    out.set(false);
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°; 2 cameras",
+    );
+}

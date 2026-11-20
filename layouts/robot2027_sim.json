@@ -1006,6 +1006,46 @@
                   "robot_relative": true,
                   "color": 4283215696
                 }
+              ],
+              "attachments": [
+                {
+                  "kind": "camera",
+                  "name": "Side_Camera",
+                  "x": -0.1524,
+                  "y": 0.3048,
+                  "yaw": 90.0,
+                  "fov": 70.0,
+                  "bands": [
+                    4.0,
+                    6.0,
+                    8.0
+                  ]
+                },
+                {
+                  "kind": "camera",
+                  "name": "Back_Camera",
+                  "x": -0.2286,
+                  "y": 0.1905,
+                  "yaw": 180.0,
+                  "fov": 70.0,
+                  "bands": [
+                    4.0,
+                    6.0,
+                    8.0
+                  ]
+                },
+                {
+                  "kind": "part",
+                  "name": "Intake",
+                  "x": 0.3366,
+                  "y": 0.0,
+                  "yaw": 0.0,
+                  "length": 0.3,
+                  "width": 0.55,
+                  "shown_by": "/DashTest/IntakeDeployed",
+                  "length_topic": "/DashTest/IntakeExtensionIn",
+                  "scale": 0.0254
+                }
               ]
             }
           },
