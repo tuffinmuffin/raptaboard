@@ -511,8 +511,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    choosers) makes them show only: a state display for a subsystem, or a chooser watched from the
    pit. Struct enum fields stay display-only (Text Display shows their names). The tree scrolls
    sideways, so a wide row (opened by selecting a widget) doesn't widen it and move the grid.
-   Next: the enum widgets and choosers (with dragging a
-   chooser table from the tree), Alerts, Field, struct widgets.
+   Next: Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
    WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro, SwerveModuleState[] → swerve view.
