@@ -91,6 +91,10 @@ pub struct StartupOptions {
     pub locked: bool,
     /// Play a tone when a widget's value can't be sent.
     pub alert_sound: bool,
+    /// How many events the alert history keeps.
+    pub alert_history: usize,
+    /// Alerts the history doesn't record, by text they contain.
+    pub alert_history_ignore: Vec<String>,
     /// The settings file changes go to.
     pub store: settings::Store,
     /// Things to tell the user at startup, such as a settings file that
@@ -125,6 +129,10 @@ impl From<Loaded> for StartupOptions {
             show_tree: s.show_tree.unwrap_or(true),
             locked: s.locked.unwrap_or(false),
             alert_sound: s.alert_sound.unwrap_or(true),
+            alert_history: s
+                .alert_history
+                .unwrap_or(crate::alert_history::DEFAULT_CAPACITY),
+            alert_history_ignore: s.alert_history_ignore.unwrap_or_default(),
             store: loaded.store,
             notes: loaded.notes,
         }

@@ -151,7 +151,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `text_position` | `builtin/alerts.rs` | Alerts | `auto` (beside a wide widget, below a tall one), `right`, `below` | `auto` |
 | `min_level` | `builtin/alerts.rs` | Alerts | least urgent shown: `info`, `warning`, `error` | `info` |
 | `pulse`, `pulse_seconds` | `builtin/alerts.rs` | Alerts | pulse when a new error arrives, for how long (s) | true, 5 |
-| `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp` | false, `beep` |
+| `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp`, or a built-in clip: `disabled 1`, `disabled 2`, `fire 1`, `fire 2` | false, `beep` |
 | `enum_source` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | where the state names come from: `list`, `topic` (a string[] topic) or `chooser` (the widget's topic is a chooser table); guessed when a widget becomes one | `list` |
 | `enum_values` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | the listed states, one string per line: a value for a string topic; `3 = Climb` or a name (the next number, from 0) for an int topic | none |
 | `switches_between` | `builtin/enums.rs` | Enum Toggle | two state names to switch between, like a Toggle Button's off and on (lit on the second; from any other state a click goes to the first); not set, a click steps through every state | not set |
@@ -403,6 +403,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      errors, else the ! while there are warnings), the other two shrinking to make room, so the
      worst one reads at a glance from across the driver station; back to equal sizes when nothing
      above info is active.
+   - Alert history "Not recorded" entries as regular expressions too (a per-entry choice beside
+     today's partial text match, which stays the default), if more robot code turns up whose
+     alerts need it. Not needed yet: the one noisy alert (robot-2027's Frame Timing) is fixed at
+     the source and its numbers are already folded into one event.
    - Drag tabs to reorder them: unlocked, drag a tab along the tab bar, with a marker where it
      will land, and drop it to move it (one step for undo, like Move left and Move right in the
      tab's right-click menu, which stay). Tabs can only be reordered from that menu now, and
@@ -412,8 +416,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      and teleop, and e-stop. The state comes from WPILib's `/FMSInfo/FMSControlData` bits (check
      the 2027 topics), only on a change, not at connect. A settings entry per event: a file path
      (MP3 or WAV; `rodio` with its MP3 decoder) and on or off, plus a volume, and the bell
-     button mutes these too. The clip is the user's own file, not bundled: it's someone else's
-     recording. TODO: find the IT Crowd clip.
+     button mutes these too. Clips are built into the program from `media/audio/` (decided
+     2026-11-19: short, non-commercial use; removable later): "disabled 1" and "disabled 2" (the
+     IT Crowd's "I'm disabled"), "fire 1" and "fire 2", already offered as Alerts widget tones; a
+     file path setting for the team's own clips can come with this.
    - X/Y and polar graphs (`egui_plot`): pair two values recorded at the same time (x with y, or
      angle with distance) and plot one against the other, for a joystick's position, an arm
      joint's path or a turret's aim. Modes: a trail that fades out over a set time (time decay),
@@ -532,10 +538,21 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    it does, the last alerts stay, greyed. A tab with an Alerts widget showing an error or a warning
    gets that sign after its name, open or not (alert topics of other tabs' Alerts widgets are
    subscribed too). An alert group in the tree is a draggable row like a chooser.
-   Next: alert history (an app-level recorder of every group from connect, count-based, default
-   1,000 events, oldest dropped; a top-bar button with the highest level shows and hides its panel
-   of level, group, text, seen, cleared and how long, with Clear and filters; memory only), then
-   Field, struct widgets.
+   Alert history (`alert_history.rs`, `ui/alert_history_panel.rs`, done): every alert group is recorded
+   from connect, whether or not an Alerts widget shows it (every table's `.type` and the alert
+   groups' lists are subscribed every 0.02 s). An event per alert, known by group, level and text
+   with its numbers left out (`alert_history::pattern`), and which copy, so robot code that puts a
+   reading in its text (`Loop at 37%`, `38%`) is one event whose newest text is kept and whose
+   changes are counted; the `alert_history_ignore` setting (edited in the panel's "Not recorded"
+   list, or a row's right-click "Don't record alerts like this", which adds its text up to the
+   first number) leaves out alerts whose text contains an entry. Events: when it was seen, and when and how it ended (cleared; robot disconnected;
+   group not published). Count-based: the last `alert_history` events (setting, default 1,000,
+   also set in the panel), oldest dropped; nothing goes by age, so a match's alerts are there
+   afterwards; memory only. A top-bar "Alerts" button with the number active and the worst one's
+   sign shows and hides a right-side panel: newest first, with level, group, text, seen, how long,
+   and the ending; filters by level, group and text; Clear forgets ended events (active ones
+   stay). Match time isn't recorded yet (no standard topic for it).
+   Next: Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
    WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro, SwerveModuleState[] → swerve view.

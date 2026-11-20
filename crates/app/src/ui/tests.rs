@@ -673,8 +673,15 @@ fn settle(harness: &mut Harness) {
     }
 }
 
-/// Open the folder or struct whose header starts with `start`.
+/// Open the folder or struct whose header starts with `start`, waiting for
+/// it to be drawn first: a struct's row shows once its value has arrived,
+/// which a slow machine (CI's Windows) takes longer to do.
 fn open(harness: &mut Harness, start: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while harness.query_by_label_contains(start).is_none() {
+        assert!(Instant::now() < deadline, "no row starting {start:?}");
+        settle(harness);
+    }
     harness.get_by_label_contains(start).click();
     settle(harness);
 }
@@ -2393,4 +2400,137 @@ fn alerts_stay_shown_greyed_when_the_connection_drops() {
         &mut harness,
         "Alerts: 1 error, 1 warning, 1 info (disconnected)",
     );
+}
+
+#[test]
+fn the_alert_history_records_every_group_and_opens_from_the_top_bar() {
+    let robot = Robot::start();
+    let mut harness = alerts_harness(&robot);
+    use crate::alert_history::Ending;
+    // With no Alerts widget anywhere: it records anyway.
+    let app = harness.state_mut();
+    app.layout = ElasticLayout {
+        tabs: vec![Tab::new("Nothing")],
+        ..ElasticLayout::default()
+    };
+    app.current_tab = 0;
+    settle(&mut harness);
+    robot.arm_errors.set(vec!["Arm motor fault".into()]);
+    let ended = |h: &Harness, text: &str| {
+        h.state()
+            .alert_history
+            .events()
+            .rev()
+            .find(|e| e.text == text)
+            .map(|e| e.ended.map(|(_, how)| how))
+    };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while ended(&harness, "Arm motor fault") != Some(None) {
+        assert!(Instant::now() < deadline, "the fault was never recorded");
+        settle(&mut harness);
+    }
+    // The starting warning and info are in it too.
+    assert_eq!(ended(&harness, "Battery low"), Some(None));
+    // The top-bar button counts what's active and opens the history.
+    let button = harness.get_by_label_contains("Alerts 3").rect().center();
+    click_at(
+        &mut harness,
+        button,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert!(harness.state().show_alert_history);
+    labelled_soon(&mut harness, "Arm: Arm motor fault");
+    // Cleared by the robot.
+    robot.arm_errors.set(vec![]);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while ended(&harness, "Arm motor fault") != Some(Some(Ending::Cleared)) {
+        assert!(Instant::now() < deadline, "never cleared");
+        settle(&mut harness);
+    }
+    // Clear forgets ended ones, keeps active ones.
+    // The history's Clear (the tree's filter has one too), at the right.
+    let clear = harness
+        .get_all_by_label("Clear")
+        .map(|n| n.rect())
+        .max_by(|a, b| a.min.x.total_cmp(&b.min.x))
+        .unwrap();
+    click_at(
+        &mut harness,
+        clear.center(),
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(ended(&harness, "Arm motor fault"), None);
+    assert_eq!(ended(&harness, "Battery low"), Some(None));
+    // The robot goes: what was active ends as disconnected.
+    drop(robot);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while ended(&harness, "Battery low") != Some(Some(Ending::Disconnected)) {
+        assert!(Instant::now() < deadline, "never ended by the disconnect");
+        settle(&mut harness);
+    }
+}
+
+#[test]
+fn a_changing_alert_is_one_row_and_can_be_left_out_of_the_history() {
+    let robot = Robot::start();
+    let mut harness = alerts_harness(&robot);
+    let app = harness.state_mut();
+    app.layout = ElasticLayout {
+        tabs: vec![Tab::new("Nothing")],
+        ..ElasticLayout::default()
+    };
+    app.current_tab = 0;
+    app.show_alert_history = true;
+    settle(&mut harness);
+    // Robot code that puts a reading in its alert's text, every loop.
+    for pct in [37, 38, 36, 39] {
+        robot
+            .arm_warnings
+            .set(vec![format!("Loop at {pct}% of its budget")]);
+        settle(&mut harness);
+        std::thread::sleep(Duration::from_millis(30));
+        settle(&mut harness);
+    }
+    let rows = |h: &Harness| -> Vec<(String, u32)> {
+        h.state()
+            .alert_history
+            .events()
+            .filter(|e| e.group == "Arm")
+            .map(|e| (e.text.clone(), e.changes))
+            .collect()
+    };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while rows(&harness).first().map(|r| r.0.as_str()) != Some("Loop at 39% of its budget") {
+        assert!(Instant::now() < deadline, "{:?}", rows(&harness));
+        settle(&mut harness);
+    }
+    let got = rows(&harness);
+    assert_eq!(got.len(), 1, "one alert, not one per reading: {got:?}");
+    assert!(got[0].1 >= 1, "its changes are counted");
+    // Right-click its row: don't record alerts like this.
+    let row = harness
+        .get_by_label("Arm: Loop at 39% of its budget")
+        .rect()
+        .center();
+    click_at(
+        &mut harness,
+        row,
+        egui::PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    harness
+        .get_by_label("Don't record alerts like this")
+        .click();
+    settle(&mut harness);
+    assert_eq!(harness.state().alert_history.ignored(), ["Loop at"]);
+    assert!(rows(&harness).is_empty());
+    // New readings aren't recorded now.
+    robot
+        .arm_warnings
+        .set(vec!["Loop at 81% of its budget".into()]);
+    std::thread::sleep(Duration::from_millis(100));
+    settle(&mut harness);
+    assert!(rows(&harness).is_empty());
 }

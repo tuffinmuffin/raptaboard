@@ -77,6 +77,7 @@ impl DashboardApp {
             if ui.button(label).on_hover_text(hint).clicked() {
                 self.alert_sound = !self.alert_sound;
             }
+            self.alert_history_button(ui);
             ui.separator();
             ui.label("Team");
             // 0 is "no team yet", shown blank.
