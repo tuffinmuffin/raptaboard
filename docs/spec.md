@@ -145,9 +145,13 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `label_position` (Elastic) | `list_layout.rs` | List Layout | `TOP`, `LEFT`, `RIGHT`, `BOTTOM`, `HIDDEN` (any case read) | `TOP`; always written |
 | `min_value`, `max_value` (Elastic) | `builtin/number_bar.rs`, `radial_gauge.rs` | Number Bar, Voltage View, Radial Gauge, Number Slider | range | -1 to 1; Voltage 4 to 13; Gauge 0 to 100 |
 | `divisions` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View, Number Slider | labels along the bar, ends included | 5 |
-| `editable` | `builtin/text_display.rs` | Text Display | values can be typed in (a blue dot in the corner says so); not for arrays or struct fields | false |
+| `editable` | `shared/props.rs` | Text Display; Dropdown and Split Button Chooser; Enum Dropdown and Toggle | the value can be changed from the widget; off, it only shows it (choosers then show the robot's `active`). Text Display: typed in, with a blue dot; not for arrays or struct fields | Text Display false; the others true |
+| `enum_source` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | where the state names come from: `list`, `topic` (a string[] topic) or `chooser` (the widget's topic is a chooser table); guessed when a widget becomes one | `list` |
+| `enum_values` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | the listed states, one string per line: a value for a string topic; `3 = Climb` or a name (the next number, from 0) for an int topic | none |
+| `switches_between` | `builtin/enums.rs` | Enum Toggle | two state names to switch between, like a Toggle Button's off and on (lit on the second; from any other state a click goes to the first); not set, a click steps through every state | not set |
+| `options_topic` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | the string[] topic of names: values of a string topic, or names of 0, 1, 2 ... for an int topic | none |
 | `sort_options` (Elastic) | `builtin/chooser.rs` | Dropdown Chooser | list the options sorted by name | false |
-| `font_size` | `builtin/chooser.rs` | Dropdown Chooser, Split Button Chooser | text size in points; not set fits the text to the widget (drop-down: a third of its height, no wider than the longest option, 12 to 36 pt) | not set |
+| `font_size` | `builtin/chooser.rs` | Dropdown Chooser, Split Button Chooser, Enum Dropdown, Enum Toggle | text size in points; not set fits the text to the widget (drop-down: a third of its height, no wider than the longest option, 12 to 36 pt) | not set |
 | `publish_all` (Elastic) | `builtin/number_slider.rs` | Number Slider | send every value during a drag, not only where it's let go | false |
 | `step` | `builtin/number_slider.rs` | Number Slider | values snap to multiples of it from the minimum; 0 snaps to a thousandth of the range (rounded down to a power of ten); int topics use at least 1 | 0 |
 | `inverted` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | fill from the far end | false |
@@ -313,8 +317,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - NT tree rows (topics and struct fields that can be widgets) can be picked: click one,
      Ctrl+click (Cmd on macOS) to add or remove, Shift+click for a range. Picked rows are shaded;
      widgets showing them get an amber outline (list rows too), and other tabs with one get a ●.
-     The other way round: clicking a widget (or a list child) opens the tree to its topic or
-     field, scrolls to it and picks it.
+     The other way round: clicking a widget (or a list child) opens the tree to its topic,
+     field or chooser table, scrolls to it and picks it, locked or not and wherever on the widget
+     (a toggle or chooser button still does its own thing too; such a click says nothing if the
+     topic isn't in the tree, so a failed send's message stays).
      Right-click → "Add to grid" (or "Add N to grid") puts them in the free spots nearest the top
      left, and "Add to list ▸" adds them to a new list (sized to fit them; always offered) or to the end of
      one of the tab's lists; dragging a picked row takes them all, onto the grid (around the drop) or into a list.
@@ -383,6 +389,14 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      and when the robot reconnects). Taken from every value received, as graphs record them
      (`traces.rs`), not from the widget's sampled period, so short peaks count. Bars and gauges
      could also mark the min and max on their scale.
+   - Widget type choices that fit: the settings dialog's Widget list should offer only the types
+     that can show what the widget is bound to. A table (a chooser) isn't a topic, so it has no NT
+     type and every type is listed now: offer the chooser widgets (and the enum widgets on a
+     chooser) for a chooser table, and only number, text and so on for a topic of that type.
+   - Drag tabs to reorder them: unlocked, drag a tab along the tab bar, with a marker where it
+     will land, and drop it to move it (one step for undo, like Move left and Move right in the
+     tab's right-click menu, which stay). Tabs can only be reordered from that menu now, and
+     dragging is what people try first.
    - Sound clips on robot state changes: play a sound file when the robot is disabled (the first
      one: the "I'm disabled" quote from The IT Crowd), and optionally on enable, the start of auto
      and teleop, and e-stop. The state comes from WPILib's `/FMSInfo/FMSControlData` bits (check
@@ -483,7 +497,20 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    to empty, which is a restart), a pick is dropped: the robot's `active` (or `default`) is sent.
    In the tree, a table whose `.type` has a widget (`WidgetType::table_types`, "String Chooser") is
    one draggable row (its `.type` values are always watched) with an open arrow of its own that lists
-   its parts and their values (`options`, `active`, ...); with metadata shown it's a plain folder.
+   its parts and their values (`options`, `active`, ...; with metadata shown, `.type` and the other
+   hidden ones too), so it's found and dragged the same either way.
+   Enums (`builtin/enums.rs`, done): Enum Dropdown and Enum Toggle for a plain string or int topic
+   that robot code and dashboards both change (the newest value wins), or a chooser table. Names
+   from a list in the settings, a string[] topic, or the chooser (`enum_source`). When a widget is
+   changed to one (`WidgetType::chosen`, with every server topic in `ValueInfo::topics`) it guesses:
+   a chooser table if the topic is one, else a string[] topic beside it named `<name>Options`,
+   `<name>_options`, `<name>Names`, `<name>_names` or `<name>s` (any case), else a list; "Guess
+   again" redoes it. The toggle steps to the next state each click (two states switch), or with `switches_between`
+   switches between two chosen states like a boolean Toggle Button. A value
+   that isn't a state shows `unnamed (7)` or `text (not listed)`. `editable` off (also on the
+   choosers) makes them show only: a state display for a subsystem, or a chooser watched from the
+   pit. Struct enum fields stay display-only (Text Display shows their names). The tree scrolls
+   sideways, so a wide row (opened by selecting a widget) doesn't widen it and move the grid.
    Next: the enum widgets and choosers (with dragging a
    chooser table from the tree), Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,

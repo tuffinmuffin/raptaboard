@@ -119,6 +119,9 @@ struct Requests {
     wrap: Option<usize>,
     /// A widget clicked, to find its topic in the tree.
     find_in_tree: Option<WidgetContainer>,
+    /// A widget whose click it used itself, to find in the tree without
+    /// saying anything if it isn't there.
+    find_quietly: Option<WidgetContainer>,
     /// Values widgets want sent, and which widget sent each.
     writes: Vec<(Sender, Value)>,
 }
@@ -158,8 +161,45 @@ impl DashboardApp {
         }
         self.sampler = sampler.into_inner();
         self.tree_drop(ui, &painter, view, &mut requests);
+        // Any click on a widget finds it in the tree, locked or not, and
+        // whatever the widget does with the click (a toggle, a chooser's
+        // button). Clicks in a popup or dialog over the grid don't count.
+        if requests.find_in_tree.is_none()
+            && let Some(pos) = ui.input(|i| {
+                i.pointer
+                    .primary_clicked()
+                    .then(|| i.pointer.interact_pos())
+                    .flatten()
+            })
+            && area.contains(pos)
+            && ui.ctx().layer_id_at(pos) == Some(ui.layer_id())
+        {
+            requests.find_quietly = self.widget_under(view, pos);
+        }
 
         self.apply(ui, view, requests);
+    }
+
+    /// The widget (or List Layout child) under `pos` on screen, if any.
+    fn widget_under(&self, view: GridView, pos: Pos2) -> Option<WidgetContainer> {
+        let grid = &self.tab()?.grid_layout;
+        for (item, r) in grid::items(grid) {
+            let rect = view.to_screen(&r);
+            if !rect.contains(pos) {
+                continue;
+            }
+            return match item {
+                Item::Widget(i) => grid.containers.get(i).cloned(),
+                Item::List(i) => {
+                    let list = grid.layouts.get(i)?;
+                    list_layout::rows_on_screen(rect.shrink(CELL_GAP), list)
+                        .into_iter()
+                        .find(|row| row.row.contains(pos))
+                        .and_then(|row| list.children.get(row.index).cloned())
+                }
+            };
+        }
+        None
     }
 
     /// The open tab, if there is one.
@@ -717,6 +757,7 @@ impl DashboardApp {
             edit_child,
             wrap,
             find_in_tree,
+            find_quietly,
             writes,
         } = requests;
         for (sender, value) in writes {
@@ -783,6 +824,9 @@ impl DashboardApp {
                 None => self.status = "No free space for a new list".to_owned(),
             }
         }
+        if let Some(widget) = find_quietly {
+            self.find_in_tree_quietly(&widget);
+        }
         if let Some(widget) = find_in_tree {
             self.find_in_tree(&widget);
         }
@@ -832,7 +876,8 @@ impl DashboardApp {
         // connection is used.
         let topic = widget.topic().map(str::to_owned);
         let is_field = widget.struct_meta().is_some();
-        let sends_to = widgets::find(&widget.widget_type).and_then(|ty| ty.sends_to());
+        let sends_to =
+            widgets::find(&widget.widget_type).and_then(|ty| ty.sends_to(&widget.properties));
         let result = match (topic, is_field) {
             // A topic under the widget's (a chooser's `selected`), which
             // the dashboard publishes if nobody has yet.

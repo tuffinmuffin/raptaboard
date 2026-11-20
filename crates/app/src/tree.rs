@@ -503,11 +503,10 @@ impl Folder {
             let folder_path = format!("{path}/{name}");
             // A table with a widget of its own (a chooser) is one row that
             // drags as a whole, with an arrow of its own that opens it to
-            // show its parts (options, active, ...). With metadata shown it's
-            // an ordinary folder, `.type` and all.
+            // show its parts (options, active, ...; with metadata shown,
+            // `.type` and the rest too).
             if let Some(ty) = &folder.table_type
                 && widgets::type_for_table(ty).is_some()
-                && !folder.topics.contains_key(".type")
             {
                 let row = DraggedTopic {
                     name: folder_path.clone(),

@@ -15,6 +15,10 @@ pub const PERIOD: &str = "period";
 pub const DATA_TYPE: &str = "data_type";
 /// Value text size in points (raptaboard).
 pub const FONT_SIZE: &str = "font_size";
+/// Values can be changed from the widget (raptaboard's). Off, a widget
+/// that writes only shows its value: a Text Display is off unless set, the
+/// choosers and enum widgets are on unless set.
+pub const EDITABLE: &str = "editable";
 
 /// Elastic's default widget update period, in seconds.
 pub const DEFAULT_PERIOD_S: f64 = 0.06;
@@ -96,6 +100,12 @@ pub fn font_size(props: &Map<String, Json>) -> f32 {
         .map_or(DEFAULT_FONT_SIZE, |f| {
             (f as f32).clamp(MIN_FONT_SIZE, MAX_FONT_SIZE)
         })
+}
+
+/// The `font_size` setting, if one is set (`None` for widgets that fit
+/// their text when it isn't).
+pub fn font_size_set(props: &Map<String, Json>) -> Option<f32> {
+    props.contains_key(FONT_SIZE).then(|| font_size(props))
 }
 
 /// The "Text size" row of the settings dialog, for `font_size`.
@@ -315,6 +325,17 @@ pub fn text_color_on(background: Color32) -> Color32 {
     } else {
         Color32::WHITE
     }
+}
+
+/// The "Editable" settings row, for [`EDITABLE`], with `hover` saying what
+/// it means for this widget. Back at `default`, the setting is removed.
+pub fn editable_row(ui: &mut egui::Ui, props: &mut Map<String, Json>, default: bool, hover: &str) {
+    ui.label("Editable").on_hover_text(hover);
+    let mut on = flag(props, EDITABLE, default);
+    if ui.checkbox(&mut on, "").on_hover_text(hover).changed() {
+        set_property(props, EDITABLE, (on != default).then(|| on.into()));
+    }
+    ui.end_row();
 }
 
 #[cfg(test)]

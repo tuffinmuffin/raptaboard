@@ -15,6 +15,9 @@ use super::props::{self, DEFAULT_PERIOD_S, MAX_PERIOD_S, MIN_PERIOD_S, PERIOD, s
 use crate::struct_view::FieldInfo;
 use crate::widgets::{TYPES, ValueInfo, find, source_title};
 
+/// The widest the "Shows" row's topic name gets before it wraps, in points.
+const SHOWS_WIDTH: f32 = 320.0;
+
 /// Whether any of `widget`'s settings differ from the defaults, so
 /// [`reset_settings`] would change something. The title doesn't count.
 pub fn has_custom_settings(widget: &WidgetContainer) -> bool {
@@ -66,11 +69,15 @@ pub fn reset_settings(widget: &mut WidgetContainer) {
 /// of them if the type isn't known. `field_info` is what the schema says
 /// about the struct field it shows, if it shows one; an enum field adds the
 /// choice of name, number or both, and the type row lists its values.
+///
+/// `topics` is every topic on the server, as (full name, NT type), for
+/// settings that refer to other topics.
 pub fn show(
     ui: &mut egui::Ui,
     widget: &mut WidgetContainer,
     nt_type: Option<&str>,
     field_info: Option<&FieldInfo>,
+    topics: &[(String, String)],
 ) {
     let source = widget.topic().unwrap_or_default().to_owned();
     let field = widget.struct_meta();
@@ -97,7 +104,9 @@ pub fn show(
 
             ui.label("Shows");
             ui.vertical(|ui| {
-                ui.monospace(&source);
+                // The whole name, wrapped onto more lines if it's long.
+                ui.set_max_width(SHOWS_WIDTH);
+                ui.add(egui::Label::new(egui::RichText::new(&source).monospace()).wrap());
                 if let Some(field) = &field {
                     ui.weak(format!(
                         "field {} of {}",
@@ -144,6 +153,15 @@ pub fn show(
                     );
                 }
                 widget.widget_type = picked;
+                // The new type sets up what it can work out.
+                if let Some(new) = find(&widget.widget_type) {
+                    let value = ValueInfo {
+                        nt_type,
+                        field: field_info,
+                        topics,
+                    };
+                    new.chosen(&mut widget.properties, value);
+                }
             }
             ui.end_row();
 
@@ -187,6 +205,7 @@ pub fn show(
                 let value = ValueInfo {
                     nt_type,
                     field: field_info,
+                    topics,
                 };
                 ty.settings(ui, &mut widget.properties, value);
             }
@@ -237,7 +256,7 @@ mod tests {
         };
         let ctx = egui::Context::default();
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-            show(ui, w, nt_type, is_enum.then_some(&info));
+            show(ui, w, nt_type, is_enum.then_some(&info), &[]);
         });
         // No window to upload the font texture to.
         output.textures_delta.clear();
