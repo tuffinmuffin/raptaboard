@@ -910,8 +910,7 @@
             "type": "Alerts",
             "properties": {
               "topic": "/SmartDashboard/Alerts",
-              "period": 0.06,
-              "sound": true
+              "period": 0.06
             }
           },
           {

@@ -399,6 +399,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      that can show what the widget is bound to. A table (a chooser) isn't a topic, so it has no NT
      type and every type is listed now: offer the chooser widgets (and the enum widgets on a
      chooser) for a chooser table, and only number, text and so on for a topic of that type.
+   - Alerts: the most urgent active sign in the circle grows larger (an error's ✕ while there are
+     errors, else the ! while there are warnings), the other two shrinking to make room, so the
+     worst one reads at a glance from across the driver station; back to equal sizes when nothing
+     above info is active.
    - Drag tabs to reorder them: unlocked, drag a tab along the tab bar, with a marker where it
      will land, and drop it to move it (one step for undo, like Move left and Move right in the
      tab's right-click menu, which stay). Tabs can only be reordered from that menu now, and
