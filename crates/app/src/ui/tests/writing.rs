@@ -302,3 +302,28 @@ fn double_clicking_a_list_child_opens_only_its_settings() {
     settle(&mut harness);
     assert!(harness.state().editing.is_none());
 }
+
+#[test]
+fn a_touchscreen_tap_on_a_list_child_goes_to_it_not_the_widget_under_the_mouse() {
+    let robot = Robot::start();
+    let mut harness = writing_harness(&robot);
+    harness.state_mut().locked = true;
+    settle(&mut harness);
+    dashboard_has(&mut harness, "/Test/enabled", nt4::Value::Boolean(false));
+    // The list's second child (a switch on a topic never sent) is tapped;
+    // the mouse is back on the grid's first toggle.
+    let (toggle, _) = body_and_title(&harness, 0);
+    let child = child_middle(&harness, 0, 1);
+    tap_burst(&mut harness, child, toggle);
+    let app = harness.state();
+    assert!(
+        app.sends
+            .failed
+            .contains_key(&(0, Sender::Child { list: 0, child: 1 })),
+        "the tapped child didn't take it"
+    );
+    // The toggle under the mouse did nothing.
+    std::thread::sleep(Duration::from_millis(200));
+    settle(&mut harness);
+    assert_eq!(robot.seen_enabled.get(), Some(false));
+}

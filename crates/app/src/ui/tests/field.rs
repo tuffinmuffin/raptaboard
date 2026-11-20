@@ -471,7 +471,8 @@ fn a_touchscreen_tap_sets_the_target_where_it_was_not_where_the_mouse_went_back(
         "Field: robot at x 1.50 m, y 2.50 m, facing 43°",
     );
     let tap = field_area(&harness).center();
-    let mouse = tap + egui::vec2(200.0, 100.0);
+    // The mouse was off the Field, below it.
+    let mouse = field_area(&harness).center_bottom() + egui::vec2(0.0, 60.0);
     tap_burst(&mut harness, tap, mouse);
     labelled_soon(
         &mut harness,
@@ -491,7 +492,8 @@ fn a_tap_on_the_target_clears_it() {
         "Field: robot at x 1.50 m, y 2.50 m, facing 43°",
     );
     let middle = field_area(&harness).center();
-    let mouse = middle + egui::vec2(200.0, 100.0);
+    // The mouse was off the Field, below it.
+    let mouse = field_area(&harness).center_bottom() + egui::vec2(0.0, 60.0);
     tap_burst(&mut harness, middle, mouse);
     labelled_soon(
         &mut harness,

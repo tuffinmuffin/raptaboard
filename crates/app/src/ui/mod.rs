@@ -8,6 +8,7 @@ mod live;
 mod panels;
 mod state;
 mod style;
+mod taps;
 mod tree_panel;
 
 #[cfg(test)]
@@ -114,6 +115,8 @@ pub struct DashboardApp {
     alerts: Alerts,
     /// Values widgets couldn't send.
     sends: Sends,
+    /// Pointer events held back after a touchscreen tap (see [`taps`]).
+    taps: taps::TapHold,
 }
 
 impl DashboardApp {
@@ -161,6 +164,7 @@ impl DashboardApp {
                 filter: Default::default(),
             },
             sends: Sends::default(),
+            taps: taps::TapHold::default(),
         };
         if let Some(path) = options.layout_path {
             let path = PathBuf::from(path);
@@ -529,6 +533,12 @@ impl DashboardApp {
 }
 
 impl eframe::App for DashboardApp {
+    /// Before egui reads a frame's input: a touchscreen tap's move back to
+    /// the mouse waits a frame, so the tap lands where it was (see [`taps`]).
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        taps::hold_after_taps(&mut self.taps, ctx, raw_input);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.show(ui);
     }

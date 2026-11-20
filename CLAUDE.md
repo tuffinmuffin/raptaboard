@@ -115,7 +115,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   and its settings dialog), helpers in `widgets/shared/`:
   `card.rs`, `entry.rs` (the box a value is typed into: Number Slider, editable Text Display), `pointer.rs` (where a
   tap really was: a touchscreen on macOS sends a whole tap in one frame and puts the cursor back, so
-  positions come from the release event; tests replay it with `tap_burst`), `format.rs` (number and
+  positions come from the release event; `ui/taps.rs` `TapHold`, run from `raw_input_hook`, holds the
+  move back to the mouse for the next frame so egui gives the tap to the widget tapped; tests replay it
+  with `tap_burst`, mouse on another widget), `format.rs` (number and
   enum text, `EnumDisplay`), `alert_sign.rs` (alert level colors and signs, for the widget, tab marks
   and history), `props.rs` (period, font size, colors) and `settings.rs` (the settings dialog's shared
   rows; the dialog window is in `ui/dialogs.rs`); setting keys are constants in the file that owns them,
