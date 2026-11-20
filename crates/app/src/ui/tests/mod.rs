@@ -9,6 +9,7 @@ mod clips;
 mod enums;
 mod field;
 mod files;
+mod gyro;
 mod sliders;
 mod tree;
 mod window;

@@ -367,6 +367,7 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::alerts::AlertsWidget,
     &builtin::graph::Graph,
     &builtin::field::FieldWidget,
+    &builtin::gyro::Gyro,
 ];
 
 /// The widget type saved as `type_name` (including Elastic's other names
@@ -376,7 +377,8 @@ pub static TYPES: &[&dyn WidgetType] = &[
 /// use raptaboard::widgets::find;
 /// assert_eq!(find("Text View").unwrap().names()[0], "Text Display");
 /// assert!(find("Boolean Box").is_some());
-/// assert!(find("Gyro").is_none());
+/// assert!(find("Gyro").is_some());
+/// assert!(find("Swerve Drive").is_none());
 /// ```
 pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
     TYPES
@@ -387,7 +389,8 @@ pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
 
 /// The widget type name to make for a topic dropped on the grid, by its NT
 /// type string: a Boolean Box for booleans, a Text Display for numbers,
-/// strings and arrays of them, a Field for a Pose2d or Pose3d. `None` for
+/// strings and arrays of them, a Field for a Pose2d or Pose3d, a Gyro
+/// for a Rotation2d. `None` for
 /// types with no widget yet, such as other structs; those can't be
 /// dragged.
 ///
@@ -396,6 +399,7 @@ pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
 /// assert_eq!(type_for_topic("boolean"), Some("Boolean Box"));
 /// assert_eq!(type_for_topic("double"), Some("Text Display"));
 /// assert_eq!(type_for_topic("struct:Pose2d"), Some("Field"));
+/// assert_eq!(type_for_topic("struct:Rotation2d"), Some("Gyro"));
 /// assert_eq!(type_for_topic("struct:SwerveModuleState[]"), None);
 /// ```
 pub fn type_for_topic(nt_type: &str) -> Option<&'static str> {

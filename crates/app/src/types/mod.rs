@@ -9,10 +9,13 @@
 //! - [`structs`]: WPILib struct values, decoded with the schemas the server
 //!   sends, as labelled fields.
 //! - [`field`]: a field (size, image, AprilTags) and poses on it.
+//! - [`angle`]: headings (a `Rotation2d`, a gyro's degrees) and which way
+//!   they count.
 //! - [`enums`]: named states on a string or int topic, and where their
 //!   names come from.
 
 pub mod alerts;
+pub mod angle;
 pub mod chooser;
 pub mod enums;
 pub mod field;

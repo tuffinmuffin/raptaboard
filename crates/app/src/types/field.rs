@@ -112,7 +112,7 @@ impl FieldInfo {
 }
 
 /// The yaw (turn about +Z, radians) of the rotation in a quaternion.
-fn yaw_of(w: f64, x: f64, y: f64, z: f64) -> f64 {
+pub(crate) fn yaw_of(w: f64, x: f64, y: f64, z: f64) -> f64 {
     (2.0 * (w * z + x * y)).atan2(1.0 - 2.0 * (y * y + z * z))
 }
 
