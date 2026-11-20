@@ -1198,15 +1198,19 @@ fn slider_harness(robot: &Robot) -> Harness {
     harness
 }
 
+/// Where grid widget `index`'s card is on screen.
+fn card_on_screen(harness: &Harness, index: usize) -> Rect {
+    let app = harness.state();
+    let r = app.layout.tabs[0].grid_layout.containers[index].rect;
+    let min = app.grid_area.min + egui::vec2(r.x as f32, r.y as f32);
+    Rect::from_min_size(min, egui::vec2(r.width as f32, r.height as f32))
+        .shrink(super::style::CELL_GAP)
+}
+
 /// Where slider widget `index`'s track is on screen.
 fn slider_track(harness: &Harness, index: usize) -> Rect {
-    let app = harness.state();
-    let w = &app.layout.tabs[0].grid_layout.containers[index];
-    let r = w.rect;
-    let min = app.grid_area.min + egui::vec2(r.x as f32, r.y as f32);
-    let card = Rect::from_min_size(min, egui::vec2(r.width as f32, r.height as f32))
-        .shrink(super::style::CELL_GAP);
-    widgets::builtin::number_slider::track_on_card(card, &w.properties)
+    let props = &harness.state().layout.tabs[0].grid_layout.containers[index].properties;
+    widgets::builtin::number_slider::track_on_card(card_on_screen(harness, index), props)
 }
 
 /// The point `fraction` of the way along `track`.
@@ -1321,4 +1325,105 @@ fn a_slider_works_inside_a_list() {
         assert!(Instant::now() < deadline, "{:?}", robot.seen_setpoint.get());
         settle(&mut harness);
     }
+}
+
+/// Type `text` into whatever has the keyboard.
+fn type_text(harness: &mut Harness, text: &str) {
+    harness.event(Event::Text(text.into()));
+    harness.step();
+}
+
+/// Press and let go of `k`.
+fn press(harness: &mut Harness, k: Key) {
+    for event in key(k, Modifiers::NONE) {
+        harness.event(event);
+    }
+    settle(harness);
+}
+
+#[test]
+fn clicking_a_sliders_value_types_one_in() {
+    let robot = Robot::start();
+    let mut harness = slider_harness(&robot);
+    let primary = egui::PointerButton::Primary;
+    harness.state_mut().locked = true;
+    settle(&mut harness);
+    let value = widgets::builtin::number_slider::value_on_card(card_on_screen(&harness, 0));
+    let wants_keys = |h: &Harness| h.ctx.egui_wants_keyboard_input();
+    // A click on the value opens the box, with the value selected:
+    // typing replaces it, and Enter sends it.
+    click_at(&mut harness, value, primary, Modifiers::NONE);
+    assert!(wants_keys(&harness), "the box didn't open");
+    type_text(&mut harness, "7.5");
+    press(&mut harness, Key::Enter);
+    server_has_setpoint(&mut harness, &robot, 7.5);
+    assert!(!wants_keys(&harness));
+    // Not a number: nothing is sent and the box stays open to fix it...
+    click_at(&mut harness, value, primary, Modifiers::NONE);
+    type_text(&mut harness, "fast");
+    press(&mut harness, Key::Enter);
+    assert!(wants_keys(&harness), "the box closed on a bad value");
+    // ...and Escape closes it, still sending nothing.
+    press(&mut harness, Key::Escape);
+    assert!(!wants_keys(&harness));
+    // A click somewhere else closes it unsent too.
+    click_at(&mut harness, value, primary, Modifiers::NONE);
+    type_text(&mut harness, "2");
+    let empty = harness.state().grid_area.min + egui::vec2(1400.0, 900.0);
+    click_at(&mut harness, empty, primary, Modifiers::NONE);
+    assert!(!wants_keys(&harness));
+    // Past the range goes to its end.
+    click_at(&mut harness, value, primary, Modifiers::NONE);
+    type_text(&mut harness, "250");
+    press(&mut harness, Key::Enter);
+    server_has_setpoint(&mut harness, &robot, 10.0);
+    // Wait out the widget's hold, then check nothing else was sent.
+    std::thread::sleep(Duration::from_millis(200));
+    settle(&mut harness);
+    assert_eq!(robot.seen_setpoint.get(), Some(10.0));
+    // Unlocked the value still opens the box (it's in the body).
+    harness.state_mut().locked = false;
+    settle(&mut harness);
+    click_at(&mut harness, value, primary, Modifiers::NONE);
+    assert!(wants_keys(&harness));
+    press(&mut harness, Key::Escape);
+    assert_eq!(harness.state().selected, None);
+}
+
+#[test]
+fn escape_cancels_a_slider_drag() {
+    let robot = Robot::start();
+    let mut harness = slider_harness(&robot);
+    harness.state_mut().locked = true;
+    settle(&mut harness);
+    // Sent on release: Escape mid-drag, and letting go sends nothing.
+    let track = slider_track(&harness, 0);
+    press_and_move(&mut harness, along(track, 0.2), &[along(track, 0.8)]);
+    press(&mut harness, Key::Escape);
+    harness.hover_at(along(track, 0.9));
+    harness.step();
+    harness.drop_at(along(track, 0.9));
+    std::thread::sleep(Duration::from_millis(200));
+    settle(&mut harness);
+    assert_eq!(robot.seen_setpoint.get(), Some(0.0));
+    // With publish_all the drag already sent values: Escape sends back
+    // the value from before it.
+    let track = slider_track(&harness, 1);
+    press_and_move(&mut harness, along(track, 0.2), &[along(track, 0.7)]);
+    server_has_setpoint(&mut harness, &robot, 7.0);
+    press(&mut harness, Key::Escape);
+    server_has_setpoint(&mut harness, &robot, 0.0);
+    harness.drop_at(along(track, 0.7));
+    std::thread::sleep(Duration::from_millis(200));
+    settle(&mut harness);
+    assert_eq!(robot.seen_setpoint.get(), Some(0.0));
+    // After a cancel, the next drag works as usual.
+    let track = slider_track(&harness, 0);
+    click_at(
+        &mut harness,
+        along(track, 0.4),
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    server_has_setpoint(&mut harness, &robot, 4.0);
 }

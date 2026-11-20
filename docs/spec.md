@@ -454,8 +454,13 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    Number Slider (`builtin/number_slider.rs`, done): pressing anywhere in its input area moves the
    knob there and a drag follows the pointer, also outside the widget; it sends where it's let go,
    or every value with `publish_all`; the knob stays at the sent value until the server has it (or
-   1 s), so it doesn't jump back while the value is on its way. Horizontal only for now; vertical,
-   keyboard and scroll-wheel nudges are later.
+   1 s), so it doesn't jump back while the value is on its way. Escape during a drag cancels it:
+   nothing is sent, or with `publish_all` the value from before the drag is sent back (egui ends a
+   drag on Escape, and Escape doesn't deselect while a button is held). Clicking the written value
+   opens a box with the value selected: Enter sends what's typed (a unit may be left on; kept in
+   the range, whole for int topics, not snapped to `step`); a bad number turns red and stays open;
+   Escape or a click elsewhere closes it unsent. Horizontal only for now; vertical, keyboard and
+   scroll-wheel nudges are later.
    Next: editable Text Display, the enum widgets and choosers (with dragging a
    chooser table from the tree), Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,

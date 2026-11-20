@@ -9,7 +9,12 @@
 //! is let go, or all the way through the drag with `publish_all` (as in
 //! Elastic). Until the server has the sent value, or a second has passed,
 //! the knob stays where it was let go, so it doesn't jump back while the
-//! value is on its way.
+//! value is on its way. Escape during a drag cancels it: nothing is sent
+//! (with `publish_all`, the value from before the drag is sent back).
+//!
+//! A click on the written value opens a box to type a value in: Enter
+//! sends it (kept inside the range), Escape or a click elsewhere closes it
+//! without sending.
 //!
 //! Elastic's settings: `min_value`, `max_value`, `divisions` (how many
 //! labels) and `publish_all`. raptaboard's: `step` (values snap to a
@@ -150,6 +155,13 @@ pub fn track_on_card(card: Rect, p: &Map<String, Json>) -> Rect {
     track_rect(body.shrink(card::BODY_MARGIN), scale::show_value(p))
 }
 
+/// The middle of the value written on a Number Slider whose card is
+/// `card`: a click there opens the box for typing a value.
+pub fn value_on_card(card: Rect) -> egui::Pos2 {
+    let body = card.with_min_y(card.min.y + card::TITLE_HEIGHT);
+    value_rect(body.shrink(card::BODY_MARGIN)).center()
+}
+
 /// Draw the slider in `body`: the value `shown` (none: "no value"), the
 /// track filled to it with the knob, and labels under it.
 fn paint(
@@ -159,11 +171,12 @@ fn paint(
     p: &Map<String, Json>,
     setup: &Setup,
     shown: Option<f64>,
+    draw_value: bool,
 ) {
     let show_value = scale::show_value(p);
     let track = track_rect(body, show_value);
     let label_color = visuals.weak_text_color();
-    if show_value {
+    if show_value && draw_value {
         let text = match shown {
             Some(v) => scale::value_with_unit(v, setup.whole, p, ""),
             None => "no value".to_owned(),
@@ -215,20 +228,69 @@ fn paint(
     }
 }
 
+/// The strip along the top of `body` where the value is written; a click
+/// there types a value in.
+fn value_rect(body: Rect) -> Rect {
+    body.with_max_y((body.min.y + VALUE_SIZE * 1.5).min(body.max.y))
+}
+
+/// The value typed into the slider's box, or `None` if it isn't a number.
+/// The unit may be left on (`12 V`); a value outside the range is brought
+/// to its nearest end, and an int topic gets the nearest whole number. The
+/// step doesn't apply: a typed value is sent as typed.
+fn parse_entry(text: &str, setup: &Setup, unit: &str) -> Option<f64> {
+    let text = text.trim();
+    let text = text.strip_suffix(unit.trim()).unwrap_or(text).trim();
+    let n: f64 = text.parse().ok().filter(|n: &f64| n.is_finite())?;
+    let n = n.clamp(setup.min.min(setup.max), setup.min.max(setup.max));
+    Some(if setup.whole { n.round() } else { n })
+}
+
 /// A value the slider has set and shows instead of the topic's: while the
 /// button is down, and after it's let go until the topic has it (or
 /// [`HOLD_S`] has passed).
 #[derive(Clone, Copy, Debug)]
 struct Held {
     value: f64,
+    /// The topic's value when the button went down, sent back if the drag
+    /// is cancelled after `publish_all` already sent something.
+    start: Option<f64>,
     /// The last value sent during this drag, with `publish_all`.
     sent: Option<f64>,
     /// When the button was let go (egui time, seconds); `None` while down.
     released: Option<f64>,
+    /// Escape was pressed during the drag: nothing more is sent, and the
+    /// topic's value shows again.
+    cancelled: bool,
+}
+
+impl Held {
+    /// Cancel the drag. The value to send back: the one from before the
+    /// drag, if `publish_all` already sent another.
+    fn cancel(&mut self) -> Option<f64> {
+        self.cancelled = true;
+        (self.sent.is_some() && self.sent != self.start)
+            .then_some(self.start)
+            .flatten()
+    }
+}
+
+/// The box the value is typed into while it's open.
+#[derive(Clone, Debug, Default)]
+struct Entry {
+    text: String,
+    /// The box has had the keyboard (it's given it the frame it opens).
+    focused: bool,
+    /// Enter was pressed on text that isn't a number.
+    bad: bool,
 }
 
 /// The slider with input over `area` and drawn in `body`. The value to
 /// send, if any.
+///
+/// Pressing in `area` moves the knob and a drag follows it; Escape during
+/// the drag cancels it. A click on the value opens a box to type one in:
+/// Enter sends it, Escape or a click elsewhere closes the box unsent.
 fn show_slider(
     ui: &mut egui::Ui,
     area: Rect,
@@ -244,39 +306,77 @@ fn show_slider(
         return None;
     }
     let setup = Setup::new(p, live.value);
-    let track = track_rect(body, scale::show_value(p));
+    let show_value = scale::show_value(p);
+    let track = track_rect(body, show_value);
     let id = ui.scope_id().with("number_slider");
+    let entry_id = id.with("entry");
     let response = ui.interact(area, id, Sense::click_and_drag());
-    if response.hovered() || response.is_pointer_button_down_on() {
+    // The value's own click area, over the slider's (later wins).
+    let value_area = value_rect(body).intersect(area);
+    let value_click = show_value.then(|| ui.interact(value_area, entry_id, Sense::click()));
+    let on_value = value_click.as_ref().is_some_and(|r| r.hovered());
+    if on_value {
+        ui.ctx().set_cursor_icon(CursorIcon::Text);
+    } else if response.hovered() || response.is_pointer_button_down_on() {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
     let now = ui.input(|i| i.time);
+    let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
     let mut held: Option<Held> = ui.data(|d| d.get_temp(id));
+    let mut entry: Option<Entry> = ui.data(|d| d.get_temp(entry_id));
     let mut send = None;
+    if value_click.as_ref().is_some_and(|r| r.clicked()) && entry.is_none() {
+        let text = held.map(|h| h.value).or(topic).map_or(String::new(), |v| {
+            if setup.whole {
+                format!("{v:.0}")
+            } else {
+                v.to_string()
+            }
+        });
+        entry = Some(Entry {
+            text,
+            ..Entry::default()
+        });
+    }
     if response.is_pointer_button_down_on()
         && let Some(pos) = response.interact_pointer_pos()
     {
-        let at = (pos.x - track.min.x) / track.width().max(1.0);
-        let value = value_at(at, setup.min, setup.max, setup.step);
-        let sent = held.and_then(|h| h.released.is_none().then_some(h.sent).flatten());
-        let mut h = Held {
-            value,
-            sent,
+        let ongoing = held.filter(|h| h.released.is_none());
+        let mut h = ongoing.unwrap_or(Held {
+            value: topic.unwrap_or(setup.min),
+            start: topic,
+            sent: None,
             released: None,
-        };
-        if props::flag(p, PUBLISH_ALL, false) && sent != Some(value) {
-            h.sent = Some(value);
-            send = Some(value);
+            cancelled: false,
+        });
+        if escape && !h.cancelled {
+            send = h.cancel();
+        }
+        if !h.cancelled {
+            let at = (pos.x - track.min.x) / track.width().max(1.0);
+            h.value = value_at(at, setup.min, setup.max, setup.step);
+            if props::flag(p, PUBLISH_ALL, false) && h.sent != Some(h.value) {
+                h.sent = Some(h.value);
+                send = Some(h.value);
+            }
         }
         held = Some(h);
     } else if let Some(h) = held.as_mut()
         && h.released.is_none()
     {
-        // Let go: send where it ended (unless that was sent already).
+        // Let go: send where it ended (unless that was sent already). egui
+        // ends a drag when Escape is pressed, so a let-go with Escape is a
+        // cancel.
         h.released = Some(now);
-        if h.sent != Some(h.value) {
+        if escape && !h.cancelled {
+            send = h.cancel();
+        } else if !h.cancelled && h.sent != Some(h.value) {
             send = Some(h.value);
         }
+    }
+    // A cancelled drag shows the topic's value at once.
+    if held.is_some_and(|h| h.cancelled && h.released.is_some()) {
+        held = None;
     }
     // Stop holding once the topic has the value, or after a while.
     if let Some(h) = held
@@ -285,9 +385,75 @@ fn show_slider(
     {
         held = None;
     }
+    let shown = match held {
+        Some(h) if !h.cancelled => Some(h.value),
+        _ => topic,
+    };
+    let painter = ui.painter().with_clip_rect(body.intersect(ui.clip_rect()));
+    paint(&painter, &visuals, body, p, &setup, shown, entry.is_none());
+
+    // The box for typing a value, where the value is written.
+    if let Some(e) = entry.as_mut() {
+        let width = (body.width() - 2.0 * PAD).clamp(0.0, 160.0);
+        let rect = Rect::from_center_size(
+            value_rect(body).center(),
+            egui::vec2(width, VALUE_SIZE + 8.0),
+        );
+        let mut edit = egui::TextEdit::singleline(&mut e.text)
+            .id(entry_id.with("box"))
+            .font(egui::FontId::monospace(VALUE_SIZE))
+            .align(egui::Align2::CENTER_CENTER);
+        if e.bad {
+            edit = edit.text_color(visuals.error_fg_color);
+        }
+        let box_id = entry_id.with("box");
+        let r = ui.put(rect, edit);
+        if !e.focused {
+            r.request_focus();
+            e.focused = true;
+            // The value starts selected, so typing replaces it.
+            if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), box_id) {
+                let all = egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(0),
+                    egui::text::CCursor::new(e.text.chars().count()),
+                );
+                state.cursor.set_char_range(Some(all));
+                state.store(ui.ctx(), box_id);
+            }
+        } else if r.lost_focus() {
+            if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                match parse_entry(&e.text, &setup, props::text(p, scale::UNIT, "")) {
+                    Some(v) => {
+                        send = Some(v);
+                        held = Some(Held {
+                            value: v,
+                            start: topic,
+                            sent: Some(v),
+                            released: Some(now),
+                            cancelled: false,
+                        });
+                        entry = None;
+                    }
+                    None => {
+                        // Not a number: stay open, in red, for a fix.
+                        e.bad = true;
+                        r.request_focus();
+                    }
+                }
+            } else {
+                // Escape, or a click somewhere else: nothing sent.
+                entry = None;
+            }
+        } else if r.changed() {
+            e.bad = false;
+        }
+    }
+
     match held {
         Some(h) => {
-            ui.data_mut(|d| d.insert_temp(id, h));
+            ui.data_mut(|d| {
+                d.insert_temp(id, h);
+            });
             if h.released.is_some() {
                 ui.ctx()
                     .request_repaint_after(std::time::Duration::from_secs_f64(HOLD_S));
@@ -295,9 +461,12 @@ fn show_slider(
         }
         None => ui.data_mut(|d| d.remove::<Held>(id)),
     }
-    let shown = held.map(|h| h.value).or(topic);
-    let painter = ui.painter().with_clip_rect(body.intersect(ui.clip_rect()));
-    paint(&painter, &visuals, body, p, &setup, shown);
+    ui.data_mut(|d| match entry {
+        Some(e) => {
+            d.insert_temp(entry_id, e);
+        }
+        None => d.remove::<Entry>(entry_id),
+    });
     send.map(|v| {
         if setup.whole {
             Value::Int(v.round() as i64)
@@ -362,6 +531,7 @@ impl WidgetType for NumberSlider {
                 props,
                 &Setup::new(props, value),
                 shown,
+                true,
             ),
         }
     }
@@ -441,6 +611,24 @@ mod tests {
             true,
         );
         assert_eq!(thin.width(), 0.0);
+    }
+
+    #[test]
+    fn typed_values_are_numbers_in_range() {
+        let range = json_props(json!({"min_value": 0, "max_value": 10}));
+        let s = Setup::new(&range, Some(&Value::Double(1.0)));
+        assert_eq!(parse_entry(" 3.25 ", &s, ""), Some(3.25));
+        // The step doesn't apply to a typed value; the range does.
+        assert_eq!(parse_entry("42", &s, ""), Some(10.0));
+        assert_eq!(parse_entry("-1", &s, ""), Some(0.0));
+        // The unit can be left on.
+        assert_eq!(parse_entry("7 V", &s, "V"), Some(7.0));
+        assert_eq!(parse_entry("seven", &s, ""), None);
+        assert_eq!(parse_entry("", &s, ""), None);
+        assert_eq!(parse_entry("NaN", &s, ""), None);
+        // An int topic gets a whole number.
+        let int = Setup::new(&range, Some(&Value::Int(1)));
+        assert_eq!(parse_entry("2.6", &int, ""), Some(3.0));
     }
 
     use serde_json::json;
