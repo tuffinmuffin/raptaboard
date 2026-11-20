@@ -172,6 +172,9 @@ fn an_enum_toggle_steps_through_its_states_and_follows_the_robot() {
     let mut harness = enum_harness(&robot);
     let primary = egui::PointerButton::Primary;
     let (body, _) = body_and_title(&harness, 1);
+    // Clicked only once it has the robot's value: before that it's in no
+    // state, and a click goes to the first (a slow machine shows this).
+    shows_soon(&mut harness, "Level", "Low");
     click_at(&mut harness, body, primary, Modifiers::NONE);
     wait_for(&mut harness, "level", || robot.seen_level.get(), 1);
     click_at(&mut harness, body, primary, Modifiers::NONE);
@@ -243,7 +246,9 @@ fn an_enum_toggle_can_switch_between_two_of_its_states() {
     let mut harness = enum_harness(&robot);
     let primary = egui::PointerButton::Primary;
     let (body, _) = body_and_title(&harness, 6);
-    // Stowed to Shooting, skipping Intaking, and back.
+    // Stowed to Shooting, skipping Intaking, and back; clicked once it has
+    // the robot's Stowed (before that a click goes to the first, Stowed).
+    shows_soon(&mut harness, "Mode switch", "Stowed");
     click_at(&mut harness, body, primary, Modifiers::NONE);
     wait_for(
         &mut harness,

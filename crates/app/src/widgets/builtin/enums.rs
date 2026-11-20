@@ -471,8 +471,13 @@ impl EnumToggle {
         };
         let response = ui.interact(area, id, sense);
         let text = shown_text(&s);
+        // Named by its title, with the state it shows as its value, so a
+        // screen reader (and the tests) hear which state it's in.
         response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::accesskit::Role::Button, editable, &widget.title)
+            let mut info =
+                egui::WidgetInfo::labeled(egui::accesskit::Role::Button, editable, &widget.title);
+            info.current_text_value = Some(text.clone());
+            info
         });
         if editable && response.hovered() {
             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
