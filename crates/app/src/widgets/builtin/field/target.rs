@@ -1,7 +1,7 @@
 //! Click to set a target: with `click_target` on, a click on the field
 //! publishes that point as a `Pose2d` target, for drivers to aim or send the
 //! robot somewhere (robot code is free to ignore it). Dragging sets which
-//! way it faces; right-click clears it.
+//! way it faces; right-click, or a tap on the target, clears it.
 //!
 //! The target goes to `target_topic` (`/raptaboard/target` if not set), in the widget's `origin`, with a boolean `<topic>_set`
 //! beside it: true when one is set, false once it's cleared (a pose can't
@@ -15,6 +15,7 @@ use serde_json::{Map, Value as Json};
 use super::FieldView;
 use crate::input_log;
 use crate::types::field::{self, FieldPose, Origin};
+use crate::widgets::shared::pointer::released_at;
 use crate::widgets::shared::props;
 use crate::widgets::{Effect, Live};
 
@@ -29,6 +30,8 @@ const POSE2D_SCHEMAS: &[(&str, &str)] = &[
     ("Translation2d", "double x;double y"),
     ("Rotation2d", "double value"),
 ];
+/// A tap this close to the target (points) clears it.
+const CLEAR_POINTS: f32 = 20.0;
 /// A drag shorter than this (meters) sets no heading: it's a click.
 const MIN_DRAG_M: f64 = 0.15;
 /// The X's size on the field, meters, and its smallest on screen, points.
@@ -118,30 +121,18 @@ fn publish(live: &Live<'_>, topic: &str, pose: FieldPose, origin: Origin, size: 
     });
 }
 
-/// Where the primary button was let go this frame, if it was.
-///
-/// Not "where the pointer is now": a touchscreen on macOS sends a whole tap
-/// in one frame (move to the tap, press, release) and then puts the cursor
-/// back where the mouse was, so by the end of the frame the pointer is
-/// somewhere else and the target landed at the old mouse position. The
-/// release event says where the tap was.
-fn released_at(ui: &egui::Ui) -> Option<egui::Pos2> {
-    ui.input(|i| {
-        i.raw.events.iter().rev().find_map(|e| match e {
-            egui::Event::PointerButton {
-                pos,
-                button: egui::PointerButton::Primary,
-                pressed: false,
-                ..
-            } => Some(*pos),
-            _ => None,
-        })
-    })
+/// Ask for the target on `topic` to be cleared.
+fn clear(live: &Live<'_>, topic: &str) {
+    live.frame.effects.borrow_mut().push(Effect::Write {
+        topic: set_topic(topic),
+        value: Value::Boolean(false),
+        ty: NtType::Boolean,
+    });
 }
 
 /// Take clicks and drags on the field in `rect` (shown as `view`): a click
-/// sets the target there, a drag sets it where it started facing where it
-/// went, a right-click clears it. Returns the target being dragged, to draw
+/// sets the target there (or clears it, on the target), a drag sets it where
+/// it started facing where it went, a right-click clears it. Returns the target being dragged, to draw
 /// before it's sent.
 pub fn input(
     ui: &mut egui::Ui,
@@ -150,6 +141,7 @@ pub fn input(
     p: &Map<String, Json>,
     live: &Live<'_>,
     origin: Origin,
+    current: Option<FieldPose>,
 ) -> Option<FieldPose> {
     let topic = target_topic(p);
     let id = ui.scope_id().with("field target");
@@ -203,23 +195,32 @@ pub fn input(
         && let Some(at) = released_at(ui).or(response.interact_pointer_pos())
     {
         let (x, y) = view.to_field(at);
+        // A tap on the target clears it (a touchscreen has no right-click).
+        let on_target =
+            current.is_some_and(|t| view.to_screen(t.x, t.y).distance(at) <= CLEAR_POINTS);
         input_log::log(ui.input(|i| i.time), || {
             format!(
-                "field target: click at ({:.0}, {:.0}) = field ({x:.2}, {y:.2})",
-                at.x, at.y
+                "field target: click at ({:.0}, {:.0}) = field ({x:.2}, {y:.2}){}",
+                at.x,
+                at.y,
+                if on_target {
+                    ", on the target: cleared"
+                } else {
+                    ""
+                }
             )
         });
-        publish(live, &topic, FieldPose { x, y, heading: 0.0 }, origin, size);
+        if on_target {
+            clear(live, &topic);
+        } else {
+            publish(live, &topic, FieldPose { x, y, heading: 0.0 }, origin, size);
+        }
     }
     if response.secondary_clicked() {
         input_log::log(ui.input(|i| i.time), || {
             "field target: right-click, cleared".to_owned()
         });
-        live.frame.effects.borrow_mut().push(Effect::Write {
-            topic: set_topic(&topic),
-            value: Value::Boolean(false),
-            ty: NtType::Boolean,
-        });
+        clear(live, &topic);
     }
     if response.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);

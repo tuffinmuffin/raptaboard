@@ -461,9 +461,6 @@ fn a_target_robot_code_sets_shows_too() {
 
 #[test]
 fn a_touchscreen_tap_sets_the_target_where_it_was_not_where_the_mouse_went_back() {
-    // As a touchscreen on macOS sends a tap (from a real log): one frame
-    // with a move to the tap, the press and release there, then the cursor
-    // put back where the mouse was, and the pointer gone.
     let robot = Robot::start();
     let mut field = pose_field();
     field.properties.insert("click_target".into(), json!(true));
@@ -475,28 +472,47 @@ fn a_touchscreen_tap_sets_the_target_where_it_was_not_where_the_mouse_went_back(
     );
     let tap = field_area(&harness).center();
     let mouse = tap + egui::vec2(200.0, 100.0);
-    harness.hover_at(mouse);
-    harness.step();
-    let button = |pressed| Event::PointerButton {
-        pos: tap,
-        button: egui::PointerButton::Primary,
-        pressed,
-        modifiers: Modifiers::NONE,
-    };
-    // All in one frame, as macOS sends them (`Harness::event` would run a
-    // frame for each).
-    harness.input_mut().events.extend([
-        Event::PointerMoved(tap),
-        button(true),
-        Event::PointerMoved(tap),
-        button(false),
-        Event::PointerMoved(mouse),
-        Event::PointerGone,
-    ]);
-    harness.step();
-    settle(&mut harness);
+    tap_burst(&mut harness, tap, mouse);
     labelled_soon(
         &mut harness,
         "Field: robot at x 1.50 m, y 2.50 m, facing 43°; target at x 0.00 m, y 0.00 m, facing 0°",
     );
+}
+
+#[test]
+fn a_tap_on_the_target_clears_it() {
+    let robot = Robot::start();
+    let mut field = pose_field();
+    field.properties.insert("click_target".into(), json!(true));
+    let mut harness = field_harness(&robot, field);
+    harness.state_mut().locked = true;
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°",
+    );
+    let middle = field_area(&harness).center();
+    let mouse = middle + egui::vec2(200.0, 100.0);
+    tap_burst(&mut harness, middle, mouse);
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°; target at x 0.00 m, y 0.00 m, facing 0°",
+    );
+    // A tap a little way off the target (within 20 points) clears it.
+    tap_burst(&mut harness, middle + egui::vec2(8.0, -6.0), mouse);
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°",
+    );
+    // Farther off, it sets a new one.
+    tap_burst(&mut harness, middle, mouse);
+    tap_burst(&mut harness, middle + egui::vec2(60.0, 0.0), mouse);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while harness
+        .query_by_label_contains("; target at x 0.00 m")
+        .is_some()
+        || harness.query_by_label_contains("; target at").is_none()
+    {
+        assert!(Instant::now() < deadline, "the target never moved");
+        settle(&mut harness);
+    }
 }

@@ -293,3 +293,24 @@ fn any_click_on_a_widget_finds_it_in_the_tree_locked_or_not() {
     assert_eq!(picked(&harness), ["/Test/Auto"], "with hidden fields shown");
     server_has_pick(&mut harness, &robot, "Middle");
 }
+
+#[test]
+fn a_touchscreen_tap_finds_the_widget_tapped_not_the_one_under_the_mouse() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    harness.state_mut().locked = true;
+    settle(&mut harness);
+    let topic_of = |h: &Harness, i: usize| {
+        h.state().layout.tabs[0].grid_layout.containers[i]
+            .topic()
+            .unwrap()
+            .to_owned()
+    };
+    // The first widget is tapped; the mouse was on the fourth.
+    let (tapped, mouse) = (0, 3);
+    assert_ne!(topic_of(&harness, tapped), topic_of(&harness, mouse));
+    let at = card_on_screen(&harness, tapped).center();
+    let away = card_on_screen(&harness, mouse).center();
+    tap_burst(&mut harness, at, away);
+    assert_eq!(picked(&harness), [topic_of(&harness, tapped)]);
+}

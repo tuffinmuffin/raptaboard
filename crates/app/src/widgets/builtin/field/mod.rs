@@ -15,8 +15,8 @@
 //! `robot_color`, with an arrow the way it faces.
 //!
 //! With `click_target` on ([`target`]), a click on the field publishes a
-//! target there (a drag also sets which way it faces; right-click clears
-//! it), drawn as a green X from the topic's value.
+//! target there (a drag also sets which way it faces; right-click, or a
+//! tap on the target, clears it), drawn as a green X from the topic's value.
 //!
 //! On the robot ([`attachments`]): cameras, as their field of view with
 //! range bands, and parts (an intake), shown while a boolean topic is true
@@ -541,7 +541,7 @@ impl FieldWidget {
             target::draw(&painter, &view, t, false);
         }
         if target::enabled(p)
-            && let Some(dragging) = target::input(ui, view.rect, &view, p, live, origin)
+            && let Some(dragging) = target::input(ui, view.rect, &view, p, live, origin, target)
         {
             target::draw(&painter, &view, dragging, true);
         }
