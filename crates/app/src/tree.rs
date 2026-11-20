@@ -12,7 +12,8 @@ use nt4::proto::structs::StructDatabase;
 use raptaboard_layout::StructMeta;
 use raptaboard_plugin_host::path;
 
-use crate::struct_view::{self, FieldInfo, Shown};
+use crate::types::format_number;
+use crate::types::structs::{self, FieldInfo, Shown};
 use crate::widgets;
 
 /// One topic as the tree shows it.
@@ -259,7 +260,7 @@ impl TreeSelection {
             r.frames = r.frames.saturating_sub(1);
             if r.frames == 0 {
                 self.not_found = Some(match &r.field {
-                    Some(path) => format!("{} → {}", r.name, struct_view::path_text(path)),
+                    Some(path) => format!("{} → {}", r.name, structs::path_text(path)),
                     None => r.name.clone(),
                 });
                 self.reveal = None;
@@ -575,7 +576,7 @@ impl Folder {
             } else {
                 // Rows that open (structs, schemas) must not be drag sources:
                 // egui gives a drag area on top of a header the clicks.
-                let note = if has_widget || struct_view::struct_type(&topic.ty).is_some() {
+                let note = if has_widget || structs::struct_type(&topic.ty).is_some() {
                     String::new()
                 } else {
                     format!("No widget for {} yet", topic.ty)
@@ -623,7 +624,7 @@ fn show_topic(
         Some(Value::Raw(bytes)) => Some(bytes.as_slice()),
         _ => None,
     };
-    let schema = struct_view::struct_type(&topic.ty)
+    let schema = structs::struct_type(&topic.ty)
         .and_then(|(name, _)| structs.find(name))
         .map(|d| d.schema().to_owned());
     let mut hover = match &schema {
@@ -634,11 +635,11 @@ fn show_topic(
         hover = format!("{hover}\n{note}");
     }
     if let Some(Shown::Node { summary, children }) =
-        bytes.and_then(|b| struct_view::decode(structs, &topic.ty, b))
+        bytes.and_then(|b| structs::decode(structs, &topic.ty, b))
     {
         // Fields can become widgets, including fields of an item in a
         // struct array (raptaboard only; Elastic can't bind those).
-        let source = match (struct_view::struct_type(&topic.ty), bytes) {
+        let source = match (structs::struct_type(&topic.ty), bytes) {
             (Some((schema, _)), Some(bytes)) => Some(FieldSource {
                 topic: &topic.name,
                 schema,
@@ -647,7 +648,7 @@ fn show_topic(
             }),
             _ => None,
         };
-        let fields = struct_view::struct_type(&topic.ty).map(|(schema, _)| Fields {
+        let fields = structs::struct_type(&topic.ty).map(|(schema, _)| Fields {
             topic: &topic.name,
             schema,
             structs,
@@ -674,7 +675,7 @@ fn show_topic(
     // A schema topic opens into its fields, enum lists and nested structs.
     if topic.ty == "structschema"
         && let Some(text) = bytes.map(String::from_utf8_lossy)
-        && let Ok(Shown::Node { summary, children }) = struct_view::describe_schema(structs, &text)
+        && let Ok(Shown::Node { summary, children }) = structs::describe_schema(structs, &text)
     {
         egui::CollapsingHeader::new(format!("{key}  schema, {summary}"))
             .id_salt(&topic.name)
@@ -737,14 +738,14 @@ struct Fields<'a> {
 impl Fields<'_> {
     /// The field at `path`, if the schema has it.
     fn info(&self, path: &[String]) -> Option<FieldInfo> {
-        struct_view::field_info(self.structs, self.schema, path)
+        structs::field_info(self.structs, self.schema, path)
     }
 
     /// Hover text for the field at `path`: where it is, its type, and its
     /// enum names, such as
     /// `/Arm/state → mode` / `enum uint8 field of Arm` / `kStow = 0, kIntake = 3`.
     fn hover(&self, path: &[String], info: Option<&FieldInfo>) -> String {
-        let mut text = format!("{} → {}", self.topic, struct_view::path_text(path));
+        let mut text = format!("{} → {}", self.topic, structs::path_text(path));
         if let Some(info) = info {
             text.push_str(&format!("\n{} field of {}", info.label(), self.schema));
             if info.is_enum() {
@@ -788,8 +789,8 @@ fn show_children(
                 };
                 let payload = source.and_then(|src| {
                     let value =
-                        struct_view::field_value(src.structs, src.schema, src.bytes, &field_path)?;
-                    let ty = struct_view::nt_type_name(&value);
+                        structs::field_value(src.structs, src.schema, src.bytes, &field_path)?;
+                    let ty = structs::nt_type_name(&value);
                     widgets::type_for_topic(ty)?;
                     Some(DraggedTopic {
                         name: src.topic.to_owned(),
@@ -876,7 +877,7 @@ const MAX_CHARS: usize = 40;
 ///
 /// Numbers keep up to 4 decimal places, long strings and arrays are cut
 /// short, and raw bytes show their length. Struct values are opened into
-/// fields by the tree instead (see [`crate::struct_view`]).
+/// fields by the tree instead (see [`crate::types::structs`]).
 ///
 /// ```
 /// use raptaboard::tree::format_value;
@@ -899,20 +900,6 @@ pub fn format_value(value: &Value) -> String {
         Value::FloatArray(a) => format_list(a, |f| format_number(f64::from(*f))),
         Value::IntArray(a) => format_list(a, |i| i.to_string()),
         Value::StringArray(a) => format_list(a, |s| format!("\"{}\"", shorten(s))),
-    }
-}
-
-/// A number with up to 4 decimal places and no trailing zeros.
-pub(crate) fn format_number(n: f64) -> String {
-    if !n.is_finite() {
-        return n.to_string();
-    }
-    let text = format!("{n:.4}");
-    let text = text.trim_end_matches('0').trim_end_matches('.');
-    if text == "-0" {
-        "0".into()
-    } else {
-        text.into()
     }
 }
 

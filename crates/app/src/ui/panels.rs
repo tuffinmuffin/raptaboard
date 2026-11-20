@@ -11,6 +11,7 @@ use crate::nt::ConnectionStatus;
 use crate::tabs::{self, TabAction};
 use crate::types::alerts::Level;
 use crate::widgets::builtin::alerts as alerts_widget;
+use crate::widgets::shared::alert_sign;
 
 use super::DashboardApp;
 
@@ -313,10 +314,7 @@ impl DashboardApp {
                     .selectable_label(self.current_tab == i, egui::RichText::new(text))
                     .on_hover_text(hint);
                 if let Some(level) = alert {
-                    let r = (tab.rect.height() * 0.32).min(7.0);
-                    let c = egui::pos2(tab.rect.right() - r - 4.0, tab.rect.center().y);
-                    ui.painter().circle_filled(c, r, level.color());
-                    alerts_widget::draw_sign(ui.painter(), level, c, r * 1.2, egui::Color32::BLACK);
+                    alert_sign::draw_badge(ui.painter(), level, tab.rect, 4.0);
                 }
                 if tab.clicked() {
                     action = Some(TabAction::Select(i));

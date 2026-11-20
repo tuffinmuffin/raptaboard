@@ -102,7 +102,7 @@ fn unreachable_server_stays_connecting() {
 
 #[test]
 fn struct_schemas_arrive_and_decode() {
-    use raptaboard::struct_view::{Shown, decode};
+    use raptaboard::types::structs::{Shown, decode};
 
     let server_rt = tokio::runtime::Runtime::new().unwrap();
     let server = server_rt

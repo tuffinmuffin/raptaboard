@@ -6,8 +6,8 @@ use raptaboard_layout::{Rect as LayoutRect, WidgetContainer};
 
 use crate::grid::{self, Item};
 use crate::nt::ConnectionStatus;
-use crate::struct_view;
 use crate::tree::{AddTo, Folder, TopicEntry};
+use crate::types::structs;
 use crate::widgets;
 use nt4::proto::structs::StructDatabase;
 
@@ -218,13 +218,10 @@ impl DashboardApp {
                 let known = self
                     .nt
                     .structs()
-                    .and_then(|db| struct_view::field_info(db, &meta.schema_name, &meta.path));
-                known.is_none().then(|| {
-                    format!(
-                        "{topic} has no field {}",
-                        struct_view::path_text(&meta.path)
-                    )
-                })
+                    .and_then(|db| structs::field_info(db, &meta.schema_name, &meta.path));
+                known
+                    .is_none()
+                    .then(|| format!("{topic} has no field {}", structs::path_text(&meta.path)))
             })
         };
         match missing {

@@ -77,12 +77,15 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   widget's value to an announced topic in that topic's type, or returns a `WriteError` saying why
   not), `sound.rs` the sounds (`Sound`: a failed write's tone, and the Alerts widget's `Tone`s; its own
   thread, `rodio`; `Sound::silent` in tests), `types/` the robot data types raptaboard reads, apart
-  from the widgets that draw them (`types/alerts.rs` WPILib's alert groups, `types/chooser.rs` a
-  SendableChooser's table; more custom data structures go here), `alert_history.rs` the alert history (every
+  from the widgets that draw them: no egui and no widget setting keys here, just topics in and typed
+  data and rules out (`types/alerts.rs` WPILib's alert groups and `AlertWatch`, which spots new errors
+  and keeps the last alerts seen; `types/chooser.rs` a SendableChooser's table; `types/enums.rs` named
+  states and where their names come from, with `guess`; `types/structs.rs` struct values decoded with
+  the server's `/.schema/` topics (`nt4::proto::structs::StructDatabase` + `DynamicStruct`);
+  `types::format_number`; more custom data structures go here), `alert_history.rs` the alert history (every
   group from connect, count-based; its panel and top-bar button are `ui/alert_history_panel.rs`), `tree.rs` the (row picking in `TreeSelection`, drag payload `DraggedTopics`)
   read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),
-  `struct_view.rs` struct values decoded with the server's `/.schema/` topics
-  (`nt4::proto::structs::StructDatabase` + `DynamicStruct`), `widgets/` the grid widgets,
+  `widgets/` the grid widgets,
   one file per type implementing `widgets::WidgetType` and listed in `widgets::TYPES` (Text Display,
   Boolean Box, Large Text Display, Number Bar, Voltage View, Radial Gauge, Match Time, Single and
   Multi Color View, Graph (`egui_plot`; widgets needing a full `Ui` override `WidgetType::show`),
@@ -92,7 +95,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing
   and its settings dialog), helpers in `widgets/shared/`:
   `card.rs`, `entry.rs` (the box a value is typed into: Number Slider, editable Text Display), `format.rs` (number and
-  enum text), `props.rs` (period, font size, colors) and `settings.rs` (the settings dialog's shared
+  enum text, `EnumDisplay`), `alert_sign.rs` (alert level colors and signs, for the widget, tab marks
+  and history), `props.rs` (period, font size, colors) and `settings.rs` (the settings dialog's shared
   rows; the dialog window is in `ui/dialogs.rs`); setting keys are constants in the file that owns them,
   listed in `docs/spec.md` under "raptaboard widget settings" (keep that table in step); adding a
   widget is a new file in `builtin/` (listed in `builtin/mod.rs`) plus one line in `TYPES`, `layout_file.rs` opening and saving layout files (atomic
@@ -111,7 +115,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   don't count. Milestone 2 has tabs, the snap grid, the lock and layout open/save
   (`layout_file.rs`, native dialogs via `rfd`); topics and struct fields drag from the tree onto the grid (`tree::DraggedTopic`,
   `widgets::for_topic`; struct fields use Elastic's `struct_meta`, read with
-  `struct_view::field_value`); widgets can be selected, duplicated, deleted and edited (settings dialog),
+  `types::structs::field_value`); widgets can be selected, duplicated, deleted and edited (settings dialog),
   with undo; next is List Layout editing.
 - `layouts/robot2027_sim.json`: a layout for trying widgets against the robot-2027 sim
   (`cargo run -p raptaboard -- --address sim layouts/robot2027_sim.json`). Its `/DashTest/`

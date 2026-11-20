@@ -11,7 +11,7 @@ use nt4::Topic;
 use crate::alert_history::{self, AlertEvent};
 use crate::nt::ConnectionStatus;
 use crate::types::alerts::{self, Level};
-use crate::widgets::builtin::alerts as alerts_widget;
+use crate::widgets::shared::alert_sign;
 
 use super::DashboardApp;
 
@@ -132,10 +132,7 @@ impl DashboardApp {
             .add(egui::Button::new(text).selected(self.show_alert_history))
             .on_hover_text(hint);
         if let Some(level) = highest {
-            let r = (button.rect.height() * 0.32).min(7.0);
-            let c = egui::pos2(button.rect.right() - r - 6.0, button.rect.center().y);
-            ui.painter().circle_filled(c, r, level.color());
-            alerts_widget::draw_sign(ui.painter(), level, c, r * 1.2, egui::Color32::BLACK);
+            alert_sign::draw_badge(ui.painter(), level, button.rect, 6.0);
         }
         if button.clicked() {
             self.show_alert_history = !self.show_alert_history;
@@ -228,11 +225,11 @@ impl DashboardApp {
                         let (rect, _) =
                             ui.allocate_exact_size(egui::vec2(14.0, ROW_HEIGHT), Sense::hover());
                         let color = if e.ended.is_some() {
-                            e.level.color().gamma_multiply(0.6)
+                            alert_sign::color(e.level).gamma_multiply(0.6)
                         } else {
-                            e.level.color()
+                            alert_sign::color(e.level)
                         };
-                        alerts_widget::draw_sign(ui.painter(), e.level, rect.center(), 11.0, color);
+                        alert_sign::draw_sign(ui.painter(), e.level, rect.center(), 11.0, color);
                         ui.monospace(e.seen.format("%H:%M:%S").to_string());
                         let ended = match e.ended {
                             Some((at, how)) => format!("{} {}", how.label(), at.format("%H:%M:%S")),

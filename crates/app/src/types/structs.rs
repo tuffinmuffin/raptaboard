@@ -11,8 +11,7 @@ use nt4::proto::structs::{
     Declaration, DynamicStruct, FieldDescriptor, FieldValue, StructDatabase, parse_schema,
 };
 
-use crate::tree::format_number;
-use crate::widgets::shared::format::IntStyle;
+use crate::types::format_number;
 
 /// A decoded value, ready to draw.
 #[derive(Debug, Clone, PartialEq)]
@@ -32,7 +31,7 @@ pub enum Shown {
 /// `Some(("Pose2d", true))`, `double` gives `None`.
 ///
 /// ```
-/// use raptaboard::struct_view::struct_type;
+/// use raptaboard::types::structs::struct_type;
 /// assert_eq!(struct_type("struct:Pose2d"), Some(("Pose2d", false)));
 /// assert_eq!(struct_type("struct:SwerveModuleState[]"), Some(("SwerveModuleState", true)));
 /// assert_eq!(struct_type("double"), None);
@@ -50,7 +49,7 @@ pub fn struct_type(ty: &str) -> Option<(&str, bool)> {
 ///
 /// ```
 /// use nt4::proto::structs::StructDatabase;
-/// use raptaboard::struct_view::{decode, Shown};
+/// use raptaboard::types::structs::{decode, Shown};
 /// let mut db = StructDatabase::new();
 /// db.add("Rotation2d", "double value").unwrap();
 /// let bytes = 0.5f64.to_le_bytes();
@@ -89,7 +88,7 @@ pub fn decode(db: &StructDatabase, ty: &str, bytes: &[u8]) -> Option<Shown> {
 /// ```
 /// use nt4::Value;
 /// use nt4::proto::structs::StructDatabase;
-/// use raptaboard::struct_view::field_value;
+/// use raptaboard::types::structs::field_value;
 /// let mut db = StructDatabase::new();
 /// db.add("Translation2d", "double x;double y").unwrap();
 /// let bytes: Vec<u8> = [1.5f64, -2.0].iter().flat_map(|d| d.to_le_bytes()).collect();
@@ -106,94 +105,35 @@ pub fn field_value(
     as_nt_value(s.value(field)?)
 }
 
-/// How a widget shows an enum field's value.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum EnumDisplay {
-    /// The name from the schema: `kIntake`.
-    #[default]
-    Name,
-    /// The number: `3`.
-    Number,
-    /// Both: `kIntake (3)`.
-    Both,
-}
-
-impl EnumDisplay {
-    /// All choices, in the order a menu lists them.
-    pub const ALL: [EnumDisplay; 3] = [EnumDisplay::Name, EnumDisplay::Number, EnumDisplay::Both];
-
-    /// The word saved in a layout's `enum_display` setting.
-    pub fn key(self) -> &'static str {
-        match self {
-            EnumDisplay::Name => "name",
-            EnumDisplay::Number => "number",
-            EnumDisplay::Both => "both",
-        }
-    }
-
-    /// The choice saved as `key`, if it's one of [`EnumDisplay::key`]'s words.
-    pub fn from_key(key: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|d| d.key() == key)
-    }
-
-    /// Words for a menu.
-    pub fn label(self) -> &'static str {
-        match self {
-            EnumDisplay::Name => "Name (kIntake)",
-            EnumDisplay::Number => "Number (3)",
-            EnumDisplay::Both => "Both (kIntake (3))",
-        }
-    }
-}
-
-/// Like [`field_value`], but an enum field is shown as `display` says: by
-/// its name from the schema (`kIntake`, as a string), its number, or both
-/// (`kIntake (3)`, with the number written as `ints` says). Numbers the
-/// enum doesn't name stay numbers.
+/// Like [`field_value`], with the enum's name for the value from the
+/// schema when the field is an enum and names it (`None` otherwise).
 ///
 /// ```
 /// use nt4::Value;
 /// use nt4::proto::structs::StructDatabase;
-/// use raptaboard::struct_view::{field_value, field_value_shown, EnumDisplay};
-/// use raptaboard::widgets::shared::format::{IntFormat, IntStyle};
+/// use raptaboard::types::structs::field_value_named;
 /// let mut db = StructDatabase::new();
 /// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode").unwrap();
 /// let mode = vec!["mode".to_string()];
-/// let shown = |bytes: &[u8], how| {
-///     field_value_shown(&db, "Arm", bytes, &mode, how, IntStyle::default())
-/// };
-/// assert_eq!(field_value(&db, "Arm", &[3], &mode), Some(Value::Int(3)));
-/// assert_eq!(shown(&[3], EnumDisplay::Name), Some(Value::String("kIntake".into())));
-/// assert_eq!(shown(&[3], EnumDisplay::Both), Some(Value::String("kIntake (3)".into())));
-/// assert_eq!(shown(&[3], EnumDisplay::Number), Some(Value::Int(3)));
-/// assert_eq!(shown(&[9], EnumDisplay::Name), Some(Value::Int(9)));
-/// let hex = IntStyle { format: IntFormat::Hex, digits: 2 };
-/// let both = field_value_shown(&db, "Arm", &[3], &mode, EnumDisplay::Both, hex);
-/// assert_eq!(both, Some(Value::String("kIntake (0x03)".into())));
+/// assert_eq!(
+///     field_value_named(&db, "Arm", &[3], &mode),
+///     Some((Value::Int(3), Some("kIntake".to_string())))
+/// );
+/// assert_eq!(field_value_named(&db, "Arm", &[9], &mode), Some((Value::Int(9), None)));
 /// ```
-pub fn field_value_shown(
+pub fn field_value_named(
     db: &StructDatabase,
     schema: &str,
     bytes: &[u8],
     path: &[String],
-    display: EnumDisplay,
-    ints: IntStyle,
-) -> Option<Value> {
+) -> Option<(Value, Option<String>)> {
     let (s, field) = find_field(db, schema, bytes, path)?;
     let value = as_nt_value(s.value(field)?)?;
-    if field.enum_values().is_empty() || display == EnumDisplay::Number {
-        return Some(value);
-    }
-    Some(match value {
-        Value::Int(n) => match field.enum_name(n) {
-            Some(name) if display == EnumDisplay::Both => {
-                Value::String(format!("{name} ({})", ints.write(n)))
-            }
-            Some(name) => Value::String(name.to_owned()),
-            None => Value::Int(n),
-        },
-        other => other,
-    })
+    let name = match value {
+        Value::Int(n) => field.enum_name(n).map(str::to_owned),
+        _ => None,
+    };
+    Some((value, name))
 }
 
 /// What the schema says about one struct field: its type, whether it's an
@@ -218,7 +158,7 @@ impl FieldInfo {
     ///
     /// ```
     /// use nt4::proto::structs::StructDatabase;
-    /// use raptaboard::struct_view::field_info;
+    /// use raptaboard::types::structs::field_info;
     /// let mut db = StructDatabase::new();
     /// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode; double v[4]").unwrap();
     /// let info = |f: &str| field_info(&db, "Arm", &[f.to_string()]).unwrap().label();
@@ -250,7 +190,7 @@ impl FieldInfo {
 ///
 /// ```
 /// use nt4::proto::structs::StructDatabase;
-/// use raptaboard::struct_view::field_info;
+/// use raptaboard::types::structs::field_info;
 /// let mut db = StructDatabase::new();
 /// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode; double angle").unwrap();
 /// let mode = field_info(&db, "Arm", &["mode".to_string()]).unwrap();
@@ -286,7 +226,7 @@ pub fn field_info(db: &StructDatabase, schema: &str, path: &[String]) -> Option<
 ///
 /// ```
 /// use nt4::proto::structs::StructDatabase;
-/// use raptaboard::struct_view::is_enum_field;
+/// use raptaboard::types::structs::is_enum_field;
 /// let mut db = StructDatabase::new();
 /// db.add("Arm", "enum {kStow=0, kIntake=3} uint8 mode; double angle").unwrap();
 /// assert!(is_enum_field(&db, "Arm", &["mode".to_string()]));
@@ -343,7 +283,7 @@ fn find_field<'a>(
 /// with array items written straight after what they index.
 ///
 /// ```
-/// use raptaboard::struct_view::path_text;
+/// use raptaboard::types::structs::path_text;
 /// let path = ["[2]", "translation", "x"].map(String::from);
 /// assert_eq!(path_text(&path), "[2].translation.x");
 /// assert_eq!(path_text(&["points", "[1]", "y"].map(String::from)), "points[1].y");
@@ -425,7 +365,7 @@ fn as_nt_value(v: FieldValue<'_>) -> Option<Value> {
 ///
 /// ```
 /// use nt4::Value;
-/// use raptaboard::struct_view::nt_type_name;
+/// use raptaboard::types::structs::nt_type_name;
 /// assert_eq!(nt_type_name(&Value::Double(1.0)), "double");
 /// assert_eq!(nt_type_name(&Value::IntArray(vec![])), "int[]");
 /// ```
@@ -510,7 +450,7 @@ const MAX_SCHEMA_DEPTH: usize = 8;
 ///
 /// ```
 /// use nt4::proto::structs::StructDatabase;
-/// use raptaboard::struct_view::{describe_schema, Shown};
+/// use raptaboard::types::structs::{describe_schema, Shown};
 /// let db = StructDatabase::new();
 /// let Shown::Node { summary, children } =
 ///     describe_schema(&db, "enum {kOff=0, kOn=1} uint8 mode;double x").unwrap()
@@ -784,12 +724,10 @@ mod tests {
         // Values two levels down show by name, number or both.
         let bytes = [3u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         let mode = path(&["arm", "mode"]);
-        let shown = |how| field_value_shown(&db, "Robot", &bytes, &mode, how, IntStyle::default());
         assert_eq!(
-            shown(EnumDisplay::Name),
-            Some(Value::String("kIntake".into()))
+            field_value_named(&db, "Robot", &bytes, &mode),
+            Some((Value::Int(3), Some("kIntake".into())))
         );
-        assert_eq!(shown(EnumDisplay::Number), Some(Value::Int(3)));
     }
 
     #[test]

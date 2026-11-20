@@ -158,6 +158,27 @@ pub fn chooser_topics(table: &str) -> Vec<String> {
         .collect()
 }
 
+/// Whether `table` looks like a chooser table among the server's topics,
+/// given as (name, NT type): it has a string[] `options` and a string
+/// `active` or `default` under it (whether or not it has a `.type`).
+///
+/// ```
+/// use raptaboard::types::chooser::is_chooser_table;
+/// let topics = vec![
+///     ("/Auto/options".to_string(), "string[]".to_string()),
+///     ("/Auto/default".to_string(), "string".to_string()),
+/// ];
+/// assert!(is_chooser_table("/Auto/", &topics));
+/// assert!(!is_chooser_table("/Arm", &topics));
+/// ```
+pub fn is_chooser_table(table: &str, topics: &[(String, String)]) -> bool {
+    let has = |key: &str, ty: &str| {
+        let name = under(table, key);
+        topics.iter().any(|(n, t)| *n == name && t == ty)
+    };
+    has(OPTIONS, "string[]") && (has(ACTIVE, "string") || has(DEFAULT, "string"))
+}
+
 #[cfg(test)]
 mod tests {
     // Tests written by Claude.

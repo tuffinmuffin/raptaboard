@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use nt4::{Topic, Value};
 
-use crate::struct_view;
 use crate::traces::SeriesKey;
+use crate::types::structs;
 use crate::widgets::builtin::alerts as alerts_widget;
 use crate::widgets::builtin::graph;
 use crate::widgets::shared::{format, props};
@@ -139,8 +139,8 @@ impl DashboardApp {
                 (None, v) => Some(v.clone()),
                 (Some(path), Value::Raw(bytes)) => {
                     let ty = by_name.get(key.topic.as_str())?.ty.to_string();
-                    let ((schema, _), db) = struct_view::struct_type(&ty).zip(structs)?;
-                    struct_view::field_value(db, schema, bytes, path)
+                    let ((schema, _), db) = structs::struct_type(&ty).zip(structs)?;
+                    structs::field_value(db, schema, bytes, path)
                 }
                 (Some(_), _) => None,
             }?;

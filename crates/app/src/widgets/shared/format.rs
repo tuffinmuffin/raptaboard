@@ -8,9 +8,74 @@ use nt4::Value;
 use serde_json::{Map, Value as Json};
 
 use super::props::set_property;
-use crate::struct_view::EnumDisplay;
-use crate::tree::format_number;
+use crate::types::format_number;
 use crate::widgets::ValueInfo;
+
+/// How a widget shows an enum field's value.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum EnumDisplay {
+    /// The name from the schema: `kIntake`.
+    #[default]
+    Name,
+    /// The number: `3`.
+    Number,
+    /// Both: `kIntake (3)`.
+    Both,
+}
+
+impl EnumDisplay {
+    /// All choices, in the order a menu lists them.
+    pub const ALL: [EnumDisplay; 3] = [EnumDisplay::Name, EnumDisplay::Number, EnumDisplay::Both];
+
+    /// The word saved in a layout's `enum_display` setting.
+    pub fn key(self) -> &'static str {
+        match self {
+            EnumDisplay::Name => "name",
+            EnumDisplay::Number => "number",
+            EnumDisplay::Both => "both",
+        }
+    }
+
+    /// The choice saved as `key`, if it's one of [`EnumDisplay::key`]'s words.
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|d| d.key() == key)
+    }
+
+    /// Words for a menu.
+    pub fn label(self) -> &'static str {
+        match self {
+            EnumDisplay::Name => "Name (kIntake)",
+            EnumDisplay::Number => "Number (3)",
+            EnumDisplay::Both => "Both (kIntake (3))",
+        }
+    }
+}
+
+/// An enum field's `value` as `display` says: its `name` from the schema
+/// (as a string), its number, or both (`kIntake (3)`, the number written
+/// as `ints` says). A number the enum doesn't name stays a number.
+///
+/// ```
+/// use nt4::Value;
+/// use raptaboard::widgets::shared::format::{enum_shown, EnumDisplay, IntFormat, IntStyle};
+/// let name = Some("kIntake");
+/// let plain = IntStyle::default();
+/// assert_eq!(enum_shown(Value::Int(3), name, EnumDisplay::Name, plain), Value::String("kIntake".into()));
+/// assert_eq!(enum_shown(Value::Int(3), name, EnumDisplay::Both, plain), Value::String("kIntake (3)".into()));
+/// assert_eq!(enum_shown(Value::Int(3), name, EnumDisplay::Number, plain), Value::Int(3));
+/// assert_eq!(enum_shown(Value::Int(9), None, EnumDisplay::Name, plain), Value::Int(9));
+/// let hex = IntStyle { format: IntFormat::Hex, digits: 2 };
+/// assert_eq!(enum_shown(Value::Int(3), name, EnumDisplay::Both, hex), Value::String("kIntake (0x03)".into()));
+/// ```
+pub fn enum_shown(value: Value, name: Option<&str>, display: EnumDisplay, ints: IntStyle) -> Value {
+    match (value, name, display) {
+        (value, _, EnumDisplay::Number) | (value, None, _) => value,
+        (Value::Int(n), Some(name), EnumDisplay::Both) => {
+            Value::String(format!("{name} ({})", ints.write(n)))
+        }
+        (_, Some(name), _) => Value::String(name.to_owned()),
+    }
+}
 
 /// Show numbers with exactly this many decimal places (raptaboard).
 pub const DECIMAL_PLACES: &str = "decimal_places";
@@ -203,7 +268,7 @@ pub fn int_style(props: &Map<String, Json>) -> IntStyle {
 /// The `enum_display` setting; [`EnumDisplay::Name`] if not set.
 ///
 /// ```
-/// use raptaboard::struct_view::EnumDisplay;
+/// use raptaboard::widgets::shared::format::EnumDisplay;
 /// use raptaboard::widgets::shared::format::enum_display;
 /// let props = serde_json::json!({"enum_display": "both"});
 /// assert_eq!(enum_display(props.as_object().unwrap()), EnumDisplay::Both);
