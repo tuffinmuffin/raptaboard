@@ -233,14 +233,16 @@ impl WidgetType for TextDisplay {
     fn settings(&self, ui: &mut egui::Ui, props: &mut Map<String, Json>, value: ValueInfo<'_>) {
         format::rows(ui, props, value);
         props::text_size_row(ui, props);
-        props::flag_row(
-            ui,
-            props,
-            "Editing",
-            "Values can be typed in",
-            EDITABLE,
-            false,
-        );
+        // "Editable", with the details on hover.
+        let hover = "Click the value to type a new one and press Enter to send it \
+                     (Escape cancels). A blue dot in the corner shows it's editable. \
+                     Not for arrays or struct fields.";
+        ui.label("Editable").on_hover_text(hover);
+        let mut on = props::flag(props, EDITABLE, false);
+        if ui.checkbox(&mut on, "").on_hover_text(hover).changed() {
+            props::set_property(props, EDITABLE, on.then_some(true.into()));
+        }
+        ui.end_row();
     }
 
     fn setting_keys(&self) -> &'static [&'static str] {
