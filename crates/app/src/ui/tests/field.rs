@@ -354,7 +354,11 @@ fn clicking_the_field_sets_a_target_and_right_click_clears_it() {
         &mut harness,
         "Field: robot at x 1.50 m, y 2.50 m, facing 43°; target at x 0.00 m, y 0.00 m, facing 0°",
     );
-    assert_eq!(set.get(), Some(true));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while set.get() != Some(true) {
+        assert!(Instant::now() < deadline, "target_set never became true");
+        settle(&mut harness);
+    }
     // A drag up the screen: facing +Y.
     drag_on(&mut harness, middle, middle - egui::vec2(0.0, 80.0));
     labelled_soon(

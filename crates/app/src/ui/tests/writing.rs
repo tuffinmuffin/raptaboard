@@ -14,6 +14,7 @@ fn toggles_send_the_opposite_value_locked_or_not() {
     harness.state_mut().locked = true;
     settle(&mut harness);
     let (body, _) = body_and_title(&harness, 0);
+    dashboard_has(&mut harness, "/Test/enabled", nt4::Value::Boolean(false));
     click_at(&mut harness, body, primary, none);
     server_sees(&mut harness, &robot, true);
     // The button shows it, and a click on it sends it back.
@@ -148,7 +149,9 @@ fn toggles_work_inside_a_list() {
     for locked in [true, false] {
         harness.state_mut().locked = locked;
         settle(&mut harness);
-        let want = robot.seen_enabled.get() != Some(true);
+        let now = robot.seen_enabled.get().unwrap_or(false);
+        dashboard_has(&mut harness, "/Test/enabled", nt4::Value::Boolean(now));
+        let want = !now;
         click_at(&mut harness, button, primary, Modifiers::NONE);
         server_sees(&mut harness, &robot, want);
     }
@@ -216,6 +219,11 @@ fn unlocked_a_list_childs_label_drags_it_and_the_rest_toggles() {
     harness.state_mut().locked = false;
     settle(&mut harness);
     let before = robot.seen_enabled.get();
+    dashboard_has(
+        &mut harness,
+        "/Test/enabled",
+        nt4::Value::Boolean(before.unwrap_or(false)),
+    );
     // A click on the label selects; it doesn't toggle.
     let label = child_label(&harness, 0, 0).center();
     click_at(&mut harness, label, primary, Modifiers::NONE);
