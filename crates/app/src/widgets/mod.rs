@@ -75,6 +75,9 @@ pub struct Frame<'a> {
     /// What widgets ask the app to do this frame besides sending a value:
     /// play a tone.
     pub effects: &'a RefCell<Vec<Effect>>,
+    /// The server's struct schemas, for widgets that decode a whole struct
+    /// (a Field's pose); `None` before they arrive.
+    pub structs: Option<&'a nt4::proto::structs::StructDatabase>,
 }
 
 impl<'a> Frame<'a> {
@@ -338,6 +341,7 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::enums::EnumToggle,
     &builtin::alerts::AlertsWidget,
     &builtin::graph::Graph,
+    &builtin::field::FieldWidget,
 ];
 
 /// The widget type saved as `type_name` (including Elastic's other names
@@ -347,7 +351,7 @@ pub static TYPES: &[&dyn WidgetType] = &[
 /// use raptaboard::widgets::find;
 /// assert_eq!(find("Text View").unwrap().names()[0], "Text Display");
 /// assert!(find("Boolean Box").is_some());
-/// assert!(find("Field").is_none());
+/// assert!(find("Gyro").is_none());
 /// ```
 pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
     TYPES
@@ -358,15 +362,16 @@ pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
 
 /// The widget type name to make for a topic dropped on the grid, by its NT
 /// type string: a Boolean Box for booleans, a Text Display for numbers,
-/// strings and arrays of them. `None` for types with no widget yet, such as
-/// structs (a Pose2d gets the Field widget in milestone 3); those can't be
+/// strings and arrays of them, a Field for a Pose2d or Pose3d. `None` for
+/// types with no widget yet, such as other structs; those can't be
 /// dragged.
 ///
 /// ```
 /// use raptaboard::widgets::type_for_topic;
 /// assert_eq!(type_for_topic("boolean"), Some("Boolean Box"));
 /// assert_eq!(type_for_topic("double"), Some("Text Display"));
-/// assert_eq!(type_for_topic("struct:Pose2d"), None);
+/// assert_eq!(type_for_topic("struct:Pose2d"), Some("Field"));
+/// assert_eq!(type_for_topic("struct:SwerveModuleState[]"), None);
 /// ```
 pub fn type_for_topic(nt_type: &str) -> Option<&'static str> {
     TYPES
@@ -411,7 +416,7 @@ pub fn type_for_table(table_type: &str) -> Option<&'static str> {
 /// assert_eq!(w.widget_type, "Boolean Box");
 /// assert_eq!(w.topic(), Some("/Drive/Health/allModulesHealthy"));
 /// assert_eq!(w.period(), Some(0.06));
-/// assert!(for_topic("/Drive/pose", "struct:Pose2d", None, at).is_none());
+/// assert!(for_topic("/Drive/modules", "struct:SwerveModuleState[]", None, at).is_none());
 /// ```
 pub fn for_topic(
     name: &str,

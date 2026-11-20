@@ -50,15 +50,6 @@ fn alerts_harness(robot: &Robot) -> Harness {
     harness
 }
 
-/// Wait until something is labelled exactly `label`.
-fn labelled_soon(harness: &mut Harness, label: &str) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while harness.query_by_label(label).is_none() {
-        assert!(Instant::now() < deadline, "nothing labelled {label:?}");
-        settle(harness);
-    }
-}
-
 #[test]
 fn an_alerts_widget_counts_by_level_and_sounds_once_for_a_new_error() {
     let robot = Robot::start();

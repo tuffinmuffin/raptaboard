@@ -6,7 +6,7 @@ use super::*;
 
 /// A tree row that can be selected, dragged onto the grid (when
 /// `draggable`) and added from its right-click menu. `contents` draws the
-/// row; `hover` is its tooltip.
+/// row; `hover` is its tooltip. Returns the row's response.
 fn selectable_row(
     ui: &mut egui::Ui,
     sel: &mut TreeSelection,
@@ -14,7 +14,7 @@ fn selectable_row(
     draggable: bool,
     hover: &str,
     contents: impl FnOnce(&mut egui::Ui),
-) {
+) -> egui::Response {
     // A slot under the row for its selection shading, filled in once the
     // row's size is known.
     let shading = ui.painter().add(egui::Shape::Noop);
@@ -97,8 +97,9 @@ fn selectable_row(
             });
         });
     }
-    response.on_hover_text(hover);
+    let response = response.on_hover_text(hover);
     sel.drew(&row);
+    response
 }
 
 /// A small label following the pointer while rows are dragged: the topic's
@@ -183,7 +184,7 @@ impl Folder {
                                 }
                                 ui.weak(ty);
                             });
-                        });
+                        })
                     })
                     .body(|ui| {
                         for (key, topic) in &folder.topics {
@@ -206,7 +207,9 @@ impl Folder {
         }
         for (key, topic) in &self.topics {
             let has_widget = widgets::type_for_topic(&topic.ty).is_some();
-            if has_widget {
+            // A struct with a widget of its own (a Pose2d's Field) still
+            // opens into its fields; `show_topic` makes its row draggable.
+            if has_widget && structs::struct_type(&topic.ty).is_none() {
                 let row = DraggedTopic {
                     name: topic.name.clone(),
                     ty: topic.ty.clone(),
@@ -300,6 +303,57 @@ fn show_topic(
             schema,
             structs,
         });
+        if widgets::type_for_topic(&topic.ty).is_some() {
+            // The whole struct is a widget source (a Pose2d makes a Field):
+            // a row that drags as a whole, with an arrow to open it. A
+            // click on the row opens it too, as a header's would.
+            let id = ui.make_persistent_id(("struct", &topic.name));
+            let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(
+                ui.ctx(),
+                id,
+                false,
+            );
+            if sel.reveals_in_struct(&topic.name, &[]) {
+                state.set_open(true);
+            }
+            let row = DraggedTopic {
+                name: topic.name.clone(),
+                ty: topic.ty.clone(),
+                field: None,
+            };
+            let hover = if draggable {
+                format!("{hover}\n{DRAG_HINT}")
+            } else {
+                hover
+            };
+            let mut clicked = false;
+            state
+                .show_header(ui, |ui| {
+                    clicked = selectable_row(ui, sel, row, draggable, &hover, |ui| {
+                        ui.label(format!("{key}  {summary}"));
+                    })
+                    .clicked();
+                })
+                .body(|ui| {
+                    show_children(
+                        ui,
+                        &topic.name,
+                        &children,
+                        fields.as_ref(),
+                        source.as_ref(),
+                        &[],
+                        Rows { sel, draggable },
+                    )
+                });
+            if clicked
+                && let Some(mut state) =
+                    egui::collapsing_header::CollapsingState::load(ui.ctx(), id)
+            {
+                state.toggle(ui);
+                state.store(ui.ctx());
+            }
+            return;
+        }
         egui::CollapsingHeader::new(format!("{key}  {summary}"))
             .id_salt(&topic.name)
             .default_open(false)

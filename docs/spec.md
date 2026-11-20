@@ -152,6 +152,11 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `min_level` | `builtin/alerts.rs` | Alerts | least urgent shown: `info`, `warning`, `error` | `info` |
 | `pulse`, `pulse_seconds` | `builtin/alerts.rs` | Alerts | pulse when a new error arrives, for how long (s) | true, 5 |
 | `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp`, or a built-in clip: `disabled 1`, `disabled 2`, `fire 1`, `fire 2` | false, `beep` |
+| `field` | `builtin/field.rs` | Field | the field shown: an id from the fields folders (`2026-rebuilt-welded`) or a field JSON's path; not set uses Elastic's `field_game` (by game name), else 2026 REBUILT (welded) | not set |
+| `origin` | `builtin/field.rs` | Field | where the poses' (0, 0) is: `center` (WPILib 2027) or `blue_corner` (before 2027) | `center` |
+| `robot_length`, `robot_width` (Elastic) | `builtin/field.rs` | Field | the robot's size, meters | 0.85, 0.85 |
+| `robot_color` (Elastic) | `builtin/field.rs` | Field | the robot's color | red |
+| `field_rotation` (Elastic) | `builtin/field.rs` | Field | the field turned clockwise, degrees (0, 90, 180, 270; 180 is the red side's view) | 0 |
 | `enum_source` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | where the state names come from: `list`, `topic` (a string[] topic) or `chooser` (the widget's topic is a chooser table); guessed when a widget becomes one | `list` |
 | `enum_values` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | the listed states, one string per line: a value for a string topic; `3 = Climb` or a name (the next number, from 0) for an int topic | none |
 | `switches_between` | `builtin/enums.rs` | Enum Toggle | two state names to switch between, like a Toggle Button's off and on (lit on the second; from any other state a click goes to the first); not set, a click steps through every state | not set |
@@ -553,6 +558,45 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    and the ending; filters by level, group and text; Clear forgets ended events (active ones
    stay). Match time isn't recorded yet (no standard topic for it).
    Next: Field, struct widgets.
+
+   Field widget (decided with the user 2026-11-20). A 2D top-down field (3D may come later).
+   - Coordinates: WPILib 2027's frame is the default: origin at the field's center on the floor,
+     +X toward the blue alliance wall, +Y left facing +X, heading 0 facing +X, counterclockwise
+     positive. An `origin` setting also reads the pre-2027 frame (origin at the blue alliance
+     corner, +X toward red), converted as WPILib's `fields/README.md` says: x = L/2 - old_x,
+     y = W/2 - old_y, heading + 180°. robot-2027 is on RobotPy 2026 today, so its poses are the
+     old frame until it moves to the 2027 libraries.
+   - Fields: WPILib's `fields` library format (BSD; FIRST and WPILib contributors; notices kept
+     with the files): a JSON per field (`name`, `season`, `game`, `field-dimensions` in meters,
+     `field-image` with the field's pixel bounds `top`/`left`/`bottom`/`right`, and `field-tags`, the
+     official AprilTag layout, already in the 2027 frame) and its image, blue wall on the right.
+     They live in a `fields/` folder (the repo's, next to the program, or `~/.raptaboard/fields/`);
+     2026 REBUILT ships in the repo and is built into the program so a field always shows. The
+     settings pick one from those found, or a JSON chosen with a file dialog. A `raptaboard` object
+     in the JSON may hold mapping details WPILib's format doesn't (reserved; none yet).
+   - Bound to a `Pose2d` (or `Pose3d`, drawn flat) struct topic, or a WPILib `Field2d` table
+     (`.type` "Field2d", `Robot` and other objects as `double[]` x, y, degrees), as Elastic reads.
+     The robot is an outline with a heading arrow, sized in meters (`robot_length`, `robot_width`).
+     A red-side view turns the field 180°.
+   - Overlays, each a layer fed by its own topic: other poses (`Pose2d`, `Pose2d[]`, `Field2d`
+     objects) as ghost robots; trajectories (`Pose2d[]`) as lines; AprilTags from the field JSON,
+     with detected ones highlighted (an `int[]` of IDs or a `Pose3d[]`); detected objects
+     (`Translation2d[]` / `Pose2d[]`, field- or robot-relative); and robot-attached shapes set in the
+     settings relative to the robot's center: a camera's FOV wedge (its robot-to-camera transform,
+     FOV and range bands) and deployed parts (a rectangle shown while a boolean is true, or
+     lengthened by a number). Demo data: Robot-2026's two cameras (`constants/robot_geometry.py`)
+     and a 2D port of its camera visualizer's tag rules (in FOV, within 6 m, within 60° of head-on;
+     0 to 4 m reliable, 4 to 6 marginal, 6 to 8 unlikely) in robot-2027's sim test topics.
+   - Order: (1) fields, the Field widget and its robot (**done**: `fields.rs`, `types/field.rs`,
+     `builtin/field.rs`; a Pose2d or Pose3d dragged from the tree makes a Field, and its row still
+     opens into its fields; the image decodes on its own thread, at most 2048 pixels wide); (2) pose,
+     trajectory and AprilTag overlays; (3) robot-attached shapes and detected objects.
+
+   Struct widgets after the Field, each its own widget: a Gyro (Rotation2d or a number), motion
+   vectors (2 or 3 arrows, Translation2d or ChassisSpeeds, showing relative motion more than
+   values), and a swerve view (SwerveModuleState[]: each wheel's direction and speed, requested
+   against measured). Mechanisms: WPILib's Mechanism2d first; it only chains rigid ligaments, so
+   later raptaboard may get its own mechanism data model and tools to build and preview one.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
    WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro, SwerveModuleState[] → swerve view.

@@ -84,7 +84,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   from the widgets that draw them: no egui and no widget setting keys here, just topics in and typed
   data and rules out (`types/alerts.rs` WPILib's alert groups and `AlertWatch`, which spots new errors
   and keeps the last alerts seen; `types/chooser.rs` a SendableChooser's table; `types/enums.rs` named
-  states and where their names come from, with `guess`; `types/structs.rs` struct values decoded with
+  states and where their names come from, with `guess`; `types/field.rs` a field's size, image bounds and AprilTags, and poses in WPILib 2027's frame;
+  `types/structs.rs` struct values decoded with
   the server's `/.schema/` topics (`nt4::proto::structs::StructDatabase` + `DynamicStruct`);
   `types::format_number`; more custom data structures go here), `alert_history.rs` the alert history (every
   group from connect, count-based; its panel and top-bar button are `ui/alert_history_panel.rs`), `tree/` the read-only NT tree (`mod.rs` building it, `selection.rs` row picking in
@@ -96,7 +97,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `tab_mark`, `traced` for recorded series, `takes_topics`/`add_topics` for topics dropped on a widget) (Text Display,
   Boolean Box, Large Text Display, Number Bar, Voltage View, Radial Gauge, Match Time, Single and
   Multi Color View, Graph (`egui_plot`; widgets needing a full `Ui` override `WidgetType::show`),
-  Toggle Switch and Toggle Button (`builtin/toggle.rs`), Number Slider (`builtin/number_slider.rs`), Dropdown and Split Button Chooser (`builtin/chooser.rs`: bound to a SendableChooser table, `table_types`, `sends_to` and `Frame::others`), Enum Dropdown and Enum Toggle (`builtin/enums.rs`: string or int topics, names from a list, a string[] topic or a chooser, guessed by `WidgetType::chosen`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
+  Toggle Switch and Toggle Button (`builtin/toggle.rs`), Number Slider (`builtin/number_slider.rs`), Dropdown and Split Button Chooser (`builtin/chooser.rs`: bound to a SendableChooser table, `table_types`, `sends_to` and `Frame::others`), Enum Dropdown and Enum Toggle (`builtin/enums.rs`: string or int topics, names from a list, a string[] topic or a chooser, guessed by `WidgetType::chosen`), Field (`builtin/field.rs`: a Pose2d/Pose3d struct topic or a `Field2d` table on a field from `fields.rs`,
+  WPILib `fields` JSONs from the repo's `fields/` folder (2026 built in) or one picked with a file dialog;
+  poses read by `types/field.rs` in the 2027 centered frame, `origin` for the old one), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
   from `show`, and `Place::locked` says whether their input covers the whole card; `show_body` is
   the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
   draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing

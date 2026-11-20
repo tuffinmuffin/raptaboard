@@ -954,6 +954,47 @@
           }
         ]
       }
+    },
+    {
+      "name": "Field",
+      "grid_layout": {
+        "layouts": [],
+        "containers": [
+          {
+            "title": "OrbitPose (blue-corner origin)",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 1024.0,
+            "height": 512.0,
+            "type": "Field",
+            "properties": {
+              "topic": "/DashTest/OrbitPose",
+              "period": 0.02,
+              "data_type": "struct:Pose2d",
+              "origin": "blue_corner",
+              "robot_length": 0.673,
+              "robot_width": 0.711
+            }
+          },
+          {
+            "title": "OrbitPose, red side",
+            "x": 1024.0,
+            "y": 0.0,
+            "width": 512.0,
+            "height": 256.0,
+            "type": "Field",
+            "properties": {
+              "topic": "/DashTest/OrbitPose",
+              "period": 0.02,
+              "data_type": "struct:Pose2d",
+              "origin": "blue_corner",
+              "robot_length": 0.673,
+              "robot_width": 0.711,
+              "field_rotation": 180.0
+            }
+          }
+        ]
+      }
     }
   ]
 }
