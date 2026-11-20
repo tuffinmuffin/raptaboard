@@ -454,3 +454,45 @@ fn a_target_robot_code_sets_shows_too() {
         "Field: robot at x 1.50 m, y 2.50 m, facing 43°",
     );
 }
+
+#[test]
+fn a_touchscreen_tap_sets_the_target_where_it_was_not_where_the_mouse_went_back() {
+    // As a touchscreen on macOS sends a tap (from a real log): one frame
+    // with a move to the tap, the press and release there, then the cursor
+    // put back where the mouse was, and the pointer gone.
+    let robot = Robot::start();
+    let mut field = pose_field();
+    field.properties.insert("click_target".into(), json!(true));
+    let mut harness = field_harness(&robot, field);
+    harness.state_mut().locked = true;
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°",
+    );
+    let tap = field_area(&harness).center();
+    let mouse = tap + egui::vec2(200.0, 100.0);
+    harness.hover_at(mouse);
+    harness.step();
+    let button = |pressed| Event::PointerButton {
+        pos: tap,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::NONE,
+    };
+    // All in one frame, as macOS sends them (`Harness::event` would run a
+    // frame for each).
+    harness.input_mut().events.extend([
+        Event::PointerMoved(tap),
+        button(true),
+        Event::PointerMoved(tap),
+        button(false),
+        Event::PointerMoved(mouse),
+        Event::PointerGone,
+    ]);
+    harness.step();
+    settle(&mut harness);
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°; target at x 0.00 m, y 0.00 m, facing 0°",
+    );
+}

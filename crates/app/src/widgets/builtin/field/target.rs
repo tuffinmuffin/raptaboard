@@ -118,6 +118,27 @@ fn publish(live: &Live<'_>, topic: &str, pose: FieldPose, origin: Origin, size: 
     });
 }
 
+/// Where the primary button was let go this frame, if it was.
+///
+/// Not "where the pointer is now": a touchscreen on macOS sends a whole tap
+/// in one frame (move to the tap, press, release) and then puts the cursor
+/// back where the mouse was, so by the end of the frame the pointer is
+/// somewhere else and the target landed at the old mouse position. The
+/// release event says where the tap was.
+fn released_at(ui: &egui::Ui) -> Option<egui::Pos2> {
+    ui.input(|i| {
+        i.raw.events.iter().rev().find_map(|e| match e {
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                ..
+            } => Some(*pos),
+            _ => None,
+        })
+    })
+}
+
 /// Take clicks and drags on the field in `rect` (shown as `view`): a click
 /// sets the target there, a drag sets it where it started facing where it
 /// went, a right-click clears it. Returns the target being dragged, to draw
@@ -164,7 +185,7 @@ pub fn input(
     };
     if response.drag_stopped() {
         ui.data_mut(|d| d.remove::<(f64, f64)>(id));
-        let end = response.interact_pointer_pos();
+        let end = released_at(ui).or(response.interact_pointer_pos());
         if let Some(pose) = end.and_then(aimed) {
             input_log::log(ui.input(|i| i.time), || {
                 format!(
@@ -179,7 +200,7 @@ pub fn input(
         return None;
     }
     if response.clicked()
-        && let Some(at) = response.interact_pointer_pos()
+        && let Some(at) = released_at(ui).or(response.interact_pointer_pos())
     {
         let (x, y) = view.to_field(at);
         input_log::log(ui.input(|i| i.time), || {
