@@ -33,6 +33,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p raptaboard -- crates/layout/tests/data/elastic_sample.json
 cargo run -p raptaboard -- --address sim crates/layout/tests/data/elastic_sample.json  # robot sim
 cargo run -p raptaboard -- --help
+# The README's clips (ui/tests/clips.rs: the app headless against a scripted robot, saved as GIFs
+# in docs/images/; needs a GPU, ~30 s):
+cargo test -p raptaboard --lib record_ -- --ignored --nocapture
 # Milestone 1 CPU test (opens a window, ~40 s; keep it visible):
 cargo test -p raptaboard --release --test cpu_load -- --ignored --nocapture
 ```

@@ -27,6 +27,8 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 workspace = true
 
 [dev-dependencies]
-egui_kittest = "0.37"
+egui_kittest = { version = "0.37", features = ["wgpu"] }
+# The README's clips (`ui/tests/clips.rs`) are saved as GIFs.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }
 nt4 = { workspace = true, features = ["server"] }
 sysinfo = { version = "0.40.4", default-features = false, features = ["system"] }

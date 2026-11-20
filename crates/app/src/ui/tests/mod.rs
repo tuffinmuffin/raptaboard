@@ -5,6 +5,7 @@
 
 mod alerts;
 mod choosers;
+mod clips;
 mod enums;
 mod field;
 mod files;
