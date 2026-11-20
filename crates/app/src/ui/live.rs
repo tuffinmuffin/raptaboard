@@ -50,7 +50,10 @@ impl DashboardApp {
             .iter()
             .filter_map(|t| t.name.strip_suffix("/.type").map(str::to_owned))
             .collect();
-        let server = widgets::Server { tables: &tables };
+        let server = widgets::Server {
+            tables: &tables,
+            topics,
+        };
         let mut groups: Vec<(f64, Vec<String>)> = Vec::new();
         let mut add = |period: f64, wanted: Vec<String>| match groups
             .iter_mut()

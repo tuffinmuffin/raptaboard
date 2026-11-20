@@ -97,9 +97,11 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `tab_mark`, `traced` for recorded series, `takes_topics`/`add_topics` for topics dropped on a widget) (Text Display,
   Boolean Box, Large Text Display, Number Bar, Voltage View, Radial Gauge, Match Time, Single and
   Multi Color View, Graph (`egui_plot`; widgets needing a full `Ui` override `WidgetType::show`),
-  Toggle Switch and Toggle Button (`builtin/toggle.rs`), Number Slider (`builtin/number_slider.rs`), Dropdown and Split Button Chooser (`builtin/chooser.rs`: bound to a SendableChooser table, `table_types`, `sends_to` and `Frame::others`), Enum Dropdown and Enum Toggle (`builtin/enums.rs`: string or int topics, names from a list, a string[] topic or a chooser, guessed by `WidgetType::chosen`), Field (`builtin/field.rs`: a Pose2d/Pose3d struct topic or a `Field2d` table on a field from `fields.rs`,
+  Toggle Switch and Toggle Button (`builtin/toggle.rs`), Number Slider (`builtin/number_slider.rs`), Dropdown and Split Button Chooser (`builtin/chooser.rs`: bound to a SendableChooser table, `table_types`, `sends_to` and `Frame::others`), Enum Dropdown and Enum Toggle (`builtin/enums.rs`: string or int topics, names from a list, a string[] topic or a chooser, guessed by `WidgetType::chosen`), Field (`builtin/field/`: a Pose2d/Pose3d (or array) struct topic or a `Field2d` table on a field from `fields.rs`,
   WPILib `fields` JSONs from the repo's `fields/` folder (2026 built in) or one picked with a file dialog;
-  poses read by `types/field.rs` in the 2027 centered frame, `origin` for the old one), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
+  poses read by `types/field.rs` in the 2027 centered frame, `origin` for the old one; `layers.rs` the
+  overlays: AprilTags, and layers of other robots, paths, the tags seen and objects (markers, on the field or
+  robot-relative), each from a topic), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
   from `show`, and `Place::locked` says whether their input covers the whole card; `show_body` is
   the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
   draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing
@@ -149,7 +151,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   found by its `.type` at any path.
   Its Enums tab has enum widgets on robot-2027's `/DashTest/IntakeMode` (two-way: the robot steps
   it every 5 s, names in `IntakeModeOptions`) and `/DashTest/ArmLevel` (int, names listed), an
-  Enum Toggle on the Test chooser, and watch-only (not editable) widgets. Its Alerts tab shows robot-2027's alerts (its
+  Enum Toggle on the Test chooser, and watch-only (not editable) widgets. Its Field tab has Fields on `OrbitPose` (blue-corner origin, robot-2027 being on RobotPy 2026),
+  one with layers for `Fleet`, `OrbitPath`, `SeenTags` (the tags Robot-2026's cameras would see), `Fuel` (balls,
+  field positions) and `SeenFuel` (the balls ahead, robot-relative: each ring should land on a ball). Its Alerts tab shows robot-2027's alerts (its
   test topics add a warning, an info, and an error on for 3 s every 10 s). "Writing in a list" holds the toggles and a slider as List
   Layout children.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.

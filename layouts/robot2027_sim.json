@@ -973,7 +973,40 @@
               "data_type": "struct:Pose2d",
               "origin": "blue_corner",
               "robot_length": 0.673,
-              "robot_width": 0.711
+              "robot_width": 0.711,
+              "layers": [
+                {
+                  "kind": "robots",
+                  "topic": "/DashTest/Fleet",
+                  "data_type": "struct:Pose2d[]"
+                },
+                {
+                  "kind": "path",
+                  "topic": "/DashTest/OrbitPath",
+                  "data_type": "struct:Pose2d[]"
+                },
+                {
+                  "kind": "seen_tags",
+                  "topic": "/DashTest/SeenTags",
+                  "data_type": "int[]"
+                },
+                {
+                  "kind": "objects",
+                  "topic": "/DashTest/Fuel",
+                  "data_type": "struct:Translation2d[]",
+                  "marker": "circle",
+                  "size": 0.15
+                },
+                {
+                  "kind": "objects",
+                  "topic": "/DashTest/SeenFuel",
+                  "data_type": "struct:Translation2d[]",
+                  "marker": "ring",
+                  "size": 0.35,
+                  "robot_relative": true,
+                  "color": 4283215696
+                }
+              ]
             }
           },
           {

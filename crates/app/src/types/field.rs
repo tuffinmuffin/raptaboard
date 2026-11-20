@@ -270,41 +270,141 @@ pub fn pose_of(
     structs: Option<&StructDatabase>,
 ) -> Option<FieldPose> {
     match value {
-        Value::DoubleArray(v) if v.len() >= 3 => Some(FieldPose {
-            x: v[0],
-            y: v[1],
-            heading: v[2].to_radians(),
-        }),
-        Value::Raw(bytes) => {
-            let db = structs?;
-            let number = |schema: &str, path: &[&str]| -> Option<f64> {
-                let path: Vec<String> = path.iter().map(|s| (*s).to_owned()).collect();
-                match structs::field_value(db, schema, bytes, &path)? {
-                    Value::Double(d) => Some(d),
-                    Value::Float(f) => Some(f64::from(f)),
-                    _ => None,
-                }
-            };
-            match structs::struct_type(nt_type) {
-                Some(("Pose3d", false)) => Some(FieldPose {
-                    x: number("Pose3d", &["translation", "x"])?,
-                    y: number("Pose3d", &["translation", "y"])?,
-                    heading: yaw_of(
-                        number("Pose3d", &["rotation", "q", "w"])?,
-                        number("Pose3d", &["rotation", "q", "x"])?,
-                        number("Pose3d", &["rotation", "q", "y"])?,
-                        number("Pose3d", &["rotation", "q", "z"])?,
-                    ),
-                }),
-                Some(("Pose2d", false)) => Some(FieldPose {
-                    x: number("Pose2d", &["translation", "x"])?,
-                    y: number("Pose2d", &["translation", "y"])?,
-                    heading: number("Pose2d", &["rotation", "value"])?,
-                }),
-                _ => None,
-            }
+        Value::DoubleArray(_) => poses_of(value, nt_type, structs).into_iter().next(),
+        Value::Raw(_) if structs::struct_type(nt_type).is_some_and(|(_, array)| !array) => {
+            poses_of(value, nt_type, structs).into_iter().next()
         }
         _ => None,
+    }
+}
+
+/// Every pose in `value`, a topic of NT type `nt_type`: a `Pose2d`,
+/// `Pose3d`, `Translation2d` or `Translation3d` (facing +X; 3D ones drawn
+/// flat) or an array of them, or a
+/// `double[]` of x, y and degrees for each pose (a `Field2d` object). Empty
+/// if it's none of those, or the schemas haven't arrived (`structs`).
+///
+/// ```
+/// use nt4::Value;
+/// use raptaboard::types::field::poses_of;
+/// let two = Value::DoubleArray(vec![1.0, 2.0, 0.0, 3.0, 4.0, 180.0, 9.0]);
+/// let p = poses_of(&two, "double[]", None);
+/// assert_eq!(p.len(), 2, "a leftover number is no pose");
+/// assert_eq!((p[1].x, p[1].y), (3.0, 4.0));
+/// ```
+pub fn poses_of(value: &Value, nt_type: &str, structs: Option<&StructDatabase>) -> Vec<FieldPose> {
+    match value {
+        Value::DoubleArray(v) => v
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .map(|c| FieldPose {
+                x: c[0],
+                y: c[1],
+                heading: c[2].to_radians(),
+            })
+            .collect(),
+        Value::Raw(bytes) => {
+            let (Some(db), Some((schema, array))) = (structs, structs::struct_type(nt_type)) else {
+                return Vec::new();
+            };
+            let one = |prefix: Option<usize>| {
+                struct_pose(db, schema, bytes, |path: &[&str]| {
+                    let mut full: Vec<String> =
+                        prefix.map(|i| format!("[{i}]")).into_iter().collect();
+                    full.extend(path.iter().map(|s| (*s).to_owned()));
+                    full
+                })
+            };
+            if array {
+                (0..).map_while(|i| one(Some(i))).collect()
+            } else {
+                one(None).into_iter().collect()
+            }
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// One `Pose2d`, `Pose3d`, `Translation2d` or `Translation3d` of `schema`
+/// in `bytes`, its
+/// fields found at `path(...)` (with an array item's `[i]` first).
+fn struct_pose(
+    db: &StructDatabase,
+    schema: &str,
+    bytes: &[u8],
+    path: impl Fn(&[&str]) -> Vec<String>,
+) -> Option<FieldPose> {
+    let number = |p: &[&str]| -> Option<f64> {
+        match structs::field_value(db, schema, bytes, &path(p))? {
+            Value::Double(d) => Some(d),
+            Value::Float(f) => Some(f64::from(f)),
+            _ => None,
+        }
+    };
+    match schema {
+        "Pose3d" => Some(FieldPose {
+            x: number(&["translation", "x"])?,
+            y: number(&["translation", "y"])?,
+            heading: yaw_of(
+                number(&["rotation", "q", "w"])?,
+                number(&["rotation", "q", "x"])?,
+                number(&["rotation", "q", "y"])?,
+                number(&["rotation", "q", "z"])?,
+            ),
+        }),
+        "Pose2d" => Some(FieldPose {
+            x: number(&["translation", "x"])?,
+            y: number(&["translation", "y"])?,
+            heading: number(&["rotation", "value"])?,
+        }),
+        "Translation2d" | "Translation3d" => Some(FieldPose {
+            x: number(&["x"])?,
+            y: number(&["y"])?,
+            heading: 0.0,
+        }),
+        _ => None,
+    }
+}
+
+/// Where `local`, given relative to a robot at `robot` (+X its front, +Y
+/// its left, heading from its front), is on the field.
+///
+/// ```
+/// use raptaboard::types::field::{from_robot, FieldPose};
+/// // A robot at (2, 1) facing +Y; something 1 m in front of it.
+/// let robot = FieldPose { x: 2.0, y: 1.0, heading: std::f64::consts::FRAC_PI_2 };
+/// let ahead = FieldPose { x: 1.0, y: 0.0, heading: 0.0 };
+/// let p = from_robot(robot, ahead);
+/// assert!((p.x - 2.0).abs() < 1e-9 && (p.y - 2.0).abs() < 1e-9);
+/// ```
+pub fn from_robot(robot: FieldPose, local: FieldPose) -> FieldPose {
+    let (sin, cos) = robot.heading.sin_cos();
+    FieldPose {
+        x: robot.x + local.x * cos - local.y * sin,
+        y: robot.y + local.x * sin + local.y * cos,
+        heading: wrap(robot.heading + local.heading),
+    }
+}
+
+/// The AprilTag IDs in `value`: an `int[]`, or a `double[]` of whole
+/// numbers. Empty for anything else.
+///
+/// ```
+/// use nt4::Value;
+/// use raptaboard::types::field::tag_ids;
+/// assert_eq!(tag_ids(&Value::IntArray(vec![3, 7])), [3, 7]);
+/// assert_eq!(tag_ids(&Value::DoubleArray(vec![4.0, -1.0, 2.5])), [4]);
+/// ```
+pub fn tag_ids(value: &Value) -> Vec<u32> {
+    match value {
+        Value::IntArray(v) => v.iter().filter_map(|&i| u32::try_from(i).ok()).collect(),
+        Value::DoubleArray(v) => v
+            .iter()
+            .filter(|d| d.fract() == 0.0 && **d >= 0.0 && **d <= f64::from(u32::MAX))
+            .map(|&d| d as u32)
+            .collect(),
+        _ => Vec::new(),
     }
 }
 
