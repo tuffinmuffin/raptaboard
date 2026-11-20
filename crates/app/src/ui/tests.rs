@@ -2140,3 +2140,28 @@ fn a_long_topic_name_wraps_in_the_settings() {
     assert!(shown.width() <= 321.0, "{shown:?}");
     assert!(shown.height() > 20.0, "on one line: {shown:?}");
 }
+
+#[test]
+fn clicking_a_chooser_finds_its_table_in_the_tree() {
+    let robot = Robot::start();
+    let mut harness = chooser_harness(&robot);
+    harness.state_mut().locked = false;
+    settle(&mut harness);
+    // A click on its title bar selects it and picks its row in the tree.
+    let card = card_on_screen(&harness, 1);
+    let title = card.center_top() + egui::vec2(0.0, 12.0);
+    click_at(
+        &mut harness,
+        title,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(harness.state().selected, Some(Item::Widget(1)));
+    settle(&mut harness);
+    assert_eq!(
+        picked(&harness),
+        ["/Test/Auto"],
+        "status: {}",
+        harness.state().status
+    );
+}

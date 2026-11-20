@@ -194,7 +194,11 @@ impl DashboardApp {
     pub(super) fn find_in_tree(&mut self, widget: &WidgetContainer) {
         let Some(topic) = widget.topic() else { return };
         let field = widget.struct_meta();
-        let published = self.nt.client().and_then(|c| c.topic(topic)).is_some();
+        // A widget bound to a whole table (a chooser) is found if anything
+        // is published under the table.
+        let table = format!("{}/", topic.trim_end_matches('/'));
+        let published = self.nt.client().and_then(|c| c.topic(topic)).is_some()
+            || self.nt.topics().iter().any(|t| t.name.starts_with(&table));
         let missing = if !published {
             Some(format!("{topic} isn't published"))
         } else {
