@@ -79,6 +79,9 @@ pub struct ValueInfo<'a> {
     pub nt_type: Option<&'a str>,
     /// What the schema says about the struct field shown, if it's one.
     pub field: Option<&'a FieldInfo>,
+    /// Every topic the server has, as (full name, NT type), for settings
+    /// that refer to other topics.
+    pub topics: &'a [(String, String)],
 }
 
 impl ValueInfo<'_> {
@@ -187,12 +190,18 @@ pub trait WidgetType: Sync {
         &[]
     }
 
-    /// Where the value [`show`](Self::show) returns is sent, if not to the
-    /// widget's `topic`: a topic under it (a chooser's `"selected"`), and the
-    /// NT type it's published as if nobody has published it yet.
-    fn sends_to(&self) -> Option<(&'static str, nt4::NtType)> {
+    /// Where the value [`show`](Self::show) returns is sent, for a widget
+    /// with settings `props`, if not to the widget's `topic`: a topic under
+    /// it (a chooser's `"selected"`), and the NT type it's published as if
+    /// nobody has published it yet.
+    fn sends_to(&self, _props: &Map<String, Json>) -> Option<(&'static str, nt4::NtType)> {
         None
     }
+
+    /// Called when a widget is changed to this type in its settings, to set
+    /// up settings that can be worked out from what's on the server (an
+    /// enum widget guesses where its names come from). Nothing by default.
+    fn chosen(&self, _props: &mut Map<String, Json>, _value: ValueInfo<'_>) {}
 
     /// Topics this widget needs values for besides its own `topic`, such as
     /// a graph's other lines. None by default.
@@ -242,6 +251,8 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::color_view::MultiColorView,
     &builtin::chooser::DropdownChooser,
     &builtin::chooser::SplitButtonChooser,
+    &builtin::enums::EnumDropdown,
+    &builtin::enums::EnumToggle,
     &builtin::graph::Graph,
 ];
 

@@ -832,7 +832,8 @@ impl DashboardApp {
         // connection is used.
         let topic = widget.topic().map(str::to_owned);
         let is_field = widget.struct_meta().is_some();
-        let sends_to = widgets::find(&widget.widget_type).and_then(|ty| ty.sends_to());
+        let sends_to =
+            widgets::find(&widget.widget_type).and_then(|ty| ty.sends_to(&widget.properties));
         let result = match (topic, is_field) {
             // A topic under the widget's (a chooser's `selected`), which
             // the dashboard publishes if nobody has yet.

@@ -19,7 +19,7 @@ use crate::widgets::shared::{card, entry, format, props};
 use crate::widgets::{Live, ValueInfo, WidgetType};
 
 /// Values can be typed in (raptaboard's; off unless set).
-pub const EDITABLE: &str = "editable";
+pub const EDITABLE: &str = props::EDITABLE;
 
 /// The Text Display widget (Elastic's `"Text Display"`, also saved as
 /// `"Text View"`).
@@ -233,16 +233,14 @@ impl WidgetType for TextDisplay {
     fn settings(&self, ui: &mut egui::Ui, props: &mut Map<String, Json>, value: ValueInfo<'_>) {
         format::rows(ui, props, value);
         props::text_size_row(ui, props);
-        // "Editable", with the details on hover.
-        let hover = "Click the value to type a new one and press Enter to send it \
-                     (Escape cancels). A blue dot in the corner shows it's editable. \
-                     Not for arrays or struct fields.";
-        ui.label("Editable").on_hover_text(hover);
-        let mut on = props::flag(props, EDITABLE, false);
-        if ui.checkbox(&mut on, "").on_hover_text(hover).changed() {
-            props::set_property(props, EDITABLE, on.then_some(true.into()));
-        }
-        ui.end_row();
+        props::editable_row(
+            ui,
+            props,
+            false,
+            "Click the value to type a new one and press Enter to send it \
+             (Escape cancels). A blue dot in the corner shows it's editable. \
+             Not for arrays or struct fields.",
+        );
     }
 
     fn setting_keys(&self) -> &'static [&'static str] {

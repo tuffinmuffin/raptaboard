@@ -129,6 +129,16 @@ impl Chooser {
             .find(|c| self.has(c))
     }
 
+    /// The robot's own choice, ignoring any pick: `active` if it's an
+    /// option, else `default`. What a chooser that isn't editable shows.
+    pub fn robot_pick(&self) -> Option<&str> {
+        [&self.active, &self.default]
+            .into_iter()
+            .flatten()
+            .map(String::as_str)
+            .find(|c| self.has(c))
+    }
+
     /// Whether the robot hasn't taken the pick yet: one was sent, and the
     /// robot's `active` is something else.
     ///
@@ -267,7 +277,7 @@ fn fixed_size(p: &Map<String, Json>) -> Option<f32> {
 
 /// The "Text size" settings row: fitted to the widget (no `font_size`),
 /// or a set size.
-fn text_size_row(ui: &mut egui::Ui, p: &mut Map<String, Json>) {
+pub(crate) fn text_size_row(ui: &mut egui::Ui, p: &mut Map<String, Json>) {
     ui.label("Text size");
     ui.horizontal(|ui| {
         let mut fit = !p.contains_key(props::FONT_SIZE);
@@ -327,6 +337,107 @@ fn row_area(rect: Rect, live: &Live<'_>) -> Rect {
     live.free.unwrap_or(rect)
 }
 
+/// What a drop-down or button row offers and shows.
+#[derive(Clone, Copy)]
+pub(crate) struct Picker<'a> {
+    /// The widget's title, its name for screen readers.
+    pub title: &'a str,
+    /// Every option, in order.
+    pub options: &'a [String],
+    /// The text shown for the current choice.
+    pub shown: &'a str,
+    /// The option that's picked, if any.
+    pub current: Option<&'a str>,
+    /// The robot hasn't taken the pick yet (an orange outline).
+    pub waiting: bool,
+    /// It takes picks (else it only shows).
+    pub enabled: bool,
+}
+
+/// A drop-down of the picker's options in `rect`, sized to it (or to the
+/// widget's `font_size`), showing its `shown` and with its `current` ticked
+/// in the list; greyed out and closed unless `enabled`. The option picked
+/// this frame, if any, and where the drop-down's button is.
+pub(crate) fn dropdown(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    id: egui::Id,
+    picker: &Picker<'_>,
+    p: &Map<String, Json>,
+) -> (Option<String>, Rect) {
+    let Picker {
+        title,
+        options,
+        shown,
+        current,
+        enabled,
+        ..
+    } = *picker;
+    let font = match fixed_size(p) {
+        Some(size) => size,
+        None => fitted_size(ui.painter(), rect, options),
+    };
+    let row = (font * ROW_PER_FONT).min(rect.height());
+    let combo = Rect::from_min_size(
+        rect.min
+            + egui::vec2(
+                0.0,
+                ((rect.height() - row) / 2.0 - NOTE_SIZE / 2.0).max(0.0),
+            ),
+        egui::vec2(rect.width(), row),
+    );
+    // The text and the button's height follow the size; the list that
+    // opens is a popup with a style of its own, sized the same.
+    let size_up = |ui: &mut egui::Ui| {
+        let style = ui.style_mut();
+        style.override_font_id = Some(egui::FontId::proportional(font));
+        style.spacing.interact_size.y = row;
+        style.spacing.button_padding.y = ((row - font) / 2.0).max(1.0);
+    };
+    let mut chosen = None;
+    ui.scope_builder(egui::UiBuilder::new().max_rect(combo), |ui| {
+        size_up(ui);
+        if !enabled {
+            ui.disable();
+        }
+        egui::ComboBox::from_id_salt(id)
+            .width(combo.width())
+            .selected_text(shown)
+            .show_ui(ui, |ui| {
+                size_up(ui);
+                for option in options {
+                    if ui
+                        .selectable_label(current == Some(option.as_str()), option)
+                        .clicked()
+                    {
+                        chosen = Some(option.clone());
+                    }
+                }
+            })
+            .response
+            .widget_info(|| {
+                // Named for screen readers, with the choice shown as its
+                // value.
+                let mut info =
+                    egui::WidgetInfo::labeled(egui::accesskit::Role::ComboBox, enabled, title);
+                info.current_text_value = Some(shown.to_owned());
+                info
+            });
+    });
+    (chosen, combo)
+}
+
+/// Whether a chooser with settings `p` takes picks (`editable`, on unless
+/// set). Off, it only shows the robot's choice.
+fn editable(p: &Map<String, Json>) -> bool {
+    props::flag(p, props::EDITABLE, true)
+}
+
+/// The hover text of the choosers' Editable setting.
+const EDITABLE_HOVER: &str = "On, a pick is sent to the robot. Off, it only shows the \
+                              robot's choice (its active option), for watching without \
+                              changing it.";
+
 impl DropdownChooser {
     /// The drop-down in `rect`. The choice to send, if any.
     fn show_in(
@@ -337,61 +448,38 @@ impl DropdownChooser {
         live: &Live<'_>,
     ) -> Option<Value> {
         let id = ui.scope_id().with("dropdown_chooser");
-        let (chooser, mut send) = read_and_check(ui, id.with("options"), widget, live);
+        let p = &widget.properties;
+        let (chooser, dropped) = read_and_check(ui, id.with("options"), widget, live);
+        let editable = editable(p);
+        // Only a widget that sends can drop a stale pick.
+        let mut send = dropped.filter(|_| editable);
         if let Some(why) = nothing_to_pick(&chooser) {
             card::draw_message(ui.painter(), ui.visuals(), rect, why);
             return send.map(Value::String);
         }
-        let pick = chooser.pick().map(str::to_owned);
-        let options = listed(&chooser, &widget.properties);
-        let font = match fixed_size(&widget.properties) {
-            Some(size) => size,
-            None => fitted_size(ui.painter(), rect, &options),
+        let pick = if editable {
+            chooser.pick()
+        } else {
+            chooser.robot_pick()
+        }
+        .map(str::to_owned);
+        let options = listed(&chooser, p);
+        let shown = pick.clone().unwrap_or_default();
+        let picker = Picker {
+            title: &widget.title,
+            options: &options,
+            shown: &shown,
+            current: pick.as_deref(),
+            waiting: false,
+            enabled: editable,
         };
-        let row = (font * ROW_PER_FONT).min(rect.height());
-        let combo = Rect::from_min_size(
-            rect.min
-                + egui::vec2(
-                    0.0,
-                    ((rect.height() - row) / 2.0 - NOTE_SIZE / 2.0).max(0.0),
-                ),
-            egui::vec2(rect.width(), row),
-        );
-        let mut chosen = None;
-        ui.scope_builder(egui::UiBuilder::new().max_rect(combo), |ui| {
-            // The text and the button's height follow the size.
-            let style = ui.style_mut();
-            style.override_font_id = Some(egui::FontId::proportional(font));
-            style.spacing.interact_size.y = row;
-            style.spacing.button_padding.y = ((row - font) / 2.0).max(1.0);
-            egui::ComboBox::from_id_salt(id)
-                .width(combo.width())
-                .selected_text(pick.clone().unwrap_or_default())
-                .show_ui(ui, |ui| {
-                    // The list is a popup with a style of its own.
-                    let style = ui.style_mut();
-                    style.override_font_id = Some(egui::FontId::proportional(font));
-                    style.spacing.interact_size.y = row;
-                    style.spacing.button_padding.y = ((row - font) / 2.0).max(1.0);
-                    for option in &options {
-                        if ui
-                            .selectable_label(pick.as_ref() == Some(option), option)
-                            .clicked()
-                        {
-                            chosen = Some(option.clone());
-                        }
-                    }
-                })
-                .response
-                .widget_info(|| {
-                    egui::WidgetInfo::labeled(egui::accesskit::Role::ComboBox, true, &widget.title)
-                });
-        });
-        if chooser.waiting() {
+        let (chosen, combo) = dropdown(ui, rect, id, &picker, p);
+        if editable && chooser.waiting() {
             draw_waiting(ui.painter(), rect.with_min_y(combo.max.y), &chooser);
         }
         // A pick sends, unless it's the one already sent.
         if let Some(choice) = chosen
+            && editable
             && chooser.selected.as_ref() != Some(&choice)
         {
             send = Some(choice);
@@ -418,7 +506,7 @@ impl WidgetType for DropdownChooser {
         &[CHOOSER_TYPE]
     }
 
-    fn sends_to(&self) -> Option<(&'static str, NtType)> {
+    fn sends_to(&self, _: &Map<String, Json>) -> Option<(&'static str, NtType)> {
         Some((SELECTED, NtType::String))
     }
 
@@ -469,16 +557,103 @@ impl WidgetType for DropdownChooser {
             false,
         );
         text_size_row(ui, p);
+        props::editable_row(ui, p, true, EDITABLE_HOVER);
     }
 
     fn setting_keys(&self) -> &'static [&'static str] {
-        &[SORT_OPTIONS, props::FONT_SIZE]
+        &[SORT_OPTIONS, props::FONT_SIZE, props::EDITABLE]
     }
 }
 
+/// A row of buttons in `rect`, one per option, with `current` lit (and
+/// outlined in orange if `waiting`), sized to it unless the widget has a
+/// `font_size`. Buttons only take clicks if `enabled`. The option clicked
+/// this frame, if any, and the bottom of the buttons.
+pub(crate) fn button_row(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    id: egui::Id,
+    picker: &Picker<'_>,
+    p: &Map<String, Json>,
+) -> (Option<String>, f32) {
+    let Picker {
+        options,
+        current,
+        waiting,
+        enabled,
+        ..
+    } = *picker;
+    let fixed = fixed_size(p);
+    let pick = current.map(str::to_owned);
+    let n = options.len() as f32;
+    let height =
+        (rect.height() - NOTE_SIZE - 4.0).clamp(ROW_HEIGHT.min(rect.height()), ROW_HEIGHT * 2.0);
+    let width = ((rect.width() - GAP * (n - 1.0)) / n).max(1.0);
+    let top = rect.min.y + ((rect.height() - height - NOTE_SIZE) / 2.0).max(0.0);
+    let visuals = ui.visuals().clone();
+    let mut chosen = None;
+    for (i, option) in options.iter().enumerate() {
+        let button = Rect::from_min_size(
+            egui::pos2(rect.min.x + i as f32 * (width + GAP), top),
+            egui::vec2(width, height),
+        );
+        let response = ui.interact(
+            button,
+            id.with(i),
+            if enabled {
+                Sense::click()
+            } else {
+                Sense::hover()
+            },
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::accesskit::Role::Button, enabled, option)
+        });
+        if enabled && response.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if response.clicked() {
+            chosen = Some(option.clone());
+        }
+        let on = pick.as_ref() == Some(option);
+        let fill = if on {
+            visuals.selection.bg_fill
+        } else if enabled && response.hovered() {
+            visuals.widgets.hovered.bg_fill
+        } else {
+            visuals.widgets.inactive.bg_fill
+        };
+        let radius = CornerRadius::same(card::BODY_CORNER_RADIUS);
+        ui.painter().rect_filled(button, radius, fill);
+        if on && waiting {
+            ui.painter().rect_stroke(
+                button,
+                radius,
+                Stroke::new(2.0, WAITING_COLOR),
+                egui::StrokeKind::Inside,
+            );
+        }
+        let color = props::text_color_on(fill);
+        match fixed {
+            Some(size) => {
+                ui.painter()
+                    .with_clip_rect(button.intersect(ui.clip_rect()))
+                    .text(
+                        button.center(),
+                        egui::Align2::CENTER_CENTER,
+                        option,
+                        egui::FontId::proportional(size),
+                        color,
+                    );
+            }
+            None => card::draw_fitted(ui.painter(), button.shrink(4.0), option, color),
+        }
+    }
+    (chosen, top + height)
+}
+
 impl SplitButtonChooser {
-    /// The buttons in `rect`, for input only in `input`. The choice to
-    /// send, if any.
+    /// The buttons in `rect`. The choice to send, if any.
     fn show_in(
         &self,
         ui: &mut egui::Ui,
@@ -487,73 +662,31 @@ impl SplitButtonChooser {
         live: &Live<'_>,
     ) -> Option<Value> {
         let id = ui.scope_id().with("split_button_chooser");
-        let (chooser, mut send) = read_and_check(ui, id.with("options"), widget, live);
+        let p = &widget.properties;
+        let (chooser, dropped) = read_and_check(ui, id.with("options"), widget, live);
+        let editable = editable(p);
+        let mut send = dropped.filter(|_| editable);
         if let Some(why) = nothing_to_pick(&chooser) {
             card::draw_message(ui.painter(), ui.visuals(), rect, why);
             return send.map(Value::String);
         }
-        let pick = chooser.pick().map(str::to_owned);
-        let waiting = chooser.waiting();
-        let fixed = fixed_size(&widget.properties);
-        let options = &chooser.options;
-        let n = options.len() as f32;
-        let height = (rect.height() - NOTE_SIZE - 4.0)
-            .clamp(ROW_HEIGHT.min(rect.height()), ROW_HEIGHT * 2.0);
-        let width = ((rect.width() - GAP * (n - 1.0)) / n).max(1.0);
-        let top = rect.min.y + ((rect.height() - height - NOTE_SIZE) / 2.0).max(0.0);
-        let visuals = ui.visuals().clone();
-        let mut chosen = None;
-        for (i, option) in options.iter().enumerate() {
-            let button = Rect::from_min_size(
-                egui::pos2(rect.min.x + i as f32 * (width + GAP), top),
-                egui::vec2(width, height),
-            );
-            let response = ui.interact(button, id.with(i), Sense::click());
-            response.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, option)
-            });
-            if response.hovered() {
-                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-            }
-            if response.clicked() {
-                chosen = Some(option.clone());
-            }
-            let on = pick.as_ref() == Some(option);
-            let fill = if on {
-                visuals.selection.bg_fill
-            } else if response.hovered() {
-                visuals.widgets.hovered.bg_fill
-            } else {
-                visuals.widgets.inactive.bg_fill
-            };
-            let radius = CornerRadius::same(card::BODY_CORNER_RADIUS);
-            ui.painter().rect_filled(button, radius, fill);
-            if on && waiting {
-                ui.painter().rect_stroke(
-                    button,
-                    radius,
-                    Stroke::new(2.0, WAITING_COLOR),
-                    egui::StrokeKind::Inside,
-                );
-            }
-            let color = props::text_color_on(fill);
-            match fixed {
-                Some(size) => {
-                    ui.painter()
-                        .with_clip_rect(button.intersect(ui.clip_rect()))
-                        .text(
-                            button.center(),
-                            egui::Align2::CENTER_CENTER,
-                            option,
-                            egui::FontId::proportional(size),
-                            color,
-                        );
-                }
-                None => card::draw_fitted(ui.painter(), button.shrink(4.0), option, color),
-            }
-        }
+        let pick = if editable {
+            chooser.pick()
+        } else {
+            chooser.robot_pick()
+        };
+        let waiting = editable && chooser.waiting();
+        let picker = Picker {
+            title: &widget.title,
+            options: &chooser.options,
+            shown: pick.unwrap_or_default(),
+            current: pick,
+            waiting,
+            enabled: editable,
+        };
+        let (chosen, bottom) = button_row(ui, rect, id, &picker, p);
         if waiting {
-            draw_waiting(ui.painter(), rect.with_min_y(top + height), &chooser);
+            draw_waiting(ui.painter(), rect.with_min_y(bottom), &chooser);
         }
         if let Some(choice) = chosen
             && chooser.selected.as_ref() != Some(&choice)
@@ -577,7 +710,7 @@ impl WidgetType for SplitButtonChooser {
         &[CHOOSER_TYPE]
     }
 
-    fn sends_to(&self) -> Option<(&'static str, NtType)> {
+    fn sends_to(&self, _: &Map<String, Json>) -> Option<(&'static str, NtType)> {
         Some((SELECTED, NtType::String))
     }
 
@@ -619,10 +752,11 @@ impl WidgetType for SplitButtonChooser {
 
     fn settings(&self, ui: &mut egui::Ui, p: &mut Map<String, Json>, _: ValueInfo<'_>) {
         text_size_row(ui, p);
+        props::editable_row(ui, p, true, EDITABLE_HOVER);
     }
 
     fn setting_keys(&self) -> &'static [&'static str] {
-        &[props::FONT_SIZE]
+        &[props::FONT_SIZE, props::EDITABLE]
     }
 }
 

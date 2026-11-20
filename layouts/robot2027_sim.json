@@ -747,6 +747,135 @@
         "layouts": [],
         "containers": []
       }
+    },
+    {
+      "name": "Enums",
+      "grid_layout": {
+        "layouts": [],
+        "containers": [
+          {
+            "title": "Intake mode (dropdown)",
+            "x": 0,
+            "y": 0,
+            "width": 384,
+            "height": 128,
+            "type": "Enum Dropdown",
+            "properties": {
+              "topic": "/DashTest/IntakeMode",
+              "period": 0.06,
+              "data_type": "string",
+              "enum_source": "topic",
+              "options_topic": "/DashTest/IntakeModeOptions"
+            }
+          },
+          {
+            "title": "Intake mode (toggle)",
+            "x": 384,
+            "y": 0,
+            "width": 256,
+            "height": 128,
+            "type": "Enum Toggle",
+            "properties": {
+              "topic": "/DashTest/IntakeMode",
+              "period": 0.06,
+              "data_type": "string",
+              "enum_source": "topic",
+              "options_topic": "/DashTest/IntakeModeOptions"
+            }
+          },
+          {
+            "title": "Intake mode (watch only)",
+            "x": 640,
+            "y": 0,
+            "width": 256,
+            "height": 128,
+            "type": "Enum Toggle",
+            "properties": {
+              "topic": "/DashTest/IntakeMode",
+              "period": 0.06,
+              "data_type": "string",
+              "enum_source": "topic",
+              "options_topic": "/DashTest/IntakeModeOptions",
+              "editable": false
+            }
+          },
+          {
+            "title": "Intake mode (text)",
+            "x": 896,
+            "y": 0,
+            "width": 256,
+            "height": 128,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/DashTest/IntakeMode",
+              "period": 0.06,
+              "data_type": "string"
+            }
+          },
+          {
+            "title": "Arm level (int, names listed)",
+            "x": 0,
+            "y": 128,
+            "width": 384,
+            "height": 128,
+            "type": "Enum Dropdown",
+            "properties": {
+              "topic": "/DashTest/ArmLevel",
+              "period": 0.06,
+              "data_type": "int",
+              "enum_values": [
+                "Low",
+                "Mid",
+                "High"
+              ]
+            }
+          },
+          {
+            "title": "Arm level (toggle)",
+            "x": 384,
+            "y": 128,
+            "width": 256,
+            "height": 128,
+            "type": "Enum Toggle",
+            "properties": {
+              "topic": "/DashTest/ArmLevel",
+              "period": 0.06,
+              "data_type": "int",
+              "enum_values": [
+                "Low",
+                "Mid",
+                "High"
+              ]
+            }
+          },
+          {
+            "title": "Test (enum toggle on a chooser)",
+            "x": 0,
+            "y": 256,
+            "width": 384,
+            "height": 128,
+            "type": "Enum Toggle",
+            "properties": {
+              "topic": "/SmartDashboard/DashTest Test",
+              "period": 0.06,
+              "enum_source": "chooser"
+            }
+          },
+          {
+            "title": "Auto (watch only)",
+            "x": 384,
+            "y": 256,
+            "width": 768,
+            "height": 128,
+            "type": "Split Button Chooser",
+            "properties": {
+              "topic": "/SmartDashboard/DashTest Auto",
+              "period": 0.06,
+              "editable": false
+            }
+          }
+        ]
+      }
     }
   ]
 }

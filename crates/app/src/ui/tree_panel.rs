@@ -87,7 +87,10 @@ impl DashboardApp {
         self.tree_sel.lists = self.list_names();
         let no_structs = StructDatabase::new();
         let structs = self.nt.structs().unwrap_or(&no_structs);
-        let drawn = egui::ScrollArea::vertical()
+        // Both ways: a wide row scrolls sideways rather than widening the
+        // panel, which would push the grid over (selecting a widget opens
+        // its folder, so that would move the grid under the pointer).
+        let drawn = egui::ScrollArea::both()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 // Rows are picked, not their text: no text cursor or text

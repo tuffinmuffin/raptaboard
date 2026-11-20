@@ -57,6 +57,13 @@ struct Robot {
     auto_options: Publisher<Vec<String>>,
     auto_active: Publisher<String>,
     seen_selected: nt4::Subscriber<String>,
+    /// A state robot code and dashboards both change: `/Test/mode`, with
+    /// its names in `/Test/modeOptions`, and an int one, `/Test/level`.
+    mode: Publisher<String>,
+    seen_mode: nt4::Subscriber<String>,
+    level: Publisher<i64>,
+    seen_level: nt4::Subscriber<i64>,
+    _mode_options: Publisher<Vec<String>>,
     _auto: (Publisher<String>, Publisher<String>),
     _others: (
         Publisher<String>,
@@ -98,6 +105,14 @@ impl Robot {
         let auto_active = server.publish::<String>("/Test/Auto/active");
         auto_active.set("Middle".into());
         let seen_selected = server.subscribe::<String>("/Test/Auto/selected", Default::default());
+        let mode = server.publish::<String>("/Test/mode");
+        mode.set("Stowed".into());
+        let seen_mode = server.subscribe::<String>("/Test/mode", Default::default());
+        let mode_options = server.publish::<Vec<String>>("/Test/modeOptions");
+        mode_options.set(vec!["Stowed".into(), "Intaking".into(), "Shooting".into()]);
+        let level = server.publish::<i64>("/Test/level");
+        level.set(0);
+        let seen_level = server.subscribe::<i64>("/Test/level", Default::default());
         let color = server.publish::<String>("/Test/color");
         color.set("#FF8800".into());
         let colors = server.publish::<Vec<String>>("/Test/colors");
@@ -147,6 +162,11 @@ impl Robot {
             auto_options,
             auto_active,
             seen_selected,
+            mode,
+            seen_mode,
+            level,
+            seen_level,
+            _mode_options: mode_options,
             _auto: (auto_type, auto_default),
             _others: (color, colors, numbers),
             _structs: (pose, modules),
@@ -655,12 +675,21 @@ fn tree_rows_select_with_click_ctrl_and_shift() {
     click_row(&mut harness, "number", 0, Modifiers::COMMAND);
     assert_eq!(picked(&harness), ["/Test/count"]);
     // Shift takes the rows from the last one clicked (Ctrl clicks count
-    // too), in name order: count, enabled, flag, number.
+    // too), in name order: count, enabled, flag, level, mode,
+    // modeOptions, number.
     click_row(&mut harness, "count", 0, none);
     click_row(&mut harness, "number", 0, Modifiers::SHIFT);
     assert_eq!(
         picked(&harness),
-        ["/Test/count", "/Test/enabled", "/Test/flag", "/Test/number"]
+        [
+            "/Test/count",
+            "/Test/enabled",
+            "/Test/flag",
+            "/Test/level",
+            "/Test/mode",
+            "/Test/modeOptions",
+            "/Test/number"
+        ]
     );
     // And upwards, from the last click: number back to color.
     click_row(&mut harness, "number", 0, none);
@@ -673,6 +702,9 @@ fn tree_rows_select_with_click_ctrl_and_shift() {
             "/Test/count",
             "/Test/enabled",
             "/Test/flag",
+            "/Test/level",
+            "/Test/mode",
+            "/Test/modeOptions",
             "/Test/number"
         ]
     );
@@ -1547,6 +1579,7 @@ fn a_list_sliders_whole_value_opens_the_box() {
 fn an_editable_text_display_takes_typed_values() {
     let robot = Robot::start();
     let mut harness = writing_harness(&robot);
+
     let primary = egui::PointerButton::Primary;
     let wants_keys = |h: &Harness| h.ctx.egui_wants_keyboard_input();
     harness.state_mut().locked = true;
@@ -1579,9 +1612,13 @@ fn an_editable_text_display_takes_typed_values() {
     // Unlocked, the title bar selects it; the body still opens the box.
     harness.state_mut().locked = false;
     settle(&mut harness);
+    let grid_at = harness.state().grid_area.min;
     click_at(&mut harness, title, primary, Modifiers::NONE);
     assert!(!wants_keys(&harness));
     assert_eq!(harness.state().selected, Some(Item::Widget(4)));
+    // Selecting it opened its folder in the tree, whose rows are wider
+    // than the tree: the tree scrolls rather than pushing the grid over.
+    assert_eq!(harness.state().grid_area.min, grid_at, "the grid moved");
     click_at(&mut harness, body, primary, Modifiers::NONE);
     assert!(wants_keys(&harness));
     type_text(&mut harness, "-1");
@@ -1794,4 +1831,230 @@ fn a_chooser_table_drags_from_the_tree_as_a_dropdown() {
     settle(&mut harness);
     open(&mut harness, "Auto  (");
     assert!(harness.query_by_label("options").is_some());
+}
+
+/// A layout of enum widgets, each 512 by 256 (the last 256 wide):
+/// 0. an Enum Dropdown on `/Test/mode`, names from `/Test/modeOptions`;
+/// 1. an Enum Toggle on the int `/Test/level`, listed as Low and High;
+/// 2. an Enum Toggle on `/Test/mode` that isn't editable;
+/// 3. a Split Button Chooser on `/Test/Auto` that isn't editable;
+/// 4. an Enum Toggle on the chooser table `/Test/Auto`;
+/// 5. a Text Display on `/Test/mode`, for changing its type.
+fn enum_layout() -> ElasticLayout {
+    let at = |x: f64, y: f64, w: f64| LayoutRect {
+        x,
+        y,
+        width: w,
+        height: 256.0,
+    };
+    let with = |mut w: WidgetContainer, props: serde_json::Value| {
+        for (k, v) in props.as_object().unwrap() {
+            w.properties.insert(k.clone(), v.clone());
+        }
+        w
+    };
+    // A set text size, so its list fits on the card.
+    let names =
+        json!({"enum_source": "topic", "options_topic": "/Test/modeOptions", "font_size": 14});
+    let mut tab = Tab::new("Enums");
+    tab.grid_layout.containers = vec![
+        with(
+            widget("Enum Dropdown", "/Test/mode", "string", at(0.0, 0.0, 512.0)),
+            names.clone(),
+        ),
+        with(
+            widget("Enum Toggle", "/Test/level", "int", at(512.0, 0.0, 512.0)),
+            json!({"enum_values": ["Low", "High"]}),
+        ),
+        with(
+            widget("Enum Toggle", "/Test/mode", "string", at(0.0, 256.0, 512.0)),
+            json!({"enum_source": "topic", "options_topic": "/Test/modeOptions", "editable": false}),
+        ),
+        with(
+            widget(
+                "Split Button Chooser",
+                "/Test/Auto",
+                "",
+                at(512.0, 256.0, 512.0),
+            ),
+            json!({"editable": false}),
+        ),
+        with(
+            widget("Enum Toggle", "/Test/Auto", "", at(1024.0, 0.0, 256.0)),
+            json!({"enum_source": "chooser"}),
+        ),
+        widget(
+            "Text Display",
+            "/Test/mode",
+            "string",
+            at(1024.0, 256.0, 256.0),
+        ),
+    ];
+    for i in [3, 4] {
+        tab.grid_layout.containers[i].properties.remove("data_type");
+    }
+    for (i, title) in [
+        "Mode",
+        "Level",
+        "Mode (watch)",
+        "Auto (watch)",
+        "Auto toggle",
+        "Mode text",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        tab.grid_layout.containers[i].title = title.into();
+    }
+    ElasticLayout {
+        tabs: vec![tab],
+        ..ElasticLayout::default()
+    }
+}
+
+/// The harness showing [`enum_layout`], locked.
+fn enum_harness(robot: &Robot) -> Harness {
+    let mut harness = harness_for(robot);
+    let app = harness.state_mut();
+    app.layout = enum_layout();
+    app.saved = app.layout.clone();
+    app.history = History::new(&app.layout);
+    app.current_tab = 0;
+    app.locked = true;
+    settle(&mut harness);
+    harness
+}
+
+/// Wait until `get` gives `want`.
+fn wait_for<T: PartialEq + std::fmt::Debug>(
+    harness: &mut Harness,
+    what: &str,
+    get: impl Fn() -> Option<T>,
+    want: T,
+) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while get().as_ref() != Some(&want) {
+        assert!(
+            Instant::now() < deadline,
+            "{what} never became {want:?}, is {:?}",
+            get()
+        );
+        settle(harness);
+    }
+}
+
+/// Wait until the drop-down titled `title` shows `want`.
+fn shows_soon(harness: &mut Harness, title: &str, want: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let shown = harness.get_by_label(title).value();
+        if shown.as_deref() == Some(want) {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "{title} never showed {want:?}, shows {shown:?}"
+        );
+        settle(harness);
+    }
+}
+
+#[test]
+fn an_enum_dropdown_sends_and_follows_the_robot() {
+    let robot = Robot::start();
+    let mut harness = enum_harness(&robot);
+    let card = card_on_screen(&harness, 0);
+    shows_soon(&mut harness, "Mode", "Stowed");
+    let combo = harness.get_by_label("Mode").rect().center();
+    click_at(
+        &mut harness,
+        combo,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    click_label_in(&mut harness, "Shooting", card);
+    wait_for(
+        &mut harness,
+        "the server's mode",
+        || robot.seen_mode.get(),
+        "Shooting".into(),
+    );
+    // The robot changes it: the drop-down follows.
+    robot.mode.set("Intaking".into());
+    shows_soon(&mut harness, "Mode", "Intaking");
+    // A value that isn't a state says so.
+    robot.mode.set("Climbing".into());
+    shows_soon(&mut harness, "Mode", "Climbing (not listed)");
+    assert_eq!(harness.state().alert.played(), 0);
+}
+
+#[test]
+fn an_enum_toggle_steps_through_its_states_and_follows_the_robot() {
+    let robot = Robot::start();
+    let mut harness = enum_harness(&robot);
+    let primary = egui::PointerButton::Primary;
+    let (body, _) = body_and_title(&harness, 1);
+    click_at(&mut harness, body, primary, Modifiers::NONE);
+    wait_for(&mut harness, "level", || robot.seen_level.get(), 1);
+    click_at(&mut harness, body, primary, Modifiers::NONE);
+    wait_for(&mut harness, "level", || robot.seen_level.get(), 0);
+    // The robot moves it to High: the next click goes back to Low (0).
+    robot.level.set(1);
+    std::thread::sleep(Duration::from_millis(150));
+    settle(&mut harness);
+    click_at(&mut harness, body, primary, Modifiers::NONE);
+    wait_for(&mut harness, "level", || robot.seen_level.get(), 0);
+    // On a chooser table it sends the next option to `selected`.
+    let (chooser, _) = body_and_title(&harness, 4);
+    click_at(&mut harness, chooser, primary, Modifiers::NONE);
+    wait_for(
+        &mut harness,
+        "the pick",
+        || robot.seen_selected.get(),
+        "Right".into(),
+    );
+}
+
+#[test]
+fn widgets_that_arent_editable_only_show() {
+    let robot = Robot::start();
+    let mut harness = enum_harness(&robot);
+    let primary = egui::PointerButton::Primary;
+    let (toggle, _) = body_and_title(&harness, 2);
+    click_at(&mut harness, toggle, primary, Modifiers::NONE);
+    let card = card_on_screen(&harness, 3);
+    click_label_in(&mut harness, "Left", card);
+    std::thread::sleep(Duration::from_millis(200));
+    settle(&mut harness);
+    assert_eq!(robot.seen_mode.get(), Some("Stowed".into()));
+    assert_eq!(robot.seen_selected.get(), None);
+}
+
+#[test]
+fn changing_a_widget_to_an_enum_guesses_its_names() {
+    let robot = Robot::start();
+    let mut harness = enum_harness(&robot);
+    let original = harness.state().layout.tabs[0].grid_layout.containers[5].clone();
+    harness.state_mut().editing = Some(Editing::Widget {
+        tab: 0,
+        index: 5,
+        original,
+    });
+    settle(&mut harness);
+    // The settings' widget type, then Enum Dropdown in its list.
+    let ty = harness
+        .get_by_label("How the value is shown. Settings for other types are kept.")
+        .rect();
+    click_at(
+        &mut harness,
+        ty.center(),
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    harness.get_by_label("Enum Dropdown").click();
+    settle(&mut harness);
+    let w = &harness.state().layout.tabs[0].grid_layout.containers[5];
+    assert_eq!(w.widget_type, "Enum Dropdown");
+    assert_eq!(w.properties["enum_source"], "topic");
+    assert_eq!(w.properties["options_topic"], "/Test/modeOptions");
 }

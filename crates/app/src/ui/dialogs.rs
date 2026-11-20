@@ -90,10 +90,11 @@ pub(super) fn widget_window(
     widget: &mut WidgetContainer,
     nt_type: Option<&str>,
     field: Option<&FieldInfo>,
+    topics: &[(String, String)],
 ) -> Option<bool> {
     let mut close = None;
     show_settings(ctx, "widget_settings", heading, |ui| {
-        widget_settings::show(ui, widget, nt_type, field);
+        widget_settings::show(ui, widget, nt_type, field, topics);
         ui.add_space(4.0);
         ui.separator();
         ui.horizontal(|ui| {
@@ -158,6 +159,16 @@ impl DashboardApp {
         }
     }
 
+    /// Every topic on the server, as (full name, NT type), for settings
+    /// that refer to other topics.
+    pub(super) fn topic_list(&self) -> Vec<(String, String)> {
+        self.nt
+            .topics()
+            .into_iter()
+            .map(|t| (t.name.to_string(), t.ty.to_string()))
+            .collect()
+    }
+
     /// The type and struct field info for `widget`'s settings.
     pub(super) fn value_facts(
         &self,
@@ -179,6 +190,7 @@ impl DashboardApp {
             return;
         };
         let (nt_type, field) = self.value_facts(widget);
+        let topics = self.topic_list();
         let Some(widget) = self
             .layout
             .tabs
@@ -193,6 +205,7 @@ impl DashboardApp {
             widget,
             nt_type.as_deref(),
             field.as_ref(),
+            &topics,
         );
         match close {
             Some(true) => self.editing = None,
@@ -238,6 +251,7 @@ impl DashboardApp {
                 return;
             };
             let (nt_type, field) = self.value_facts(widget);
+            let topics = self.topic_list();
             let heading = format!("{}: {}", list.title, widget.title);
             let Some(widget) = self
                 .layout
@@ -248,7 +262,14 @@ impl DashboardApp {
             else {
                 return;
             };
-            match widget_window(ctx, &heading, widget, nt_type.as_deref(), field.as_ref()) {
+            match widget_window(
+                ctx,
+                &heading,
+                widget,
+                nt_type.as_deref(),
+                field.as_ref(),
+                &topics,
+            ) {
                 Some(true) => self.close_child(),
                 Some(false) => {
                     if let Some(Editing::List {
