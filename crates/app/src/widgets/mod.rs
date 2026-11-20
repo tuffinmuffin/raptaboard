@@ -33,6 +33,7 @@ pub mod builtin;
 pub mod list_layout;
 pub mod shared;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use eframe::egui::{self, Rect};
@@ -69,6 +70,19 @@ pub struct Live<'a> {
     /// for (each widget's [`extra_topics`](WidgetType::extra_topics)), by
     /// full name, such as a chooser's `options` and `active`.
     pub others: &'a HashMap<&'a str, &'a Value>,
+    /// Whether the connection to the server is up, so a widget can keep
+    /// showing the last thing it saw while it's down (alerts).
+    pub connected: bool,
+    /// What widgets ask the app to do this frame besides sending a value:
+    /// play a tone.
+    pub effects: &'a RefCell<Vec<Effect>>,
+}
+
+/// Something a widget asks the app to do, through [`Live::effects`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Effect {
+    /// Play a tone (unless sounds are turned off with the bell button).
+    Tone(crate::sound::Tone),
 }
 
 /// What the settings dialog knows about the value a widget shows, so a
@@ -253,6 +267,7 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::chooser::SplitButtonChooser,
     &builtin::enums::EnumDropdown,
     &builtin::enums::EnumToggle,
+    &builtin::alerts::AlertsWidget,
     &builtin::graph::Graph,
 ];
 

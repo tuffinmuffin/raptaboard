@@ -19,7 +19,6 @@ use eframe::egui;
 use nt4::Value;
 use raptaboard_layout::ElasticLayout;
 
-use crate::alert::Alert;
 use crate::cli::StartupOptions;
 use crate::connection::AddressMode;
 use crate::edit::{self, EditAction, History};
@@ -28,6 +27,7 @@ use crate::layout_file::{self, FileAction, LoadError};
 use crate::nt::NtConnection;
 use crate::sampling::Sampler;
 use crate::settings::{self, Settings};
+use crate::sound::Sound;
 use crate::tabs::{self, TabAction};
 use crate::traces::Traces;
 use crate::tree::TreeSelection;
@@ -111,8 +111,8 @@ pub struct DashboardApp {
     traces: Traces,
     /// Whether a tone plays when a widget's value can't be sent.
     alert_sound: bool,
-    /// Plays that tone.
-    alert: Alert,
+    /// Plays the tones (a failed send's, and Alerts widgets').
+    sound: Sound,
     /// When each widget (or list child) on a tab last failed to send its value: (tab,
     /// sender) to the time, so its border flashes red for a moment.
     write_failed: HashMap<(usize, Sender), Instant>,
@@ -164,7 +164,7 @@ impl DashboardApp {
             sampler: Sampler::default(),
             traces: Traces::default(),
             alert_sound: options.alert_sound,
-            alert: Alert::new(),
+            sound: Sound::new(),
             write_failed: HashMap::new(),
             send_failure: None,
             grid_area: egui::Rect::NOTHING,
