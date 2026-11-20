@@ -27,7 +27,7 @@ impl DashboardApp {
                     .on_hover_text("Hide the tree")
                     .clicked()
                 {
-                    self.show_tree = false;
+                    self.tree.shown = false;
                 }
             });
         });
@@ -37,21 +37,24 @@ impl DashboardApp {
             let clear_width = 48.0;
             let filter_width = ui.available_width() - clear_width - ui.spacing().item_spacing.x;
             ui.add(
-                egui::TextEdit::singleline(&mut self.tree_filter)
+                egui::TextEdit::singleline(&mut self.tree.filter)
                     .hint_text("Filter topics")
                     .desired_width(filter_width),
             );
             if ui
                 .add_enabled(
-                    !self.tree_filter.is_empty(),
+                    !self.tree.filter.is_empty(),
                     egui::Button::new("Clear").min_size(egui::vec2(clear_width, 0.0)),
                 )
                 .clicked()
             {
-                self.tree_filter.clear();
+                self.tree.filter.clear();
             }
         });
-        ui.checkbox(&mut self.show_metadata, "Show metadata (.type, /.schema)");
+        ui.checkbox(
+            &mut self.tree.show_metadata,
+            "Show metadata (.type, /.schema)",
+        );
         ui.separator();
         if topics.is_empty() {
             ui.weak(match self.nt.status() {
@@ -63,10 +66,10 @@ impl DashboardApp {
         let total = topics.len();
         let tree = Folder::build(
             topics.iter().cloned().map(TopicEntry::from),
-            self.show_metadata,
-            &self.tree_filter,
+            self.tree.show_metadata,
+            &self.tree.filter,
         );
-        let filtering = !self.tree_filter.trim().is_empty();
+        let filtering = !self.tree.filter.trim().is_empty();
         // Say when topics are hidden, so a forgotten filter isn't mistaken
         // for missing data.
         let shown = tree.topic_count();
@@ -76,15 +79,15 @@ impl DashboardApp {
             } else {
                 "hidden metadata"
             };
-            let why = if filtering && self.show_metadata {
+            let why = if filtering && self.tree.show_metadata {
                 "filter"
             } else {
                 why
             };
             ui.weak(format!("Showing {shown} of {total} topics ({why})"));
         }
-        self.tree_sel.begin_frame();
-        self.tree_sel.lists = self.list_names();
+        self.tree.selection.begin_frame();
+        self.tree.selection.lists = self.list_names();
         let no_structs = StructDatabase::new();
         let structs = self.nt.structs().unwrap_or(&no_structs);
         // Both ways: a wide row scrolls sideways rather than widening the
@@ -96,16 +99,23 @@ impl DashboardApp {
                 // Rows are picked, not their text: no text cursor or text
                 // highlighting, which would look like picking.
                 ui.style_mut().interaction.selectable_labels = false;
-                let drawn = tree.show(ui, "", filtering, structs, !self.locked, &mut self.tree_sel);
+                let drawn = tree.show(
+                    ui,
+                    "",
+                    filtering,
+                    structs,
+                    !self.locked,
+                    &mut self.tree.selection,
+                );
                 // Clicking the empty space below the rows unpicks them.
                 let below = ui.allocate_response(ui.available_size(), Sense::click());
                 if below.clicked() {
-                    self.tree_sel.clear();
+                    self.tree.selection.clear();
                 }
                 drawn
             })
             .inner;
-        self.tree_sel.end_frame();
+        self.tree.selection.end_frame();
         // Every table's `.type`, so tables made for a widget (choosers) are
         // known before their folder is opened.
         let mut drawn = drawn;
@@ -117,13 +127,13 @@ impl DashboardApp {
         );
         // Picking in the tree deselects the grid's widget, whose outline
         // would otherwise linger beside the picked topic's.
-        if self.tree_sel.clicked {
+        if self.tree.selection.clicked {
             self.selected = None;
         }
-        if let Some(row) = &self.tree_sel.not_found {
+        if let Some(row) = &self.tree.selection.not_found {
             self.status =
                 format!("No row for {row} in the tree: not published, or hidden by the filter");
-            self.find_status = true;
+            self.tree.find_status = true;
         }
         drawn
     }
@@ -144,7 +154,7 @@ impl DashboardApp {
             .filter_map(|t| widgets::for_topic(&t.name, &t.ty, t.field.as_ref(), one))
             .collect();
         let wanted = made.len();
-        let room = self.grid_room;
+        let room = self.grid.room;
         let Some(tab) = self.layout.tabs.get_mut(self.current_tab) else {
             return;
         };
@@ -227,17 +237,17 @@ impl DashboardApp {
         match missing {
             Some(_) if quiet => {}
             Some(why) => {
-                self.tree_sel.clear();
+                self.tree.selection.clear();
                 self.status = why;
-                self.find_status = true;
+                self.tree.find_status = true;
             }
             None => {
                 // A finding message from an earlier click is out of date now.
-                if self.find_status {
+                if self.tree.find_status {
                     self.status.clear();
-                    self.find_status = false;
+                    self.tree.find_status = false;
                 }
-                self.tree_sel.reveal(topic, field.map(|m| m.path));
+                self.tree.selection.reveal(topic, field.map(|m| m.path));
             }
         }
     }

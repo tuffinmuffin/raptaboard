@@ -58,13 +58,17 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
 - `crates/plugin-host`: manifest parsing and matching; `path` has topic path helpers
   (`.type` tables). wasmtime hosting comes in milestone 4.
 - `crates/app`: the eframe app. `ui/` holds the window (`DashboardApp` in `ui/mod.rs` with file open/save and the edit and tab
-  actions; `panels.rs` the settings and tab bars; `tree_panel.rs` the tree panel and adding topics;
-  `grid_view.rs` the grid; `drag.rs` drag and drop; `dialogs.rs` the settings dialogs; `live.rs`
+  actions; its state is grouped in `ui/state.rs`: `file` (`LayoutFile`), `address`, `tree` (`TreeView`), `grid`
+  (`GridState`: drags, where the grid was), `alerts` (the history and its panel) and `sends` (failed sends),
+  beside `layout`, `current_tab`, `locked`, `selected` and `status`; `panels.rs` the settings and tab bars; `tree_panel.rs` the tree panel and adding topics;
+  `grid_view.rs` the grid (a frame's input, drawing, outlines, then `apply`); `drag.rs` drag and drop (the drag
+  types, drop targets, previews and drops); `dialogs.rs` the settings dialogs; `live.rs`
   the topics the tab needs and graph recording; `style.rs` the drawing constants; each file adds
-  its own `impl DashboardApp` block; `ui/tests.rs` runs the whole window headless against an
+  its own `impl DashboardApp` block; `ui/tests/` runs the whole window headless against an
   in-process `nt4::Server` with one widget of every type (and struct and struct-array topics),
-  the place for new UI tests; its `egui_kittest` harness finds tree rows and menu items by label
-  and clicks or drags them;
+  the place for new UI tests (`mod.rs` the harness, test server, layouts and shared helpers; one file per
+  area: window, tree, writing, sliders, choosers, enums, alerts, files); its `egui_kittest` harness finds
+  tree rows and menu items by label and clicks or drags them;
   `DashboardApp::show` is one frame without an `eframe::Frame`), `connection.rs` the robot address modes,
   `cli.rs` the startup flags (`clap` derive, `cli::Args`: `--team`, `--address`, `--port`,
   `--hide-tree`; this run only),
@@ -83,8 +87,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   states and where their names come from, with `guess`; `types/structs.rs` struct values decoded with
   the server's `/.schema/` topics (`nt4::proto::structs::StructDatabase` + `DynamicStruct`);
   `types::format_number`; more custom data structures go here), `alert_history.rs` the alert history (every
-  group from connect, count-based; its panel and top-bar button are `ui/alert_history_panel.rs`), `tree.rs` the (row picking in `TreeSelection`, drag payload `DraggedTopics`)
-  read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),
+  group from connect, count-based; its panel and top-bar button are `ui/alert_history_panel.rs`), `tree/` the read-only NT tree (`mod.rs` building it, `selection.rs` row picking in
+  `TreeSelection` and the drag payload `DraggedTopics`, `view.rs` drawing, `format.rs` short value text;
+  values only for topics in open folders, via `NtConnection::watch_values`),
   `widgets/` the grid widgets,
   one file per type implementing `widgets::WidgetType` and listed in `widgets::TYPES`; `ui/` only talks to
   the trait and never names a widget type (hooks: `extra_topics` with the server's tables, `background_topics`,
@@ -103,7 +108,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   listed in `docs/spec.md` under "raptaboard widget settings" (keep that table in step); adding a
   widget is a new file in `builtin/` (listed in `builtin/mod.rs`) plus one line in `TYPES`, `layout_file.rs` opening and saving layout files (atomic
   writes, Ctrl+O/S/Shift+S; a file that's missing or isn't a layout, at startup or from Open, gets a dialog,
-  `DashboardApp::load_problem`, offering Open, a new layout saved at that path (missing only), or Close), `grid.rs` the snap-grid rules
+  `LayoutFile::load_problem`, offering Open, a new layout saved at that path (missing only), or Close), `grid.rs` the snap-grid rules
   (snapping, overlap) and `tabs.rs` tab actions and their shortcuts, `edit.rs` undo/redo (`History`, which
   notices any layout change once a frame) and the widget editing shortcuts; the drag handling is in
   `ui/drag.rs` and `ui/grid_view.rs`. A widget draws from `widgets::Live`: its value, the frame's shared

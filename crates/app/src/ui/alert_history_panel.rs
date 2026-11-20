@@ -96,14 +96,14 @@ impl DashboardApp {
                 })
                 .collect()
         });
-        self.alert_history.update(Local::now(), groups.as_deref());
+        self.alerts.history.update(Local::now(), groups.as_deref());
     }
 
     /// The top-bar button that shows and hides the history: "Alerts" with
     /// how many are active and the most urgent one's sign.
     pub(super) fn alert_history_button(&mut self, ui: &mut egui::Ui) {
-        let active = self.alert_history.active_count();
-        let highest = self.alert_history.highest_active();
+        let active = self.alerts.history.active_count();
+        let highest = self.alerts.history.highest_active();
         let text = match (active, highest) {
             (0, _) => "Alerts".to_owned(),
             // Room after the count for the sign.
@@ -113,7 +113,7 @@ impl DashboardApp {
             Some(level) => format!(
                 "{active} active, the worst an {}. Click to {} the alert history.",
                 level.name(1),
-                if self.show_alert_history {
+                if self.alerts.panel_shown {
                     "hide"
                 } else {
                     "show"
@@ -121,7 +121,7 @@ impl DashboardApp {
             ),
             None => format!(
                 "No active alerts. Click to {} the alert history.",
-                if self.show_alert_history {
+                if self.alerts.panel_shown {
                     "hide"
                 } else {
                     "show"
@@ -129,13 +129,13 @@ impl DashboardApp {
             ),
         };
         let button = ui
-            .add(egui::Button::new(text).selected(self.show_alert_history))
+            .add(egui::Button::new(text).selected(self.alerts.panel_shown))
             .on_hover_text(hint);
         if let Some(level) = highest {
             alert_sign::draw_badge(ui.painter(), level, button.rect, 6.0);
         }
         if button.clicked() {
-            self.show_alert_history = !self.show_alert_history;
+            self.alerts.panel_shown = !self.alerts.panel_shown;
         }
     }
 
@@ -150,13 +150,13 @@ impl DashboardApp {
                     .on_hover_text("Hide the alert history")
                     .clicked()
                 {
-                    self.show_alert_history = false;
+                    self.alerts.panel_shown = false;
                 }
             });
         });
-        let total = self.alert_history.events().len();
+        let total = self.alerts.history.events().len();
         ui.horizontal(|ui| {
-            let mut keep = self.alert_history.capacity();
+            let mut keep = self.alerts.history.capacity();
             ui.label(format!("{total} events; keep"));
             if ui
                 .add(
@@ -167,23 +167,24 @@ impl DashboardApp {
                 .on_hover_text("How many events are kept; the oldest go first when it's full")
                 .changed()
             {
-                self.alert_history.set_capacity(keep);
+                self.alerts.history.set_capacity(keep);
             }
             if ui
                 .button("Clear")
                 .on_hover_text("Forget the events that have ended (active alerts stay)")
                 .clicked()
             {
-                self.alert_history.clear();
+                self.alerts.history.clear();
             }
         });
         // What to show.
         let groups: BTreeSet<String> = self
-            .alert_history
+            .alerts
+            .history
             .events()
             .map(|e| e.group.clone())
             .collect();
-        let filter = &mut self.alert_history_filter;
+        let filter = &mut self.alerts.filter;
         ui.horizontal(|ui| {
             for level in Level::ALL {
                 ui.checkbox(&mut filter.levels[level as usize], level.name(2));
@@ -202,10 +203,11 @@ impl DashboardApp {
         ui.separator();
         let now = Local::now();
         let shown: Vec<&AlertEvent> = self
-            .alert_history
+            .alerts
+            .history
             .events()
             .rev()
-            .filter(|e| self.alert_history_filter.shows(e))
+            .filter(|e| self.alerts.filter.shows(e))
             .collect();
         if shown.is_empty() {
             ui.weak(if total == 0 {
@@ -272,16 +274,16 @@ impl DashboardApp {
                 }
             });
         if let Some(entry) = ignore {
-            let mut list = self.alert_history.ignored().to_vec();
+            let mut list = self.alerts.history.ignored().to_vec();
             list.push(entry);
-            self.alert_history.set_ignored(list);
+            self.alerts.history.set_ignored(list);
         }
     }
 
     /// The "Not recorded" list: alerts the history skips, by text they
     /// contain, with a box to add one and a ✕ to take one off.
     fn alert_history_ignore_list(&mut self, ui: &mut egui::Ui) {
-        let list = self.alert_history.ignored().to_vec();
+        let list = self.alerts.history.ignored().to_vec();
         let title = if list.is_empty() {
             "Not recorded: nothing".to_owned()
         } else {
@@ -310,19 +312,19 @@ impl DashboardApp {
                 });
                 ui.horizontal(|ui| {
                     let add = ui.add(
-                        egui::TextEdit::singleline(&mut self.alert_history_filter.new_ignore)
+                        egui::TextEdit::singleline(&mut self.alerts.filter.new_ignore)
                             .hint_text("Text, such as Frame Timing:"),
                     );
                     let enter = add.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                     if (ui.button("Add").clicked() || enter)
-                        && !self.alert_history_filter.new_ignore.trim().is_empty()
+                        && !self.alerts.filter.new_ignore.trim().is_empty()
                     {
-                        list.push(std::mem::take(&mut self.alert_history_filter.new_ignore));
+                        list.push(std::mem::take(&mut self.alerts.filter.new_ignore));
                         changed = true;
                     }
                 });
                 if changed {
-                    self.alert_history.set_ignored(list);
+                    self.alerts.history.set_ignored(list);
                 }
             });
     }

@@ -38,13 +38,13 @@ impl DashboardApp {
     pub(super) fn settings_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.strong("raptaboard");
-            let (label, hint) = if self.show_tree {
+            let (label, hint) = if self.tree.shown {
                 ("◀ Tree", "Hide the NetworkTables tree")
             } else {
                 ("▶ Tree", "Show the NetworkTables tree")
             };
             if ui.button(label).on_hover_text(hint).clicked() {
-                self.show_tree = !self.show_tree;
+                self.tree.shown = !self.tree.shown;
             }
             let (label, hint) = if self.locked {
                 (
@@ -59,8 +59,8 @@ impl DashboardApp {
             };
             if ui.button(label).on_hover_text(hint).clicked() {
                 self.locked = !self.locked;
-                self.drag = None;
-                self.child_drag = None;
+                self.grid.drag = None;
+                self.grid.child_drag = None;
                 self.renaming = None;
                 self.selected = None;
             }
@@ -83,7 +83,7 @@ impl DashboardApp {
             ui.label("Team");
             // 0 is "no team yet", shown blank.
             ui.add(
-                egui::DragValue::new(&mut self.team)
+                egui::DragValue::new(&mut self.address.team)
                     .range(0..=99999)
                     .custom_formatter(|n, _| {
                         if n == 0.0 {
@@ -106,10 +106,10 @@ impl DashboardApp {
             .on_hover_text("Your FRC team number, for finding the robot at 10.TE.AM.2");
             // Named for screen readers; on screen the choices say what it is.
             egui::ComboBox::from_id_salt("address_mode")
-                .selected_text(self.mode.label())
+                .selected_text(self.address.mode.label())
                 .show_ui(ui, |ui| {
                     for mode in AddressMode::ALL {
-                        ui.selectable_value(&mut self.mode, mode, mode.label());
+                        ui.selectable_value(&mut self.address.mode, mode, mode.label());
                     }
                 })
                 .response
@@ -120,9 +120,9 @@ impl DashboardApp {
                         "Robot address",
                     )
                 });
-            if self.mode == AddressMode::Custom {
+            if self.address.mode == AddressMode::Custom {
                 ui.add(
-                    egui::TextEdit::singleline(&mut self.custom_address)
+                    egui::TextEdit::singleline(&mut self.address.custom)
                         .hint_text("Host name or IP address"),
                 )
                 .widget_info(|| {
@@ -133,10 +133,10 @@ impl DashboardApp {
                     )
                 });
             }
-            let host = resolve(self.mode, self.team, &self.custom_address);
-            self.nt.set_target(host.as_deref(), self.port);
+            let host = resolve(self.address.mode, self.address.team, &self.address.custom);
+            self.nt.set_target(host.as_deref(), self.address.port);
             ui.separator();
-            let no_team = self.mode == AddressMode::TeamNumber && self.team == 0;
+            let no_team = self.address.mode == AddressMode::TeamNumber && self.address.team == 0;
             status_label(ui, &self.nt.status(), no_team);
         });
         ui.horizontal(|ui| {
@@ -173,9 +173,9 @@ impl DashboardApp {
                 }
             }
             ui.separator();
-            let name = layout_file::display_name(self.layout_path.as_deref());
+            let name = layout_file::display_name(self.file.path.as_deref());
             let name = ui.strong(name);
-            if let Some(path) = &self.layout_path {
+            if let Some(path) = &self.file.path {
                 name.on_hover_text(path.display().to_string());
             }
             if self.unsaved() {
@@ -183,9 +183,9 @@ impl DashboardApp {
                     .on_hover_text("Unsaved changes");
             }
             ui.weak(&self.status);
-            if !self.fixes.is_empty() {
-                let n = self.fixes.len();
-                let list = self.fixes.join("\n");
+            if !self.file.fixes.is_empty() {
+                let n = self.file.fixes.len();
+                let list = self.file.fixes.join("\n");
                 let badge = ui
                     .add(
                         egui::Label::new(
@@ -243,7 +243,7 @@ impl DashboardApp {
         let names: Vec<String> = self.layout.tabs.iter().map(|t| t.name.clone()).collect();
         let count = names.len();
         // Tabs with widgets for the topics picked in the tree get a mark.
-        let picked = self.tree_sel.selected();
+        let picked = self.tree.selection.selected();
         let has_picked: Vec<bool> = self
             .layout
             .tabs
