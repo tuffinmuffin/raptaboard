@@ -131,8 +131,11 @@ pub fn shortcut(ctx: &egui::Context) -> Option<EditAction> {
     if ctx.egui_wants_keyboard_input() {
         return None;
     }
+    let popup_open = egui::Popup::is_any_open(ctx);
     ctx.input_mut(|input| {
-        let button_held = input.pointer.any_down();
+        // Escape belongs to what's open or held: a drop-down or menu
+        // (which it closes) or a drag (which it cancels).
+        let escape_taken = popup_open || input.pointer.any_down();
         let mut pressed = |s: KeyboardShortcut| input.consume_shortcut(&s);
         // Redo first: Ctrl+Z would also match Ctrl+Shift+Z.
         if pressed(EditAction::Redo.shortcut())
@@ -147,9 +150,7 @@ pub fn shortcut(ctx: &egui::Context) -> Option<EditAction> {
             Some(EditAction::Delete)
         } else if pressed(EditAction::Duplicate.shortcut()) {
             Some(EditAction::Duplicate)
-        } else if !button_held && pressed(EditAction::Deselect.shortcut()) {
-            // With a button held, Escape is for what's being dragged (it
-            // cancels a slider's drag), so it's left for that.
+        } else if !escape_taken && pressed(EditAction::Deselect.shortcut()) {
             Some(EditAction::Deselect)
         } else if pressed(EditAction::Edit.shortcut()) {
             Some(EditAction::Edit)

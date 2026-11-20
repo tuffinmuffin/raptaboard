@@ -1673,14 +1673,23 @@ fn a_dropdown_chooser_sends_the_pick_and_drops_it_for_a_new_list() {
     harness.state_mut().locked = true;
     settle(&mut harness);
     let card = card_on_screen(&harness, 0);
-    // Open the drop-down and pick Right.
     let combo = harness.get_by_label("Auto dropdown").rect().center();
-    click_at(
-        &mut harness,
-        combo,
-        egui::PointerButton::Primary,
-        Modifiers::NONE,
+    let primary = egui::PointerButton::Primary;
+    let listed = |h: &Harness, label: &str| {
+        h.get_all_by_label(label)
+            .any(|n| card.contains(n.rect().center()))
+    };
+    // Escape closes the open drop-down without picking anything.
+    click_at(&mut harness, combo, primary, Modifiers::NONE);
+    assert!(listed(&harness, "Right"), "the drop-down didn't open");
+    press(&mut harness, Key::Escape);
+    assert!(
+        !listed(&harness, "Right"),
+        "Escape didn't close the drop-down"
     );
+    assert_eq!(robot.seen_selected.get(), None);
+    // Open it again and pick Right.
+    click_at(&mut harness, combo, primary, Modifiers::NONE);
     click_label_in(&mut harness, "Right", card);
     server_has_pick(&mut harness, &robot, "Right");
     // The robot takes it.
