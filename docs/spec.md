@@ -623,5 +623,14 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, Mechanism2d,
    units, MJPEG cameras.
+   Low priority, after the other features (asked for by the user 2026-11-20), both for the Field:
+   - Path files as layers: load a PathWeaver `.wpilib.json` trajectory (or a PathPlanner `.path`)
+     straight into a path layer, so planned paths show without robot code publishing them. Today
+     a trajectory shows only once robot code publishes it (`Field2d.getObject(..).setTrajectory`, or
+     a `Pose2d[]` such as PathPlanner's `/PathPlanner/activePath`).
+   - Limelight's `botpose` arrays: a layer reading for its `double[]` (`botpose_wpiblue` and the
+     like: x, y, z, roll, pitch, yaw, latency, ...). Today a `double[]` is read as x, y, degrees
+     triples, which draws a botpose wrong; until then robot code republishes it as a `Pose2d` or
+     `Pose3d`.
 6. Competition hardening: DS docking, WHEP cameras, crash reports, Windows installer, plugins from
    the robot.
