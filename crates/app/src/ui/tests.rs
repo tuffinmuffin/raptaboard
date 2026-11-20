@@ -1590,9 +1590,9 @@ fn an_editable_text_display_takes_typed_values() {
     assert!(harness.state().write_failed.is_empty());
 }
 
-/// A layout of choosers on `/Test/Auto`, each 512 by 256 along the top: a
-/// Dropdown Chooser and a Split Button Chooser; and below them a List
-/// Layout (labels inside) holding a Split Button Chooser.
+/// A layout of choosers on `/Test/Auto` along the top: a Dropdown Chooser
+/// (512 by 512) and a Split Button Chooser (512 by 256); and below the
+/// drop-down a List Layout (labels inside) holding a Split Button Chooser.
 fn chooser_layout() -> ElasticLayout {
     let at = |i: usize| LayoutRect {
         x: i as f64 * 512.0,
@@ -1608,14 +1608,20 @@ fn chooser_layout() -> ElasticLayout {
     };
     let mut tab = Tab::new("Choosers");
     let grid = &mut tab.grid_layout;
+    // The drop-down is twice as tall, so the bigger list it opens stays
+    // inside it.
+    let tall = LayoutRect {
+        height: 512.0,
+        ..at(0)
+    };
     grid.containers = vec![
-        chooser("Dropdown Chooser", "Auto dropdown", at(0)),
+        chooser("Dropdown Chooser", "Auto dropdown", tall),
         chooser("Split Button Chooser", "Auto buttons", at(1)),
     ];
     grid.layouts.push(list_layout::new_list(
         LayoutRect {
             x: 0.0,
-            y: 256.0,
+            y: 512.0,
             width: 512.0,
             height: 256.0,
         },
@@ -1679,9 +1685,23 @@ fn a_dropdown_chooser_sends_the_pick_and_drops_it_for_a_new_list() {
         h.get_all_by_label(label)
             .any(|n| card.contains(n.rect().center()))
     };
+    // Sized to the widget (256 tall): bigger than egui's usual 20-point
+    // button, and the list that opens uses the same bigger text.
+    let combo_height = harness.get_by_label("Auto dropdown").rect().height();
+    assert!(combo_height > 40.0, "drop-down only {combo_height} tall");
     // Escape closes the open drop-down without picking anything.
     click_at(&mut harness, combo, primary, Modifiers::NONE);
     assert!(listed(&harness, "Right"), "the drop-down didn't open");
+    let item = harness
+        .get_all_by_label("Right")
+        .map(|n| n.rect())
+        .find(|r| card.contains(r.center()))
+        .unwrap();
+    assert!(
+        item.height() > 30.0,
+        "list item only {} tall",
+        item.height()
+    );
     press(&mut harness, Key::Escape);
     assert!(
         !listed(&harness, "Right"),

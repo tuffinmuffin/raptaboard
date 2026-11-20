@@ -18,7 +18,8 @@
 //!
 //! The Dropdown Chooser is a drop-down list (Elastic's `sort_options`
 //! sorts it); the Split Button Chooser is a row of buttons, one per
-//! option, so two options make a two-way switch.
+//! option, so two options make a two-way switch. Both size their text to
+//! the widget unless `font_size` is set (the "Text size" setting).
 
 use std::collections::HashMap;
 
@@ -46,8 +47,17 @@ pub const SELECTED: &str = "selected";
 
 /// The color of the "robot hasn't taken it yet" note and outline.
 const WAITING_COLOR: Color32 = Color32::from_rgb(0xFF, 0x98, 0x00);
-/// Height of the drop-down and of the buttons' text, in points.
+/// Height of the buttons' text when there's room, in points.
 const ROW_HEIGHT: f32 = 24.0;
+/// The drop-down's height for its text size.
+const ROW_PER_FONT: f32 = 1.7;
+/// A fitted drop-down's text size against the widget's height.
+const FIT_HEIGHT: f32 = 0.33;
+/// Room beside the text for the drop-down's arrow and padding, in points.
+const ARROW_ROOM: f32 = 40.0;
+/// The smallest and largest fitted text, in points.
+const MIN_FIT: f32 = 12.0;
+const MAX_FIT: f32 = 36.0;
 /// Size of the note under the choice, in points.
 const NOTE_SIZE: f32 = 12.0;
 /// Space between buttons, in points.
@@ -212,6 +222,82 @@ fn draw_waiting(painter: &egui::Painter, rect: Rect, chooser: &Chooser) {
     );
 }
 
+/// The drop-down's text size when it's fitted (no `font_size` set): about
+/// a third of the widget's height, but no wider than the longest option
+/// fits beside the arrow, and kept between [`MIN_FIT`] and [`MAX_FIT`] so
+/// a very wide or very tall widget still gets usable text.
+fn fitted_size(painter: &egui::Painter, rect: Rect, options: &[String]) -> f32 {
+    const MEASURE: f32 = 100.0;
+    let widest = options
+        .iter()
+        .map(|o| {
+            painter
+                .layout_no_wrap(
+                    o.clone(),
+                    egui::FontId::proportional(MEASURE),
+                    Color32::WHITE,
+                )
+                .size()
+                .x
+        })
+        .fold(1.0_f32, f32::max);
+    let by_height = rect.height() * FIT_HEIGHT;
+    let by_width = MEASURE * (rect.width() - ARROW_ROOM).max(0.0) / widest;
+    fit_between(by_height.min(by_width))
+}
+
+/// A fitted text size kept usable: between [`MIN_FIT`] and [`MAX_FIT`].
+///
+/// ```
+/// use raptaboard::widgets::builtin::chooser::fit_between;
+/// assert_eq!(fit_between(3.0), 12.0);
+/// assert_eq!(fit_between(20.0), 20.0);
+/// assert_eq!(fit_between(500.0), 36.0);
+/// ```
+pub fn fit_between(size: f32) -> f32 {
+    size.clamp(MIN_FIT, MAX_FIT)
+}
+
+/// The `font_size` setting, if one is set; `None` fits the text to the
+/// widget.
+fn fixed_size(p: &Map<String, Json>) -> Option<f32> {
+    p.contains_key(props::FONT_SIZE)
+        .then(|| props::font_size(p))
+}
+
+/// The "Text size" settings row: fitted to the widget (no `font_size`),
+/// or a set size.
+fn text_size_row(ui: &mut egui::Ui, p: &mut Map<String, Json>) {
+    ui.label("Text size");
+    ui.horizontal(|ui| {
+        let mut fit = !p.contains_key(props::FONT_SIZE);
+        if ui
+            .checkbox(&mut fit, "Fit to the widget")
+            .on_hover_text("Size the text to the widget's space; off sets a size")
+            .changed()
+        {
+            let size = f64::from(props::DEFAULT_FONT_SIZE);
+            props::set_property(p, props::FONT_SIZE, (!fit).then(|| size.into()));
+        }
+        if !fit {
+            let mut size = props::font_size(p);
+            if ui
+                .add(
+                    egui::DragValue::new(&mut size)
+                        .range(props::MIN_FONT_SIZE..=props::MAX_FONT_SIZE)
+                        .speed(0.5)
+                        .fixed_decimals(0)
+                        .suffix(" pt"),
+                )
+                .changed()
+            {
+                props::set_property(p, props::FONT_SIZE, Some(f64::from(size).into()));
+            }
+        }
+    });
+    ui.end_row();
+}
+
 /// The options in the order the widget lists them.
 fn listed(chooser: &Chooser, p: &Map<String, Json>) -> Vec<String> {
     let mut options = chooser.options.clone();
@@ -257,21 +343,36 @@ impl DropdownChooser {
             return send.map(Value::String);
         }
         let pick = chooser.pick().map(str::to_owned);
+        let options = listed(&chooser, &widget.properties);
+        let font = match fixed_size(&widget.properties) {
+            Some(size) => size,
+            None => fitted_size(ui.painter(), rect, &options),
+        };
+        let row = (font * ROW_PER_FONT).min(rect.height());
         let combo = Rect::from_min_size(
             rect.min
                 + egui::vec2(
                     0.0,
-                    ((rect.height() - ROW_HEIGHT) / 2.0 - NOTE_SIZE / 2.0).max(0.0),
+                    ((rect.height() - row) / 2.0 - NOTE_SIZE / 2.0).max(0.0),
                 ),
-            egui::vec2(rect.width(), ROW_HEIGHT),
+            egui::vec2(rect.width(), row),
         );
-        let options = listed(&chooser, &widget.properties);
         let mut chosen = None;
         ui.scope_builder(egui::UiBuilder::new().max_rect(combo), |ui| {
+            // The text and the button's height follow the size.
+            let style = ui.style_mut();
+            style.override_font_id = Some(egui::FontId::proportional(font));
+            style.spacing.interact_size.y = row;
+            style.spacing.button_padding.y = ((row - font) / 2.0).max(1.0);
             egui::ComboBox::from_id_salt(id)
                 .width(combo.width())
                 .selected_text(pick.clone().unwrap_or_default())
                 .show_ui(ui, |ui| {
+                    // The list is a popup with a style of its own.
+                    let style = ui.style_mut();
+                    style.override_font_id = Some(egui::FontId::proportional(font));
+                    style.spacing.interact_size.y = row;
+                    style.spacing.button_padding.y = ((row - font) / 2.0).max(1.0);
                     for option in &options {
                         if ui
                             .selectable_label(pick.as_ref() == Some(option), option)
@@ -367,10 +468,11 @@ impl WidgetType for DropdownChooser {
             SORT_OPTIONS,
             false,
         );
+        text_size_row(ui, p);
     }
 
     fn setting_keys(&self) -> &'static [&'static str] {
-        &[SORT_OPTIONS]
+        &[SORT_OPTIONS, props::FONT_SIZE]
     }
 }
 
@@ -392,6 +494,7 @@ impl SplitButtonChooser {
         }
         let pick = chooser.pick().map(str::to_owned);
         let waiting = chooser.waiting();
+        let fixed = fixed_size(&widget.properties);
         let options = &chooser.options;
         let n = options.len() as f32;
         let height = (rect.height() - NOTE_SIZE - 4.0)
@@ -433,12 +536,21 @@ impl SplitButtonChooser {
                     egui::StrokeKind::Inside,
                 );
             }
-            card::draw_fitted(
-                ui.painter(),
-                button.shrink(4.0),
-                option,
-                props::text_color_on(fill),
-            );
+            let color = props::text_color_on(fill);
+            match fixed {
+                Some(size) => {
+                    ui.painter()
+                        .with_clip_rect(button.intersect(ui.clip_rect()))
+                        .text(
+                            button.center(),
+                            egui::Align2::CENTER_CENTER,
+                            option,
+                            egui::FontId::proportional(size),
+                            color,
+                        );
+                }
+                None => card::draw_fitted(ui.painter(), button.shrink(4.0), option, color),
+            }
         }
         if waiting {
             draw_waiting(ui.painter(), rect.with_min_y(top + height), &chooser);
@@ -505,10 +617,12 @@ impl WidgetType for SplitButtonChooser {
         draw_pick(painter, visuals, rect, Some("Chooser"));
     }
 
-    fn settings(&self, _: &mut egui::Ui, _: &mut Map<String, Json>, _: ValueInfo<'_>) {}
+    fn settings(&self, ui: &mut egui::Ui, p: &mut Map<String, Json>, _: ValueInfo<'_>) {
+        text_size_row(ui, p);
+    }
 
     fn setting_keys(&self) -> &'static [&'static str] {
-        &[]
+        &[props::FONT_SIZE]
     }
 }
 
@@ -589,6 +703,31 @@ mod tests {
         // The robot's active isn't in the new list: its default is sent.
         let c = chooser(&["B", "C"], Some("A"), Some("C"));
         assert_eq!(c.dropped_pick(&old), Some("B".into()));
+    }
+
+    #[test]
+    fn fitted_text_stays_usable_in_odd_shapes() {
+        let options = vec!["Do nothing".to_string(), "Two piece".to_string()];
+        let ctx = egui::Context::default();
+        let mut sizes = Vec::new();
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let size = |w: f32, h: f32| {
+                let rect = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(w, h));
+                fitted_size(ui.painter(), rect, &options)
+            };
+            sizes = vec![
+                size(2000.0, 30.0), // very wide, very short
+                size(60.0, 2000.0), // very tall, very thin
+                size(4000.0, 4000.0),
+                size(500.0, 90.0),
+            ];
+        });
+        out.textures_delta.clear();
+        assert_eq!(sizes[0], MIN_FIT);
+        assert_eq!(sizes[1], MIN_FIT);
+        assert_eq!(sizes[2], MAX_FIT);
+        // In between it follows the height: a third of 90.
+        assert!((sizes[3] - 90.0 * FIT_HEIGHT).abs() < 0.1, "{}", sizes[3]);
     }
 
     #[test]

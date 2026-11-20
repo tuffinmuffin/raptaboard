@@ -147,6 +147,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `divisions` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View, Number Slider | labels along the bar, ends included | 5 |
 | `editable` | `builtin/text_display.rs` | Text Display | values can be typed in (a blue dot in the corner says so); not for arrays or struct fields | false |
 | `sort_options` (Elastic) | `builtin/chooser.rs` | Dropdown Chooser | list the options sorted by name | false |
+| `font_size` | `builtin/chooser.rs` | Dropdown Chooser, Split Button Chooser | text size in points; not set fits the text to the widget (drop-down: a third of its height, no wider than the longest option, 12 to 36 pt) | not set |
 | `publish_all` (Elastic) | `builtin/number_slider.rs` | Number Slider | send every value during a drag, not only where it's let go | false |
 | `step` | `builtin/number_slider.rs` | Number Slider | values snap to multiples of it from the minimum; 0 snaps to a thousandth of the range (rounded down to a power of ten); int topics use at least 1 | 0 |
 | `inverted` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | fill from the far end | false |
