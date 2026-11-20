@@ -1839,7 +1839,8 @@ fn a_chooser_table_drags_from_the_tree_as_a_dropdown() {
 /// 2. an Enum Toggle on `/Test/mode` that isn't editable;
 /// 3. a Split Button Chooser on `/Test/Auto` that isn't editable;
 /// 4. an Enum Toggle on the chooser table `/Test/Auto`;
-/// 5. a Text Display on `/Test/mode`, for changing its type.
+/// 5. a Text Display on `/Test/mode`, for changing its type;
+/// 6. an Enum Toggle on `/Test/mode` switching between Stowed and Shooting.
 fn enum_layout() -> ElasticLayout {
     let at = |x: f64, y: f64, w: f64| LayoutRect {
         x,
@@ -1889,6 +1890,11 @@ fn enum_layout() -> ElasticLayout {
             "string",
             at(1024.0, 256.0, 256.0),
         ),
+        with(
+            widget("Enum Toggle", "/Test/mode", "string", at(0.0, 512.0, 512.0)),
+            json!({"enum_source": "topic", "options_topic": "/Test/modeOptions",
+                   "switches_between": ["Stowed", "Shooting"]}),
+        ),
     ];
     for i in [3, 4] {
         tab.grid_layout.containers[i].properties.remove("data_type");
@@ -1900,6 +1906,7 @@ fn enum_layout() -> ElasticLayout {
         "Auto (watch)",
         "Auto toggle",
         "Mode text",
+        "Mode switch",
     ]
     .into_iter()
     .enumerate()
@@ -2075,5 +2082,39 @@ fn right_clicking_a_tab_opens_its_menu() {
     assert!(
         harness.query_by_label("Rename").is_some(),
         "no menu on the tab"
+    );
+}
+
+#[test]
+fn an_enum_toggle_can_switch_between_two_of_its_states() {
+    let robot = Robot::start();
+    let mut harness = enum_harness(&robot);
+    let primary = egui::PointerButton::Primary;
+    let (body, _) = body_and_title(&harness, 6);
+    // Stowed to Shooting, skipping Intaking, and back.
+    click_at(&mut harness, body, primary, Modifiers::NONE);
+    wait_for(
+        &mut harness,
+        "mode",
+        || robot.seen_mode.get(),
+        "Shooting".into(),
+    );
+    click_at(&mut harness, body, primary, Modifiers::NONE);
+    wait_for(
+        &mut harness,
+        "mode",
+        || robot.seen_mode.get(),
+        "Stowed".into(),
+    );
+    // From a state it doesn't switch between, a click goes to the first.
+    robot.mode.set("Intaking".into());
+    std::thread::sleep(Duration::from_millis(150));
+    settle(&mut harness);
+    click_at(&mut harness, body, primary, Modifiers::NONE);
+    wait_for(
+        &mut harness,
+        "mode",
+        || robot.seen_mode.get(),
+        "Stowed".into(),
     );
 }

@@ -45,6 +45,9 @@ pub const ENUM_SOURCE: &str = "enum_source";
 pub const ENUM_VALUES: &str = "enum_values";
 /// The string[] topic holding the states' names.
 pub const OPTIONS_TOPIC: &str = "options_topic";
+/// The two states an Enum Toggle switches between, by name, like a Toggle
+/// Button's off and on; not set, it steps through every state.
+pub const SWITCHES_BETWEEN: &str = "switches_between";
 
 const KEYS: [&str; 5] = [
     ENUM_SOURCE,
@@ -52,6 +55,14 @@ const KEYS: [&str; 5] = [
     OPTIONS_TOPIC,
     props::EDITABLE,
     props::FONT_SIZE,
+];
+const TOGGLE_KEYS: [&str; 6] = [
+    ENUM_SOURCE,
+    ENUM_VALUES,
+    OPTIONS_TOPIC,
+    props::EDITABLE,
+    props::FONT_SIZE,
+    SWITCHES_BETWEEN,
 ];
 
 /// Where a widget's states come from.
@@ -544,6 +555,37 @@ pub fn next_state(current: Option<usize>, n: usize) -> usize {
     current.map_or(0, |i| (i + 1) % n.max(1))
 }
 
+/// The names set in `switches_between`, if two are.
+fn pair_names(p: &Map<String, Json>) -> Option<(&str, &str)> {
+    let list = p.get(SWITCHES_BETWEEN)?.as_array()?;
+    match list.as_slice() {
+        [a, b] => Some((a.as_str()?, b.as_str()?)).filter(|(a, b)| !a.is_empty() && !b.is_empty()),
+        _ => None,
+    }
+}
+
+/// The two states (indexes into `s.states`) the toggle switches between,
+/// if `switches_between` names two of them.
+fn pair(p: &Map<String, Json>, s: &Shown) -> Option<(usize, usize)> {
+    let (a, b) = pair_names(p)?;
+    let find = |name: &str| s.states.iter().position(|st| st.name == name);
+    Some((find(a)?, find(b)?))
+}
+
+/// Where a click on a toggle switching between states `a` and `b` goes:
+/// to `b` from `a`, and to `a` from `b` or any other state.
+///
+/// ```
+/// use raptaboard::widgets::builtin::enums::pair_target;
+/// assert_eq!(pair_target(Some(0), 0, 2), 2);
+/// assert_eq!(pair_target(Some(2), 0, 2), 0);
+/// assert_eq!(pair_target(Some(1), 0, 2), 0);
+/// assert_eq!(pair_target(None, 0, 2), 0);
+/// ```
+pub fn pair_target(current: Option<usize>, a: usize, b: usize) -> usize {
+    if current == Some(a) { b } else { a }
+}
+
 impl EnumToggle {
     /// The button in `rect`, taking clicks in `area`. The value to send.
     fn show_in(
@@ -578,7 +620,12 @@ impl EnumToggle {
             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
         }
         let visuals = ui.visuals().clone();
-        let fill = if editable && response.hovered() {
+        let pair = pair(p, &s);
+        // Switching between two: lit on the second, like a Toggle Button
+        // that's on.
+        let fill = if pair.is_some_and(|(_, b)| s.current == Some(b)) {
+            visuals.selection.bg_fill
+        } else if editable && response.hovered() {
             visuals.widgets.hovered.bg_fill
         } else {
             visuals.widgets.inactive.bg_fill
@@ -609,17 +656,26 @@ impl EnumToggle {
                 color,
             ),
         }
+        // One dot per state it moves through.
+        let (dot_count, dot) = match pair {
+            Some((a, b)) => (2, [a, b].iter().position(|&i| Some(i) == s.current)),
+            None => (s.states.len(), s.current),
+        };
         draw_dots(
             &painter,
             dot_area.center(),
-            s.states.len(),
-            s.current,
+            dot_count,
+            dot,
             props::text_color_on(fill),
         );
         if !(editable && response.clicked()) {
             return None;
         }
-        send_state(&s, next_state(s.current, s.states.len()))
+        let target = match pair {
+            Some((a, b)) => pair_target(s.current, a, b),
+            None => next_state(s.current, s.states.len()),
+        };
+        send_state(&s, target)
     }
 }
 
@@ -681,11 +737,69 @@ impl WidgetType for EnumToggle {
     }
     fn settings(&self, ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<'_>) {
         enum_settings(ui, p, value);
+        switches_between_row(ui, p);
         chooser::text_size_row(ui, p);
     }
     fn setting_keys(&self) -> &'static [&'static str] {
-        &KEYS
+        &TOGGLE_KEYS
     }
+}
+
+/// The Enum Toggle's "Switches between" row: two states by name, picked
+/// from the list when the states are listed in the settings, else typed.
+/// Both empty: it steps through every state.
+fn switches_between_row(ui: &mut egui::Ui, p: &mut Map<String, Json>) {
+    let hover = "Two states to switch between, like a Toggle Button's off and on: a click \
+                 goes from the first to the second and back (from any other state, to the \
+                 first). Empty, a click steps through every state.";
+    ui.label("Switches between").on_hover_text(hover);
+    let (mut a, mut b) = pair_names(p).map_or((String::new(), String::new()), |(a, b)| {
+        (a.to_owned(), b.to_owned())
+    });
+    let known: Vec<String> = match Source::of(p) {
+        Source::List => listed_states(
+            &value_lines(p),
+            props::text(p, props::DATA_TYPE, "") == "int",
+        )
+        .into_iter()
+        .map(|s| s.name)
+        .collect(),
+        _ => Vec::new(),
+    };
+    ui.horizontal(|ui| {
+        for (which, name) in [("first", &mut a), ("second", &mut b)] {
+            if known.is_empty() {
+                ui.add(
+                    egui::TextEdit::singleline(name)
+                        .hint_text(which)
+                        .desired_width(90.0),
+                );
+            } else {
+                egui::ComboBox::from_id_salt(("switches_between", which))
+                    .selected_text(if name.is_empty() {
+                        "(every state)"
+                    } else {
+                        name.as_str()
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(name, String::new(), "(every state)");
+                        for state in &known {
+                            ui.selectable_value(name, state.clone(), state);
+                        }
+                    });
+            }
+            if which == "first" {
+                ui.label("and");
+            }
+        }
+    })
+    .response
+    .on_hover_text(hover);
+    let value = (!a.is_empty() || !b.is_empty()).then(|| Json::from(vec![a, b]));
+    if value.as_ref() != p.get(SWITCHES_BETWEEN) {
+        props::set_property(p, SWITCHES_BETWEEN, value);
+    }
+    ui.end_row();
 }
 
 #[cfg(test)]

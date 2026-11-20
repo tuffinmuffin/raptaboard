@@ -148,6 +148,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `editable` | `shared/props.rs` | Text Display; Dropdown and Split Button Chooser; Enum Dropdown and Toggle | the value can be changed from the widget; off, it only shows it (choosers then show the robot's `active`). Text Display: typed in, with a blue dot; not for arrays or struct fields | Text Display false; the others true |
 | `enum_source` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | where the state names come from: `list`, `topic` (a string[] topic) or `chooser` (the widget's topic is a chooser table); guessed when a widget becomes one | `list` |
 | `enum_values` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | the listed states, one string per line: a value for a string topic; `3 = Climb` or a name (the next number, from 0) for an int topic | none |
+| `switches_between` | `builtin/enums.rs` | Enum Toggle | two state names to switch between, like a Toggle Button's off and on (lit on the second; from any other state a click goes to the first); not set, a click steps through every state | not set |
 | `options_topic` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | the string[] topic of names: values of a string topic, or names of 0, 1, 2 ... for an int topic | none |
 | `sort_options` (Elastic) | `builtin/chooser.rs` | Dropdown Chooser | list the options sorted by name | false |
 | `font_size` | `builtin/chooser.rs` | Dropdown Chooser, Split Button Chooser, Enum Dropdown, Enum Toggle | text size in points; not set fits the text to the widget (drop-down: a third of its height, no wider than the longest option, 12 to 36 pt) | not set |
@@ -497,7 +498,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    changed to one (`WidgetType::chosen`, with every server topic in `ValueInfo::topics`) it guesses:
    a chooser table if the topic is one, else a string[] topic beside it named `<name>Options`,
    `<name>_options`, `<name>Names`, `<name>_names` or `<name>s` (any case), else a list; "Guess
-   again" redoes it. The toggle steps to the next state each click (two states switch). A value
+   again" redoes it. The toggle steps to the next state each click (two states switch), or with `switches_between`
+   switches between two chosen states like a boolean Toggle Button. A value
    that isn't a state shows `unnamed (7)` or `text (not listed)`. `editable` off (also on the
    choosers) makes them show only: a state display for a subsystem, or a chooser watched from the
    pit. Struct enum fields stay display-only (Text Display shows their names). The tree scrolls

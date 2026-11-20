@@ -728,8 +728,8 @@
           },
           {
             "title": "Manual chooser (no SmartDashboard)",
-            "x": 1024.0,
-            "y": 128.0,
+            "x": 640.0,
+            "y": 0.0,
             "width": 384.0,
             "height": 128.0,
             "type": "Dropdown Chooser",
@@ -742,23 +742,16 @@
       }
     },
     {
-      "name": "Empty",
-      "grid_layout": {
-        "layouts": [],
-        "containers": []
-      }
-    },
-    {
       "name": "Enums",
       "grid_layout": {
         "layouts": [],
         "containers": [
           {
             "title": "Intake mode (dropdown)",
-            "x": 0,
-            "y": 0,
-            "width": 384,
-            "height": 128,
+            "x": 0.0,
+            "y": 0.0,
+            "width": 384.0,
+            "height": 128.0,
             "type": "Enum Dropdown",
             "properties": {
               "topic": "/DashTest/IntakeMode",
@@ -770,10 +763,10 @@
           },
           {
             "title": "Intake mode (toggle)",
-            "x": 384,
-            "y": 0,
-            "width": 256,
-            "height": 128,
+            "x": 384.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 128.0,
             "type": "Enum Toggle",
             "properties": {
               "topic": "/DashTest/IntakeMode",
@@ -785,10 +778,10 @@
           },
           {
             "title": "Intake mode (watch only)",
-            "x": 640,
-            "y": 0,
-            "width": 256,
-            "height": 128,
+            "x": 640.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 128.0,
             "type": "Enum Toggle",
             "properties": {
               "topic": "/DashTest/IntakeMode",
@@ -801,10 +794,10 @@
           },
           {
             "title": "Intake mode (text)",
-            "x": 896,
-            "y": 0,
-            "width": 256,
-            "height": 128,
+            "x": 896.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 128.0,
             "type": "Text Display",
             "properties": {
               "topic": "/DashTest/IntakeMode",
@@ -814,10 +807,10 @@
           },
           {
             "title": "Arm level (int, names listed)",
-            "x": 0,
-            "y": 128,
-            "width": 384,
-            "height": 128,
+            "x": 0.0,
+            "y": 128.0,
+            "width": 384.0,
+            "height": 128.0,
             "type": "Enum Dropdown",
             "properties": {
               "topic": "/DashTest/ArmLevel",
@@ -832,10 +825,10 @@
           },
           {
             "title": "Arm level (toggle)",
-            "x": 384,
-            "y": 128,
-            "width": 256,
-            "height": 128,
+            "x": 384.0,
+            "y": 128.0,
+            "width": 256.0,
+            "height": 128.0,
             "type": "Enum Toggle",
             "properties": {
               "topic": "/DashTest/ArmLevel",
@@ -850,10 +843,10 @@
           },
           {
             "title": "Test (enum toggle on a chooser)",
-            "x": 0,
-            "y": 256,
-            "width": 384,
-            "height": 128,
+            "x": 0.0,
+            "y": 256.0,
+            "width": 384.0,
+            "height": 128.0,
             "type": "Enum Toggle",
             "properties": {
               "topic": "/SmartDashboard/DashTest Test",
@@ -863,18 +856,44 @@
           },
           {
             "title": "Auto (watch only)",
-            "x": 384,
-            "y": 256,
-            "width": 768,
-            "height": 128,
+            "x": 384.0,
+            "y": 256.0,
+            "width": 768.0,
+            "height": 128.0,
             "type": "Split Button Chooser",
             "properties": {
               "topic": "/SmartDashboard/DashTest Auto",
               "period": 0.06,
               "editable": false
             }
+          },
+          {
+            "title": "Intake (Stowed / Shooting)",
+            "x": 640.0,
+            "y": 128.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Enum Toggle",
+            "properties": {
+              "topic": "/DashTest/IntakeMode",
+              "period": 0.06,
+              "data_type": "string",
+              "enum_source": "topic",
+              "options_topic": "/DashTest/IntakeModeOptions",
+              "switches_between": [
+                "Stowed",
+                "Shooting"
+              ]
+            }
           }
         ]
+      }
+    },
+    {
+      "name": "Empty",
+      "grid_layout": {
+        "layouts": [],
+        "containers": []
       }
     }
   ]
