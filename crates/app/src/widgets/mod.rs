@@ -41,7 +41,7 @@ use nt4::Value;
 use raptaboard_layout::{Rect as LayoutRect, StructMeta, WidgetContainer};
 use serde_json::{Map, Value as Json};
 
-use crate::struct_view::FieldInfo;
+use crate::types::structs::FieldInfo;
 use shared::{card, props};
 
 /// What a widget can draw from: its value now, and the recorded values of
@@ -394,7 +394,7 @@ pub fn source_title(name: &str, field: Option<&StructMeta>) -> String {
         .unwrap_or(name);
     match field {
         Some(field) => {
-            let path = crate::struct_view::path_text(&field.path);
+            let path = crate::types::structs::path_text(&field.path);
             if path.starts_with('[') {
                 format!("{last}{path}")
             } else {

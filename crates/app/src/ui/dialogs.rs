@@ -3,8 +3,8 @@
 use eframe::egui::{self, Color32, Sense};
 use raptaboard_layout::{LayoutContainer, WidgetContainer};
 
-use crate::struct_view::{self, FieldInfo};
 use crate::tabs::TabAction;
+use crate::types::structs::{self, FieldInfo};
 use crate::widgets::list_layout;
 use crate::widgets::shared::props;
 use crate::widgets::shared::settings as widget_settings;
@@ -175,7 +175,7 @@ impl DashboardApp {
         widget: &WidgetContainer,
     ) -> (Option<String>, Option<FieldInfo>) {
         let field = widget.struct_meta().and_then(|meta| {
-            struct_view::field_info(self.nt.structs()?, &meta.schema_name, &meta.path)
+            structs::field_info(self.nt.structs()?, &meta.schema_name, &meta.path)
         });
         (self.value_type(widget), field)
     }

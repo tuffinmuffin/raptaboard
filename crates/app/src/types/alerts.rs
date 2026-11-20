@@ -8,9 +8,8 @@
 //! alert carries: its text, and its level from which list it's in. 2027
 //! names the levels HIGH, MEDIUM and LOW; they're the same three lists.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use eframe::egui::Color32;
 use nt4::Value;
 
 /// The `.type` of an alert group's table.
@@ -40,13 +39,16 @@ impl Level {
         }
     }
 
-    /// Its color: red, yellow, blue (WPILib 2027's).
-    pub fn color(self) -> Color32 {
-        match self {
-            Level::Error => Color32::from_rgb(0xF4, 0x43, 0x36),
-            Level::Warning => Color32::from_rgb(0xFF, 0xC1, 0x07),
-            Level::Info => Color32::from_rgb(0x21, 0x96, 0xF3),
-        }
+    /// The level named `name` (`"error"`, `"warning"` or `"info"`, as
+    /// [`name`](Self::name) gives for one), if it is one.
+    ///
+    /// ```
+    /// use raptaboard::types::alerts::Level;
+    /// assert_eq!(Level::from_name("warning"), Some(Level::Warning));
+    /// assert_eq!(Level::from_name("loud"), None);
+    /// ```
+    pub fn from_name(name: &str) -> Option<Level> {
+        Level::ALL.into_iter().find(|l| l.name(1) == name)
     }
 
     /// Its name for people, plural when `n` isn't 1.
@@ -116,6 +118,22 @@ pub fn read_group(table: &str, values: &HashMap<&str, &Value>) -> Option<Vec<Act
     found.then_some(alerts)
 }
 
+/// The active alerts in every table of `tables`, errors first across
+/// groups (each level keeps the robot's order); `None` if none of them is
+/// published.
+pub fn read_groups(tables: &[String], values: &HashMap<&str, &Value>) -> Option<Vec<ActiveAlert>> {
+    let mut found = false;
+    let mut all = Vec::new();
+    for table in tables {
+        if let Some(group) = read_group(table, values) {
+            found = true;
+            all.extend(group);
+        }
+    }
+    all.sort_by_key(|a| a.level);
+    found.then_some(all)
+}
+
 /// Every alert group's table among `values`: those whose `.type` is
 /// `"Alerts"`, in name order.
 ///
@@ -155,6 +173,90 @@ pub fn counts(alerts: &[ActiveAlert]) -> [usize; 3] {
     n
 }
 
+/// Whether the alerts a [`AlertWatch`] gives are the robot's now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Freshness {
+    /// What the server has now.
+    Current,
+    /// Nothing published now (yet, or any more): the last alerts seen.
+    NotPublishedNow,
+    /// Disconnected: the last alerts seen.
+    Disconnected,
+    /// Connected, and nothing has been published since watching began.
+    NeverPublished,
+}
+
+/// What a [`AlertWatch`] says to show this time.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Seen {
+    /// The alerts to show: the current ones, or the last seen.
+    pub alerts: Vec<ActiveAlert>,
+    /// Whether they're current.
+    pub freshness: Freshness,
+    /// An error is active that wasn't the last time (never on the first
+    /// look, so opening a tab with errors already up isn't "new").
+    pub new_error: bool,
+}
+
+/// Watches the alerts one view shows, look after look: which errors are
+/// new, and the last alerts seen, kept while they're not published or the
+/// connection is down, so what was wrong just before isn't lost.
+///
+/// ```
+/// use raptaboard::types::alerts::{ActiveAlert, AlertWatch, Freshness, Level};
+/// let error = |text: &str| ActiveAlert { group: "Alerts".into(), level: Level::Error, text: text.into() };
+/// let mut watch = AlertWatch::default();
+/// assert!(!watch.update(Some(vec![error("a")]), true).new_error); // first look
+/// assert!(watch.update(Some(vec![error("a"), error("b")]), true).new_error);
+/// let down = watch.update(None, false);
+/// assert_eq!((down.freshness, down.alerts.len()), (Freshness::Disconnected, 2));
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct AlertWatch {
+    /// The alerts seen last while connected.
+    last: Vec<ActiveAlert>,
+    /// The errors active last look, by group and text.
+    errors: HashSet<(String, String)>,
+    /// Seen anything yet.
+    started: bool,
+}
+
+impl AlertWatch {
+    /// Take a look: `current` is what's published now (from
+    /// [`read_groups`]), `connected` whether the connection is up.
+    pub fn update(&mut self, current: Option<Vec<ActiveAlert>>, connected: bool) -> Seen {
+        let stale = |last: &[ActiveAlert], freshness| Seen {
+            alerts: last.to_vec(),
+            freshness,
+            new_error: false,
+        };
+        match (current, connected) {
+            (Some(now), true) => {
+                let errors: HashSet<(String, String)> = now
+                    .iter()
+                    .filter(|a| a.level == Level::Error)
+                    .map(|a| (a.group.clone(), a.text.clone()))
+                    .collect();
+                let new_error = self.started && errors.iter().any(|e| !self.errors.contains(e));
+                self.errors = errors;
+                self.started = true;
+                self.last.clone_from(&now);
+                Seen {
+                    alerts: now,
+                    freshness: Freshness::Current,
+                    new_error,
+                }
+            }
+            // A robot dropping out can lose its topics before the
+            // connection says so. The errors remembered stay too, so they
+            // aren't "new" when they come back.
+            (None, true) if !self.last.is_empty() => stale(&self.last, Freshness::NotPublishedNow),
+            (None, true) => stale(&[], Freshness::NeverPublished),
+            (_, false) => stale(&self.last, Freshness::Disconnected),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // Tests written by Claude.
@@ -181,5 +283,55 @@ mod tests {
         assert_eq!(read_group("/B", &values), Some(vec![]));
         assert_eq!(highest(&[]), None);
         assert_eq!(table_topics("/A").len(), 4);
+    }
+
+    #[test]
+    fn a_watch_sees_new_errors_only_and_keeps_the_last_alerts() {
+        let alert = |level, text: &str| ActiveAlert {
+            group: "A".into(),
+            level,
+            text: text.into(),
+        };
+        let mut w = AlertWatch::default();
+        let first = w.update(Some(vec![alert(Level::Error, "x")]), true);
+        assert_eq!(
+            (first.freshness, first.new_error),
+            (Freshness::Current, false)
+        );
+        // A new warning or info isn't asking for attention; a new error is.
+        assert!(
+            !w.update(
+                Some(vec![alert(Level::Error, "x"), alert(Level::Warning, "w")]),
+                true
+            )
+            .new_error
+        );
+        assert!(
+            w.update(Some(vec![alert(Level::Error, "y")]), true)
+                .new_error
+        );
+        // Gone from the server: the last ones, then back isn't "new".
+        let gone = w.update(None, true);
+        assert_eq!(
+            (gone.freshness, gone.alerts.len()),
+            (Freshness::NotPublishedNow, 1)
+        );
+        assert!(
+            !w.update(Some(vec![alert(Level::Error, "y")]), true)
+                .new_error
+        );
+        // Never published at all.
+        let mut fresh = AlertWatch::default();
+        assert_eq!(
+            fresh.update(None, true).freshness,
+            Freshness::NeverPublished
+        );
+        // Errors sort first across groups.
+        let e = Value::StringArray(vec!["e".into()]);
+        let i = Value::StringArray(vec!["i".into()]);
+        let values = HashMap::from([("/A/infos", &i), ("/B/errors", &e)]);
+        let all = read_groups(&["/A".into(), "/B".into()], &values).unwrap();
+        assert_eq!(all[0].text, "e");
+        assert_eq!(read_groups(&["/C".into()], &values), None);
     }
 }

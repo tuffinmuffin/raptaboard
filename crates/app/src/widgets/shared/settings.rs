@@ -12,7 +12,7 @@ use raptaboard_layout::WidgetContainer;
 use serde_json::Value as Json;
 
 use super::props::{self, DEFAULT_PERIOD_S, MAX_PERIOD_S, MIN_PERIOD_S, PERIOD, set_property};
-use crate::struct_view::FieldInfo;
+use crate::types::structs::FieldInfo;
 use crate::widgets::{TYPES, ValueInfo, find, source_title};
 
 /// The widest the "Shows" row's topic name gets before it wraps, in points.

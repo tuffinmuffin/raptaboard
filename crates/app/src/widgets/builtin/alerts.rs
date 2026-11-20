@@ -16,15 +16,16 @@
 //! connection is down it keeps showing the last alerts it saw, greyed, so
 //! what was wrong just before isn't lost.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
+use eframe::egui::{self, Rect, Sense, Stroke};
 use nt4::Value;
 use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
 
 use crate::sound::Tone;
-use crate::types::alerts::{self, ActiveAlert, Level};
+use crate::types::alerts::{self, ActiveAlert, AlertWatch, Freshness, Level};
+use crate::widgets::shared::alert_sign::{self, draw_sign};
 use crate::widgets::shared::{card, props};
 use crate::widgets::{Effect, Live, ValueInfo, WidgetType};
 
@@ -71,115 +72,28 @@ const GAP: f32 = 6.0;
 
 /// The least urgent level shown, from `min_level`.
 fn min_level(p: &Map<String, Json>) -> Level {
-    match props::text(p, MIN_LEVEL, "info") {
-        "error" => Level::Error,
-        "warning" => Level::Warning,
-        _ => Level::Info,
-    }
+    Level::from_name(props::text(p, MIN_LEVEL, "info")).unwrap_or(Level::Info)
 }
 
-/// The alert tables a widget with settings `p` reads.
-fn tables(widget: &WidgetContainer, live: &Live<'_>) -> Vec<String> {
+/// The alert tables a widget with settings `p` reads, from the server's
+/// `values`.
+fn tables(widget: &WidgetContainer, values: &HashMap<&str, &Value>) -> Vec<String> {
     if props::flag(&widget.properties, ALL_GROUPS, false) {
-        alerts::alert_tables(live.others)
+        alerts::alert_tables(values)
     } else {
         widget.topic().map(str::to_owned).into_iter().collect()
     }
 }
 
-/// The alerts in `tables` now, or `None` if none of them is published.
-fn read(tables: &[String], live: &Live<'_>) -> Option<Vec<ActiveAlert>> {
-    let mut found = false;
-    let mut all = Vec::new();
-    for table in tables {
-        if let Some(group) = alerts::read_group(table, live.others) {
-            found = true;
-            all.extend(group);
-        }
-    }
-    // Errors first across groups; each level keeps the robot's order.
-    all.sort_by_key(|a| a.level);
-    found.then_some(all)
-}
-
 /// What a widget remembers between frames.
 #[derive(Debug, Clone, Default)]
 struct Memory {
-    /// The alerts seen last while connected.
-    last: Vec<ActiveAlert>,
-    /// The errors active last frame, to see new ones.
-    errors: HashSet<(String, String)>,
-    /// Seen anything yet: the first look isn't "new".
-    started: bool,
+    /// The alerts seen, and which errors are new.
+    watch: AlertWatch,
     /// When the pulse ends (egui time, seconds).
     pulse_until: f64,
     /// When the last tone played, if one has.
     last_tone: Option<f64>,
-}
-
-/// The errors in `alerts`, by group and text.
-fn error_set(alerts: &[ActiveAlert]) -> HashSet<(String, String)> {
-    alerts
-        .iter()
-        .filter(|a| a.level == Level::Error)
-        .map(|a| (a.group.clone(), a.text.clone()))
-        .collect()
-}
-
-/// Whether `now` has an error that `before` didn't.
-///
-/// ```
-/// use std::collections::HashSet;
-/// use raptaboard::widgets::builtin::alerts::has_new;
-/// let before: HashSet<_> = [("A".to_string(), "x".to_string())].into();
-/// let mut now = before.clone();
-/// assert!(!has_new(&before, &now));
-/// now.insert(("A".into(), "y".into()));
-/// assert!(has_new(&before, &now));
-/// ```
-pub fn has_new(before: &HashSet<(String, String)>, now: &HashSet<(String, String)>) -> bool {
-    now.iter().any(|e| !before.contains(e))
-}
-
-/// Draw the ✕ (an error's sign) at `c`, `size` across.
-fn draw_cross(painter: &egui::Painter, c: Pos2, size: f32, color: Color32) {
-    let h = size / 2.0;
-    let stroke = Stroke::new((size * 0.18).max(1.5), color);
-    painter.line_segment([c + egui::vec2(-h, -h), c + egui::vec2(h, h)], stroke);
-    painter.line_segment([c + egui::vec2(-h, h), c + egui::vec2(h, -h)], stroke);
-}
-
-/// Draw a ! (a warning's sign, `upside_down` false) or an i (info, true)
-/// at `c`, `size` tall: a bar and a dot.
-fn draw_bar_and_dot(
-    painter: &egui::Painter,
-    c: Pos2,
-    size: f32,
-    color: Color32,
-    upside_down: bool,
-) {
-    let h = size / 2.0;
-    let width = (size * 0.2).max(1.5);
-    let dot = width * 0.75;
-    let (bar_top, bar_bottom, dot_y) = if upside_down {
-        (c.y - h * 0.35, c.y + h, c.y - h + dot)
-    } else {
-        (c.y - h, c.y + h * 0.35, c.y + h - dot)
-    };
-    painter.line_segment(
-        [egui::pos2(c.x, bar_top), egui::pos2(c.x, bar_bottom)],
-        Stroke::new(width, color),
-    );
-    painter.circle_filled(egui::pos2(c.x, dot_y), dot, color);
-}
-
-/// Draw `level`'s sign at `c`, `size` across.
-pub(crate) fn draw_sign(painter: &egui::Painter, level: Level, c: Pos2, size: f32, color: Color32) {
-    match level {
-        Level::Error => draw_cross(painter, c, size * 0.8, color),
-        Level::Warning => draw_bar_and_dot(painter, c, size, color, false),
-        Level::Info => draw_bar_and_dot(painter, c, size, color, true),
-    }
 }
 
 /// Draw the circle in `rect` (centered, as big as fits): the three signs,
@@ -205,14 +119,14 @@ fn draw_circle(
         } else if dim {
             visuals.weak_text_color()
         } else {
-            level.color()
+            alert_sign::color(level)
         }
     };
     if pulse > 0.0 {
         painter.circle_filled(
             c,
             r,
-            Level::Error.color().gamma_multiply(0.15 + 0.35 * pulse),
+            alert_sign::color(Level::Error).gamma_multiply(0.15 + 0.35 * pulse),
         );
     }
     let ring = Level::ALL
@@ -333,7 +247,7 @@ fn draw_list(
         let sign = if dim {
             visuals.weak_text_color()
         } else {
-            a.level.color()
+            alert_sign::color(a.level)
         };
         draw_sign(
             &painter,
@@ -356,52 +270,31 @@ impl AlertsWidget {
         let id = ui.scope_id().with("alerts");
         let now = ui.input(|i| i.time);
         let mut memory: Memory = ui.data(|d| d.get_temp(id)).unwrap_or_default();
-        let current = read(&tables(widget, live), live);
-        let (shown, note, dim) = match (&current, live.connected) {
-            (Some(now_alerts), true) => {
-                // A new error: pulse, and maybe a tone.
-                let errors = error_set(now_alerts);
-                if memory.started && has_new(&memory.errors, &errors) {
-                    if props::flag(p, PULSE, true) {
-                        memory.pulse_until = now + props::number(p, PULSE_SECONDS, DEFAULT_PULSE_S);
-                    }
-                    if props::flag(p, SOUND, false)
-                        && memory.last_tone.is_none_or(|last| now - last >= TONE_GAP_S)
-                    {
-                        memory.last_tone = Some(now);
-                        let tone = Tone::named(props::text(p, TONE, "beep"));
-                        live.effects.borrow_mut().push(Effect::Tone(tone));
-                    }
-                }
-                memory.errors = errors;
-                memory.started = true;
-                memory.last = now_alerts.clone();
-                (now_alerts.clone(), None, false)
+        let current = alerts::read_groups(&tables(widget, live.others), live.others);
+        let seen = memory.watch.update(current, live.connected);
+        // A new error: pulse, and maybe a tone.
+        if seen.new_error {
+            if props::flag(p, PULSE, true) {
+                memory.pulse_until = now + props::number(p, PULSE_SECONDS, DEFAULT_PULSE_S);
             }
-            // Connected, but nothing published (yet, or any more: a robot
-            // dropping out can lose its topics before the connection says
-            // so). The last alerts seen stay, greyed, and so do the errors
-            // remembered, so they aren't "new" when they come back.
-            (None, true) if !memory.last.is_empty() => (
-                memory.last.clone(),
-                Some("Not published now: the last alerts seen"),
-                true,
-            ),
-            (None, true) => {
-                let why = if props::flag(p, ALL_GROUPS, false) {
-                    "No alert groups published"
-                } else {
-                    "Alerts not published"
-                };
-                (Vec::new(), Some(why), false)
+            if props::flag(p, SOUND, false)
+                && memory.last_tone.is_none_or(|last| now - last >= TONE_GAP_S)
+            {
+                memory.last_tone = Some(now);
+                let tone = Tone::named(props::text(p, TONE, "beep"));
+                live.effects.borrow_mut().push(Effect::Tone(tone));
             }
-            // Down: the last alerts seen, greyed.
-            (_, false) => (
-                memory.last.clone(),
-                Some("Robot disconnected: the last alerts seen"),
-                true,
-            ),
+        }
+        let (note, dim) = match seen.freshness {
+            Freshness::Current => (None, false),
+            Freshness::NotPublishedNow => (Some("Not published now: the last alerts seen"), true),
+            Freshness::NeverPublished if props::flag(p, ALL_GROUPS, false) => {
+                (Some("No alert groups published"), false)
+            }
+            Freshness::NeverPublished => (Some("Alerts not published"), false),
+            Freshness::Disconnected => (Some("Robot disconnected: the last alerts seen"), true),
         };
+        let shown = seen.alerts;
         let lowest = min_level(p);
         let shown: Vec<ActiveAlert> = shown.into_iter().filter(|a| a.level <= lowest).collect();
         let counts = alerts::counts(&shown);
@@ -422,10 +315,10 @@ impl AlertsWidget {
             Level::Warning.name(counts[1]),
             counts[2],
             Level::Info.name(counts[2]),
-            match (dim, live.connected) {
-                (false, _) => "",
-                (true, false) => " (disconnected)",
-                (true, true) => " (not published)",
+            match seen.freshness {
+                Freshness::Disconnected => " (disconnected)",
+                Freshness::NotPublishedNow => " (not published)",
+                _ => "",
             },
         );
         ui.interact(rect, id, Sense::hover()).widget_info(|| {
@@ -448,22 +341,13 @@ impl AlertsWidget {
 /// The highest level above info active in the alerts a widget shows, from
 /// the server's `values`, for a mark on its tab. `None` for other widget
 /// types, no alerts, or only infos.
-pub fn tab_level(
-    widget: &WidgetContainer,
-    values: &std::collections::HashMap<&str, &Value>,
-) -> Option<Level> {
+pub fn tab_level(widget: &WidgetContainer, values: &HashMap<&str, &Value>) -> Option<Level> {
     if crate::widgets::find(&widget.widget_type).map(|t| t.names()[0]) != Some("Alerts") {
         return None;
     }
-    let tables = if props::flag(&widget.properties, ALL_GROUPS, false) {
-        alerts::alert_tables(values)
-    } else {
-        widget.topic().map(str::to_owned).into_iter().collect()
-    };
-    let shown: Vec<ActiveAlert> = tables
-        .iter()
-        .filter_map(|t| alerts::read_group(t, values))
-        .flatten()
+    let shown: Vec<ActiveAlert> = alerts::read_groups(&tables(widget, values), values)
+        .unwrap_or_default()
+        .into_iter()
         .filter(|a| a.level <= min_level(&widget.properties))
         .collect();
     alerts::highest(&shown).filter(|l| *l != Level::Info)
@@ -607,8 +491,8 @@ mod tests {
 
     #[test]
     fn text_goes_beside_a_wide_widget_and_below_a_tall_one() {
-        let wide = Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 100.0));
-        let tall = Rect::from_min_size(Pos2::ZERO, egui::vec2(100.0, 300.0));
+        let wide = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 100.0));
+        let tall = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(100.0, 300.0));
         let (c, t) = layout(wide, true, "auto");
         assert!(t.unwrap().min.x > c.max.x);
         let (c, t) = layout(tall, true, "auto");

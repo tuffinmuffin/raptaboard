@@ -19,8 +19,8 @@ use crate::edit::EditAction;
 use crate::grid::{self, Item};
 use crate::nt::WriteError;
 use crate::sampling::Sampler;
-use crate::struct_view;
 use crate::tree::DraggedTopics;
+use crate::types::structs;
 use crate::widgets::builtin::graph;
 use crate::widgets::shared::{card, format, props};
 use crate::widgets::{self, list_layout};
@@ -373,7 +373,7 @@ impl DashboardApp {
         values: &'a HashMap<&str, &Value>,
         now: Instant,
     ) -> impl Fn(&WidgetContainer) -> Option<Value> + 'a {
-        let structs = self.nt.structs();
+        let db = self.nt.structs();
         move |w: &WidgetContainer| -> Option<Value> {
             let topic = w.topic()?;
             let latest = values.get(topic).copied();
@@ -382,14 +382,16 @@ impl DashboardApp {
                 .sample(topic, props::period_s(w), latest, now)?;
             match (w.struct_meta(), &value) {
                 (None, _) => Some(value),
-                (Some(meta), Value::Raw(bytes)) => struct_view::field_value_shown(
-                    structs?,
-                    &meta.schema_name,
-                    bytes,
-                    &meta.path,
-                    format::enum_display(&w.properties),
-                    format::int_style(&w.properties),
-                ),
+                (Some(meta), Value::Raw(bytes)) => {
+                    let (value, name) =
+                        structs::field_value_named(db?, &meta.schema_name, bytes, &meta.path)?;
+                    Some(format::enum_shown(
+                        value,
+                        name.as_deref(),
+                        format::enum_display(&w.properties),
+                        format::int_style(&w.properties),
+                    ))
+                }
                 (Some(_), _) => None,
             }
         }

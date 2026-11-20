@@ -16,7 +16,6 @@ pub mod nt;
 pub mod sampling;
 pub mod settings;
 pub mod sound;
-pub mod struct_view;
 pub mod tabs;
 pub mod traces;
 pub mod tree;
