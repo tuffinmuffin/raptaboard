@@ -18,7 +18,7 @@
 //!   the [choosers](super::chooser) (the pick goes to `selected`).
 //!
 //! When a widget becomes one of these in its settings, it guesses the
-//! source ([`guess`](crate::types::enums::guess)): a chooser table if the topic is one, else a string[]
+//! source ([`guess`]): a chooser table if the topic is one, else a string[]
 //! topic beside it named for it (`modeOptions`, `mode_names`, `modes` for
 //! `mode`), else a list. "Guess again" in the settings does it over.
 //!
@@ -122,14 +122,14 @@ fn shown(widget: &WidgetContainer, live: &Live<'_>) -> Result<Shown, &'static st
         Source::List => listed_states(&value_lines(p), whole),
         Source::Topic => {
             let topic = props::text(p, OPTIONS_TOPIC, "");
-            match live.others.get(topic) {
+            match live.frame.others.get(topic) {
                 Some(Value::StringArray(names)) => named_states(names, whole),
                 _ => return Err("no names yet (from the options topic)"),
             }
         }
         Source::Chooser => {
             let table = widget.topic().unwrap_or_default();
-            let c = Chooser::read(table, live.others);
+            let c = Chooser::read(table, live.frame.others);
             let pick = if editable { c.pick() } else { c.robot_pick() };
             let states = named_states(&c.options, false);
             let current = pick.and_then(|p| c.options.iter().position(|o| o == p));
@@ -381,7 +381,7 @@ impl WidgetType for EnumDropdown {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        self.show_in(ui, live.free.unwrap_or(rect), widget, live)
+        self.show_in(ui, live.place.free.unwrap_or(rect), widget, live)
     }
     fn draw_body(
         &self,
@@ -566,7 +566,7 @@ impl WidgetType for EnumToggle {
         let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
         // Locked, the whole card takes the click; unlocked, the title bar
         // moves the widget.
-        let area = if live.locked { rect } else { body };
+        let area = if live.place.locked { rect } else { body };
         self.show_in(ui, area, body.shrink(card::BODY_MARGIN), widget, live)
     }
     fn show_body(
@@ -576,8 +576,8 @@ impl WidgetType for EnumToggle {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        let body = live.free.unwrap_or(rect);
-        self.show_in(ui, live.input.unwrap_or(rect), body, widget, live)
+        let body = live.place.free.unwrap_or(rect);
+        self.show_in(ui, live.place.input.unwrap_or(rect), body, widget, live)
     }
     fn draw_body(
         &self,
@@ -684,17 +684,18 @@ mod tests {
         let others = Default::default();
         let traces = crate::traces::Traces::default();
         let effects = Default::default();
-        let live = |value| Live {
-            value,
+        let frame = crate::widgets::Frame {
             traces: &traces,
             now_us: 0,
-            locked: true,
-            input: None,
-            free: None,
             others: &others,
             connected: true,
             effects: &effects,
         };
+        let place = crate::widgets::Place {
+            locked: true,
+            ..Default::default()
+        };
+        let live = |value| frame.live(value, place);
         let seven = Value::Int(7);
         let s = shown(&widget, &live(Some(&seven))).unwrap();
         assert_eq!((s.current, shown_text(&s).as_str()), (None, "unnamed (7)"));

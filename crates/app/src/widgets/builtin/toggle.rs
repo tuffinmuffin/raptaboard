@@ -70,13 +70,13 @@ fn show_card(
     paint: impl FnOnce(&egui::Painter, Rect),
 ) -> Option<Value> {
     let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
-    let clicked = clicked_in(ui, if live.locked { rect } else { body });
+    let clicked = clicked_in(ui, if live.place.locked { rect } else { body });
     let painter = ui.painter().with_clip_rect(body.intersect(ui.clip_rect()));
     paint(&painter, body.shrink(card::BODY_MARGIN));
     clicked.then(|| flipped(live.value))
 }
 
-/// A toggle as a list child: `rect` is the click area, or `live.input` if
+/// A toggle as a list child: `rect` is the click area, or `live.place.input` if
 /// the list leaves its label for dragging. The value to send if clicked.
 fn show_in(
     ui: &mut egui::Ui,
@@ -84,7 +84,7 @@ fn show_in(
     live: &Live<'_>,
     paint: impl FnOnce(&egui::Painter, Rect),
 ) -> Option<Value> {
-    let clicked = clicked_in(ui, live.input.unwrap_or(rect));
+    let clicked = clicked_in(ui, live.place.input.unwrap_or(rect));
     paint(ui.painter(), rect);
     clicked.then(|| flipped(live.value))
 }

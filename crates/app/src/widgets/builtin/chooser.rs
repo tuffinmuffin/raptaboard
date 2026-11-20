@@ -63,7 +63,7 @@ fn read_and_check(
     let Some(table) = widget.topic() else {
         return (Chooser::default(), None);
     };
-    let chooser = Chooser::read(table, live.others);
+    let chooser = Chooser::read(table, live.frame.others);
     let before: Option<Vec<String>> = ui.data(|d| d.get_temp(id));
     let dropped = before.and_then(|b| chooser.dropped_pick(&b));
     if !chooser.options.is_empty() {
@@ -116,7 +116,7 @@ fn fitted_size(painter: &egui::Painter, rect: Rect, options: &[String]) -> f32 {
     fit_between(by_height.min(by_width))
 }
 
-/// A fitted text size kept usable: between [`MIN_FIT`] and [`MAX_FIT`].
+/// A fitted text size kept usable: between 12 and 36 points.
 ///
 /// ```
 /// use raptaboard::widgets::builtin::chooser::fit_between;
@@ -194,7 +194,7 @@ fn draw_pick(painter: &egui::Painter, visuals: &egui::Visuals, rect: Rect, value
 
 /// The part of a list child's row to lay out in: beside an inside label.
 fn row_area(rect: Rect, live: &Live<'_>) -> Rect {
-    live.free.unwrap_or(rect)
+    live.place.free.unwrap_or(rect)
 }
 
 /// What a drop-down or button row offers and shows.

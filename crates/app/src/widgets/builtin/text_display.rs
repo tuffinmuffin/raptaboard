@@ -184,7 +184,7 @@ impl WidgetType for TextDisplay {
         live: &Live<'_>,
     ) -> Option<Value> {
         let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
-        let area = if live.locked { rect } else { body };
+        let area = if live.place.locked { rect } else { body };
         // The dot goes in the title bar's corner, clear of the value.
         let title = rect.with_max_y(body.min.y);
         show_text(
@@ -204,7 +204,7 @@ impl WidgetType for TextDisplay {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        let area = live.input.unwrap_or(rect);
+        let area = live.place.input.unwrap_or(rect);
         show_text(ui, area, rect, rect, widget, live)
     }
 
