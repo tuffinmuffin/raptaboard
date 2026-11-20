@@ -14,6 +14,10 @@
 //! The robot is drawn `robot_length` by `robot_width` meters, in
 //! `robot_color`, with an arrow the way it faces.
 //!
+//! On the robot ([`attachments`]): cameras, as their field of view with
+//! range bands, and parts (an intake), shown while a boolean topic is true
+//! or lengthened by a number topic (`attachments`).
+//!
 //! Over the field ([`layers`]): the field's AprilTags (`show_tags`, on
 //! unless set), lit when a layer says a camera sees them; layers of other
 //! robots, paths and objects (game pieces, drawn as a circle, ring, X
@@ -38,6 +42,7 @@ use crate::types::field::{FieldInfo, FieldPose, Origin};
 use crate::widgets::shared::{card, props};
 use crate::widgets::{Live, Server, ValueInfo, WidgetType};
 
+pub mod attachments;
 pub mod layers;
 
 /// The field shown: an id from [`fields::available`] or a field JSON's path
@@ -59,7 +64,7 @@ pub const ROBOT_COLOR: &str = "robot_color";
 /// (Elastic).
 pub const FIELD_ROTATION: &str = "field_rotation";
 
-const KEYS: [&str; 11] = [
+const KEYS: [&str; 12] = [
     FIELD,
     FIELD_GAME,
     ORIGIN,
@@ -71,6 +76,7 @@ const KEYS: [&str; 11] = [
     layers::SHOW_TAGS,
     layers::SHOW_OTHER_OBJECTS,
     layers::SHOW_TRAJECTORIES,
+    attachments::ATTACHMENTS,
 ];
 
 /// A WPILib `Field2d` table's `.type`.
@@ -445,6 +451,11 @@ impl FieldWidget {
         };
         let table = is_table(widget).then(|| widget.topic()).flatten();
         let drawn = overlay.draw(&painter, p, table);
+        // Cameras' views and parts, under the robot.
+        let fixed = match poses.first() {
+            Some(robot) => attachments::draw(&painter, &view, p, *robot, live.frame.others),
+            None => attachments::Drawn::default(),
+        };
         let color = props::color_property(p, ROBOT_COLOR).unwrap_or(DEFAULT_ROBOT_COLOR);
         // A pose array's others are drawn fainter, under the first.
         for other in poses.iter().skip(1) {
@@ -479,6 +490,11 @@ impl FieldWidget {
                 drawn.robots,
                 if drawn.robots == 1 { "" } else { "s" }
             );
+        }
+        for (n, what) in [(fixed.cameras, "camera"), (fixed.parts, "part")] {
+            if n > 0 {
+                summary += &format!("; {n} {what}{}", if n == 1 { "" } else { "s" });
+            }
         }
         if drawn.objects > 0 {
             summary += &format!(
@@ -521,6 +537,7 @@ impl WidgetType for FieldWidget {
     fn extra_topics(&self, p: &Map<String, Json>, server: Server<'_>) -> Vec<String> {
         let topic = props::text(p, "topic", "").trim_end_matches('/');
         let mut wanted = layers::layer_topics(p);
+        wanted.extend(attachments::attachment_topics(p));
         if !topic.is_empty() && !props::text(p, props::DATA_TYPE, "").starts_with("struct:") {
             wanted.extend(layers::table_topics(topic, server.topics));
         }
@@ -704,6 +721,7 @@ impl WidgetType for FieldWidget {
             );
         }
         layers::settings_rows(ui, p, value.topics);
+        attachments::settings_rows(ui, p, value.topics);
     }
     fn setting_keys(&self) -> &'static [&'static str] {
         &KEYS

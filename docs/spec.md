@@ -158,6 +158,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `robot_color` (Elastic) | `builtin/field/mod.rs` | Field | the robot's color | red |
 | `field_rotation` (Elastic) | `builtin/field/mod.rs` | Field | the field turned clockwise, degrees (0, 90, 180, 270; 180 is the red side's view) | 0 |
 | `layers` | `builtin/field/layers.rs` | Field | layers drawn over the field, each `{"kind", "topic", "data_type", "color"}`: `robots` (poses as robot outlines), `path` (poses joined by a line), `seen_tags` (AprilTag IDs as `int[]`, or seen tags' `Pose3d[]`, lit on the field), `objects` (game pieces: poses or translations, drawn as `marker` `circle`, `ring`, `x` or `square`, `size` meters across, on the field or with `robot_relative` from the robot's pose, as a camera finds them); a topic dropped on the field adds one (objects for a name with a game piece's word in it) | none |
+| `attachments` | `builtin/field/attachments.rs` | Field | things fixed to the robot, each placed `x` m forward and `y` m left of its center, facing `yaw` degrees: `{"kind": "camera", "fov", "bands"}` (its field of view, shaded in three range bands, meters, default 4, 6, 8) or `{"kind": "part", "length", "width", "shown_by", "length_topic", "scale", "color"}` (a rectangle reaching out from its base: drawn while the `shown_by` boolean is true, its length from `length_topic` times `scale` meters) | none |
 | `show_tags` | `builtin/field/layers.rs` | Field | draw the field's AprilTags | true |
 | `show_other_objects`, `show_trajectories` (Elastic) | `builtin/field/layers.rs` | Field | a `Field2d` table's other objects: as robots, and as paths (more than 8 poses, or "traj" or "path" in the name) | true, true |
 | `enum_source` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | where the state names come from: `list`, `topic` (a string[] topic) or `chooser` (the widget's topic is a chooser table); guessed when a widget becomes one | `list` |
@@ -596,7 +597,16 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      trajectory, AprilTag and object overlays (**done**: `builtin/field/layers.rs`; a pose array as the widget's
      own topic is the robot and others; robot-2027's sim publishes `OrbitPath` and `SeenTags`; objects layers, decided with the user: a marker per
      layer (circle, ring, X, square) in its color and size, on the field or relative to the robot, fed by
-     poses or translations; the sim's `Fuel` and robot-relative `SeenFuel`); (3) robot-attached shapes.
+     poses or translations; the sim's `Fuel` and robot-relative `SeenFuel`); (3) robot-attached shapes (**done**: `builtin/field/attachments.rs`; the sim layout has Robot-2026's
+     two cameras and an intake on robot-2027's `IntakeDeployed` and `IntakeExtensionIn`).
+   - Later in this phase (its own PR, after the robot-attached shapes; asked for by the user
+     2026-11-20): click to set a target. Off unless the Field's setting turns it on. A click on the
+     field publishes a `Pose2d` target (in the widget's `origin`) to a topic raptaboard publishes
+     (`/raptaboard/<widget title>/target` unless set), with `target_set` true beside it; dragging sets
+     its heading; right-click or "Clear target" clears it. Drivers can use it to aim or send the robot
+     somewhere, and robot code is free to ignore it. The target shows as a green X, drawn from the
+     topic's value, so a target robot code or another dashboard set shows too. Works while locked
+     (driver input). Open: snapping to tags or game pieces, and a list of targets for a route.
 
    Struct widgets after the Field, each its own widget: a Gyro (Rotation2d or a number), motion
    vectors (2 or 3 arrows, Translation2d or ChassisSpeeds, showing relative motion more than
