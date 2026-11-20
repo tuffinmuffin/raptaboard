@@ -694,7 +694,7 @@
             "title": "Auto mode",
             "x": 512.0,
             "y": 384.0,
-            "width": 384.0,
+            "width": 128.0,
             "height": 128.0,
             "type": "Dropdown Chooser",
             "properties": {
@@ -704,13 +704,25 @@
           },
           {
             "title": "Test",
-            "x": 896.0,
-            "y": 384.0,
+            "x": 512.0,
+            "y": 512.0,
             "width": 384.0,
             "height": 128.0,
             "type": "Split Button Chooser",
             "properties": {
               "topic": "/SmartDashboard/DashTest Test",
+              "period": 0.06
+            }
+          },
+          {
+            "title": "Auto mode",
+            "x": 512.0,
+            "y": 640.0,
+            "width": 640.0,
+            "height": 128.0,
+            "type": "Split Button Chooser",
+            "properties": {
+              "topic": "/SmartDashboard/DashTest Auto",
               "period": 0.06
             }
           }

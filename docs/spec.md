@@ -481,7 +481,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    orange "Robot has: X" note (and outline on the button). When the robot's option list changes (not
    to empty, which is a restart), a pick is dropped: the robot's `active` (or `default`) is sent.
    In the tree, a table whose `.type` has a widget (`WidgetType::table_types`, "String Chooser") is
-   one draggable row (its `.type` values are always watched); with metadata shown it's a folder.
+   one draggable row (its `.type` values are always watched) with an open arrow of its own that lists
+   its parts and their values (`options`, `active`, ...); with metadata shown it's a plain folder.
    Next: the enum widgets and choosers (with dragging a
    chooser table from the tree), Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,

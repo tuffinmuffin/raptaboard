@@ -1753,6 +1753,22 @@ fn a_chooser_table_drags_from_the_tree_as_a_dropdown() {
     assert_eq!(made.widget_type, "Dropdown Chooser");
     assert_eq!(made.topic(), Some("/Test/Auto"));
     assert!(!made.properties.contains_key("data_type"));
+    // Its arrow (left of the row) opens it to show its parts and their
+    // values, without dragging or picking it.
+    assert!(harness.query_by_label("options").is_none());
+    let arrow = row_at(&harness, "Auto", 0).left_center() - egui::vec2(10.0, 0.0);
+    click_at(
+        &mut harness,
+        arrow,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert!(
+        harness.query_by_label("options").is_some(),
+        "the arrow didn't open it"
+    );
+    assert!(harness.query_by_label("active").is_some());
+    assert_eq!(widgets(&harness).len(), before + 1);
     // With metadata shown it's a folder again, its parts listed.
     harness.state_mut().show_metadata = true;
     settle(&mut harness);

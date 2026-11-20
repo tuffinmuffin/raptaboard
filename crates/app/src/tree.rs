@@ -502,8 +502,9 @@ impl Folder {
         for (name, folder) in &self.folders {
             let folder_path = format!("{path}/{name}");
             // A table with a widget of its own (a chooser) is one row that
-            // drags as a whole, unless its metadata is shown, when it opens
-            // like any folder so its parts can be looked at.
+            // drags as a whole, with an arrow of its own that opens it to
+            // show its parts (options, active, ...). With metadata shown it's
+            // an ordinary folder, `.type` and all.
             if let Some(ty) = &folder.table_type
                 && widgets::type_for_table(ty).is_some()
                 && !folder.topics.contains_key(".type")
@@ -519,15 +520,29 @@ impl Folder {
                     format!("{folder_path} ({ty})")
                 };
                 let active = folder.topics.get("active").and_then(|t| t.value.as_ref());
-                selectable_row(ui, sel, row, draggable, &hover, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(name);
-                        if let Some(active) = active {
-                            ui.monospace(format_value(active));
+                // Only the arrow opens it, so the row itself can be dragged.
+                let state = egui::collapsing_header::CollapsingState::load_with_default_open(
+                    ui.ctx(),
+                    ui.make_persistent_id(("table", &folder_path)),
+                    expand_all,
+                );
+                state
+                    .show_header(ui, |ui| {
+                        selectable_row(ui, sel, row, draggable, &hover, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(name);
+                                if let Some(active) = active {
+                                    ui.monospace(format_value(active));
+                                }
+                                ui.weak(ty);
+                            });
+                        });
+                    })
+                    .body(|ui| {
+                        for (key, topic) in &folder.topics {
+                            plain_row(ui, key, topic);
                         }
-                        ui.weak(ty);
                     });
-                });
                 // Its values, for the row (and the widget made from it).
                 visible.extend(folder.topics.values().map(|t| t.name.clone()));
                 continue;
