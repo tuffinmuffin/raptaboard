@@ -8,6 +8,7 @@ pub mod graph;
 pub mod large_text_display;
 pub mod match_time;
 pub mod number_bar;
+pub mod number_slider;
 pub mod radial_gauge;
 pub mod text_display;
 pub mod toggle;

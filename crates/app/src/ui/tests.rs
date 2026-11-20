@@ -47,6 +47,10 @@ struct Robot {
     /// server has of it.
     enabled: Publisher<bool>,
     seen_enabled: nt4::Subscriber<bool>,
+    /// A number only the tests and the dashboard change, for sliders, and
+    /// what the server has of it.
+    setpoint: Publisher<f64>,
+    seen_setpoint: nt4::Subscriber<f64>,
     _others: (
         Publisher<String>,
         Publisher<Vec<String>>,
@@ -75,6 +79,9 @@ impl Robot {
         let enabled = server.publish::<bool>("/Test/enabled");
         enabled.set(false);
         let seen_enabled = server.subscribe::<bool>("/Test/enabled", Default::default());
+        let setpoint = server.publish::<f64>("/Test/setpoint");
+        setpoint.set(0.0);
+        let seen_setpoint = server.subscribe::<f64>("/Test/setpoint", Default::default());
         let color = server.publish::<String>("/Test/color");
         color.set("#FF8800".into());
         let colors = server.publish::<Vec<String>>("/Test/colors");
@@ -119,6 +126,8 @@ impl Robot {
             flag,
             enabled,
             seen_enabled,
+            setpoint,
+            seen_setpoint,
             _others: (color, colors, numbers),
             _structs: (pose, modules),
         }
@@ -707,7 +716,7 @@ fn struct_fields_drag_onto_the_grid_as_field_widgets() {
     assert_eq!(meta.path, ["translation", "y"]);
     assert_eq!(meta.schema_name, "Pose2d");
     // A field of a struct array item, somewhere else.
-    drag_row(&mut harness, "speed", 1, Pos2::new(1500.0, 900.0));
+    drag_row(&mut harness, "speed", 1, Pos2::new(1700.0, 900.0));
     assert_eq!(widgets(&harness).len(), before + 2);
     let made = widgets(&harness).pop().unwrap();
     assert_eq!(made.topic(), Some("/Drive/modules"));
@@ -715,7 +724,7 @@ fn struct_fields_drag_onto_the_grid_as_field_widgets() {
     // Dragging a selected row takes the whole selection with it.
     click_row(&mut harness, "x", 0, Modifiers::NONE);
     click_row(&mut harness, "value", 2, Modifiers::COMMAND);
-    drag_row(&mut harness, "x", 0, Pos2::new(1500.0, 650.0));
+    drag_row(&mut harness, "x", 0, Pos2::new(1700.0, 650.0));
     assert_eq!(widgets(&harness).len(), before + 4);
 }
 
@@ -1138,4 +1147,178 @@ fn double_clicking_a_list_child_opens_only_its_settings() {
     harness.key_press(Key::Escape);
     settle(&mut harness);
     assert!(harness.state().editing.is_none());
+}
+
+/// A layout of Number Sliders on `/Test/setpoint`, from 0 to 10: one that
+/// sends when let go, one that sends all the way (`publish_all`), each 512
+/// by 256 along the top, and a List Layout holding one below them.
+fn slider_layout() -> ElasticLayout {
+    let at = |i: usize| LayoutRect {
+        x: i as f64 * 512.0,
+        y: 0.0,
+        width: 512.0,
+        height: 256.0,
+    };
+    let slider = |rect| {
+        let mut w = widget("Number Slider", "/Test/setpoint", "double", rect);
+        w.properties.insert("min_value".into(), json!(0.0));
+        w.properties.insert("max_value".into(), json!(10.0));
+        w
+    };
+    let mut tab = Tab::new("Sliders");
+    let grid = &mut tab.grid_layout;
+    grid.containers = vec![slider(at(0)), slider(at(1))];
+    grid.containers[1]
+        .properties
+        .insert("publish_all".into(), json!(true));
+    grid.layouts.push(list_layout::new_list(
+        LayoutRect {
+            x: 0.0,
+            y: 256.0,
+            width: 512.0,
+            height: 256.0,
+        },
+        vec![slider(at(0))],
+    ));
+    ElasticLayout {
+        tabs: vec![tab],
+        ..ElasticLayout::default()
+    }
+}
+
+/// The harness showing [`slider_layout`].
+fn slider_harness(robot: &Robot) -> Harness {
+    let mut harness = harness_for(robot);
+    let app = harness.state_mut();
+    app.layout = slider_layout();
+    app.saved = app.layout.clone();
+    app.history = History::new(&app.layout);
+    app.current_tab = 0;
+    settle(&mut harness);
+    harness
+}
+
+/// Where slider widget `index`'s track is on screen.
+fn slider_track(harness: &Harness, index: usize) -> Rect {
+    let app = harness.state();
+    let w = &app.layout.tabs[0].grid_layout.containers[index];
+    let r = w.rect;
+    let min = app.grid_area.min + egui::vec2(r.x as f32, r.y as f32);
+    let card = Rect::from_min_size(min, egui::vec2(r.width as f32, r.height as f32))
+        .shrink(super::style::CELL_GAP);
+    widgets::builtin::number_slider::track_on_card(card, &w.properties)
+}
+
+/// The point `fraction` of the way along `track`.
+fn along(track: Rect, fraction: f32) -> Pos2 {
+    egui::pos2(track.min.x + track.width() * fraction, track.center().y)
+}
+
+/// Wait until the server has `want` for `/Test/setpoint`.
+fn server_has_setpoint(harness: &mut Harness, robot: &Robot, want: f64) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while robot
+        .seen_setpoint
+        .get()
+        .is_none_or(|v| (v - want).abs() > 1e-6)
+    {
+        assert!(
+            Instant::now() < deadline,
+            "the server never got {want}, has {:?}",
+            robot.seen_setpoint.get()
+        );
+        settle(harness);
+    }
+}
+
+/// Press at `from`, move to each of `path` a frame apart, then hold at the
+/// last point (without letting go).
+fn press_and_move(harness: &mut Harness, from: Pos2, path: &[Pos2]) {
+    harness.hover_at(from);
+    harness.step();
+    harness.drag_at(from);
+    harness.step();
+    for &to in path {
+        harness.hover_at(to);
+        harness.step();
+    }
+}
+
+#[test]
+fn a_slider_sends_where_it_is_let_go_even_outside_the_widget() {
+    let robot = Robot::start();
+    let mut harness = slider_harness(&robot);
+    let primary = egui::PointerButton::Primary;
+    for locked in [true, false] {
+        harness.state_mut().locked = locked;
+        settle(&mut harness);
+        // A click sets the value under the pointer.
+        let track = slider_track(&harness, 0);
+        click_at(&mut harness, along(track, 0.3), primary, Modifiers::NONE);
+        server_has_setpoint(&mut harness, &robot, 3.0);
+        // A drag sends nothing until it's let go...
+        let path: Vec<Pos2> = (1..=6)
+            .map(|i| along(track, 0.3 + 0.05 * i as f32))
+            .collect();
+        press_and_move(&mut harness, along(track, 0.3), &path);
+        std::thread::sleep(Duration::from_millis(150));
+        settle(&mut harness);
+        assert_eq!(robot.seen_setpoint.get(), Some(3.0));
+        // ...and keeps going when the pointer leaves the widget: past the
+        // right end (and below the card) is the maximum.
+        let outside = track.right_bottom() + egui::vec2(200.0, 300.0);
+        harness.hover_at(outside);
+        harness.step();
+        harness.drop_at(outside);
+        server_has_setpoint(&mut harness, &robot, 10.0);
+        // Then the robot's own change shows and wins: a click back sends
+        // a new value from there.
+        robot.setpoint.set(5.0);
+        server_has_setpoint(&mut harness, &robot, 5.0);
+        click_at(&mut harness, along(track, 0.0), primary, Modifiers::NONE);
+        server_has_setpoint(&mut harness, &robot, 0.0);
+    }
+    // The drags didn't move or resize the widget, locked or not.
+    let r = harness.state().layout.tabs[0].grid_layout.containers[0].rect;
+    assert_eq!((r.x, r.y, r.width), (0.0, 0.0, 512.0));
+    assert_eq!(harness.state().alert.played(), 0);
+}
+
+#[test]
+fn publish_all_sends_during_the_drag() {
+    let robot = Robot::start();
+    let mut harness = slider_harness(&robot);
+    harness.state_mut().locked = true;
+    settle(&mut harness);
+    let track = slider_track(&harness, 1);
+    press_and_move(
+        &mut harness,
+        along(track, 0.1),
+        &[along(track, 0.4), along(track, 0.6)],
+    );
+    // Still held down, the server already has it.
+    server_has_setpoint(&mut harness, &robot, 6.0);
+    harness.drop_at(along(track, 0.6));
+    settle(&mut harness);
+    assert_eq!(robot.seen_setpoint.get(), Some(6.0));
+}
+
+#[test]
+fn a_slider_works_inside_a_list() {
+    let robot = Robot::start();
+    let mut harness = slider_harness(&robot);
+    let primary = egui::PointerButton::Primary;
+    harness.state_mut().locked = true;
+    settle(&mut harness);
+    // The child's row: its slider's track runs across the row less the
+    // padding, so the row's middle is the middle of the range.
+    let middle = child_middle(&harness, 0, 0);
+    click_at(&mut harness, middle, primary, Modifiers::NONE);
+    let got = robot.seen_setpoint.get().unwrap();
+    assert!(got > 0.0, "the list's slider sent nothing");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while (robot.seen_setpoint.get().unwrap() - 5.0).abs() > 1.0 {
+        assert!(Instant::now() < deadline, "{:?}", robot.seen_setpoint.get());
+        settle(&mut harness);
+    }
 }

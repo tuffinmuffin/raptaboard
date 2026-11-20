@@ -24,7 +24,8 @@
 //! 3. Add its settings to the table in `docs/spec.md`
 //!    ("raptaboard widget settings").
 //!
-//! Widgets that change values (Toggle Switch, Toggle Button) return the new
+//! Widgets that change values (Toggle Switch, Toggle Button, Number
+//! Slider) return the new
 //! value from [`WidgetType::show`]; the grid sends it with
 //! [`crate::nt::NtConnection::write`].
 
@@ -209,6 +210,7 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::text_display::TextDisplay,
     &builtin::large_text_display::LargeTextDisplay,
     &builtin::number_bar::NumberBar,
+    &builtin::number_slider::NumberSlider,
     &builtin::number_bar::VoltageView,
     &builtin::radial_gauge::RadialGauge,
     &builtin::match_time::MatchTime,

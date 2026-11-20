@@ -143,8 +143,10 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `show_text` | `builtin/boolean_box.rs` | Boolean Box | write the text below over the color | false |
 | `true_text`, `false_text` | `builtin/boolean_box.rs` | Boolean Box | text when true / false; empty for none | none |
 | `label_position` (Elastic) | `list_layout.rs` | List Layout | `TOP`, `LEFT`, `RIGHT`, `BOTTOM`, `HIDDEN` (any case read) | `TOP`; always written |
-| `min_value`, `max_value` (Elastic) | `builtin/number_bar.rs`, `radial_gauge.rs` | Number Bar, Voltage View, Radial Gauge | range | -1 to 1; Voltage 4 to 13; Gauge 0 to 100 |
-| `divisions` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | labels along the bar, ends included | 5 |
+| `min_value`, `max_value` (Elastic) | `builtin/number_bar.rs`, `radial_gauge.rs` | Number Bar, Voltage View, Radial Gauge, Number Slider | range | -1 to 1; Voltage 4 to 13; Gauge 0 to 100 |
+| `divisions` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View, Number Slider | labels along the bar, ends included | 5 |
+| `publish_all` (Elastic) | `builtin/number_slider.rs` | Number Slider | send every value during a drag, not only where it's let go | false |
+| `step` | `builtin/number_slider.rs` | Number Slider | values snap to multiples of it from the minimum; 0 snaps to a thousandth of the range (rounded down to a power of ten); int topics use at least 1 | 0 |
 | `inverted` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | fill from the far end | false |
 | `orientation` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | `horizontal`, `vertical` | `horizontal` |
 | `start_angle`, `end_angle` (Elastic) | `builtin/radial_gauge.rs` | Radial Gauge | degrees clockwise from straight up | -140, 140 |
@@ -449,7 +451,12 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    of the value (robot or another dashboard) is shown. Uses: auto mode, a test in test mode.
    Struct enum fields (schema `enum {..}`) stay display-only: writing one would mean rewriting the
    robot's struct.
-   Next: Number Slider, editable Text Display, the enum widgets and choosers (with dragging a
+   Number Slider (`builtin/number_slider.rs`, done): pressing anywhere in its input area moves the
+   knob there and a drag follows the pointer, also outside the widget; it sends where it's let go,
+   or every value with `publish_all`; the knob stays at the sent value until the server has it (or
+   1 s), so it doesn't jump back while the value is on its way. Horizontal only for now; vertical,
+   keyboard and scroll-wheel nudges are later.
+   Next: editable Text Display, the enum widgets and choosers (with dragging a
    chooser table from the tree), Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
