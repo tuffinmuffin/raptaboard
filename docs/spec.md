@@ -146,6 +146,12 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `min_value`, `max_value` (Elastic) | `builtin/number_bar.rs`, `radial_gauge.rs` | Number Bar, Voltage View, Radial Gauge, Number Slider | range | -1 to 1; Voltage 4 to 13; Gauge 0 to 100 |
 | `divisions` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View, Number Slider | labels along the bar, ends included | 5 |
 | `editable` | `shared/props.rs` | Text Display; Dropdown and Split Button Chooser; Enum Dropdown and Toggle | the value can be changed from the widget; off, it only shows it (choosers then show the robot's `active`). Text Display: typed in, with a blue dot; not for arrays or struct fields | Text Display false; the others true |
+| `all_groups` | `builtin/alerts.rs` | Alerts | every alert group on the server, not just the widget's `topic` | false |
+| `show_text` | `builtin/alerts.rs` | Alerts | list the alerts' text by the circle | true |
+| `text_position` | `builtin/alerts.rs` | Alerts | `auto` (beside a wide widget, below a tall one), `right`, `below` | `auto` |
+| `min_level` | `builtin/alerts.rs` | Alerts | least urgent shown: `info`, `warning`, `error` | `info` |
+| `pulse`, `pulse_seconds` | `builtin/alerts.rs` | Alerts | pulse when a new error arrives, for how long (s) | true, 5 |
+| `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp` | false, `beep` |
 | `enum_source` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | where the state names come from: `list`, `topic` (a string[] topic) or `chooser` (the widget's topic is a chooser table); guessed when a widget becomes one | `list` |
 | `enum_values` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | the listed states, one string per line: a value for a string topic; `3 = Climb` or a name (the next number, from 0) for an int topic | none |
 | `switches_between` | `builtin/enums.rs` | Enum Toggle | two state names to switch between, like a Toggle Button's off and on (lit on the second; from any other state a click goes to the first); not set, a click steps through every state | not set |
@@ -511,7 +517,21 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    choosers) makes them show only: a state display for a subsystem, or a chooser watched from the
    pit. Struct enum fields stay display-only (Text Display shows their names). The tree scrolls
    sideways, so a wide row (opened by selecting a widget) doesn't widen it and move the grid.
-   Next: Alerts, Field, struct widgets.
+   Alerts (`builtin/alerts.rs`, `alerts.rs`; decided with the user): WPILib's alert groups are
+   tables with `.type` "Alerts" and three string[] lists, `errors`, `warnings`, `infos` (the active
+   alerts' text, newest first; text is all an alert carries; 2027 calls the levels HIGH, MEDIUM,
+   LOW and Glass still reads these lists). The widget is a circle with a red ✕, yellow ! and blue i
+   (painted, not glyphs), each lit with a count while that level has alerts, the ring in the most
+   urgent color; optionally the text beside or below. One group, or all groups. A new error (not
+   warnings) pulses it for N seconds and can play a tone (`alert.rs` `Tone`, generated, a few to
+   pick; widgets ask through `Live::effects`). When the connection drops, or the topics go before
+   it does, the last alerts stay, greyed. A tab with an Alerts widget showing an error or a warning
+   gets that sign after its name, open or not (alert topics of other tabs' Alerts widgets are
+   subscribed too). An alert group in the tree is a draggable row like a chooser.
+   Next: alert history (an app-level recorder of every group from connect, count-based, default
+   1,000 events, oldest dropped; a top-bar button with the highest level shows and hides its panel
+   of level, group, text, seen, cleared and how long, with Clear and filters; memory only), then
+   Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
    WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro, SwerveModuleState[] → swerve view.

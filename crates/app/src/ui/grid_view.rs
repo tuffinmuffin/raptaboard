@@ -152,14 +152,24 @@ impl DashboardApp {
 
         // The drawing steps only look at the app, so lend them the sampler.
         let sampler = RefCell::new(std::mem::take(&mut self.sampler));
+        let effects = RefCell::new(Vec::new());
         {
             let value_of = self.value_of(&sampler, values, now);
-            requests.writes = self.draw_items(ui, &painter, view, &value_of, values);
+            requests.writes = self.draw_items(ui, &painter, view, &value_of, values, &effects);
             self.draw_outlines(&painter, ui.visuals(), view);
             self.drag_preview(&painter, ui.visuals(), view, &value_of);
             self.child_drag_preview(ui, &painter, view, &value_of, &mut requests);
         }
         self.sampler = sampler.into_inner();
+        for effect in effects.into_inner() {
+            match effect {
+                widgets::Effect::Tone(tone) => {
+                    if self.alert_sound {
+                        self.alert.play_tone(tone);
+                    }
+                }
+            }
+        }
         self.tree_drop(ui, &painter, view, &mut requests);
         // Any click on a widget finds it in the tree, locked or not, and
         // whatever the widget does with the click (a toggle, a chooser's
@@ -395,8 +405,13 @@ impl DashboardApp {
         view: GridView,
         value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
         others: &HashMap<&str, &Value>,
+        effects: &RefCell<Vec<widgets::Effect>>,
     ) -> Vec<(Sender, Value)> {
         let mut writes = Vec::new();
+        let connected = matches!(
+            self.nt.status(),
+            crate::nt::ConnectionStatus::Connected { .. }
+        );
         let Some(tab) = self.tab() else {
             return writes;
         };
@@ -422,6 +437,8 @@ impl DashboardApp {
                     input: None,
                     free: None,
                     others,
+                    connected,
+                    effects,
                 };
                 let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt((
                     "widget",
@@ -444,6 +461,8 @@ impl DashboardApp {
                     input: None,
                     free: None,
                     others,
+                    connected,
+                    effects,
                 };
                 let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt((
                     "list",

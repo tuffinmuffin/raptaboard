@@ -61,6 +61,14 @@ struct Robot {
     /// its names in `/Test/modeOptions`, and an int one, `/Test/level`.
     mode: Publisher<String>,
     seen_mode: nt4::Subscriber<String>,
+    /// Two alert groups as WPILib's Alert makes them: `/Test/Alerts` (a
+    /// warning and an info to start) and `/Test/Arm` (nothing to start).
+    alert_errors: Publisher<Vec<String>>,
+    alert_warnings: Publisher<Vec<String>>,
+    arm_errors: Publisher<Vec<String>>,
+    arm_warnings: Publisher<Vec<String>>,
+    _alert_rest: Vec<Publisher<String>>,
+    _alert_lists: Vec<Publisher<Vec<String>>>,
     level: Publisher<i64>,
     seen_level: nt4::Subscriber<i64>,
     _mode_options: Publisher<Vec<String>>,
@@ -105,6 +113,25 @@ impl Robot {
         let auto_active = server.publish::<String>("/Test/Auto/active");
         auto_active.set("Middle".into());
         let seen_selected = server.subscribe::<String>("/Test/Auto/selected", Default::default());
+        let list = |name: &str, items: &[&str]| {
+            let p = server.publish::<Vec<String>>(name);
+            p.set(items.iter().map(|s| s.to_string()).collect());
+            p
+        };
+        let alerts_type = |table: &str| {
+            let p = server.publish::<String>(&format!("{table}/.type"));
+            p.set(crate::alerts::ALERTS_TYPE.into());
+            p
+        };
+        let alert_rest = vec![alerts_type("/Test/Alerts"), alerts_type("/Test/Arm")];
+        let alert_errors = list("/Test/Alerts/errors", &[]);
+        let alert_warnings = list("/Test/Alerts/warnings", &["Battery low"]);
+        let arm_errors = list("/Test/Arm/errors", &[]);
+        let arm_warnings = list("/Test/Arm/warnings", &[]);
+        let alert_lists = vec![
+            list("/Test/Alerts/infos", &["Vision connected"]),
+            list("/Test/Arm/infos", &[]),
+        ];
         let mode = server.publish::<String>("/Test/mode");
         mode.set("Stowed".into());
         let seen_mode = server.subscribe::<String>("/Test/mode", Default::default());
@@ -164,6 +191,12 @@ impl Robot {
             seen_selected,
             mode,
             seen_mode,
+            alert_errors,
+            alert_warnings,
+            arm_errors,
+            arm_warnings,
+            _alert_rest: alert_rest,
+            _alert_lists: alert_lists,
             level,
             seen_level,
             _mode_options: mode_options,
@@ -362,10 +395,16 @@ fn the_window_draws_every_widget_type_with_live_values() {
     // Locked, the grid draws without resize corners or menus.
     app.locked = true;
     frame(&ctx, &mut app, vec![]);
-    // An empty tab, then back.
+    // An empty tab: only the Alerts widget's lists on the other tab, for
+    // that tab's mark.
     app.current_tab = 1;
     frame(&ctx, &mut app, vec![]);
-    assert!(app.tab_topics().is_empty());
+    let wanted: Vec<String> = app.tab_topics().into_iter().flat_map(|(_, n)| n).collect();
+    assert!(!wanted.is_empty());
+    assert!(
+        wanted.iter().all(|n| n.starts_with("/Test/Auto/")),
+        "{wanted:?}"
+    );
 }
 
 #[test]
@@ -776,8 +815,9 @@ fn struct_fields_drag_onto_the_grid_as_field_widgets() {
     open_drive(&mut harness);
     let widgets = |h: &Harness| h.state().layout.tabs[0].grid_layout.containers.clone();
     let before = widgets(&harness).len();
-    // A nested field, onto empty grid below the test widgets.
-    drag_row(&mut harness, "y", 0, Pos2::new(1500.0, 1150.0));
+    // A nested field, onto empty grid right of the test widgets (they're
+    // five across).
+    drag_row(&mut harness, "y", 0, Pos2::new(1700.0, 1150.0));
     assert_eq!(widgets(&harness).len(), before + 1);
     let made = widgets(&harness).pop().unwrap();
     assert_eq!(made.topic(), Some("/Drive/pose"));
@@ -2209,4 +2249,148 @@ fn any_click_on_a_widget_finds_it_in_the_tree_locked_or_not() {
     settle(&mut harness);
     assert_eq!(picked(&harness), ["/Test/Auto"], "with hidden fields shown");
     server_has_pick(&mut harness, &robot, "Middle");
+}
+
+/// A layout with Alerts widgets: on tab 0, one on `/Test/Alerts` that
+/// sounds and one showing every group; on tab 1, one on `/Test/Arm`.
+fn alerts_layout() -> ElasticLayout {
+    let at = |x: f64| LayoutRect {
+        x,
+        y: 0.0,
+        width: 512.0,
+        height: 256.0,
+    };
+    let alerts = |topic: &str, x: f64, extra: serde_json::Value| {
+        let mut w = widget("Alerts", topic, "", at(x));
+        w.properties.remove("data_type");
+        for (k, v) in extra.as_object().unwrap() {
+            w.properties.insert(k.clone(), v.clone());
+        }
+        w
+    };
+    let mut main = Tab::new("Alerts here");
+    main.grid_layout.containers = vec![
+        alerts("/Test/Alerts", 0.0, json!({"sound": true})),
+        alerts("/Test/Alerts", 512.0, json!({"all_groups": true})),
+    ];
+    main.grid_layout.containers[1].title = "Everything".into();
+    let mut other = Tab::new("Arm tab");
+    other.grid_layout.containers = vec![alerts("/Test/Arm", 0.0, json!({}))];
+    other.grid_layout.containers[0].title = "Arm alerts".into();
+    ElasticLayout {
+        tabs: vec![main, other, Tab::new("Nothing")],
+        ..ElasticLayout::default()
+    }
+}
+
+/// The harness showing [`alerts_layout`], locked, with sounds on.
+fn alerts_harness(robot: &Robot) -> Harness {
+    let mut harness = harness_for(robot);
+    let app = harness.state_mut();
+    app.layout = alerts_layout();
+    app.saved = app.layout.clone();
+    app.history = History::new(&app.layout);
+    app.current_tab = 0;
+    app.locked = true;
+    app.alert_sound = true;
+    settle(&mut harness);
+    harness
+}
+
+/// Wait until something is labelled exactly `label`.
+fn labelled_soon(harness: &mut Harness, label: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while harness.query_by_label(label).is_none() {
+        assert!(Instant::now() < deadline, "nothing labelled {label:?}");
+        settle(harness);
+    }
+}
+
+#[test]
+fn an_alerts_widget_counts_by_level_and_sounds_once_for_a_new_error() {
+    let robot = Robot::start();
+    let mut harness = alerts_harness(&robot);
+    labelled_soon(&mut harness, "Alerts: 0 errors, 1 warning, 1 info");
+    // Already active when it first looked: no tone for those.
+    assert!(harness.state().alert.tones().is_empty());
+    // A new error: one tone.
+    robot.alert_errors.set(vec!["Encoder lost".into()]);
+    labelled_soon(&mut harness, "Alerts: 1 error, 1 warning, 1 info");
+    assert_eq!(harness.state().alert.tones(), [crate::alert::Tone::Beep]);
+    // Another right after: no second tone so soon. A warning never sounds.
+    robot
+        .alert_errors
+        .set(vec!["CAN fault".into(), "Encoder lost".into()]);
+    robot
+        .alert_warnings
+        .set(vec!["Battery low".into(), "Hot motor".into()]);
+    labelled_soon(&mut harness, "Alerts: 2 errors, 2 warnings, 1 info");
+    assert_eq!(harness.state().alert.tones().len(), 1);
+    // The bell button's mute stops it.
+    harness.state_mut().alert_sound = false;
+    std::thread::sleep(Duration::from_millis(3100));
+    robot.alert_errors.set(vec!["Brownout".into()]);
+    labelled_soon(&mut harness, "Alerts: 1 error, 2 warnings, 1 info");
+    assert_eq!(harness.state().alert.tones().len(), 1);
+}
+
+#[test]
+fn all_groups_and_the_tab_marks_follow_every_alert_widget() {
+    let robot = Robot::start();
+    let mut harness = alerts_harness(&robot);
+    labelled_soon(&mut harness, "Everything: 0 errors, 1 warning, 1 info");
+    use crate::alerts::Level;
+    // A warning on tab 0; tab 1's group has nothing; tab 2 has no widget.
+    let marks = |h: &mut Harness| {
+        settle(h);
+        h.state().tab_alert_marks()
+    };
+    assert_eq!(marks(&mut harness), [Some(Level::Warning), None, None]);
+    // An error in the arm group: on tab 1, whose tab isn't open, and in
+    // "every group" on tab 0.
+    robot.arm_errors.set(vec!["Arm motor fault".into()]);
+    labelled_soon(&mut harness, "Everything: 1 error, 1 warning, 1 info");
+    assert_eq!(
+        marks(&mut harness),
+        [Some(Level::Error), Some(Level::Error), None]
+    );
+    // Infos don't mark a tab.
+    robot.arm_errors.set(vec![]);
+    robot.alert_warnings.set(vec![]);
+    robot.arm_warnings.set(vec![]);
+    labelled_soon(&mut harness, "Everything: 0 errors, 0 warnings, 1 info");
+    assert_eq!(marks(&mut harness), [None, None, None]);
+}
+
+#[test]
+fn an_alert_group_drags_from_the_tree_as_an_alerts_widget() {
+    let robot = Robot::start();
+    let mut harness = alerts_harness(&robot);
+    harness.state_mut().locked = false;
+    harness.state_mut().current_tab = 2;
+    settle(&mut harness);
+    open(&mut harness, "Test  (");
+    let to = harness.state().grid_area.min + egui::vec2(300.0, 300.0);
+    drag_row(&mut harness, "Arm", 0, to);
+    let made = harness.state().layout.tabs[2]
+        .grid_layout
+        .containers
+        .clone();
+    assert_eq!(made.len(), 1);
+    assert_eq!(made[0].widget_type, "Alerts");
+    assert_eq!(made[0].topic(), Some("/Test/Arm"));
+}
+
+#[test]
+fn alerts_stay_shown_greyed_when_the_connection_drops() {
+    let robot = Robot::start();
+    let mut harness = alerts_harness(&robot);
+    robot.alert_errors.set(vec!["Brownout".into()]);
+    labelled_soon(&mut harness, "Alerts: 1 error, 1 warning, 1 info");
+    // The robot goes away: the last alerts seen stay, marked.
+    drop(robot);
+    labelled_soon(
+        &mut harness,
+        "Alerts: 1 error, 1 warning, 1 info (disconnected)",
+    );
 }

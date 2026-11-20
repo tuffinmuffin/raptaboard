@@ -902,6 +902,7 @@ mod tests {
         };
         let others = Default::default();
         let traces = crate::traces::Traces::default();
+        let effects = Default::default();
         let live = |value| Live {
             value,
             traces: &traces,
@@ -910,6 +911,8 @@ mod tests {
             input: None,
             free: None,
             others: &others,
+            connected: true,
+            effects: &effects,
         };
         let seven = Value::Int(7);
         let s = shown(&widget, &live(Some(&seven))).unwrap();
