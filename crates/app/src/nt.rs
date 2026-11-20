@@ -427,23 +427,50 @@ impl NtConnection {
     /// topic publishes it, without changing its properties, and it stays
     /// published until the connection restarts. Never blocks.
     pub fn write(&mut self, name: &str, value: Value) -> Result<(), WriteError> {
+        self.write_as(name, value, None)
+    }
+
+    /// Like [`write`](Self::write), but a topic nobody has published yet is
+    /// published as `ty`, as a SendableChooser's `selected` is: robot code
+    /// only reads it, so the dashboard publishes it (as Elastic does).
+    pub fn write_or_publish(
+        &mut self,
+        name: &str,
+        value: Value,
+        ty: NtType,
+    ) -> Result<(), WriteError> {
+        self.write_as(name, value, Some(ty))
+    }
+
+    fn write_as(
+        &mut self,
+        name: &str,
+        value: Value,
+        if_new: Option<NtType>,
+    ) -> Result<(), WriteError> {
         let Some(running) = &mut self.running else {
             return Err(WriteError::NotConnected);
         };
         if !running.client.is_connected() {
             return Err(WriteError::NotConnected);
         }
-        let Some(topic) = running.client.topic(name) else {
-            return Err(WriteError::NotPublished(name.to_owned()));
+        let ty = match (running.client.topic(name), if_new) {
+            (Some(topic), _) => topic.ty,
+            // Ours already (the server's announcement may still be coming).
+            (None, Some(_)) if running.publishers.contains_key(name) => {
+                running.publishers[name].0.clone()
+            }
+            (None, Some(ty)) => ty,
+            (None, None) => return Err(WriteError::NotPublished(name.to_owned())),
         };
-        if matches!(topic.ty, NtType::Struct { .. }) || name.starts_with(SCHEMA_PREFIX) {
+        if matches!(ty, NtType::Struct { .. }) || name.starts_with(SCHEMA_PREFIX) {
             return Err(WriteError::Struct(name.to_owned()));
         }
         let shown = describe(&value);
-        let Some(value) = convert(value, &topic.ty) else {
+        let Some(value) = convert(value, &ty) else {
             return Err(WriteError::WrongType {
                 topic: name.to_owned(),
-                topic_type: topic.ty.to_string(),
+                topic_type: ty.to_string(),
                 value: shown,
             });
         };
@@ -451,18 +478,18 @@ impl NtConnection {
         let stale = running
             .publishers
             .get(name)
-            .is_some_and(|(ty, _)| *ty != topic.ty);
+            .is_some_and(|(published, _)| *published != ty);
         if stale || !running.publishers.contains_key(name) {
             running.publishers.remove(name);
             let publisher = running.client.publish_generic(
                 name,
-                topic.ty.clone(),
+                ty.clone(),
                 Properties::new(),
                 Default::default(),
             );
             running
                 .publishers
-                .insert(name.to_owned(), (topic.ty.clone(), publisher));
+                .insert(name.to_owned(), (ty.clone(), publisher));
         }
         let (_, publisher) = &running.publishers[name];
         publisher.set(value).map_err(|_| WriteError::NotConnected)

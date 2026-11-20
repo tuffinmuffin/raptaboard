@@ -33,6 +33,8 @@ pub mod builtin;
 pub mod list_layout;
 pub mod shared;
 
+use std::collections::HashMap;
+
 use eframe::egui::{self, Rect};
 use nt4::Value;
 use raptaboard_layout::{Rect as LayoutRect, StructMeta, WidgetContainer};
@@ -63,6 +65,10 @@ pub struct Live<'a> {
     /// locked or not, for widgets that lay out their value beside it (a
     /// slider's number). `None` when there's no inside label.
     pub free: Option<Rect>,
+    /// The newest values of the other topics the open tab's widgets asked
+    /// for (each widget's [`extra_topics`](WidgetType::extra_topics)), by
+    /// full name, such as a chooser's `options` and `active`.
+    pub others: &'a HashMap<&'a str, &'a Value>,
 }
 
 /// What the settings dialog knows about the value a widget shows, so a
@@ -174,6 +180,20 @@ pub trait WidgetType: Sync {
         props::DEFAULT_PERIOD_S
     }
 
+    /// The `.type`s of the tables this widget is made for, when a table is
+    /// dragged from the tree: a SendableChooser's is `"String Chooser"`.
+    /// None by default (it's made for single topics).
+    fn table_types(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Where the value [`show`](Self::show) returns is sent, if not to the
+    /// widget's `topic`: a topic under it (a chooser's `"selected"`), and the
+    /// NT type it's published as if nobody has published it yet.
+    fn sends_to(&self) -> Option<(&'static str, nt4::NtType)> {
+        None
+    }
+
     /// Topics this widget needs values for besides its own `topic`, such as
     /// a graph's other lines. None by default.
     fn extra_topics(&self, _props: &Map<String, Json>) -> Vec<String> {
@@ -220,6 +240,8 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::match_time::MatchTime,
     &builtin::color_view::SingleColorView,
     &builtin::color_view::MultiColorView,
+    &builtin::chooser::DropdownChooser,
+    &builtin::chooser::SplitButtonChooser,
     &builtin::graph::Graph,
 ];
 
@@ -258,10 +280,28 @@ pub fn type_for_topic(nt_type: &str) -> Option<&'static str> {
         .map(|t| t.names()[0])
 }
 
+/// The widget type name to make for a table dropped on the grid, by its
+/// `.type` (a SendableChooser is `"String Chooser"`), if there is one.
+///
+/// ```
+/// use raptaboard::widgets::type_for_table;
+/// assert_eq!(type_for_table("String Chooser"), Some("Dropdown Chooser"));
+/// assert_eq!(type_for_table("Mechanism2d"), None);
+/// ```
+pub fn type_for_table(table_type: &str) -> Option<&'static str> {
+    TYPES
+        .iter()
+        .find(|t| t.table_types().contains(&table_type))
+        .map(|t| t.names()[0])
+}
+
 /// A new widget for the topic `name` of NT type `nt_type`, placed at `rect`.
 /// It is titled with the last part of the name and saved the way Elastic
 /// saves widgets: `topic`, `period` and `data_type` properties. `None` if
 /// [`type_for_topic`] has no widget for the type.
+///
+/// `nt_type` may instead be a table's `.type` (see [`type_for_table`]):
+/// the widget is bound to the whole table.
 ///
 /// With `field`, the widget shows one field of the struct topic `name`, and
 /// `nt_type` is the field's type. It's saved with Elastic's `struct_meta`
@@ -284,12 +324,19 @@ pub fn for_topic(
     field: Option<&StructMeta>,
     rect: LayoutRect,
 ) -> Option<WidgetContainer> {
-    let widget_type = type_for_topic(nt_type)?;
+    // A table (`nt_type` is its `.type`) is saved with no data type, as
+    // Elastic saves one.
+    let (widget_type, table) = match type_for_topic(nt_type) {
+        Some(ty) => (ty, false),
+        None => (type_for_table(nt_type)?, true),
+    };
     let title = source_title(name, field);
     let mut properties = Map::new();
     properties.insert("topic".into(), name.into());
     properties.insert(props::PERIOD.into(), props::DEFAULT_PERIOD_S.into());
-    properties.insert(props::DATA_TYPE.into(), nt_type.into());
+    if !table {
+        properties.insert(props::DATA_TYPE.into(), nt_type.into());
+    }
     if let Some(field) = field {
         properties.insert("struct_meta".into(), field.to_json(nt_type));
     }

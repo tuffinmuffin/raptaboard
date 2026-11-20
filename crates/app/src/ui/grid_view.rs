@@ -151,7 +151,7 @@ impl DashboardApp {
         let sampler = RefCell::new(std::mem::take(&mut self.sampler));
         {
             let value_of = self.value_of(&sampler, values, now);
-            requests.writes = self.draw_items(ui, &painter, view, &value_of);
+            requests.writes = self.draw_items(ui, &painter, view, &value_of, values);
             self.draw_outlines(&painter, ui.visuals(), view);
             self.drag_preview(&painter, ui.visuals(), view, &value_of);
             self.child_drag_preview(ui, &painter, view, &value_of, &mut requests);
@@ -354,6 +354,7 @@ impl DashboardApp {
         painter: &egui::Painter,
         view: GridView,
         value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
+        others: &HashMap<&str, &Value>,
     ) -> Vec<(Sender, Value)> {
         let mut writes = Vec::new();
         let Some(tab) = self.tab() else {
@@ -380,6 +381,7 @@ impl DashboardApp {
                     locked: self.locked,
                     input: None,
                     free: None,
+                    others,
                 };
                 let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt((
                     "widget",
@@ -401,6 +403,7 @@ impl DashboardApp {
                     locked: self.locked,
                     input: None,
                     free: None,
+                    others,
                 };
                 let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt((
                     "list",
@@ -829,7 +832,14 @@ impl DashboardApp {
         // connection is used.
         let topic = widget.topic().map(str::to_owned);
         let is_field = widget.struct_meta().is_some();
+        let sends_to = widgets::find(&widget.widget_type).and_then(|ty| ty.sends_to());
         let result = match (topic, is_field) {
+            // A topic under the widget's (a chooser's `selected`), which
+            // the dashboard publishes if nobody has yet.
+            (Some(topic), false) if let Some((key, ty)) = sends_to => {
+                let name = format!("{}/{key}", topic.trim_end_matches('/'));
+                self.nt.write_or_publish(&name, value, ty)
+            }
             (Some(topic), false) => self.nt.write(&topic, value),
             (Some(topic), true) => Err(WriteError::Struct(topic)),
             (None, _) => Err(WriteError::NotPublished("(no topic)".to_owned())),

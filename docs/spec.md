@@ -146,6 +146,8 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `min_value`, `max_value` (Elastic) | `builtin/number_bar.rs`, `radial_gauge.rs` | Number Bar, Voltage View, Radial Gauge, Number Slider | range | -1 to 1; Voltage 4 to 13; Gauge 0 to 100 |
 | `divisions` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View, Number Slider | labels along the bar, ends included | 5 |
 | `editable` | `builtin/text_display.rs` | Text Display | values can be typed in (a blue dot in the corner says so); not for arrays or struct fields | false |
+| `sort_options` (Elastic) | `builtin/chooser.rs` | Dropdown Chooser | list the options sorted by name | false |
+| `font_size` | `builtin/chooser.rs` | Dropdown Chooser, Split Button Chooser | text size in points; not set fits the text to the widget (drop-down: a third of its height, no wider than the longest option, 12 to 36 pt) | not set |
 | `publish_all` (Elastic) | `builtin/number_slider.rs` | Number Slider | send every value during a drag, not only where it's let go | false |
 | `step` | `builtin/number_slider.rs` | Number Slider | values snap to multiples of it from the minimum; 0 snaps to a thousandth of the range (rounded down to a power of ten); int topics use at least 1 | 0 |
 | `inverted` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | fill from the far end | false |
@@ -471,6 +473,17 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    topics need a number and boolean topics `true` or `false`. A List Layout child's widget also
    gets `Live::free`, its row less an inside label, locked or not, so a slider writes its number
    below the label rather than under it.
+   Choosers (`builtin/chooser.rs`, done): Dropdown Chooser and Split Button Chooser, bound to a
+   SendableChooser table (`topic` is the table; saved without `data_type`, as Elastic does). They
+   read `options`, `default`, `active` and `selected` (`WidgetType::extra_topics`, values in
+   `Live::others`) and send to `selected` (`WidgetType::sends_to`; `NtConnection::write_or_publish`
+   publishes it as a string, since robot code only reads it). Shown as picked: `selected` if it's an
+   option (from any dashboard), else `active`, else `default`; while `active` isn't the pick, an
+   orange "Robot has: X" note (and outline on the button). When the robot's option list changes (not
+   to empty, which is a restart), a pick is dropped: the robot's `active` (or `default`) is sent.
+   In the tree, a table whose `.type` has a widget (`WidgetType::table_types`, "String Chooser") is
+   one draggable row (its `.type` values are always watched) with an open arrow of its own that lists
+   its parts and their values (`options`, `active`, ...); with metadata shown it's a plain folder.
    Next: the enum widgets and choosers (with dragging a
    chooser table from the tree), Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,

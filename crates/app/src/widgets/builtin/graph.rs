@@ -957,6 +957,7 @@ mod tests {
                 locked: false,
                 input: None,
                 free: None,
+                others: &Default::default(),
             };
             Graph.show(ui, rect, &w, &live);
         });
@@ -1007,6 +1008,7 @@ mod tests {
                     locked: false,
                     input: None,
                     free: None,
+                    others: &Default::default(),
                 };
                 Graph.show(ui, rect, &w, &live);
             });
@@ -1125,6 +1127,7 @@ mod tests {
                     locked: false,
                     input: None,
                     free: None,
+                    others: &Default::default(),
                 };
                 Graph.show(ui, rect, &w, &live);
             });
