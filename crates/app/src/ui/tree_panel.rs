@@ -192,6 +192,18 @@ impl DashboardApp {
     /// the server has it; otherwise leave the tree alone, unpick, and say
     /// why in the status line.
     pub(super) fn find_in_tree(&mut self, widget: &WidgetContainer) {
+        self.find_widget(widget, false);
+    }
+
+    /// Like [`find_in_tree`](Self::find_in_tree), for a click the widget
+    /// itself used (a toggle, a chooser's button): the row is picked if
+    /// there is one, and nothing is said if not, so the widget's own message
+    /// (a failed send's) stays in the status line.
+    pub(super) fn find_in_tree_quietly(&mut self, widget: &WidgetContainer) {
+        self.find_widget(widget, true);
+    }
+
+    fn find_widget(&mut self, widget: &WidgetContainer, quiet: bool) {
         let Some(topic) = widget.topic() else { return };
         let field = widget.struct_meta();
         // A widget bound to a whole table (a chooser) is found if anything
@@ -216,6 +228,7 @@ impl DashboardApp {
             })
         };
         match missing {
+            Some(_) if quiet => {}
             Some(why) => {
                 self.tree_sel.clear();
                 self.status = why;

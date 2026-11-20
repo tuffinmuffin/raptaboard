@@ -317,8 +317,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - NT tree rows (topics and struct fields that can be widgets) can be picked: click one,
      Ctrl+click (Cmd on macOS) to add or remove, Shift+click for a range. Picked rows are shaded;
      widgets showing them get an amber outline (list rows too), and other tabs with one get a ●.
-     The other way round: clicking a widget (or a list child) opens the tree to its topic or
-     field, scrolls to it and picks it.
+     The other way round: clicking a widget (or a list child) opens the tree to its topic,
+     field or chooser table, scrolls to it and picks it, locked or not and wherever on the widget
+     (a toggle or chooser button still does its own thing too; such a click says nothing if the
+     topic isn't in the tree, so a failed send's message stays).
      Right-click → "Add to grid" (or "Add N to grid") puts them in the free spots nearest the top
      left, and "Add to list ▸" adds them to a new list (sized to fit them; always offered) or to the end of
      one of the tab's lists; dragging a picked row takes them all, onto the grid (around the drop) or into a list.

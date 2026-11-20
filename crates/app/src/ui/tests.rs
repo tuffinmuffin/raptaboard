@@ -2165,3 +2165,33 @@ fn clicking_a_chooser_finds_its_table_in_the_tree() {
         harness.state().status
     );
 }
+
+#[test]
+fn any_click_on_a_widget_finds_it_in_the_tree_locked_or_not() {
+    let robot = Robot::start();
+    let mut harness = chooser_harness(&robot);
+    for locked in [true, false] {
+        harness.state_mut().locked = locked;
+        harness.state_mut().tree_sel.clear();
+        settle(&mut harness);
+        // A click on one of the chooser's buttons picks and finds it.
+        let card = card_on_screen(&harness, 1);
+        click_label_in(&mut harness, "Left", card);
+        settle(&mut harness);
+        assert_eq!(picked(&harness), ["/Test/Auto"], "locked {locked}");
+        // So does a click on a list's child.
+        harness.state_mut().tree_sel.clear();
+        let app = harness.state();
+        let l = &app.layout.tabs[0].grid_layout.layouts[0];
+        let min = app.grid_area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
+        let list = Rect::from_min_size(min, egui::vec2(l.rect.width as f32, l.rect.height as f32));
+        click_label_in(&mut harness, "Right", list);
+        settle(&mut harness);
+        assert_eq!(
+            picked(&harness),
+            ["/Test/Auto"],
+            "list child, locked {locked}"
+        );
+    }
+    server_has_pick(&mut harness, &robot, "Right");
+}
