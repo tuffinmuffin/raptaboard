@@ -689,6 +689,30 @@
               "data_type": "double",
               "editable": true
             }
+          },
+          {
+            "title": "Auto mode",
+            "x": 512.0,
+            "y": 384.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "Dropdown Chooser",
+            "properties": {
+              "topic": "/SmartDashboard/DashTest Auto",
+              "period": 0.06
+            }
+          },
+          {
+            "title": "Test",
+            "x": 896.0,
+            "y": 384.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "Split Button Chooser",
+            "properties": {
+              "topic": "/SmartDashboard/DashTest Test",
+              "period": 0.06
+            }
           }
         ]
       }

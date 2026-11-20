@@ -103,6 +103,15 @@ impl DashboardApp {
             })
             .inner;
         self.tree_sel.end_frame();
+        // Every table's `.type`, so tables made for a widget (choosers) are
+        // known before their folder is opened.
+        let mut drawn = drawn;
+        drawn.extend(
+            topics
+                .iter()
+                .filter(|t| t.name.ends_with("/.type"))
+                .map(|t| t.name.to_string()),
+        );
         // Picking in the tree deselects the grid's widget, whose outline
         // would otherwise linger beside the picked topic's.
         if self.tree_sel.clicked {

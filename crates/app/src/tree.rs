@@ -399,6 +399,10 @@ pub struct Folder {
     pub folders: BTreeMap<String, Folder>,
     /// Topics directly in this folder, by their last path segment.
     pub topics: BTreeMap<String, TopicEntry>,
+    /// The folder's `.type` value, if it's a table robot code made for a
+    /// widget (a SendableChooser's is `"String Chooser"`). Known even when
+    /// the `.type` topic itself is hidden.
+    pub table_type: Option<String>,
 }
 
 impl Folder {
@@ -423,6 +427,7 @@ impl Folder {
     ) -> Folder {
         let filter = filter.trim().to_lowercase();
         let mut root = Folder::default();
+        let mut table_types = Vec::new();
         for topic in topics {
             let parts: Vec<String> = path::segments(&topic.name)
                 .into_iter()
@@ -431,6 +436,11 @@ impl Folder {
             let Some((key, folders)) = parts.split_last() else {
                 continue;
             };
+            if key == ".type"
+                && let Some(Value::String(ty)) = &topic.value
+            {
+                table_types.push((folders.to_vec(), ty.clone()));
+            }
             if !show_metadata && parts.iter().any(|p| path::is_metadata(p)) {
                 continue;
             }
@@ -442,6 +452,16 @@ impl Folder {
                 folder = folder.folders.entry(name.clone()).or_default();
             }
             folder.topics.insert(key.clone(), topic);
+        }
+        // Each table's type, on its folder if it's shown.
+        for (path, ty) in table_types {
+            let mut folder = Some(&mut root);
+            for name in &path {
+                folder = folder.and_then(|f| f.folders.get_mut(name));
+            }
+            if let Some(folder) = folder {
+                folder.table_type = Some(ty);
+            }
         }
         root
     }
@@ -481,6 +501,37 @@ impl Folder {
         let mut visible = Vec::new();
         for (name, folder) in &self.folders {
             let folder_path = format!("{path}/{name}");
+            // A table with a widget of its own (a chooser) is one row that
+            // drags as a whole, unless its metadata is shown, when it opens
+            // like any folder so its parts can be looked at.
+            if let Some(ty) = &folder.table_type
+                && widgets::type_for_table(ty).is_some()
+                && !folder.topics.contains_key(".type")
+            {
+                let row = DraggedTopic {
+                    name: folder_path.clone(),
+                    ty: ty.clone(),
+                    field: None,
+                };
+                let hover = if draggable {
+                    format!("{folder_path} ({ty})\n{DRAG_HINT}")
+                } else {
+                    format!("{folder_path} ({ty})")
+                };
+                let active = folder.topics.get("active").and_then(|t| t.value.as_ref());
+                selectable_row(ui, sel, row, draggable, &hover, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(name);
+                        if let Some(active) = active {
+                            ui.monospace(format_value(active));
+                        }
+                        ui.weak(ty);
+                    });
+                });
+                // Its values, for the row (and the widget made from it).
+                visible.extend(folder.topics.values().map(|t| t.name.clone()));
+                continue;
+            }
             let label = format!("{name}  ({})", folder.topic_count());
             let open = egui::CollapsingHeader::new(label)
                 .id_salt(&folder_path)

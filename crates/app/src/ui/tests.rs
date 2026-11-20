@@ -51,6 +51,13 @@ struct Robot {
     /// what the server has of it.
     setpoint: Publisher<f64>,
     seen_setpoint: nt4::Subscriber<f64>,
+    /// A SendableChooser's table, `/Test/Auto`, as robot code makes it:
+    /// its options and the robot's active choice, and what dashboards
+    /// picked.
+    auto_options: Publisher<Vec<String>>,
+    auto_active: Publisher<String>,
+    seen_selected: nt4::Subscriber<String>,
+    _auto: (Publisher<String>, Publisher<String>),
     _others: (
         Publisher<String>,
         Publisher<Vec<String>>,
@@ -82,6 +89,15 @@ impl Robot {
         let setpoint = server.publish::<f64>("/Test/setpoint");
         setpoint.set(0.0);
         let seen_setpoint = server.subscribe::<f64>("/Test/setpoint", Default::default());
+        let auto_type = server.publish::<String>("/Test/Auto/.type");
+        auto_type.set(widgets::builtin::chooser::CHOOSER_TYPE.into());
+        let auto_options = server.publish::<Vec<String>>("/Test/Auto/options");
+        auto_options.set(vec!["Left".into(), "Middle".into(), "Right".into()]);
+        let auto_default = server.publish::<String>("/Test/Auto/default");
+        auto_default.set("Middle".into());
+        let auto_active = server.publish::<String>("/Test/Auto/active");
+        auto_active.set("Middle".into());
+        let seen_selected = server.subscribe::<String>("/Test/Auto/selected", Default::default());
         let color = server.publish::<String>("/Test/color");
         color.set("#FF8800".into());
         let colors = server.publish::<Vec<String>>("/Test/colors");
@@ -128,8 +144,22 @@ impl Robot {
             seen_enabled,
             setpoint,
             seen_setpoint,
+            auto_options,
+            auto_active,
+            seen_selected,
+            _auto: (auto_type, auto_default),
             _others: (color, colors, numbers),
             _structs: (pose, modules),
+        }
+    }
+
+    /// What robot code's SendableChooser does each loop: take the picked
+    /// option (if it's one) as the active one.
+    fn take_choice(&self) {
+        if let Some(picked) = self.seen_selected.get()
+            && ["Left", "Middle", "Right"].contains(&picked.as_str())
+        {
+            self.auto_active.set(picked);
         }
     }
 
@@ -169,6 +199,13 @@ fn every_widget_layout() -> ElasticLayout {
     let mut tab = Tab::new("Widgets");
     let grid = &mut tab.grid_layout;
     for (i, ty) in widgets::TYPES.iter().enumerate() {
+        // Choosers show the chooser table.
+        if !ty.table_types().is_empty() {
+            let mut w = widget(ty.names()[0], "/Test/Auto", "", at(i));
+            w.properties.remove("data_type");
+            grid.containers.push(w);
+            continue;
+        }
         let (topic, nt_type) = TOPICS
             .iter()
             .find(|(_, t)| ty.shows(t))
@@ -1551,4 +1588,165 @@ fn an_editable_text_display_takes_typed_values() {
     press(&mut harness, Key::Enter);
     server_has_setpoint(&mut harness, &robot, -1.0);
     assert!(harness.state().write_failed.is_empty());
+}
+
+/// A layout of choosers on `/Test/Auto`, each 512 by 256 along the top: a
+/// Dropdown Chooser and a Split Button Chooser; and below them a List
+/// Layout (labels inside) holding a Split Button Chooser.
+fn chooser_layout() -> ElasticLayout {
+    let at = |i: usize| LayoutRect {
+        x: i as f64 * 512.0,
+        y: 0.0,
+        width: 512.0,
+        height: 256.0,
+    };
+    let chooser = |ty: &str, title: &str, rect| {
+        let mut w = widget(ty, "/Test/Auto", "", rect);
+        w.properties.remove("data_type");
+        w.title = title.into();
+        w
+    };
+    let mut tab = Tab::new("Choosers");
+    let grid = &mut tab.grid_layout;
+    grid.containers = vec![
+        chooser("Dropdown Chooser", "Auto dropdown", at(0)),
+        chooser("Split Button Chooser", "Auto buttons", at(1)),
+    ];
+    grid.layouts.push(list_layout::new_list(
+        LayoutRect {
+            x: 0.0,
+            y: 256.0,
+            width: 512.0,
+            height: 256.0,
+        },
+        vec![chooser("Split Button Chooser", "Auto in a list", at(0))],
+    ));
+    grid.layouts[0]
+        .properties
+        .insert(list_layout::LABEL_INSIDE.into(), json!(true));
+    ElasticLayout {
+        tabs: vec![tab],
+        ..ElasticLayout::default()
+    }
+}
+
+/// The harness showing [`chooser_layout`].
+fn chooser_harness(robot: &Robot) -> Harness {
+    let mut harness = harness_for(robot);
+    let app = harness.state_mut();
+    app.layout = chooser_layout();
+    app.saved = app.layout.clone();
+    app.history = History::new(&app.layout);
+    app.current_tab = 0;
+    settle(&mut harness);
+    harness
+}
+
+/// Wait until the server has `want` for `/Test/Auto/selected`.
+fn server_has_pick(harness: &mut Harness, robot: &Robot, want: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while robot.seen_selected.get().as_deref() != Some(want) {
+        assert!(
+            Instant::now() < deadline,
+            "the server never got {want:?}, has {:?}",
+            robot.seen_selected.get()
+        );
+        settle(harness);
+    }
+}
+
+/// Click the thing labelled `label` that's inside `area`.
+fn click_label_in(harness: &mut Harness, label: &str, area: Rect) {
+    let pos = harness
+        .get_all_by_label(label)
+        .map(|n| n.rect())
+        .find(|r| area.contains(r.center()))
+        .unwrap_or_else(|| panic!("no {label:?} in {area:?}"))
+        .center();
+    click_at(harness, pos, egui::PointerButton::Primary, Modifiers::NONE);
+}
+
+#[test]
+fn a_dropdown_chooser_sends_the_pick_and_drops_it_for_a_new_list() {
+    let robot = Robot::start();
+    let mut harness = chooser_harness(&robot);
+    harness.state_mut().locked = true;
+    settle(&mut harness);
+    let card = card_on_screen(&harness, 0);
+    // Open the drop-down and pick Right.
+    let combo = harness.get_by_label("Auto dropdown").rect().center();
+    click_at(
+        &mut harness,
+        combo,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    click_label_in(&mut harness, "Right", card);
+    server_has_pick(&mut harness, &robot, "Right");
+    // The robot takes it.
+    robot.take_choice();
+    settle(&mut harness);
+    // The robot's list changes and Right isn't in it: the pick is dropped
+    // and the robot's own choice (its default, as its active isn't an
+    // option now) is sent instead.
+    robot
+        .auto_options
+        .set(vec!["Left".into(), "Middle".into(), "Far".into()]);
+    server_has_pick(&mut harness, &robot, "Middle");
+    assert_eq!(harness.state().alert.played(), 0);
+}
+
+#[test]
+fn split_button_choosers_send_on_the_grid_and_in_a_list() {
+    let robot = Robot::start();
+    let mut harness = chooser_harness(&robot);
+    for locked in [true, false] {
+        harness.state_mut().locked = locked;
+        settle(&mut harness);
+        let card = card_on_screen(&harness, 1);
+        click_label_in(&mut harness, "Left", card);
+        server_has_pick(&mut harness, &robot, "Left");
+        click_label_in(&mut harness, "Right", card);
+        server_has_pick(&mut harness, &robot, "Right");
+        // The list's child, below its label.
+        let app = harness.state();
+        let l = &app.layout.tabs[0].grid_layout.layouts[0];
+        let min = app.grid_area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
+        let list = Rect::from_min_size(min, egui::vec2(l.rect.width as f32, l.rect.height as f32));
+        click_label_in(&mut harness, "Middle", list);
+        server_has_pick(&mut harness, &robot, "Middle");
+    }
+    // Unlocked, the title bar still selects the widget.
+    let card = card_on_screen(&harness, 1);
+    let title = card.center_top() + egui::vec2(0.0, 12.0);
+    click_at(
+        &mut harness,
+        title,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(harness.state().selected, Some(Item::Widget(1)));
+}
+
+#[test]
+fn a_chooser_table_drags_from_the_tree_as_a_dropdown() {
+    let robot = Robot::start();
+    let mut harness = chooser_harness(&robot);
+    harness.state_mut().locked = false;
+    settle(&mut harness);
+    open(&mut harness, "Test  (");
+    let widgets = |h: &Harness| h.state().layout.tabs[0].grid_layout.containers.clone();
+    let before = widgets(&harness).len();
+    let to = harness.state().grid_area.min + egui::vec2(1200.0, 700.0);
+    drag_row(&mut harness, "Auto", 0, to);
+    assert_eq!(widgets(&harness).len(), before + 1);
+    let made = widgets(&harness).pop().unwrap();
+    assert_eq!(made.widget_type, "Dropdown Chooser");
+    assert_eq!(made.topic(), Some("/Test/Auto"));
+    assert!(!made.properties.contains_key("data_type"));
+    // With metadata shown it's a folder again, its parts listed.
+    harness.state_mut().show_metadata = true;
+    settle(&mut harness);
+    open(&mut harness, "Auto  (");
+    assert!(harness.query_by_label("options").is_some());
 }
