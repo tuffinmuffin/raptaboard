@@ -16,7 +16,9 @@
 //!
 //! Over the field ([`layers`]): the field's AprilTags (`show_tags`, on
 //! unless set), lit when a layer says a camera sees them; layers of other
-//! robots and paths, each from a topic of its own (`layers`; dropping a
+//! robots, paths and objects (game pieces, drawn as a circle, ring, X
+//! or square, on the field or relative to the robot), each from a topic of
+//! its own (`layers`; dropping a
 //! topic from the tree onto the field adds one); and a `Field2d` table's
 //! other objects, as robots, or as paths when they have more than 8 poses
 //! or a name with "traj" or "path" in it (`show_other_objects`,
@@ -431,6 +433,7 @@ impl FieldWidget {
         let view = FieldView::fit(rect, size, Turn::of(p));
         let image = texture(ui.ctx(), &field);
         draw_field(&painter, &visuals, &view, &field.info, image);
+        let poses = robot_poses(widget, live, size);
         let overlay = layers::Overlay {
             view: &view,
             origin: Origin::from_key(props::text(p, ORIGIN, Origin::Center.key())),
@@ -438,10 +441,10 @@ impl FieldWidget {
             others: live.frame.others,
             structs: live.frame.structs,
             tags: &field.info.tags,
+            robot: poses.first().copied(),
         };
         let table = is_table(widget).then(|| widget.topic()).flatten();
         let drawn = overlay.draw(&painter, p, table);
-        let poses = robot_poses(widget, live, size);
         let color = props::color_property(p, ROBOT_COLOR).unwrap_or(DEFAULT_ROBOT_COLOR);
         // A pose array's others are drawn fainter, under the first.
         for other in poses.iter().skip(1) {
@@ -475,6 +478,13 @@ impl FieldWidget {
                 "; {} more robot{}",
                 drawn.robots,
                 if drawn.robots == 1 { "" } else { "s" }
+            );
+        }
+        if drawn.objects > 0 {
+            summary += &format!(
+                "; {} object{}",
+                drawn.objects,
+                if drawn.objects == 1 { "" } else { "s" }
             );
         }
         if drawn.paths > 0 {

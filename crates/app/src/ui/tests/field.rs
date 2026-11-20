@@ -227,3 +227,56 @@ fn a_pose_array_dropped_on_a_field_becomes_a_layer() {
         "Field: robot at x 1.50 m, y 2.50 m, facing 43°; 2 more robots",
     );
 }
+
+#[test]
+fn objects_draw_on_the_field_or_from_the_robot() {
+    let robot = Robot::start();
+    let points = |xy: &[[f64; 2]]| {
+        nt4::Value::Raw(xy.iter().flatten().flat_map(|d| d.to_le_bytes()).collect())
+    };
+    let fuel = robot._server.publish_generic(
+        "/Sim/fuel",
+        "struct:Translation2d[]".parse().unwrap(),
+        nt4::Properties::new(),
+    );
+    fuel.set(points(&[[0.0, 0.0], [3.0, -2.0]])).unwrap();
+    let seen = robot._server.publish_generic(
+        "/Sim/seenBalls",
+        "struct:Translation2d[]".parse().unwrap(),
+        nt4::Properties::new(),
+    );
+    seen.set(points(&[[1.5, 0.0]])).unwrap();
+    let mut field = pose_field();
+    use crate::widgets::builtin::field::layers::{self, Layer, LayerKind};
+    let mut ahead = Layer::new(
+        LayerKind::Objects,
+        "/Sim/seenBalls",
+        "struct:Translation2d[]",
+    );
+    ahead.robot_relative = true;
+    layers::set_layers(
+        &mut field.properties,
+        &[
+            Layer::new(LayerKind::Objects, "/Sim/fuel", "struct:Translation2d[]"),
+            ahead,
+        ],
+    );
+    let mut harness = field_harness(&robot, field);
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°; 3 objects",
+    );
+    // Relative to a robot with no pose: not drawn.
+    let mut lost = pose_field();
+    lost.properties
+        .insert("topic".into(), json!("/Sim/nowhere"));
+    let mut ahead = Layer::new(
+        LayerKind::Objects,
+        "/Sim/seenBalls",
+        "struct:Translation2d[]",
+    );
+    ahead.robot_relative = true;
+    layers::set_layers(&mut lost.properties, &[ahead]);
+    let mut harness = field_harness(&robot, lost);
+    labelled_soon(&mut harness, "Field: no robot pose");
+}

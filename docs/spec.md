@@ -157,7 +157,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `robot_length`, `robot_width` (Elastic) | `builtin/field/mod.rs` | Field | the robot's size, meters | 0.85, 0.85 |
 | `robot_color` (Elastic) | `builtin/field/mod.rs` | Field | the robot's color | red |
 | `field_rotation` (Elastic) | `builtin/field/mod.rs` | Field | the field turned clockwise, degrees (0, 90, 180, 270; 180 is the red side's view) | 0 |
-| `layers` | `builtin/field/layers.rs` | Field | layers drawn over the field, each `{"kind", "topic", "data_type", "color"}`: `robots` (poses as robot outlines), `path` (poses joined by a line), `seen_tags` (AprilTag IDs as `int[]`, or seen tags' `Pose3d[]`, lit on the field); a topic dropped on the field adds one | none |
+| `layers` | `builtin/field/layers.rs` | Field | layers drawn over the field, each `{"kind", "topic", "data_type", "color"}`: `robots` (poses as robot outlines), `path` (poses joined by a line), `seen_tags` (AprilTag IDs as `int[]`, or seen tags' `Pose3d[]`, lit on the field), `objects` (game pieces: poses or translations, drawn as `marker` `circle`, `ring`, `x` or `square`, `size` meters across, on the field or with `robot_relative` from the robot's pose, as a camera finds them); a topic dropped on the field adds one (objects for a name with a game piece's word in it) | none |
 | `show_tags` | `builtin/field/layers.rs` | Field | draw the field's AprilTags | true |
 | `show_other_objects`, `show_trajectories` (Elastic) | `builtin/field/layers.rs` | Field | a `Field2d` table's other objects: as robots, and as paths (more than 8 poses, or "traj" or "path" in the name) | true, true |
 | `enum_source` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | where the state names come from: `list`, `topic` (a string[] topic) or `chooser` (the widget's topic is a chooser table); guessed when a widget becomes one | `list` |
@@ -593,8 +593,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Order: (1) fields, the Field widget and its robot (**done**: `fields.rs`, `types/field.rs`,
      `builtin/field.rs`; a Pose2d or Pose3d dragged from the tree makes a Field, and its row still
      opens into its fields; the image decodes on its own thread, at most 2048 pixels wide); (2) pose,
-     trajectory and AprilTag overlays (**done**: `builtin/field/layers.rs`; a pose array as the widget's
-     own topic is the robot and others; robot-2027's sim publishes `OrbitPath` and `SeenTags`); (3) robot-attached shapes and detected objects.
+     trajectory, AprilTag and object overlays (**done**: `builtin/field/layers.rs`; a pose array as the widget's
+     own topic is the robot and others; robot-2027's sim publishes `OrbitPath` and `SeenTags`; objects layers, decided with the user: a marker per
+     layer (circle, ring, X, square) in its color and size, on the field or relative to the robot, fed by
+     poses or translations; the sim's `Fuel` and robot-relative `SeenFuel`); (3) robot-attached shapes.
 
    Struct widgets after the Field, each its own widget: a Gyro (Rotation2d or a number), motion
    vectors (2 or 3 arrows, Translation2d or ChassisSpeeds, showing relative motion more than

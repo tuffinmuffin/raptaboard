@@ -279,7 +279,8 @@ pub fn pose_of(
 }
 
 /// Every pose in `value`, a topic of NT type `nt_type`: a `Pose2d`,
-/// `Pose3d`, `Translation2d` (facing +X) or an array of them, or a
+/// `Pose3d`, `Translation2d` or `Translation3d` (facing +X; 3D ones drawn
+/// flat) or an array of them, or a
 /// `double[]` of x, y and degrees for each pose (a `Field2d` object). Empty
 /// if it's none of those, or the schemas haven't arrived (`structs`).
 ///
@@ -325,7 +326,8 @@ pub fn poses_of(value: &Value, nt_type: &str, structs: Option<&StructDatabase>) 
     }
 }
 
-/// One `Pose2d`, `Pose3d` or `Translation2d` of `schema` in `bytes`, its
+/// One `Pose2d`, `Pose3d`, `Translation2d` or `Translation3d` of `schema`
+/// in `bytes`, its
 /// fields found at `path(...)` (with an array item's `[i]` first).
 fn struct_pose(
     db: &StructDatabase,
@@ -356,12 +358,32 @@ fn struct_pose(
             y: number(&["translation", "y"])?,
             heading: number(&["rotation", "value"])?,
         }),
-        "Translation2d" => Some(FieldPose {
+        "Translation2d" | "Translation3d" => Some(FieldPose {
             x: number(&["x"])?,
             y: number(&["y"])?,
             heading: 0.0,
         }),
         _ => None,
+    }
+}
+
+/// Where `local`, given relative to a robot at `robot` (+X its front, +Y
+/// its left, heading from its front), is on the field.
+///
+/// ```
+/// use raptaboard::types::field::{from_robot, FieldPose};
+/// // A robot at (2, 1) facing +Y; something 1 m in front of it.
+/// let robot = FieldPose { x: 2.0, y: 1.0, heading: std::f64::consts::FRAC_PI_2 };
+/// let ahead = FieldPose { x: 1.0, y: 0.0, heading: 0.0 };
+/// let p = from_robot(robot, ahead);
+/// assert!((p.x - 2.0).abs() < 1e-9 && (p.y - 2.0).abs() < 1e-9);
+/// ```
+pub fn from_robot(robot: FieldPose, local: FieldPose) -> FieldPose {
+    let (sin, cos) = robot.heading.sin_cos();
+    FieldPose {
+        x: robot.x + local.x * cos - local.y * sin,
+        y: robot.y + local.x * sin + local.y * cos,
+        heading: wrap(robot.heading + local.heading),
     }
 }
 
