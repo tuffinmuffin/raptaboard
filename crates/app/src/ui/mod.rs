@@ -540,6 +540,8 @@ impl DashboardApp {
     /// [`eframe::App::ui`] so tests can run frames without an
     /// [`eframe::Frame`].
     fn show(&mut self, ui: &mut egui::Ui) {
+        // Pointer and touch events, when RAPTABOARD_LOG_INPUT is set.
+        crate::input_log::log_frame(ui.ctx());
         // One copy of every topic per frame, shared by the tab marks, the tree
         // and the grid.
         let topics = self.nt.topics();

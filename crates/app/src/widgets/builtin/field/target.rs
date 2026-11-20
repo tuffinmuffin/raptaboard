@@ -13,6 +13,7 @@ use nt4::{NtType, Value};
 use serde_json::{Map, Value as Json};
 
 use super::FieldView;
+use crate::input_log;
 use crate::types::field::{self, FieldPose, Origin};
 use crate::widgets::shared::props;
 use crate::widgets::{Effect, Live};
@@ -141,8 +142,15 @@ pub fn input(
             .input(|i| i.pointer.press_origin())
             .or(response.interact_pointer_pos())
     {
-        let at = view.to_field(at);
-        ui.data_mut(|d| d.insert_temp(id, at));
+        let field_at = view.to_field(at);
+        ui.data_mut(|d| d.insert_temp(id, field_at));
+        let now = ui.input(|i| (i.time, i.pointer.latest_pos()));
+        input_log::log(now.0, || {
+            format!(
+                "field target: drag began; press at ({:.0}, {:.0}) = field ({:.2}, {:.2}); pointer now {:?}",
+                at.x, at.y, field_at.0, field_at.1, now.1
+            )
+        });
     }
     let aimed = |end: egui::Pos2| -> Option<FieldPose> {
         let (x, y) = start?;
@@ -156,7 +164,16 @@ pub fn input(
     };
     if response.drag_stopped() {
         ui.data_mut(|d| d.remove::<(f64, f64)>(id));
-        if let Some(pose) = response.interact_pointer_pos().and_then(aimed) {
+        let end = response.interact_pointer_pos();
+        if let Some(pose) = end.and_then(aimed) {
+            input_log::log(ui.input(|i| i.time), || {
+                format!(
+                    "field target: drag ended at {end:?}; target field ({:.2}, {:.2}) facing {:.0} deg",
+                    pose.x,
+                    pose.y,
+                    pose.heading.to_degrees()
+                )
+            });
             publish(live, &topic, pose, origin, size);
         }
         return None;
@@ -165,9 +182,18 @@ pub fn input(
         && let Some(at) = response.interact_pointer_pos()
     {
         let (x, y) = view.to_field(at);
+        input_log::log(ui.input(|i| i.time), || {
+            format!(
+                "field target: click at ({:.0}, {:.0}) = field ({x:.2}, {y:.2})",
+                at.x, at.y
+            )
+        });
         publish(live, &topic, FieldPose { x, y, heading: 0.0 }, origin, size);
     }
     if response.secondary_clicked() {
+        input_log::log(ui.input(|i| i.time), || {
+            "field target: right-click, cleared".to_owned()
+        });
         live.frame.effects.borrow_mut().push(Effect::Write {
             topic: set_topic(&topic),
             value: Value::Boolean(false),

@@ -13,6 +13,7 @@ pub mod connection;
 pub mod edit;
 pub mod fields;
 pub mod grid;
+pub mod input_log;
 pub mod layout_file;
 pub mod nt;
 pub mod sampling;
