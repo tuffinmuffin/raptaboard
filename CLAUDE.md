@@ -83,7 +83,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
   draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing
   and its settings dialog), helpers in `widgets/shared/`:
-  `card.rs`, `format.rs` (number and
+  `card.rs`, `entry.rs` (the box a value is typed into: Number Slider, editable Text Display), `format.rs` (number and
   enum text), `props.rs` (period, font size, colors) and `settings.rs` (the settings dialog's shared
   rows; the dialog window is in `ui/dialogs.rs`); setting keys are constants in the file that owns them,
   listed in `docs/spec.md` under "raptaboard widget settings" (keep that table in step); adding a
@@ -116,7 +116,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   robot code read back), plus "Not published (fails)", a toggle on a topic that's never sent,
   for the failed-write flash, tone and message; keep it too. Two Number Sliders on
   `/DashTest/Setpoint` (0 to 100; one sends on release, one every value in steps of 5) with a Text
-  Display on `/DashTest/SetpointEcho`. "Writing in a list" holds the toggles and a slider as List
+  Display on `/DashTest/SetpointEcho`, and "Setpoint (typed)", an editable Text Display. "Writing in a list" holds the toggles and a slider as List
   Layout children.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.
 - `plugins/arm`: example plugin; its `plugin.toml` is a test fixture.

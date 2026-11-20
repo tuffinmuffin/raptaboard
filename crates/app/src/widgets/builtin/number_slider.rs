@@ -28,7 +28,7 @@ use serde_json::{Map, Value as Json};
 
 use super::number_bar::{DIVISIONS, MAX_VALUE, MIN_VALUE, fraction, labels};
 use crate::widgets::shared::format::{number_of, short_number};
-use crate::widgets::shared::{card, props, scale};
+use crate::widgets::shared::{card, entry, props, scale};
 use crate::widgets::{Live, ValueInfo, WidgetType};
 
 /// Send every value during a drag, not only the last (Elastic).
@@ -51,7 +51,7 @@ const KEYS: [&str; 8] = [
 const DEFAULT_MIN: f64 = -1.0;
 const DEFAULT_MAX: f64 = 1.0;
 /// Track color left of the knob (Material blue, like the Number Bar).
-const FILL_COLOR: Color32 = Color32::from_rgb(0x21, 0x96, 0xF3);
+const FILL_COLOR: Color32 = entry::EDITABLE_COLOR;
 /// Thickness of the track, in points.
 const TRACK_THICKNESS: f32 = 6.0;
 /// The knob's radius, in points.
@@ -275,16 +275,6 @@ impl Held {
     }
 }
 
-/// The box the value is typed into while it's open.
-#[derive(Clone, Debug, Default)]
-struct Entry {
-    text: String,
-    /// The box has had the keyboard (it's given it the frame it opens).
-    focused: bool,
-    /// Enter was pressed on text that isn't a number.
-    bad: bool,
-}
-
 /// The slider with input over `area` and drawn in `body`. The value to
 /// send, if any.
 ///
@@ -327,9 +317,8 @@ fn show_slider(
     let now = ui.input(|i| i.time);
     let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
     let mut held: Option<Held> = ui.data(|d| d.get_temp(id));
-    let mut entry: Option<Entry> = ui.data(|d| d.get_temp(entry_id));
     let mut send = None;
-    if value_click.as_ref().is_some_and(|r| r.clicked()) && entry.is_none() {
+    if value_click.as_ref().is_some_and(|r| r.clicked()) && !entry::is_open(ui, entry_id) {
         let text = held.map(|h| h.value).or(topic).map_or(String::new(), |v| {
             if setup.whole {
                 format!("{v:.0}")
@@ -337,11 +326,9 @@ fn show_slider(
                 v.to_string()
             }
         });
-        entry = Some(Entry {
-            text,
-            ..Entry::default()
-        });
+        entry::open(ui, entry_id, text);
     }
+    let editing = entry::is_open(ui, entry_id);
     if response.is_pointer_button_down_on()
         && let Some(pos) = response.interact_pointer_pos()
     {
@@ -394,62 +381,33 @@ fn show_slider(
         _ => topic,
     };
     let painter = ui.painter().with_clip_rect(body.intersect(ui.clip_rect()));
-    paint(&painter, &visuals, body, p, &setup, shown, entry.is_none());
+    paint(&painter, &visuals, body, p, &setup, shown, !editing);
 
     // The box for typing a value, where the value is written.
-    if let Some(e) = entry.as_mut() {
+    if editing {
         let width = (body.width() - 2.0 * PAD).clamp(0.0, 160.0);
         let rect = Rect::from_center_size(
             value_rect(body).center(),
             egui::vec2(width, VALUE_SIZE + 8.0),
         );
-        let mut edit = egui::TextEdit::singleline(&mut e.text)
-            .id(entry_id.with("box"))
-            .font(egui::FontId::monospace(VALUE_SIZE))
-            .align(egui::Align2::CENTER_CENTER);
-        if e.bad {
-            edit = edit.text_color(visuals.error_fg_color);
-        }
-        let box_id = entry_id.with("box");
-        let r = ui.put(rect, edit);
-        if !e.focused {
-            r.request_focus();
-            e.focused = true;
-            // The value starts selected, so typing replaces it.
-            if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), box_id) {
-                let all = egui::text::CCursorRange::two(
-                    egui::text::CCursor::new(0),
-                    egui::text::CCursor::new(e.text.chars().count()),
-                );
-                state.cursor.set_char_range(Some(all));
-                state.store(ui.ctx(), box_id);
-            }
-        } else if r.lost_focus() {
-            if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                match parse_entry(&e.text, &setup, props::text(p, scale::UNIT, "")) {
-                    Some(v) => {
-                        send = Some(v);
-                        held = Some(Held {
-                            value: v,
-                            start: topic,
-                            sent: Some(v),
-                            released: Some(now),
-                            cancelled: false,
-                        });
-                        entry = None;
-                    }
-                    None => {
-                        // Not a number: stay open, in red, for a fix.
-                        e.bad = true;
-                        r.request_focus();
-                    }
-                }
-            } else {
-                // Escape, or a click somewhere else: nothing sent.
-                entry = None;
-            }
-        } else if r.changed() {
-            e.bad = false;
+        let unit = props::text(p, scale::UNIT, "");
+        let accept = |text: &str| parse_entry(text, &setup, unit).is_some();
+        if let Some(text) = entry::show(
+            ui,
+            entry_id,
+            rect,
+            egui::FontId::monospace(VALUE_SIZE),
+            accept,
+        ) && let Some(v) = parse_entry(&text, &setup, unit)
+        {
+            send = Some(v);
+            held = Some(Held {
+                value: v,
+                start: topic,
+                sent: Some(v),
+                released: Some(now),
+                cancelled: false,
+            });
         }
     }
 
@@ -465,12 +423,6 @@ fn show_slider(
         }
         None => ui.data_mut(|d| d.remove::<Held>(id)),
     }
-    ui.data_mut(|d| match entry {
-        Some(e) => {
-            d.insert_temp(entry_id, e);
-        }
-        None => d.remove::<Entry>(entry_id),
-    });
     send.map(|v| {
         if setup.whole {
             Value::Int(v.round() as i64)
@@ -515,7 +467,9 @@ impl WidgetType for NumberSlider {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        show_slider(ui, live.input.unwrap_or(rect), rect, widget, live)
+        // Beside an inside label, so the value isn't under it.
+        let body = live.free.unwrap_or(rect);
+        show_slider(ui, live.input.unwrap_or(rect), body, widget, live)
     }
 
     fn draw_body(

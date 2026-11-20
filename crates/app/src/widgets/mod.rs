@@ -59,6 +59,10 @@ pub struct Live<'a> {
     /// a List Layout child's row less its inside label while unlocked, so
     /// the label still drags the child. `None` for all of it.
     pub input: Option<Rect>,
+    /// The part of the rect not under a List Layout child's inside label,
+    /// locked or not, for widgets that lay out their value beside it (a
+    /// slider's number). `None` when there's no inside label.
+    pub free: Option<Rect>,
 }
 
 /// What the settings dialog knows about the value a widget shows, so a

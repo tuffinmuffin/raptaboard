@@ -416,13 +416,12 @@ pub fn show(
         &mut |painter, content, inside, index, child| {
             let value = value_of(child);
             // Unlocked, an inside label is the child's handle for dragging.
-            let input = match inside {
-                Some(label) if !live.locked => Some(beside_label(content, label, position)),
-                _ => None,
-            };
+            let free = inside.map(|label| beside_label(content, label, position));
+            let input = free.filter(|_| !live.locked);
             let child_live = crate::widgets::Live {
                 value: value.as_ref(),
                 input,
+                free,
                 ..*live
             };
             let mut child_ui = ui.new_child(

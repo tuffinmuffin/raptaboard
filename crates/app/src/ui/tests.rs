@@ -771,8 +771,9 @@ fn the_right_click_menu_adds_the_selection_and_locking_stops_it() {
 
 /// A layout of writing widgets on one tab, each 256 pixels square along
 /// the top row: a Toggle Switch and a Toggle Button on `/Test/enabled`, a
-/// switch on a topic that's never sent, and one on a struct field. Below
-/// them, a List Layout holding a Toggle Button on `/Test/enabled` and a
+/// switch on a topic that's never sent, one on a struct field, and an
+/// editable Text Display on `/Test/setpoint`. Lower down, an editable Text
+/// Display on `/Test/enabled` and one that isn't editable, and a List Layout holding a Toggle Button on `/Test/enabled` and a
 /// switch on a topic that's never sent.
 fn writing_layout() -> ElasticLayout {
     let at = |i: usize| LayoutRect {
@@ -793,6 +794,21 @@ fn writing_layout() -> ElasticLayout {
         "struct_meta".into(),
         json!({ "path": ["translation", "x"], "schema_name": "Pose2d", "type": "double" }),
     );
+    // Text Displays: editable on a number and on a boolean, then one that
+    // isn't editable.
+    let below = |i: usize| LayoutRect {
+        x: 512.0 + i as f64 * 256.0,
+        y: 768.0,
+        ..at(0)
+    };
+    let mut typed = widget("Text Display", "/Test/setpoint", "double", at(4));
+    typed.properties.insert("editable".into(), json!(true));
+    let mut typed_flag = widget("Text Display", "/Test/enabled", "boolean", below(0));
+    typed_flag.properties.insert("editable".into(), json!(true));
+    grid.containers.push(typed);
+    grid.containers.push(typed_flag);
+    grid.containers
+        .push(widget("Text Display", "/Test/setpoint", "double", below(1)));
     let one = at(0);
     grid.layouts.push(list_layout::new_list(
         LayoutRect {
@@ -1180,6 +1196,10 @@ fn slider_layout() -> ElasticLayout {
         },
         vec![slider(at(0))],
     ));
+    // Labels inside, over the top of each child, as the sim layout has.
+    grid.layouts[0]
+        .properties
+        .insert(list_layout::LABEL_INSIDE.into(), json!(true));
     ElasticLayout {
         tabs: vec![tab],
         ..ElasticLayout::default()
@@ -1451,4 +1471,84 @@ fn escape_cancels_a_slider_drag() {
         Modifiers::NONE,
     );
     server_has_setpoint(&mut harness, &robot, 4.0);
+}
+
+#[test]
+fn a_list_sliders_whole_value_opens_the_box() {
+    let robot = Robot::start();
+    let mut harness = slider_harness(&robot);
+    let primary = egui::PointerButton::Primary;
+    harness.state_mut().locked = false;
+    settle(&mut harness);
+    // The child's value is written just below its inside label.
+    let app = harness.state();
+    let l = &app.layout.tabs[0].grid_layout.layouts[0];
+    let min = app.grid_area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
+    let card = Rect::from_min_size(min, egui::vec2(l.rect.width as f32, l.rect.height as f32))
+        .shrink(super::style::CELL_GAP);
+    let row = list_layout::rows_on_screen(card, l)[0];
+    let label = row.label.expect("the child has a label");
+    let top = label.max.y;
+    // The top and bottom of the number, a little off its middle.
+    for y in [top + 3.0, top + 20.0] {
+        let at = egui::pos2(row.content.center().x + 10.0, y);
+        click_at(&mut harness, at, primary, Modifiers::NONE);
+        assert!(
+            harness.ctx.egui_wants_keyboard_input(),
+            "a click {:.0} below the label didn't open the box",
+            y - top
+        );
+        assert_eq!(harness.state().selected, None, "the list took the click");
+        press(&mut harness, Key::Escape);
+    }
+    std::thread::sleep(Duration::from_millis(200));
+    settle(&mut harness);
+    assert_eq!(robot.seen_setpoint.get(), Some(0.0));
+}
+
+#[test]
+fn an_editable_text_display_takes_typed_values() {
+    let robot = Robot::start();
+    let mut harness = writing_harness(&robot);
+    let primary = egui::PointerButton::Primary;
+    let wants_keys = |h: &Harness| h.ctx.egui_wants_keyboard_input();
+    harness.state_mut().locked = true;
+    settle(&mut harness);
+    // A number: the box opens with the value selected; Enter sends.
+    let (body, title) = body_and_title(&harness, 4);
+    click_at(&mut harness, body, primary, Modifiers::NONE);
+    assert!(wants_keys(&harness), "the box didn't open");
+    type_text(&mut harness, "2.5");
+    press(&mut harness, Key::Enter);
+    server_has_setpoint(&mut harness, &robot, 2.5);
+    // Not a number: not sent, the box stays open; Escape closes it.
+    click_at(&mut harness, body, primary, Modifiers::NONE);
+    type_text(&mut harness, "fast");
+    press(&mut harness, Key::Enter);
+    assert!(wants_keys(&harness), "the box closed on a bad value");
+    press(&mut harness, Key::Escape);
+    assert!(!wants_keys(&harness));
+    assert_eq!(harness.state().alert.played(), 0);
+    // A boolean takes true or false.
+    let (flag, _) = body_and_title(&harness, 5);
+    click_at(&mut harness, flag, primary, Modifiers::NONE);
+    type_text(&mut harness, "TRUE");
+    press(&mut harness, Key::Enter);
+    server_sees(&mut harness, &robot, true);
+    // One that isn't editable doesn't open a box.
+    let (plain, _) = body_and_title(&harness, 6);
+    click_at(&mut harness, plain, primary, Modifiers::NONE);
+    assert!(!wants_keys(&harness));
+    // Unlocked, the title bar selects it; the body still opens the box.
+    harness.state_mut().locked = false;
+    settle(&mut harness);
+    click_at(&mut harness, title, primary, Modifiers::NONE);
+    assert!(!wants_keys(&harness));
+    assert_eq!(harness.state().selected, Some(Item::Widget(4)));
+    click_at(&mut harness, body, primary, Modifiers::NONE);
+    assert!(wants_keys(&harness));
+    type_text(&mut harness, "-1");
+    press(&mut harness, Key::Enter);
+    server_has_setpoint(&mut harness, &robot, -1.0);
+    assert!(harness.state().write_failed.is_empty());
 }
