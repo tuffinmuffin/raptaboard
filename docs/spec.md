@@ -403,6 +403,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      errors, else the ! while there are warnings), the other two shrinking to make room, so the
      worst one reads at a glance from across the driver station; back to equal sizes when nothing
      above info is active.
+   - Alert history "Not recorded" entries as regular expressions too (a per-entry choice beside
+     today's partial text match, which stays the default), if more robot code turns up whose
+     alerts need it. Not needed yet: the one noisy alert (robot-2027's Frame Timing) is fixed at
+     the source and its numbers are already folded into one event.
    - Drag tabs to reorder them: unlocked, drag a tab along the tab bar, with a marker where it
      will land, and drop it to move it (one step for undo, like Move left and Move right in the
      tab's right-click menu, which stay). Tabs can only be reordered from that menu now, and
