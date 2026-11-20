@@ -311,9 +311,13 @@ fn show_slider(
     let id = ui.scope_id().with("number_slider");
     let entry_id = id.with("entry");
     let response = ui.interact(area, id, Sense::click_and_drag());
-    // The value's own click area, over the slider's (later wins).
+    // The value's own click area, over the slider's (later wins). It
+    // takes drags too: egui finds the top clickable and the top draggable
+    // widget separately, so with clicks only, a press on the value would
+    // also start the slider's drag and jump the knob.
     let value_area = value_rect(body).intersect(area);
-    let value_click = show_value.then(|| ui.interact(value_area, entry_id, Sense::click()));
+    let value_click =
+        show_value.then(|| ui.interact(value_area, entry_id, Sense::click_and_drag()));
     let on_value = value_click.as_ref().is_some_and(|r| r.hovered());
     if on_value {
         ui.ctx().set_cursor_icon(CursorIcon::Text);

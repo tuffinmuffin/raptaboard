@@ -1354,6 +1354,31 @@ fn clicking_a_sliders_value_types_one_in() {
     // typing replaces it, and Enter sends it.
     click_at(&mut harness, value, primary, Modifiers::NONE);
     assert!(wants_keys(&harness), "the box didn't open");
+    // Opening it sends nothing: the press is the value's, not the
+    // slider's (which would jump to the middle, under the value).
+    std::thread::sleep(Duration::from_millis(200));
+    settle(&mut harness);
+    assert_eq!(robot.seen_setpoint.get(), Some(0.0));
+    // Clicking inside the open box doesn't move the slider either.
+    click_at(
+        &mut harness,
+        value + egui::vec2(20.0, 0.0),
+        primary,
+        Modifiers::NONE,
+    );
+    assert!(wants_keys(&harness), "a click in the box closed it");
+    std::thread::sleep(Duration::from_millis(200));
+    settle(&mut harness);
+    assert_eq!(robot.seen_setpoint.get(), Some(0.0));
+    // Select it all again for typing over.
+    harness.event(Event::Key {
+        key: Key::A,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::COMMAND,
+    });
+    harness.step();
     type_text(&mut harness, "7.5");
     press(&mut harness, Key::Enter);
     server_has_setpoint(&mut harness, &robot, 7.5);
