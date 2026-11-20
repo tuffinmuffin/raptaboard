@@ -409,8 +409,8 @@ fn is_table(widget: &WidgetContainer) -> bool {
     !props::text(&widget.properties, props::DATA_TYPE, "").starts_with("struct:")
 }
 
-/// The robot poses for `widget` now, in the 2027 frame, on a field
-/// `size` meters: one, or each of a pose array's (the first is the robot,
+/// The robot poses for `widget` now (the newest, not held for its
+/// period), in the 2027 frame, on a field `size` meters: one, or each of a pose array's (the first is the robot,
 /// the rest are drawn as others).
 fn robot_poses(widget: &WidgetContainer, live: &Live<'_>, size: (f64, f64)) -> Vec<FieldPose> {
     let p = &widget.properties;
@@ -426,8 +426,17 @@ fn robot_poses(widget: &WidgetContainer, live: &Live<'_>, size: (f64, f64)) -> V
             None => Vec::new(),
         }
     } else {
+        // The newest value, as the layers use, not the one taken once per
+        // `period`: robot-relative layers are placed from this pose, and
+        // mixing a held pose with fresh detections made them shake while
+        // the mouse moved (each redraw between samples). The period still
+        // sets how often the server sends it.
         let ty = props::text(p, props::DATA_TYPE, "");
-        live.value
+        let newest = widget
+            .topic()
+            .and_then(|t| live.frame.others.get(t).copied());
+        newest
+            .or(live.value)
             .map(|v| crate::types::field::poses_of(v, ty, live.frame.structs))
             .unwrap_or_default()
     };
@@ -836,6 +845,54 @@ mod tests {
         assert_eq!(Turn::of(p.as_object().unwrap()), Turn::Half);
         let p = serde_json::json!({"field_rotation": -90});
         assert_eq!(Turn::of(p.as_object().unwrap()), Turn::ThreeQuarter);
+    }
+
+    #[test]
+    fn the_robot_is_drawn_from_the_newest_pose_like_its_layers() {
+        let widget = raptaboard_layout::WidgetContainer {
+            title: "Field".into(),
+            rect: raptaboard_layout::Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 256.0,
+                height: 256.0,
+            },
+            widget_type: "Field".into(),
+            properties: serde_json::json!({"topic": "/pose", "data_type": "struct:Pose2d"})
+                .as_object()
+                .unwrap()
+                .clone(),
+            extra: Map::new(),
+        };
+        let mut db = nt4::proto::structs::StructDatabase::new();
+        db.add("Translation2d", "double x;double y").unwrap();
+        db.add("Rotation2d", "double value").unwrap();
+        db.add("Pose2d", "Translation2d translation;Rotation2d rotation")
+            .unwrap();
+        let pose =
+            |x: f64| Value::Raw([x, 0.0, 0.0].iter().flat_map(|d| d.to_le_bytes()).collect());
+        let (held, newest) = (pose(1.0), pose(2.0));
+        let others = std::collections::HashMap::from([("/pose", &newest)]);
+        let traces = crate::traces::Traces::default();
+        let effects = Default::default();
+        let frame = crate::widgets::Frame {
+            traces: &traces,
+            now_us: 0,
+            others: &others,
+            connected: true,
+            effects: &effects,
+            structs: Some(&db),
+        };
+        let live = frame.live(Some(&held), crate::widgets::Place::default());
+        assert_eq!(robot_poses(&widget, &live, (16.0, 8.0))[0].x, 2.0);
+        // Nothing newer: the value it was given.
+        let empty = std::collections::HashMap::new();
+        let frame = crate::widgets::Frame {
+            others: &empty,
+            ..frame
+        };
+        let live = frame.live(Some(&held), crate::widgets::Place::default());
+        assert_eq!(robot_poses(&widget, &live, (16.0, 8.0))[0].x, 1.0);
     }
 
     #[test]
