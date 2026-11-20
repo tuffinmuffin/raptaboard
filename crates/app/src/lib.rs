@@ -7,6 +7,7 @@
 //! (other widget types show as placeholders). See `docs/spec.md` for the plan.
 
 pub mod alert_history;
+pub mod binding;
 pub mod cli;
 pub mod connection;
 pub mod edit;

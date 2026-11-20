@@ -456,7 +456,7 @@ impl WidgetType for NumberSlider {
         live: &Live<'_>,
     ) -> Option<Value> {
         let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
-        let area = if live.locked { rect } else { body };
+        let area = if live.place.locked { rect } else { body };
         show_slider(ui, area, body.shrink(card::BODY_MARGIN), widget, live)
     }
 
@@ -468,8 +468,8 @@ impl WidgetType for NumberSlider {
         live: &Live<'_>,
     ) -> Option<Value> {
         // Beside an inside label, so the value isn't under it.
-        let body = live.free.unwrap_or(rect);
-        show_slider(ui, live.input.unwrap_or(rect), body, widget, live)
+        let body = live.place.free.unwrap_or(rect);
+        show_slider(ui, live.place.input.unwrap_or(rect), body, widget, live)
     }
 
     fn draw_body(

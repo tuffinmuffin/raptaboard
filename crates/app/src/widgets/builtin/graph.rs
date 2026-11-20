@@ -453,9 +453,10 @@ impl WidgetType for Graph {
             .into_iter()
             .map(|line| {
                 let mut points: Vec<[f64; 2]> = live
+                    .frame
                     .traces
                     .points(&line.key)
-                    .map(|(t, v)| [(t - live.now_us) as f64 / 1e6, v])
+                    .map(|(t, v)| [(t - live.frame.now_us) as f64 / 1e6, v])
                     .collect();
                 // The last value holds until a new one arrives, so a line
                 // reaches "now" even for a topic that rarely changes.
@@ -852,6 +853,7 @@ enum LineChange {
 mod tests {
     // Tests written by Claude.
     use super::*;
+    use crate::widgets::{Frame, Place};
     use raptaboard_layout::Rect as LayoutRect;
 
     fn graph() -> WidgetContainer {
@@ -978,17 +980,15 @@ mod tests {
         let ctx = egui::Context::default();
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
             let rect = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(400.0, 300.0));
-            let live = Live {
-                value: None,
+            let (others, effects) = (Default::default(), Default::default());
+            let frame = Frame {
                 traces: &traces,
                 now_us: 2_000_000,
-                locked: false,
-                input: None,
-                free: None,
-                others: &Default::default(),
+                others: &others,
                 connected: true,
-                effects: &Default::default(),
+                effects: &effects,
             };
+            let live = frame.live(None, Place::default());
             Graph.show(ui, rect, &w, &live);
         });
         output.textures_delta.clear();
@@ -1031,17 +1031,15 @@ mod tests {
                 ..Default::default()
             };
             let mut output = ctx.run_ui(raw, |ui| {
-                let live = Live {
-                    value: None,
+                let (others, effects) = (Default::default(), Default::default());
+                let frame = Frame {
                     traces: &traces,
                     now_us: 5_000_000,
-                    locked: false,
-                    input: None,
-                    free: None,
-                    others: &Default::default(),
+                    others: &others,
                     connected: true,
-                    effects: &Default::default(),
+                    effects: &effects,
                 };
+                let live = frame.live(None, Place::default());
                 Graph.show(ui, rect, &w, &live);
             });
             output.textures_delta.clear();
@@ -1152,17 +1150,15 @@ mod tests {
                 ..Default::default()
             };
             let mut output = ctx.run_ui(raw, |ui| {
-                let live = Live {
-                    value: None,
+                let (others, effects) = (Default::default(), Default::default());
+                let frame = Frame {
                     traces: &traces,
                     now_us: 5_000_000,
-                    locked: false,
-                    input: None,
-                    free: None,
-                    others: &Default::default(),
+                    others: &others,
                     connected: true,
-                    effects: &Default::default(),
+                    effects: &effects,
                 };
+                let live = frame.live(None, Place::default());
                 Graph.show(ui, rect, &w, &live);
             });
             output.textures_delta.clear();

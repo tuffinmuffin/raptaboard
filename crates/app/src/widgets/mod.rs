@@ -47,28 +47,24 @@ use crate::types::alerts::Level;
 use crate::types::structs::FieldInfo;
 use shared::{card, props};
 
-/// What a widget can draw from: its value now, and the recorded values of
-/// the series graphs show.
+/// What a widget draws from: its own value, what every widget shares this
+/// frame ([`Frame`]), and where it's drawn ([`Place`]).
 #[derive(Clone, Copy)]
 pub struct Live<'a> {
     /// The newest value of the widget's topic (or struct field), if any.
     pub value: Option<&'a Value>,
+    /// What every widget shares this frame.
+    pub frame: &'a Frame<'a>,
+    /// Where the widget is drawn: on the grid, or as a List Layout child.
+    pub place: Place,
+}
+
+/// What every widget draws from this frame, the same for all of them.
+pub struct Frame<'a> {
     /// Recorded values over time, for graphs.
     pub traces: &'a crate::traces::Traces,
     /// The time now, on the clock the traces use (microseconds).
     pub now_us: i64,
-    /// Whether the layout is locked. Locked, a widget that takes input
-    /// takes it anywhere on its card; unlocked, its title bar is left for
-    /// moving the widget.
-    pub locked: bool,
-    /// Where input may start, if not all of the rect the widget is given:
-    /// a List Layout child's row less its inside label while unlocked, so
-    /// the label still drags the child. `None` for all of it.
-    pub input: Option<Rect>,
-    /// The part of the rect not under a List Layout child's inside label,
-    /// locked or not, for widgets that lay out their value beside it (a
-    /// slider's number). `None` when there's no inside label.
-    pub free: Option<Rect>,
     /// The newest values of the other topics the open tab's widgets asked
     /// for (each widget's [`extra_topics`](WidgetType::extra_topics)), by
     /// full name, such as a chooser's `options` and `active`.
@@ -81,7 +77,35 @@ pub struct Live<'a> {
     pub effects: &'a RefCell<Vec<Effect>>,
 }
 
-/// Something a widget asks the app to do, through [`Live::effects`].
+impl<'a> Frame<'a> {
+    /// What a widget showing `value` draws from, at `place`.
+    pub fn live(&'a self, value: Option<&'a Value>, place: Place) -> Live<'a> {
+        Live {
+            value,
+            frame: self,
+            place,
+        }
+    }
+}
+
+/// Where a widget is drawn, which changes how it takes input.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Place {
+    /// Whether the layout is locked. Locked, a widget that takes input
+    /// takes it anywhere on its card; unlocked, its title bar is left for
+    /// moving the widget.
+    pub locked: bool,
+    /// Where input may start, if not all of the rect the widget is given:
+    /// a List Layout child's row less its inside label while unlocked, so
+    /// the label still drags the child. `None` for all of it.
+    pub input: Option<Rect>,
+    /// The part of the rect not under a List Layout child's inside label,
+    /// locked or not, for widgets that lay out their value beside it (a
+    /// slider's number). `None` when there's no inside label.
+    pub free: Option<Rect>,
+}
+
+/// Something a widget asks the app to do, through [`Frame::effects`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Effect {
     /// Play a tone (unless sounds are turned off with the bell button).

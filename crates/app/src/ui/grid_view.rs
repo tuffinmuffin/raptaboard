@@ -15,13 +15,11 @@ use eframe::egui::{self, CursorIcon, Pos2, Rect, Sense, Stroke, Vec2};
 use nt4::Value;
 use raptaboard_layout::{GridLayout, Rect as LayoutRect, Tab, WidgetContainer};
 
+use crate::binding::{self, WidgetValues, WriteTarget};
 use crate::edit::EditAction;
 use crate::grid::{self, Item};
-use crate::nt::WriteError;
-use crate::sampling::Sampler;
 use crate::tree::DraggedTopics;
-use crate::types::structs;
-use crate::widgets::shared::{card, format, props};
+use crate::widgets::shared::card;
 use crate::widgets::{self, list_layout};
 
 use super::DashboardApp;
@@ -153,7 +151,8 @@ impl DashboardApp {
         let sampler = RefCell::new(std::mem::take(&mut self.sampler));
         let effects = RefCell::new(Vec::new());
         {
-            let value_of = self.value_of(&sampler, values, now);
+            let bound = WidgetValues::new(&sampler, values, self.nt.structs(), now);
+            let value_of = |w: &WidgetContainer| bound.of(w);
             requests.writes = self.draw_items(ui, &painter, view, &value_of, values, &effects);
             self.draw_outlines(&painter, ui.visuals(), view);
             self.drag_preview(&painter, ui.visuals(), view, &value_of);
@@ -364,38 +363,6 @@ impl DashboardApp {
         }
     }
 
-    /// A widget's value: its topic's, taken once per the widget's period,
-    /// or one field of it for widgets bound to a struct field.
-    fn value_of<'a>(
-        &'a self,
-        sampler: &'a RefCell<Sampler>,
-        values: &'a HashMap<&str, &Value>,
-        now: Instant,
-    ) -> impl Fn(&WidgetContainer) -> Option<Value> + 'a {
-        let db = self.nt.structs();
-        move |w: &WidgetContainer| -> Option<Value> {
-            let topic = w.topic()?;
-            let latest = values.get(topic).copied();
-            let value = sampler
-                .borrow_mut()
-                .sample(topic, props::period_s(w), latest, now)?;
-            match (w.struct_meta(), &value) {
-                (None, _) => Some(value),
-                (Some(meta), Value::Raw(bytes)) => {
-                    let (value, name) =
-                        structs::field_value_named(db?, &meta.schema_name, bytes, &meta.path)?;
-                    Some(format::enum_shown(
-                        value,
-                        name.as_deref(),
-                        format::enum_display(&w.properties),
-                        format::int_style(&w.properties),
-                    ))
-                }
-                (Some(_), _) => None,
-            }
-        }
-    }
-
     /// Draw every item but the one being dragged (drawn on top later),
     /// with resize corners when unlocked. Returns the values widgets (and
     /// list children) want sent.
@@ -409,16 +376,25 @@ impl DashboardApp {
         effects: &RefCell<Vec<widgets::Effect>>,
     ) -> Vec<(Sender, Value)> {
         let mut writes = Vec::new();
-        let connected = matches!(
-            self.nt.status(),
-            crate::nt::ConnectionStatus::Connected { .. }
-        );
         let Some(tab) = self.tab() else {
             return writes;
         };
         let visuals = ui.visuals().clone();
         let dragging = self.drag.map(|d| d.item);
-        let now_us = self.nt.client().map_or(0, |c| c.now_us());
+        let frame = widgets::Frame {
+            traces: &self.traces,
+            now_us: self.nt.client().map_or(0, |c| c.now_us()),
+            others,
+            connected: matches!(
+                self.nt.status(),
+                crate::nt::ConnectionStatus::Connected { .. }
+            ),
+            effects,
+        };
+        let place = widgets::Place {
+            locked: self.locked,
+            ..Default::default()
+        };
         for (item, r) in grid::items(&tab.grid_layout) {
             if Some(item) == dragging {
                 continue;
@@ -430,17 +406,7 @@ impl DashboardApp {
             {
                 let rect = view.to_screen(&r).shrink(CELL_GAP);
                 let value = value_of(w);
-                let live = widgets::Live {
-                    value: value.as_ref(),
-                    traces: &self.traces,
-                    now_us,
-                    locked: self.locked,
-                    input: None,
-                    free: None,
-                    others,
-                    connected,
-                    effects,
-                };
+                let live = frame.live(value.as_ref(), place);
                 let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt((
                     "widget",
                     self.current_tab,
@@ -454,24 +420,13 @@ impl DashboardApp {
                 && let Some(l) = tab.grid_layout.layouts.get(i)
             {
                 let rect = view.to_screen(&r).shrink(CELL_GAP);
-                let live = widgets::Live {
-                    value: None,
-                    traces: &self.traces,
-                    now_us,
-                    locked: self.locked,
-                    input: None,
-                    free: None,
-                    others,
-                    connected,
-                    effects,
-                };
                 let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt((
                     "list",
                     self.current_tab,
                     i,
                 )));
                 child.set_clip_rect(rect.intersect(painter.clip_rect()));
-                for (c, value) in list_layout::show(&mut child, rect, l, value_of, &live) {
+                for (c, value) in list_layout::show(&mut child, rect, l, value_of, &frame, place) {
                     writes.push((Sender::Child { list: i, child: c }, value));
                 }
             }
@@ -895,22 +850,12 @@ impl DashboardApp {
         let Some(widget) = widget else {
             return;
         };
-        // Copied out, so the widget's borrow of the layout ends before the
-        // connection is used.
-        let topic = widget.topic().map(str::to_owned);
-        let is_field = widget.struct_meta().is_some();
-        let sends_to =
-            widgets::find(&widget.widget_type).and_then(|ty| ty.sends_to(&widget.properties));
-        let result = match (topic, is_field) {
-            // A topic under the widget's (a chooser's `selected`), which
-            // the dashboard publishes if nobody has yet.
-            (Some(topic), false) if let Some((key, ty)) = sends_to => {
-                let name = format!("{}/{key}", topic.trim_end_matches('/'));
-                self.nt.write_or_publish(&name, value, ty)
-            }
-            (Some(topic), false) => self.nt.write(&topic, value),
-            (Some(topic), true) => Err(WriteError::Struct(topic)),
-            (None, _) => Err(WriteError::NotPublished("(no topic)".to_owned())),
+        // Worked out first, so the widget's borrow of the layout ends
+        // before the connection is used.
+        let result = match binding::write_target(widget) {
+            Ok(WriteTarget::Topic(topic)) => self.nt.write(&topic, value),
+            Ok(WriteTarget::Publish(topic, ty)) => self.nt.write_or_publish(&topic, value, ty),
+            Err(why) => Err(why),
         };
         match result {
             Ok(()) => {

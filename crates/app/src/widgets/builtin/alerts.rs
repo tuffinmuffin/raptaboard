@@ -270,8 +270,8 @@ impl AlertsWidget {
         let id = ui.scope_id().with("alerts");
         let now = ui.input(|i| i.time);
         let mut memory: Memory = ui.data(|d| d.get_temp(id)).unwrap_or_default();
-        let current = alerts::read_groups(&tables(widget, live.others), live.others);
-        let seen = memory.watch.update(current, live.connected);
+        let current = alerts::read_groups(&tables(widget, live.frame.others), live.frame.others);
+        let seen = memory.watch.update(current, live.frame.connected);
         // A new error: pulse, and maybe a tone.
         if seen.new_error {
             if props::flag(p, PULSE, true) {
@@ -282,7 +282,7 @@ impl AlertsWidget {
             {
                 memory.last_tone = Some(now);
                 let tone = Tone::named(props::text(p, TONE, "beep"));
-                live.effects.borrow_mut().push(Effect::Tone(tone));
+                live.frame.effects.borrow_mut().push(Effect::Tone(tone));
             }
         }
         let (note, dim) = match seen.freshness {
@@ -401,7 +401,7 @@ impl WidgetType for AlertsWidget {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        self.show_in(ui, live.free.unwrap_or(rect), widget, live);
+        self.show_in(ui, live.place.free.unwrap_or(rect), widget, live);
         None
     }
     fn draw_body(

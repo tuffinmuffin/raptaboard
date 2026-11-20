@@ -394,15 +394,16 @@ pub fn draw(
 
 /// Show a List Layout in `rect` with a [`Ui`](egui::Ui) for each child's
 /// body, so children that take input (a toggle) work in a list as they do
-/// on the grid. `live` is what the children draw from, but each child's
-/// value comes from `value_of`. Returns the values children want sent, as
-/// (child index, value).
+/// on the grid. Children draw from `frame` at `place`, each with its own
+/// input and free area, and each child's value comes from `value_of`.
+/// Returns the values children want sent, as (child index, value).
 pub fn show(
     ui: &mut egui::Ui,
     rect: Rect,
     list: &LayoutContainer,
     value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
-    live: &crate::widgets::Live<'_>,
+    frame: &crate::widgets::Frame<'_>,
+    place: crate::widgets::Place,
 ) -> Vec<(usize, Value)> {
     let mut writes = Vec::new();
     let painter = ui.painter().clone();
@@ -417,13 +418,15 @@ pub fn show(
             let value = value_of(child);
             // Unlocked, an inside label is the child's handle for dragging.
             let free = inside.map(|label| beside_label(content, label, position));
-            let input = free.filter(|_| !live.locked);
-            let child_live = crate::widgets::Live {
-                value: value.as_ref(),
-                input,
-                free,
-                ..*live
-            };
+            let input = free.filter(|_| !place.locked);
+            let child_live = frame.live(
+                value.as_ref(),
+                crate::widgets::Place {
+                    input,
+                    free,
+                    ..place
+                },
+            );
             let mut child_ui = ui.new_child(
                 egui::UiBuilder::new()
                     .max_rect(content)
