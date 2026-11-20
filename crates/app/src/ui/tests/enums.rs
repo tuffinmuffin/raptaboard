@@ -125,7 +125,9 @@ fn wait_for<T: PartialEq + std::fmt::Debug>(
 fn shows_soon(harness: &mut Harness, title: &str, want: &str) {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
-        let shown = harness.get_by_label(title).value();
+        // Not there yet is waited for too (the widget draws once its
+        // values arrive).
+        let shown = harness.query_by_label(title).and_then(|n| n.value());
         if shown.as_deref() == Some(want) {
             return;
         }
@@ -181,12 +183,12 @@ fn an_enum_toggle_steps_through_its_states_and_follows_the_robot() {
     wait_for(&mut harness, "level", || robot.seen_level.get(), 0);
     // The robot moves it to High: the next click goes back to Low (0).
     robot.level.set(1);
-    std::thread::sleep(Duration::from_millis(150));
-    settle(&mut harness);
+    shows_soon(&mut harness, "Level", "High");
     click_at(&mut harness, body, primary, Modifiers::NONE);
     wait_for(&mut harness, "level", || robot.seen_level.get(), 0);
     // On a chooser table it sends the next option to `selected`.
     let (chooser, _) = body_and_title(&harness, 4);
+    shows_soon(&mut harness, "Auto toggle", "Middle");
     click_at(&mut harness, chooser, primary, Modifiers::NONE);
     wait_for(
         &mut harness,
@@ -265,8 +267,7 @@ fn an_enum_toggle_can_switch_between_two_of_its_states() {
     );
     // From a state it doesn't switch between, a click goes to the first.
     robot.mode.set("Intaking".into());
-    std::thread::sleep(Duration::from_millis(150));
-    settle(&mut harness);
+    shows_soon(&mut harness, "Mode switch", "Intaking");
     click_at(&mut harness, body, primary, Modifiers::NONE);
     wait_for(
         &mut harness,

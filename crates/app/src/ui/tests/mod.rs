@@ -558,6 +558,36 @@ fn server_sees(harness: &mut Harness, robot: &Robot, want: bool) {
         assert!(Instant::now() < deadline, "the server never got {want}");
         settle(harness);
     }
+    // And the dashboard has it back, so the next click on a toggle flips
+    // this value, not the one before.
+    dashboard_has(harness, "/Test/enabled", nt4::Value::Boolean(want));
+}
+
+/// Wait until the dashboard has `want` for `topic` from the server, and
+/// has drawn with it: before clicking a widget whose click depends on its
+/// value (a toggle flips it, an enum toggle steps from it). On a slow
+/// machine (CI's) a click can otherwise come before the value has arrived.
+fn dashboard_has(harness: &mut Harness, topic: &str, want: nt4::Value) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let has = harness
+            .state()
+            .nt
+            .client()
+            .and_then(|c| c.topic(topic))
+            .and_then(|t| t.value)
+            .map(|v| v.value);
+        if has.as_ref() == Some(&want) {
+            // A widget takes a new value once per its period (0.02 s here).
+            settle(harness);
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the dashboard never had {want:?} for {topic}, has {has:?}"
+        );
+        settle(harness);
+    }
 }
 
 /// The middle of list `list`'s child `child`, on screen.
