@@ -484,10 +484,18 @@ impl DashboardApp {
     /// [`eframe::App::ui`] so tests can run frames without an
     /// [`eframe::Frame`].
     fn show(&mut self, ui: &mut egui::Ui) {
+        // One copy of every topic per frame, shared by the tab marks, the tree
+        // and the grid.
+        let topics = self.nt.topics();
+        self.nt.update_structs(&topics);
+        let values: HashMap<&str, &Value> = topics
+            .iter()
+            .filter_map(|t| Some((&*t.name, &t.value.as_ref()?.value)))
+            .collect();
         let clicked = egui::Panel::top("settings")
             .show(ui, |ui| {
                 self.settings_bar(ui);
-                self.tab_bar(ui)
+                self.tab_bar(ui, &values)
             })
             .inner;
         let ctx = ui.ctx().clone();
@@ -524,13 +532,6 @@ impl DashboardApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
             self.title = title;
         }
-        // One copy of every topic per frame, shared by the tree and the grid.
-        let topics = self.nt.topics();
-        self.nt.update_structs(&topics);
-        let values: HashMap<&str, &Value> = topics
-            .iter()
-            .filter_map(|t| Some((&*t.name, &t.value.as_ref()?.value)))
-            .collect();
         self.record_alert_history(&values);
         // A hidden tree costs nothing: it isn't built and asks for no values.
         let tree_topics = if self.show_tree {
@@ -571,7 +572,7 @@ impl DashboardApp {
 
         self.nt.watch_values(tree_topics);
         // The history records every alert group, whatever the tab shows.
-        let mut wanted = self.tab_topics();
+        let mut wanted = self.tab_topics(&topics);
         wanted.push((
             alert_history_panel::ALERT_HISTORY_PERIOD_S,
             self.alert_history_topics(&topics),

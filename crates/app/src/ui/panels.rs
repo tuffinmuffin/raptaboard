@@ -10,7 +10,7 @@ use crate::layout_file::{self, FileAction};
 use crate::nt::ConnectionStatus;
 use crate::tabs::{self, TabAction};
 use crate::types::alerts::Level;
-use crate::widgets::builtin::alerts as alerts_widget;
+use crate::widgets;
 use crate::widgets::shared::alert_sign;
 
 use super::DashboardApp;
@@ -212,47 +212,33 @@ impl DashboardApp {
         });
     }
 
-    /// The row of tabs. Click to switch; when unlocked, double-click to
-    /// rename, right-click for more, and "+" adds a tab.
-    /// Each tab's mark from its Alerts widgets: the most urgent level
-    /// above info they show now, open or not. Nothing is read when no tab
-    /// has an Alerts widget.
-    pub(super) fn tab_alert_marks(&self) -> Vec<Option<Level>> {
-        let widgets_of = |t: &raptaboard_layout::Tab| {
-            let grid = &t.grid_layout;
-            grid.containers
-                .iter()
-                .chain(grid.layouts.iter().flat_map(|l| &l.children))
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-        let any = self
-            .layout
-            .tabs
-            .iter()
-            .flat_map(widgets_of)
-            .any(|w| w.widget_type == "Alerts");
-        if !any {
-            return vec![None; self.layout.tabs.len()];
-        }
-        let topics = self.nt.topics();
-        let values: HashMap<&str, &nt4::Value> = topics
-            .iter()
-            .filter_map(|t| Some((&*t.name, &t.value.as_ref()?.value)))
-            .collect();
+    /// Each tab's mark from its widgets ([`WidgetType::tab_mark`]): the
+    /// most urgent alert they show now, open or not, from the server's
+    /// `values`.
+    ///
+    /// [`WidgetType::tab_mark`]: crate::widgets::WidgetType::tab_mark
+    pub(super) fn tab_marks(&self, values: &HashMap<&str, &nt4::Value>) -> Vec<Option<Level>> {
         self.layout
             .tabs
             .iter()
             .map(|t| {
-                widgets_of(t)
+                let grid = &t.grid_layout;
+                grid.containers
                     .iter()
-                    .filter_map(|w| alerts_widget::tab_level(w, &values))
+                    .chain(grid.layouts.iter().flat_map(|l| &l.children))
+                    .filter_map(|w| widgets::find(&w.widget_type)?.tab_mark(w, values))
                     .min()
             })
             .collect()
     }
 
-    pub(super) fn tab_bar(&mut self, ui: &mut egui::Ui) -> Option<TabAction> {
+    /// The row of tabs. Click to switch; when unlocked, double-click to
+    /// rename, right-click for more, and "+" adds a tab.
+    pub(super) fn tab_bar(
+        &mut self,
+        ui: &mut egui::Ui,
+        values: &HashMap<&str, &nt4::Value>,
+    ) -> Option<TabAction> {
         let mut action = None;
         let names: Vec<String> = self.layout.tabs.iter().map(|t| t.name.clone()).collect();
         let count = names.len();
@@ -270,7 +256,7 @@ impl DashboardApp {
                     .any(|w| picked.iter().any(|p| p.is_shown_by(w)))
             })
             .collect();
-        let alert_marks = self.tab_alert_marks();
+        let alert_marks = self.tab_marks(values);
         ui.horizontal(|ui| {
             for (i, name) in names.iter().enumerate() {
                 if let Some((renaming, text, focused)) = &mut self.renaming

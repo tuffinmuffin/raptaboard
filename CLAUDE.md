@@ -86,10 +86,12 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   group from connect, count-based; its panel and top-bar button are `ui/alert_history_panel.rs`), `tree.rs` the (row picking in `TreeSelection`, drag payload `DraggedTopics`)
   read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),
   `widgets/` the grid widgets,
-  one file per type implementing `widgets::WidgetType` and listed in `widgets::TYPES` (Text Display,
+  one file per type implementing `widgets::WidgetType` and listed in `widgets::TYPES`; `ui/` only talks to
+  the trait and never names a widget type (hooks: `extra_topics` with the server's tables, `background_topics`,
+  `tab_mark`, `traced` for recorded series, `takes_topics`/`add_topics` for topics dropped on a widget) (Text Display,
   Boolean Box, Large Text Display, Number Bar, Voltage View, Radial Gauge, Match Time, Single and
   Multi Color View, Graph (`egui_plot`; widgets needing a full `Ui` override `WidgetType::show`),
-  Toggle Switch and Toggle Button (`builtin/toggle.rs`), Number Slider (`builtin/number_slider.rs`), Dropdown and Split Button Chooser (`builtin/chooser.rs`: bound to a SendableChooser table, `table_types`, `sends_to` and `Live::others`), Enum Dropdown and Enum Toggle (`builtin/enums.rs`: string or int topics, names from a list, a string[] topic or a chooser, guessed by `WidgetType::chosen`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Live::effects`, tab marks from `DashboardApp::tab_alert_marks`; writing widgets return the value to send
+  Toggle Switch and Toggle Button (`builtin/toggle.rs`), Number Slider (`builtin/number_slider.rs`), Dropdown and Split Button Chooser (`builtin/chooser.rs`: bound to a SendableChooser table, `table_types`, `sends_to` and `Live::others`), Enum Dropdown and Enum Toggle (`builtin/enums.rs`: string or int topics, names from a list, a string[] topic or a chooser, guessed by `WidgetType::chosen`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Live::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
   from `show`, and `Live::locked` says whether their input covers the whole card; `show_body` is
   the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
   draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing

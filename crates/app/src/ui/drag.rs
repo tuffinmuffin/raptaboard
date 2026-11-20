@@ -86,9 +86,9 @@ pub(super) enum DropTarget {
     },
     /// Onto the grid at `rect`, if it's `free`.
     Grid { rect: LayoutRect, free: bool },
-    /// Into the graph at `index` in the tab's `containers`, as more lines;
-    /// `card` is the graph on screen.
-    Graph { index: usize, card: Rect },
+    /// Onto the widget at `index` in the tab's `containers`, one that takes
+    /// topics (a graph, as more lines); `card` is the widget on screen.
+    Widget { index: usize, card: Rect },
 }
 
 /// The outline where a dragged widget or topic will land: green if it fits
@@ -118,7 +118,7 @@ pub(super) fn draw_drop(
             painter.hline(body.x_range(), line_y, Stroke::new(OUTLINE_WIDTH, DROP_OK));
         }
         DropTarget::Grid { rect, free } => draw_landing(painter, to_screen(&rect), free),
-        DropTarget::Graph { card, .. } => draw_landing(painter, card, true),
+        DropTarget::Widget { card, .. } => draw_landing(painter, card, true),
     }
 }
 
