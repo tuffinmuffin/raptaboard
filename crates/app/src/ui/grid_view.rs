@@ -24,9 +24,7 @@ use crate::widgets::{self, list_layout};
 
 use super::DashboardApp;
 use super::dialogs::Editing;
-use super::drag::{
-    ChildDrag, Drag, DragMode, DropTarget, draw_drop, draw_landing, draw_resize_handle,
-};
+use super::drag::{ChildDrag, Drag, DragMode, DropTarget, draw_resize_handle};
 use super::style::{
     CELL_GAP, FAILED_COLOR, FLASH_S, FLASH_STEP_S, FLASH_WIDTH, FOUND_COLOR, GRID_LINE_STRENGTH,
     GRID_LINE_WIDTH, OUTLINE_WIDTH, RESIZE_HANDLE, SELECTION_INSET,
@@ -60,18 +58,18 @@ pub(super) fn draw_item(
 /// Where the grid is on screen this frame, and its cell size, for turning
 /// grid pixels into screen points and back.
 #[derive(Debug, Clone, Copy)]
-struct GridView {
+pub(super) struct GridView {
     /// The grid's area on screen, in points.
-    area: Rect,
+    pub area: Rect,
     /// Grid cell size, in grid pixels.
-    cell: f64,
+    pub cell: f64,
     /// The visible grid's width and height, in grid pixels.
-    room: (f64, f64),
+    pub room: (f64, f64),
 }
 
 impl GridView {
     /// A rect in grid pixels, on screen.
-    fn to_screen(self, r: &LayoutRect) -> Rect {
+    pub(super) fn to_screen(self, r: &LayoutRect) -> Rect {
         Rect::from_min_size(
             self.area.min + Vec2::new(r.x as f32, r.y as f32),
             Vec2::new(r.width as f32, r.height as f32),
@@ -79,7 +77,7 @@ impl GridView {
     }
 
     /// A screen point, in grid pixels from the grid's top left.
-    fn to_grid(self, p: Pos2) -> (f64, f64) {
+    pub(super) fn to_grid(self, p: Pos2) -> (f64, f64) {
         (
             f64::from(p.x - self.area.min.x),
             f64::from(p.y - self.area.min.y),
@@ -98,29 +96,29 @@ pub(super) enum Sender {
 /// What the grid's input asked for this frame, done by
 /// [`DashboardApp::apply`] once everything is drawn.
 #[derive(Default)]
-struct Requests {
+pub(super) struct Requests {
     /// "New List Layout" from the empty grid's menu.
-    new_list: bool,
+    pub new_list: bool,
     /// A widget or list let go after a drag.
-    dropped: Option<Drag>,
+    pub dropped: Option<Drag>,
     /// A list child let go, and where (if anywhere it can go).
-    child_dropped: Option<(ChildDrag, Option<DropTarget>)>,
+    pub child_dropped: Option<(ChildDrag, Option<DropTarget>)>,
     /// Topics let go after dragging from the tree, and where: a list or
     /// graph, or else the grid cell under the pointer.
-    topics_dropped: Option<(Arc<DraggedTopics>, Option<DropTarget>, LayoutRect)>,
+    pub topics_dropped: Option<(Arc<DraggedTopics>, Option<DropTarget>, LayoutRect)>,
     /// An action from a widget's menu, or a double-click (Edit).
-    menu_action: Option<(Item, EditAction)>,
+    pub menu_action: Option<(Item, EditAction)>,
     /// A list child double-clicked: (list, child), to edit.
-    edit_child: Option<(usize, usize)>,
+    pub edit_child: Option<(usize, usize)>,
     /// "Put in a new list" from a widget's menu.
-    wrap: Option<usize>,
+    pub wrap: Option<usize>,
     /// A widget clicked, to find its topic in the tree.
-    find_in_tree: Option<WidgetContainer>,
+    pub find_in_tree: Option<WidgetContainer>,
     /// A widget whose click it used itself, to find in the tree without
     /// saying anything if it isn't there.
-    find_quietly: Option<WidgetContainer>,
+    pub find_quietly: Option<WidgetContainer>,
     /// Values widgets want sent, and which widget sent each.
-    writes: Vec<(Sender, Value)>,
+    pub writes: Vec<(Sender, Value)>,
 }
 
 impl DashboardApp {
@@ -211,7 +209,7 @@ impl DashboardApp {
     }
 
     /// The open tab, if there is one.
-    fn tab(&self) -> Option<&Tab> {
+    pub(super) fn tab(&self) -> Option<&Tab> {
         self.layout.tabs.get(self.current_tab)
     }
 
@@ -530,202 +528,6 @@ impl DashboardApp {
         }
     }
 
-    /// The list under screen point `p` as a drop target, with where in it a
-    /// drop would go, if there's a list there.
-    fn list_drop(&self, view: GridView, p: Pos2) -> Option<DropTarget> {
-        if !view.area.contains(p) {
-            return None;
-        }
-        let tab = self.tab()?;
-        let list = grid::list_at(&tab.grid_layout, view.to_grid(p))?;
-        let l = &tab.grid_layout.layouts[list];
-        let card = view.to_screen(&l.rect).shrink(CELL_GAP);
-        let rows = list_layout::rows_on_screen(card, l);
-        let at = list_layout::insert_index(&rows, l.children.len(), p.y);
-        let line_y = list_layout::insert_line_y(&rows, at, list_layout::body_rect(card));
-        Some(DropTarget::List {
-            list,
-            at,
-            card,
-            line_y,
-        })
-    }
-
-    /// The widget under screen point `p` that takes dropped topics (a
-    /// graph), as a drop target, if there is one.
-    fn topic_taker_drop(&self, view: GridView, p: Pos2) -> Option<DropTarget> {
-        let at = view.to_grid(p);
-        self.tab()?
-            .grid_layout
-            .containers
-            .iter()
-            .enumerate()
-            .find(|(_, w)| {
-                let r = w.rect;
-                widgets::find(&w.widget_type).is_some_and(|t| t.takes_topics())
-                    && at.0 >= r.x
-                    && at.0 < r.x + r.width
-                    && at.1 >= r.y
-                    && at.1 < r.y + r.height
-            })
-            .map(|(index, w)| DropTarget::Widget {
-                index,
-                card: view.to_screen(&w.rect).shrink(CELL_GAP),
-            })
-    }
-
-    /// The list a widget being moved would go into, with the pointer at
-    /// `pointer`: the list under the pointer, if any. Resizing, and lists
-    /// being dragged, never go into a list.
-    fn drag_into_list(
-        &self,
-        drag: Drag,
-        view: GridView,
-        pointer: Option<Pos2>,
-    ) -> Option<DropTarget> {
-        match (drag.item, drag.mode, pointer) {
-            (Item::Widget(_), DragMode::Move, Some(p)) => self.list_drop(view, p),
-            _ => None,
-        }
-    }
-
-    /// The dragged item follows the pointer on top of everything, with an
-    /// outline where it will land: green if it fits, red if not. A widget
-    /// over a list goes into the list instead.
-    fn drag_preview(
-        &self,
-        painter: &egui::Painter,
-        visuals: &egui::Visuals,
-        view: GridView,
-        value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
-    ) {
-        let (Some(drag), Some(tab)) = (self.grid.drag, self.tab()) else {
-            return;
-        };
-        let to_screen = |r: &LayoutRect| view.to_screen(r);
-        match self.drag_into_list(drag, view, painter.ctx().pointer_latest_pos()) {
-            Some(target) => draw_drop(painter, &target, &to_screen),
-            None => {
-                let target = drag.target(view.cell, view.room);
-                let ok = grid::fits(&tab.grid_layout, drag.item, target);
-                draw_landing(painter, view.to_screen(&target), ok);
-            }
-        }
-        draw_item(
-            painter,
-            visuals,
-            view.to_screen(&drag.following()),
-            &tab.grid_layout,
-            drag.item,
-            value_of,
-        );
-    }
-
-    /// A list child being dragged: a preview follows the pointer; it goes
-    /// into the list under the pointer, or onto free grid.
-    fn child_drag_preview(
-        &self,
-        ui: &egui::Ui,
-        painter: &egui::Painter,
-        view: GridView,
-        value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
-        requests: &mut Requests,
-    ) {
-        let Some(cd) = self.grid.child_drag else {
-            return;
-        };
-        let Some(p) = ui.ctx().pointer_latest_pos() else {
-            return;
-        };
-        let Some(tab) = self.tab() else { return };
-        let Some(child) = tab
-            .grid_layout
-            .layouts
-            .get(cd.list)
-            .and_then(|l| l.children.get(cd.child))
-        else {
-            return;
-        };
-        let size = grid::snap_resize(child.rect, view.cell);
-        let corner = p - cd.grab;
-        let target = self.list_drop(view, p).or_else(|| {
-            view.area.contains(p).then(|| {
-                let (x, y) = view.to_grid(corner);
-                let rect = grid::snap_move(LayoutRect { x, y, ..size }, view.cell, view.room);
-                DropTarget::Grid {
-                    rect,
-                    free: grid::is_free(&tab.grid_layout, rect),
-                }
-            })
-        });
-        if let Some(target) = &target {
-            draw_drop(painter, target, &|r: &LayoutRect| view.to_screen(r));
-        }
-        let preview = Rect::from_min_size(corner, Vec2::new(size.width as f32, size.height as f32));
-        card::draw(
-            painter,
-            ui.visuals(),
-            preview.shrink(CELL_GAP),
-            child,
-            value_of(child).as_ref(),
-        );
-        // Let go: here, or outside the window, where the release may not
-        // reach us (it then stays where it was).
-        if !ui.input(|i| i.pointer.primary_down()) {
-            requests.child_dropped = Some((cd, target));
-        }
-    }
-
-    /// Topics dragged from the NT tree: show the cell under the pointer
-    /// where the first widget would go, or the list or graph they'd go
-    /// into, and ask for the widgets when they're let go.
-    fn tree_drop(
-        &self,
-        ui: &egui::Ui,
-        painter: &egui::Painter,
-        view: GridView,
-        requests: &mut Requests,
-    ) {
-        if self.locked || self.tab().is_none() {
-            return;
-        }
-        let Some(p) = ui
-            .ctx()
-            .pointer_hover_pos()
-            .filter(|p| view.area.contains(*p))
-        else {
-            return;
-        };
-        let Some(topics) = egui::DragAndDrop::payload::<DraggedTopics>(ui.ctx()) else {
-            return;
-        };
-        let (x, y) = view.to_grid(p);
-        let under = LayoutRect {
-            x: x - view.cell / 2.0,
-            y: y - view.cell / 2.0,
-            width: view.cell,
-            height: view.cell,
-        };
-        // Over a widget that takes topics, they go to it (a graph's lines).
-        let into = self
-            .topic_taker_drop(view, p)
-            .or_else(|| self.list_drop(view, p));
-        let target = grid::snap_move(under, view.cell, view.room);
-        match &into {
-            Some(drop) => draw_drop(painter, drop, &|r: &LayoutRect| view.to_screen(r)),
-            // Several go around the first, so only the first must fit.
-            None => {
-                let free = self
-                    .tab()
-                    .is_some_and(|t| grid::is_free(&t.grid_layout, target));
-                draw_landing(painter, view.to_screen(&target), free);
-            }
-        }
-        if ui.input(|i| i.pointer.any_released()) {
-            requests.topics_dropped = Some((topics, into, target));
-        }
-    }
-
     /// Make the changes the grid's input asked for this frame.
     fn apply(&mut self, ui: &egui::Ui, view: GridView, requests: Requests) {
         let Requests {
@@ -816,28 +618,6 @@ impl DashboardApp {
         }
     }
 
-    /// Put a widget or list let go after a drag `into` a list, or where it
-    /// was dragged to on the grid if it fits there (else it goes back).
-    fn drop_dragged(&mut self, drag: Drag, into: Option<DropTarget>, view: GridView) {
-        let Some(tab) = self.layout.tabs.get_mut(self.current_tab) else {
-            return;
-        };
-        let grid = &mut tab.grid_layout;
-        match (drag.item, into) {
-            (Item::Widget(widget), Some(DropTarget::List { list, at, .. })) => {
-                if grid::widget_into_list(grid, widget, list, at).is_some() {
-                    self.selected = Some(Item::List(list));
-                }
-            }
-            _ => {
-                let target = drag.target(view.cell, view.room);
-                if grid::fits(grid, drag.item, target) {
-                    drag.item.set_rect(grid, target);
-                }
-            }
-        }
-    }
-
     /// Send `value` from widget `index` on the open tab to its topic. If it
     /// can't be sent, say why in the status line, flash the widget's border
     /// red and play the alert tone.
@@ -883,62 +663,6 @@ impl DashboardApp {
                     self.sound.play();
                 }
             }
-        }
-    }
-
-    /// Make widgets for topics dropped from the tree: into the list, as
-    /// lines on the graph, or on the grid, each in the free spot nearest
-    /// `target`.
-    fn add_dropped_topics(
-        &mut self,
-        topics: &DraggedTopics,
-        into: Option<DropTarget>,
-        target: LayoutRect,
-        view: GridView,
-    ) {
-        let Some(tab) = self.layout.tabs.get_mut(self.current_tab) else {
-            return;
-        };
-        let cell = view.cell;
-        // One cell each; in a list only the size matters.
-        let one = LayoutRect {
-            x: 0.0,
-            y: 0.0,
-            width: cell,
-            height: cell,
-        };
-        let made: Vec<WidgetContainer> = topics
-            .0
-            .iter()
-            .filter_map(|t| widgets::for_topic(&t.name, &t.ty, t.field.as_ref(), one))
-            .collect();
-        let grid = &mut tab.grid_layout;
-        match into {
-            Some(DropTarget::List { list, at, .. }) => {
-                let at = at.min(grid.layouts[list].children.len());
-                let children = &mut grid.layouts[list].children;
-                children.splice(at..at, made);
-                self.selected = Some(Item::List(list));
-            }
-            Some(DropTarget::Widget { index, .. }) => {
-                let widget = &mut grid.containers[index];
-                if let Some(ty) = widgets::find(&widget.widget_type) {
-                    self.status = ty.add_topics(widget, &topics.0);
-                }
-                self.selected = Some(Item::Widget(index));
-            }
-            None => {
-                let placed = grid::place_near(grid, made, (target.x, target.y), cell, view.room);
-                self.selected = placed.first().map(|&i| Item::Widget(i));
-                if placed.len() < topics.0.len() {
-                    self.status = format!(
-                        "Added {} of {} widgets; no free space for the rest",
-                        placed.len(),
-                        topics.0.len()
-                    );
-                }
-            }
-            _ => {}
         }
     }
 }
