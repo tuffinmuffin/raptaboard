@@ -7,12 +7,20 @@
 //! 180 is the view from the red side).
 //!
 //! The robot's pose comes from the widget's topic: a `Pose2d` (or `Pose3d`,
-//! drawn flat) struct topic, or a WPILib `Field2d` table (`.type`
+//! drawn flat) struct topic (an array of them is the robot and others), or a WPILib `Field2d` table (`.type`
 //! `"Field2d"`; its `Robot` is a `double[]` of x, y and degrees), as Elastic
 //! reads it. Poses are in WPILib 2027's frame (origin at the field's
 //! center) unless `origin` is `blue_corner`, the frame used before 2027.
 //! The robot is drawn `robot_length` by `robot_width` meters, in
 //! `robot_color`, with an arrow the way it faces.
+//!
+//! Over the field ([`layers`]): the field's AprilTags (`show_tags`, on
+//! unless set), lit when a layer says a camera sees them; layers of other
+//! robots and paths, each from a topic of its own (`layers`; dropping a
+//! topic from the tree onto the field adds one); and a `Field2d` table's
+//! other objects, as robots, or as paths when they have more than 8 poses
+//! or a name with "traj" or "path" in it (`show_other_objects`,
+//! `show_trajectories`).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -23,9 +31,12 @@ use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
 
 use crate::fields::{self, FieldEntry};
+use crate::tree::DraggedTopic;
 use crate::types::field::{FieldInfo, FieldPose, Origin};
 use crate::widgets::shared::{card, props};
 use crate::widgets::{Live, Server, ValueInfo, WidgetType};
+
+pub mod layers;
 
 /// The field shown: an id from [`fields::available`] or a field JSON's path
 /// (raptaboard).
@@ -46,7 +57,7 @@ pub const ROBOT_COLOR: &str = "robot_color";
 /// (Elastic).
 pub const FIELD_ROTATION: &str = "field_rotation";
 
-const KEYS: [&str; 7] = [
+const KEYS: [&str; 11] = [
     FIELD,
     FIELD_GAME,
     ORIGIN,
@@ -54,6 +65,10 @@ const KEYS: [&str; 7] = [
     ROBOT_WIDTH,
     ROBOT_COLOR,
     FIELD_ROTATION,
+    layers::LAYERS,
+    layers::SHOW_TAGS,
+    layers::SHOW_OTHER_OBJECTS,
+    layers::SHOW_TRAJECTORIES,
 ];
 
 /// A WPILib `Field2d` table's `.type`.
@@ -355,23 +370,33 @@ fn is_table(widget: &WidgetContainer) -> bool {
     !props::text(&widget.properties, props::DATA_TYPE, "").starts_with("struct:")
 }
 
-/// The robot's pose for `widget` now, in the 2027 frame, on a field `size`
-/// meters.
-fn robot_pose(widget: &WidgetContainer, live: &Live<'_>, size: (f64, f64)) -> Option<FieldPose> {
+/// The robot poses for `widget` now, in the 2027 frame, on a field
+/// `size` meters: one, or each of a pose array's (the first is the robot,
+/// the rest are drawn as others).
+fn robot_poses(widget: &WidgetContainer, live: &Live<'_>, size: (f64, f64)) -> Vec<FieldPose> {
     let p = &widget.properties;
-    let pose = if is_table(widget) {
-        let table = widget.topic()?.trim_end_matches('/');
-        let robot = live
-            .frame
-            .others
-            .get(format!("{table}/{FIELD2D_ROBOT}").as_str())?;
-        crate::types::field::pose_of(robot, "double[]", None)?
+    let poses = if is_table(widget) {
+        let Some(table) = widget.topic() else {
+            return Vec::new();
+        };
+        let name = format!("{}/{FIELD2D_ROBOT}", table.trim_end_matches('/'));
+        match live.frame.others.get(name.as_str()) {
+            Some(robot) => crate::types::field::pose_of(robot, "double[]", None)
+                .into_iter()
+                .collect(),
+            None => Vec::new(),
+        }
     } else {
         let ty = props::text(p, props::DATA_TYPE, "");
-        crate::types::field::pose_of(live.value?, ty, live.frame.structs)?
+        live.value
+            .map(|v| crate::types::field::poses_of(v, ty, live.frame.structs))
+            .unwrap_or_default()
     };
     let origin = Origin::from_key(props::text(p, ORIGIN, Origin::Center.key()));
-    Some(origin.to_center(pose, size.0, size.1))
+    poses
+        .into_iter()
+        .map(|pose| origin.to_center(pose, size.0, size.1))
+        .collect()
 }
 
 /// The robot's length and width in `p`, in meters.
@@ -406,11 +431,34 @@ impl FieldWidget {
         let view = FieldView::fit(rect, size, Turn::of(p));
         let image = texture(ui.ctx(), &field);
         draw_field(&painter, &visuals, &view, &field.info, image);
-        let pose = robot_pose(widget, live, size);
-        if let Some(pose) = pose {
-            let color = props::color_property(p, ROBOT_COLOR).unwrap_or(DEFAULT_ROBOT_COLOR);
-            draw_robot(&painter, &view, pose, robot_size(p), color);
+        let overlay = layers::Overlay {
+            view: &view,
+            origin: Origin::from_key(props::text(p, ORIGIN, Origin::Center.key())),
+            robot_size: robot_size(p),
+            others: live.frame.others,
+            structs: live.frame.structs,
+            tags: &field.info.tags,
+        };
+        let table = is_table(widget).then(|| widget.topic()).flatten();
+        let drawn = overlay.draw(&painter, p, table);
+        let poses = robot_poses(widget, live, size);
+        let color = props::color_property(p, ROBOT_COLOR).unwrap_or(DEFAULT_ROBOT_COLOR);
+        // A pose array's others are drawn fainter, under the first.
+        for other in poses.iter().skip(1) {
+            draw_robot(
+                &painter,
+                &view,
+                *other,
+                robot_size(p),
+                color.gamma_multiply(0.6),
+            );
         }
+        if let Some(pose) = poses.first() {
+            draw_robot(&painter, &view, *pose, robot_size(p), color);
+        }
+        let pose = poses.first().copied();
+        let mut drawn = drawn;
+        drawn.robots += poses.len().saturating_sub(1);
         let summary = match pose {
             Some(pose) => format!(
                 "{}: robot at x {:.2} m, y {:.2} m, facing {:.0}°",
@@ -421,6 +469,25 @@ impl FieldWidget {
             ),
             None => format!("{}: no robot pose", widget.title),
         };
+        let mut summary = summary;
+        if drawn.robots > 0 {
+            summary += &format!(
+                "; {} more robot{}",
+                drawn.robots,
+                if drawn.robots == 1 { "" } else { "s" }
+            );
+        }
+        if drawn.paths > 0 {
+            summary += &format!(
+                "; {} path{}",
+                drawn.paths,
+                if drawn.paths == 1 { "" } else { "s" }
+            );
+        }
+        if !drawn.seen.is_empty() {
+            let ids: Vec<String> = drawn.seen.iter().map(u32::to_string).collect();
+            summary += &format!("; tags seen {}", ids.join(", "));
+        }
         ui.interact(rect, ui.scope_id().with("field"), Sense::hover())
             .widget_info(|| {
                 egui::WidgetInfo::labeled(egui::accesskit::Role::Image, true, &summary)
@@ -433,17 +500,37 @@ impl WidgetType for FieldWidget {
         &["Field", "Field2d"]
     }
     fn accepts(&self, nt_type: &str) -> bool {
-        matches!(nt_type, "struct:Pose2d" | "struct:Pose3d")
+        matches!(
+            nt_type,
+            "struct:Pose2d" | "struct:Pose3d" | "struct:Pose2d[]" | "struct:Pose3d[]"
+        )
     }
     fn table_types(&self) -> &'static [&'static str] {
         &[FIELD2D_TYPE]
     }
-    fn extra_topics(&self, p: &Map<String, Json>, _: Server<'_>) -> Vec<String> {
+    fn extra_topics(&self, p: &Map<String, Json>, server: Server<'_>) -> Vec<String> {
         let topic = props::text(p, "topic", "").trim_end_matches('/');
-        if topic.is_empty() || props::text(p, props::DATA_TYPE, "").starts_with("struct:") {
-            Vec::new()
-        } else {
-            vec![format!("{topic}/{FIELD2D_ROBOT}"), format!("{topic}/.type")]
+        let mut wanted = layers::layer_topics(p);
+        if !topic.is_empty() && !props::text(p, props::DATA_TYPE, "").starts_with("struct:") {
+            wanted.extend(layers::table_topics(topic, server.topics));
+        }
+        wanted
+    }
+    fn takes_topics(&self) -> bool {
+        true
+    }
+    /// Topics dropped on a Field become layers: poses as robots, paths
+    /// (by name), tag IDs as the tags seen.
+    fn add_topics(&self, widget: &mut WidgetContainer, topics: &[DraggedTopic]) -> String {
+        let whole: Vec<(String, String)> = topics
+            .iter()
+            .filter(|t| t.field.is_none())
+            .map(|t| (t.name.clone(), t.ty.clone()))
+            .collect();
+        match layers::add_layers(&mut widget.properties, &whole) {
+            0 => "Nothing new to add to that field (poses, paths and AprilTag IDs)".to_owned(),
+            1 => format!("Added a layer to \"{}\"", widget.title),
+            n => format!("Added {n} layers to \"{}\"", widget.title),
         }
     }
     fn show(
@@ -483,7 +570,7 @@ impl WidgetType for FieldWidget {
         let view = FieldView::fit(rect, size, Turn::of(p));
         draw_field(painter, visuals, &view, &field.info, None);
     }
-    fn settings(&self, ui: &mut egui::Ui, p: &mut Map<String, Json>, _: ValueInfo<'_>) {
+    fn settings(&self, ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<'_>) {
         let found = fields::available(&fields::default_folders());
         // The field shown now, by id (Elastic's game name finds one).
         let key = entry(ui.ctx(), &field_key(p)).map_or_else(|| field_key(p), |f| f.id);
@@ -580,6 +667,33 @@ impl WidgetType for FieldWidget {
             0.05..=5.0,
         );
         props::color_row(ui, p, "Robot color", ROBOT_COLOR, DEFAULT_ROBOT_COLOR);
+        props::flag_row(
+            ui,
+            p,
+            "AprilTags",
+            "Show the field's tags",
+            layers::SHOW_TAGS,
+            true,
+        );
+        if !props::text(p, props::DATA_TYPE, "").starts_with("struct:") {
+            props::flag_row(
+                ui,
+                p,
+                "Other objects",
+                "Show the table's other objects",
+                layers::SHOW_OTHER_OBJECTS,
+                true,
+            );
+            props::flag_row(
+                ui,
+                p,
+                "Trajectories",
+                "Show the table's trajectories",
+                layers::SHOW_TRAJECTORIES,
+                true,
+            );
+        }
+        layers::settings_rows(ui, p, value.topics);
     }
     fn setting_keys(&self) -> &'static [&'static str] {
         &KEYS
@@ -660,6 +774,7 @@ mod tests {
                 .extra_topics(pose.as_object().unwrap(), Server::default())
                 .is_empty()
         );
-        assert!(FieldWidget.accepts("struct:Pose3d") && !FieldWidget.accepts("struct:Pose2d[]"));
+        assert!(FieldWidget.accepts("struct:Pose3d") && FieldWidget.accepts("struct:Pose2d[]"));
+        assert!(!FieldWidget.accepts("struct:Translation2d[]"));
     }
 }

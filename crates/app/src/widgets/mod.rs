@@ -121,6 +121,8 @@ pub enum Effect {
 pub struct Server<'a> {
     /// Every table with a `.type` topic, by full name (without `/.type`).
     pub tables: &'a [String],
+    /// Every topic the server has announced.
+    pub topics: &'a [nt4::Topic],
 }
 
 /// What the settings dialog knows about the value a widget shows, so a

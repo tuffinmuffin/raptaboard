@@ -38,3 +38,21 @@ codegen-units = 1
 debug = "line-tables-only"
 split-debuginfo = "packed"
 strip = "symbols"
+
+# Debug builds: decode field images with the image crates optimized, so a
+# field's picture shows in a moment instead of seconds (and tests that draw
+# a Field don't load the machine). Only these crates; the rest stay debug.
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+[profile.dev.package.crc32fast]
+opt-level = 3
+[profile.dev.package.simd-adler32]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3

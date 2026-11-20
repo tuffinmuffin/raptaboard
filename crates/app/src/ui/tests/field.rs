@@ -102,3 +102,128 @@ fn a_pose2d_drags_from_the_tree_as_a_field_and_still_opens() {
     assert_eq!(made.topic(), Some("/Drive/pose"));
     assert_eq!(made.properties["data_type"], "struct:Pose2d");
 }
+
+/// Bytes of a `Pose2d[]` for `poses` (x, y, radians each).
+fn pose_array(poses: &[[f64; 3]]) -> nt4::Value {
+    nt4::Value::Raw(
+        poses
+            .iter()
+            .flatten()
+            .flat_map(|d| d.to_le_bytes())
+            .collect(),
+    )
+}
+
+#[test]
+fn layers_draw_other_robots_paths_and_the_tags_seen() {
+    let robot = Robot::start();
+    let fleet = robot._server.publish_generic(
+        "/Sim/Fleet",
+        "struct:Pose2d[]".parse().unwrap(),
+        nt4::Properties::new(),
+    );
+    fleet
+        .set(pose_array(&[[1.0, 1.0, 0.0], [-1.0, -1.0, 3.0]]))
+        .unwrap();
+    let path = robot._server.publish_generic(
+        "/Sim/Trajectory",
+        "struct:Pose2d[]".parse().unwrap(),
+        nt4::Properties::new(),
+    );
+    path.set(pose_array(&[
+        [0.0, 0.0, 0.0],
+        [2.0, 0.0, 0.0],
+        [4.0, 1.0, 0.0],
+    ]))
+    .unwrap();
+    let tags = robot._server.publish::<Vec<i64>>("/Sim/seenTags");
+    // 99 isn't on the 2026 field, so it isn't lit.
+    tags.set(vec![7, 3, 99]);
+    let mut field = pose_field();
+    crate::widgets::builtin::field::layers::add_layers(
+        &mut field.properties,
+        &[
+            ("/Sim/Fleet".into(), "struct:Pose2d[]".into()),
+            ("/Sim/Trajectory".into(), "struct:Pose2d[]".into()),
+            ("/Sim/seenTags".into(), "int[]".into()),
+        ],
+    );
+    let mut harness = field_harness(&robot, field);
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°; 2 more robots; 1 path; tags seen 3, 7",
+    );
+    // The tags a camera sees change as it looks round.
+    tags.set(vec![12]);
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°; 2 more robots; 1 path; tags seen 12",
+    );
+}
+
+#[test]
+fn a_field2d_tables_other_objects_are_robots_or_trajectories() {
+    let robot = Robot::start();
+    let ty = robot._server.publish::<String>("/Sim/Field/.type");
+    ty.set("Field2d".into());
+    let me = robot._server.publish::<Vec<f64>>("/Sim/Field/Robot");
+    me.set(vec![0.0, 0.0, 0.0]);
+    let ghost = robot._server.publish::<Vec<f64>>("/Sim/Field/Ghost");
+    ghost.set(vec![1.0, 1.0, 0.0, 2.0, 2.0, 90.0]);
+    // More than 8 poses: a trajectory.
+    let traj = robot._server.publish::<Vec<f64>>("/Sim/Field/Auto");
+    traj.set(
+        (0..10)
+            .flat_map(|i| [f64::from(i) * 0.5, 0.0, 0.0])
+            .collect(),
+    );
+    let mut table = widget("Field", "/Sim/Field", "", ZERO_RECT);
+    table.properties.remove("data_type");
+    let mut harness = field_harness(&robot, table.clone());
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 0.00 m, y 0.00 m, facing 0°; 2 more robots; 1 path",
+    );
+    // Elastic's switches turn them off.
+    table
+        .properties
+        .insert("show_trajectories".into(), json!(false));
+    table
+        .properties
+        .insert("show_other_objects".into(), json!(false));
+    let mut harness = field_harness(&robot, table);
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 0.00 m, y 0.00 m, facing 0°",
+    );
+}
+
+#[test]
+fn a_pose_array_dropped_on_a_field_becomes_a_layer() {
+    let robot = Robot::start();
+    let fleet = robot._server.publish_generic(
+        "/Drive/fleet",
+        "struct:Pose2d[]".parse().unwrap(),
+        nt4::Properties::new(),
+    );
+    fleet
+        .set(pose_array(&[[1.0, 1.0, 0.0], [-1.0, -1.0, 3.0]]))
+        .unwrap();
+    let mut harness = field_harness(&robot, pose_field());
+    let on_field = harness.state().grid.area.min + egui::vec2(512.0, 256.0);
+    open(&mut harness, "Drive  (");
+    drag_row(&mut harness, "fleet  Pose2d[2]", 0, on_field);
+    let field = harness.state().layout.tabs[0]
+        .grid_layout
+        .containers
+        .clone();
+    assert_eq!(field.len(), 1, "a layer, not a new widget");
+    let layers = crate::widgets::builtin::field::layers::layers(&field[0].properties);
+    assert_eq!(layers.len(), 1);
+    assert_eq!(layers[0].topic, "/Drive/fleet");
+    assert!(harness.state().status.starts_with("Added a layer"));
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°; 2 more robots",
+    );
+}

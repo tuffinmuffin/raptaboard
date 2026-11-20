@@ -501,7 +501,10 @@ mod tests {
         let mut p = Map::new();
         p.insert("topic".into(), "/SmartDashboard/Alerts".into());
         let tables = vec!["/A".to_string(), "/B".to_string()];
-        let server = Server { tables: &tables };
+        let server = Server {
+            tables: &tables,
+            topics: &[],
+        };
         assert_eq!(AlertsWidget.extra_topics(&p, server).len(), 4);
         p.insert(ALL_GROUPS.into(), true.into());
         let needed = AlertsWidget.extra_topics(&p, server);

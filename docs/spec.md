@@ -152,11 +152,14 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `min_level` | `builtin/alerts.rs` | Alerts | least urgent shown: `info`, `warning`, `error` | `info` |
 | `pulse`, `pulse_seconds` | `builtin/alerts.rs` | Alerts | pulse when a new error arrives, for how long (s) | true, 5 |
 | `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp`, or a built-in clip: `disabled 1`, `disabled 2`, `fire 1`, `fire 2` | false, `beep` |
-| `field` | `builtin/field.rs` | Field | the field shown: an id from the fields folders (`2026-rebuilt-welded`) or a field JSON's path; not set uses Elastic's `field_game` (by game name), else 2026 REBUILT (welded) | not set |
-| `origin` | `builtin/field.rs` | Field | where the poses' (0, 0) is: `center` (WPILib 2027) or `blue_corner` (before 2027) | `center` |
-| `robot_length`, `robot_width` (Elastic) | `builtin/field.rs` | Field | the robot's size, meters | 0.85, 0.85 |
-| `robot_color` (Elastic) | `builtin/field.rs` | Field | the robot's color | red |
-| `field_rotation` (Elastic) | `builtin/field.rs` | Field | the field turned clockwise, degrees (0, 90, 180, 270; 180 is the red side's view) | 0 |
+| `field` | `builtin/field/mod.rs` | Field | the field shown: an id from the fields folders (`2026-rebuilt-welded`) or a field JSON's path; not set uses Elastic's `field_game` (by game name), else 2026 REBUILT (welded) | not set |
+| `origin` | `builtin/field/mod.rs` | Field | where the poses' (0, 0) is: `center` (WPILib 2027) or `blue_corner` (before 2027) | `center` |
+| `robot_length`, `robot_width` (Elastic) | `builtin/field/mod.rs` | Field | the robot's size, meters | 0.85, 0.85 |
+| `robot_color` (Elastic) | `builtin/field/mod.rs` | Field | the robot's color | red |
+| `field_rotation` (Elastic) | `builtin/field/mod.rs` | Field | the field turned clockwise, degrees (0, 90, 180, 270; 180 is the red side's view) | 0 |
+| `layers` | `builtin/field/layers.rs` | Field | layers drawn over the field, each `{"kind", "topic", "data_type", "color"}`: `robots` (poses as robot outlines), `path` (poses joined by a line), `seen_tags` (AprilTag IDs as `int[]`, or seen tags' `Pose3d[]`, lit on the field); a topic dropped on the field adds one | none |
+| `show_tags` | `builtin/field/layers.rs` | Field | draw the field's AprilTags | true |
+| `show_other_objects`, `show_trajectories` (Elastic) | `builtin/field/layers.rs` | Field | a `Field2d` table's other objects: as robots, and as paths (more than 8 poses, or "traj" or "path" in the name) | true, true |
 | `enum_source` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | where the state names come from: `list`, `topic` (a string[] topic) or `chooser` (the widget's topic is a chooser table); guessed when a widget becomes one | `list` |
 | `enum_values` | `builtin/enums.rs` | Enum Dropdown, Enum Toggle | the listed states, one string per line: a value for a string topic; `3 = Climb` or a name (the next number, from 0) for an int topic | none |
 | `switches_between` | `builtin/enums.rs` | Enum Toggle | two state names to switch between, like a Toggle Button's off and on (lit on the second; from any other state a click goes to the first); not set, a click steps through every state | not set |
@@ -590,7 +593,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Order: (1) fields, the Field widget and its robot (**done**: `fields.rs`, `types/field.rs`,
      `builtin/field.rs`; a Pose2d or Pose3d dragged from the tree makes a Field, and its row still
      opens into its fields; the image decodes on its own thread, at most 2048 pixels wide); (2) pose,
-     trajectory and AprilTag overlays; (3) robot-attached shapes and detected objects.
+     trajectory and AprilTag overlays (**done**: `builtin/field/layers.rs`; a pose array as the widget's
+     own topic is the robot and others; robot-2027's sim publishes `OrbitPath` and `SeenTags`); (3) robot-attached shapes and detected objects.
 
    Struct widgets after the Field, each its own widget: a Gyro (Rotation2d or a number), motion
    vectors (2 or 3 arrows, Translation2d or ChassisSpeeds, showing relative motion more than
