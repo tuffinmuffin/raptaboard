@@ -24,7 +24,8 @@
 //! 3. Add its settings to the table in `docs/spec.md`
 //!    ("raptaboard widget settings").
 //!
-//! Widgets that change values (Toggle Switch, Toggle Button) return the new
+//! Widgets that change values (Toggle Switch, Toggle Button, Number
+//! Slider) return the new
 //! value from [`WidgetType::show`]; the grid sends it with
 //! [`crate::nt::NtConnection::write`].
 
@@ -58,6 +59,10 @@ pub struct Live<'a> {
     /// a List Layout child's row less its inside label while unlocked, so
     /// the label still drags the child. `None` for all of it.
     pub input: Option<Rect>,
+    /// The part of the rect not under a List Layout child's inside label,
+    /// locked or not, for widgets that lay out their value beside it (a
+    /// slider's number). `None` when there's no inside label.
+    pub free: Option<Rect>,
 }
 
 /// What the settings dialog knows about the value a widget shows, so a
@@ -209,6 +214,7 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::text_display::TextDisplay,
     &builtin::large_text_display::LargeTextDisplay,
     &builtin::number_bar::NumberBar,
+    &builtin::number_slider::NumberSlider,
     &builtin::number_bar::VoltageView,
     &builtin::radial_gauge::RadialGauge,
     &builtin::match_time::MatchTime,

@@ -78,12 +78,12 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   one file per type implementing `widgets::WidgetType` and listed in `widgets::TYPES` (Text Display,
   Boolean Box, Large Text Display, Number Bar, Voltage View, Radial Gauge, Match Time, Single and
   Multi Color View, Graph (`egui_plot`; widgets needing a full `Ui` override `WidgetType::show`),
-  Toggle Switch and Toggle Button (`builtin/toggle.rs`; writing widgets return the value to send
+  Toggle Switch and Toggle Button (`builtin/toggle.rs`), Number Slider (`builtin/number_slider.rs`; writing widgets return the value to send
   from `show`, and `Live::locked` says whether their input covers the whole card; `show_body` is
   the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
   draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing
   and its settings dialog), helpers in `widgets/shared/`:
-  `card.rs`, `format.rs` (number and
+  `card.rs`, `entry.rs` (the box a value is typed into: Number Slider, editable Text Display), `format.rs` (number and
   enum text), `props.rs` (period, font size, colors) and `settings.rs` (the settings dialog's shared
   rows; the dialog window is in `ui/dialogs.rs`); setting keys are constants in the file that owns them,
   listed in `docs/spec.md` under "raptaboard widget settings" (keep that table in step); adding a
@@ -114,8 +114,10 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   Its Writing tab has a Toggle Switch and a Toggle Button on `/DashTest/Toggle` (published once
   by the test topics, never overwritten) and a Boolean Box on `/DashTest/ToggleEcho` (the value
   robot code read back), plus "Not published (fails)", a toggle on a topic that's never sent,
-  for the failed-write flash, tone and message; keep it too. "Toggles in a list" holds the same
-  three as List Layout children.
+  for the failed-write flash, tone and message; keep it too. Two Number Sliders on
+  `/DashTest/Setpoint` (0 to 100; one sends on release, one every value in steps of 5) with a Text
+  Display on `/DashTest/SetpointEcho`, and "Setpoint (typed)", an editable Text Display. "Writing in a list" holds the toggles and a slider as List
+  Layout children.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.
 - `plugins/arm`: example plugin; its `plugin.toml` is a test fixture.
 

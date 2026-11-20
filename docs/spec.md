@@ -143,8 +143,11 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `show_text` | `builtin/boolean_box.rs` | Boolean Box | write the text below over the color | false |
 | `true_text`, `false_text` | `builtin/boolean_box.rs` | Boolean Box | text when true / false; empty for none | none |
 | `label_position` (Elastic) | `list_layout.rs` | List Layout | `TOP`, `LEFT`, `RIGHT`, `BOTTOM`, `HIDDEN` (any case read) | `TOP`; always written |
-| `min_value`, `max_value` (Elastic) | `builtin/number_bar.rs`, `radial_gauge.rs` | Number Bar, Voltage View, Radial Gauge | range | -1 to 1; Voltage 4 to 13; Gauge 0 to 100 |
-| `divisions` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | labels along the bar, ends included | 5 |
+| `min_value`, `max_value` (Elastic) | `builtin/number_bar.rs`, `radial_gauge.rs` | Number Bar, Voltage View, Radial Gauge, Number Slider | range | -1 to 1; Voltage 4 to 13; Gauge 0 to 100 |
+| `divisions` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View, Number Slider | labels along the bar, ends included | 5 |
+| `editable` | `builtin/text_display.rs` | Text Display | values can be typed in (a blue dot in the corner says so); not for arrays or struct fields | false |
+| `publish_all` (Elastic) | `builtin/number_slider.rs` | Number Slider | send every value during a drag, not only where it's let go | false |
+| `step` | `builtin/number_slider.rs` | Number Slider | values snap to multiples of it from the minimum; 0 snaps to a thousandth of the range (rounded down to a power of ten); int topics use at least 1 | 0 |
 | `inverted` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | fill from the far end | false |
 | `orientation` (Elastic) | `builtin/number_bar.rs` | Number Bar, Voltage View | `horizontal`, `vertical` | `horizontal` |
 | `start_angle`, `end_angle` (Elastic) | `builtin/radial_gauge.rs` | Radial Gauge | degrees clockwise from straight up | -140, 140 |
@@ -449,7 +452,26 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    of the value (robot or another dashboard) is shown. Uses: auto mode, a test in test mode.
    Struct enum fields (schema `enum {..}`) stay display-only: writing one would mean rewriting the
    robot's struct.
-   Next: Number Slider, editable Text Display, the enum widgets and choosers (with dragging a
+   Number Slider (`builtin/number_slider.rs`, done): pressing anywhere in its input area moves the
+   knob there and a drag follows the pointer, also outside the widget; it sends where it's let go,
+   or every value with `publish_all`; the knob stays at the sent value until the server has it (or
+   1 s), so it doesn't jump back while the value is on its way. Escape during a drag cancels it:
+   nothing is sent, or with `publish_all` the value from before the drag is sent back (egui ends a
+   drag on Escape, and Escape doesn't deselect while a button is held). Clicking the written value
+   opens a box with the value selected: Enter sends what's typed (a unit may be left on; kept in
+   the range, whole for int topics, not snapped to `step`); a bad number turns red and stays open;
+   Escape or a click elsewhere closes it unsent. Horizontal only for now; vertical, keyboard and
+   scroll-wheel nudges are later.
+   Typing a value (`widgets/shared/entry.rs`, shared by the slider and the Text Display): the box
+   opens with the value selected, Enter sends text the widget accepts (bad text turns red and the
+   box stays open), Escape or a click elsewhere closes it unsent. A Text Display with `editable`
+   on (raptaboard's, off by default; Elastic's is always editable) has a blue dot in its title
+   bar's corner (a list child's: its row's corner) and opens the box on a click (locked anywhere,
+   unlocked the body); it sends the text and the topic's type decides what it becomes; number
+   topics need a number and boolean topics `true` or `false`. A List Layout child's widget also
+   gets `Live::free`, its row less an inside label, locked or not, so a slider writes its number
+   below the label rather than under it.
+   Next: the enum widgets and choosers (with dragging a
    chooser table from the tree), Alerts, Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common

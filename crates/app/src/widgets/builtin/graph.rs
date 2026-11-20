@@ -956,6 +956,7 @@ mod tests {
                 now_us: 2_000_000,
                 locked: false,
                 input: None,
+                free: None,
             };
             Graph.show(ui, rect, &w, &live);
         });
@@ -1005,6 +1006,7 @@ mod tests {
                     now_us: 5_000_000,
                     locked: false,
                     input: None,
+                    free: None,
                 };
                 Graph.show(ui, rect, &w, &live);
             });
@@ -1122,6 +1124,7 @@ mod tests {
                     now_us: 5_000_000,
                     locked: false,
                     input: None,
+                    free: None,
                 };
                 Graph.show(ui, rect, &w, &live);
             });
