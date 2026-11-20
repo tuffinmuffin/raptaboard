@@ -49,6 +49,29 @@ enum AfterSaving {
     Quit,
 }
 
+/// A layout file that couldn't be opened, shown in a dialog until it's
+/// answered, so it isn't missed in the status line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LoadProblem {
+    /// The file asked for, as given (a relative path is from the folder
+    /// raptaboard was started in).
+    path: PathBuf,
+    /// There's no file there (else it couldn't be read or isn't a layout).
+    missing: bool,
+    /// Why, in words.
+    why: String,
+}
+
+impl LoadProblem {
+    fn new(path: PathBuf, error: &LoadError) -> Self {
+        LoadProblem {
+            path,
+            missing: matches!(error, LoadError::NotFound),
+            why: error.to_string(),
+        }
+    }
+}
+
 /// Top-level app state.
 pub struct DashboardApp {
     layout: ElasticLayout,
@@ -62,6 +85,8 @@ pub struct DashboardApp {
     fixes: Vec<String>,
     /// Waiting for an answer to "save changes?" before doing this.
     unsaved_prompt: Option<AfterSaving>,
+    /// A layout file that couldn't be opened, until the user answers.
+    load_problem: Option<LoadProblem>,
     /// The user chose to quit without saving, so let the window close.
     allow_close: bool,
     /// The window title last set, so it's only sent when it changes.
@@ -142,6 +167,7 @@ impl DashboardApp {
             status: String::new(),
             fixes: Vec::new(),
             unsaved_prompt: None,
+            load_problem: None,
             allow_close: false,
             title: String::new(),
             current_tab: 0,
@@ -187,13 +213,9 @@ impl DashboardApp {
             let path = PathBuf::from(path);
             match layout_file::load(&path) {
                 Ok(layout) => app.show_layout(layout, path),
-                // A new file named on the command line: start empty and
-                // save there.
-                Err(LoadError::NotFound) => {
-                    app.status = format!("New layout; Save writes {}", path.display());
-                    app.layout_path = Some(path);
-                }
-                Err(e) => app.status = format!("Could not open {}: {e}", path.display()),
+                // Missing or bad: an empty layout, and a dialog saying so
+                // (which can make a new file there).
+                Err(e) => app.cant_open(path, &e),
             }
         }
         let names: Vec<&str> = app.layout.tabs.iter().map(|t| t.name.as_str()).collect();
@@ -291,7 +313,85 @@ impl DashboardApp {
         };
         match layout_file::load(&path) {
             Ok(layout) => self.show_layout(layout, path),
-            Err(e) => self.status = format!("Could not open {}: {e}", path.display()),
+            Err(e) => self.cant_open(path, &e),
+        }
+    }
+
+    /// Say that the layout file at `path` couldn't be opened: in the status
+    /// line, and in a dialog until it's answered.
+    fn cant_open(&mut self, path: PathBuf, error: &LoadError) {
+        self.status = format!("Could not open {}: {error}", path.display());
+        self.load_problem = Some(LoadProblem::new(path, error));
+    }
+
+    /// The "couldn't open the layout" dialog, while one is open: open
+    /// another, or carry on with what's open (for a missing file, also
+    /// start a new layout that saves there).
+    fn load_problem_dialog(&mut self, ctx: &egui::Context) {
+        let Some(problem) = self.load_problem.clone() else {
+            return;
+        };
+        enum Answer {
+            Open,
+            NewHere,
+            Close,
+        }
+        let mut answer = None;
+        let modal = egui::Modal::new(egui::Id::unique("load_problem")).show(ctx, |ui| {
+            ui.set_max_width(520.0);
+            ui.heading(if problem.missing {
+                "Layout file not found"
+            } else {
+                "Couldn't open the layout"
+            });
+            ui.label(if problem.missing {
+                "There's no layout file at:"
+            } else {
+                "This file couldn't be opened as a layout:"
+            });
+            ui.monospace(problem.path.display().to_string());
+            if problem.missing {
+                if let Ok(folder) = std::env::current_dir() {
+                    ui.label(format!(
+                        "A path given without a folder is looked for in the folder raptaboard \
+                         was started in, {}.",
+                        folder.display()
+                    ));
+                }
+            } else {
+                ui.label(&problem.why);
+            }
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                if ui.button("Open a layout…").clicked() {
+                    answer = Some(Answer::Open);
+                }
+                if problem.missing
+                    && ui
+                        .button("New layout saved here")
+                        .on_hover_text("Start an empty layout; Save writes it to this path")
+                        .clicked()
+                {
+                    answer = Some(Answer::NewHere);
+                }
+                if ui.button("Close").clicked() {
+                    answer = Some(Answer::Close);
+                }
+            });
+        });
+        let answer = match answer {
+            Some(a) => a,
+            None if modal.should_close() => Answer::Close,
+            None => return,
+        };
+        self.load_problem = None;
+        match answer {
+            Answer::Open => self.run_file_action(FileAction::Open),
+            Answer::NewHere => {
+                self.status = format!("New layout; Save writes {}", problem.path.display());
+                self.layout_path = Some(problem.path);
+            }
+            Answer::Close => {}
         }
     }
 
@@ -499,8 +599,10 @@ impl DashboardApp {
             })
             .inner;
         let ctx = ui.ctx().clone();
-        let dialog_open =
-            self.confirm_close.is_some() || self.unsaved_prompt.is_some() || self.editing.is_some();
+        let dialog_open = self.confirm_close.is_some()
+            || self.unsaved_prompt.is_some()
+            || self.load_problem.is_some()
+            || self.editing.is_some();
         let pressed = if dialog_open {
             None
         } else {
@@ -522,6 +624,7 @@ impl DashboardApp {
         }
         self.close_dialog(&ctx);
         self.unsaved_dialog(&ctx);
+        self.load_problem_dialog(&ctx);
         self.widget_dialog(&ctx);
         let title = format!(
             "{}{} - raptaboard",
