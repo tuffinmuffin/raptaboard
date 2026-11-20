@@ -538,7 +538,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    it does, the last alerts stay, greyed. A tab with an Alerts widget showing an error or a warning
    gets that sign after its name, open or not (alert topics of other tabs' Alerts widgets are
    subscribed too). An alert group in the tree is a draggable row like a chooser.
-   Alert history (`alert_history.rs`, `ui/history_panel.rs`, done): every alert group is recorded
+   Alert history (`alert_history.rs`, `ui/alert_history_panel.rs`, done): every alert group is recorded
    from connect, whether or not an Alerts widget shows it (every table's `.type` and the alert
    groups' lists are subscribed every 0.02 s). An event per alert, known by group, level and text
    with its numbers left out (`alert_history::pattern`), and which copy, so robot code that puts a

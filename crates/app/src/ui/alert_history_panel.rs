@@ -9,22 +9,22 @@ use eframe::egui::{self, Sense};
 use nt4::Topic;
 
 use crate::alert_history::{self, AlertEvent};
-use crate::types::alerts::{self, Level};
 use crate::nt::ConnectionStatus;
+use crate::types::alerts::{self, Level};
 use crate::widgets::builtin::alerts as alerts_widget;
 
 use super::DashboardApp;
 
 /// How often every alert group's lists are sent for the history, at most
 /// (seconds): often enough to catch an alert that's only on for a moment.
-pub(super) const HISTORY_PERIOD_S: f64 = 0.02;
+pub(super) const ALERT_HISTORY_PERIOD_S: f64 = 0.02;
 /// Height of one history row, in points.
 const ROW_HEIGHT: f32 = 20.0;
 
 /// What the history panel shows: levels, a group (all if `None`) and text
 /// to look for.
 #[derive(Debug, Clone)]
-pub(super) struct HistoryFilter {
+pub(super) struct AlertHistoryFilter {
     levels: [bool; 3],
     group: Option<String>,
     text: String,
@@ -32,9 +32,9 @@ pub(super) struct HistoryFilter {
     new_ignore: String,
 }
 
-impl Default for HistoryFilter {
+impl Default for AlertHistoryFilter {
     fn default() -> Self {
-        HistoryFilter {
+        AlertHistoryFilter {
             levels: [true; 3],
             group: None,
             text: String::new(),
@@ -43,7 +43,7 @@ impl Default for HistoryFilter {
     }
 }
 
-impl HistoryFilter {
+impl AlertHistoryFilter {
     /// Whether `e` passes.
     fn shows(&self, e: &AlertEvent) -> bool {
         self.levels[e.level as usize]
@@ -65,7 +65,7 @@ fn short_duration(d: chrono::TimeDelta) -> String {
 impl DashboardApp {
     /// The topics the history needs: every table's `.type` (to find the
     /// alert groups) and every alert group's three lists.
-    pub(super) fn history_topics(&self, topics: &[Topic]) -> Vec<String> {
+    pub(super) fn alert_history_topics(&self, topics: &[Topic]) -> Vec<String> {
         let mut names = Vec::new();
         for t in topics {
             let Some(table) = t.name.strip_suffix("/.type") else {
@@ -81,7 +81,10 @@ impl DashboardApp {
     }
 
     /// Record this frame's alerts from every group in the history.
-    pub(super) fn record_alerts(&mut self, values: &std::collections::HashMap<&str, &nt4::Value>) {
+    pub(super) fn record_alert_history(
+        &mut self,
+        values: &std::collections::HashMap<&str, &nt4::Value>,
+    ) {
         let connected = matches!(self.nt.status(), ConnectionStatus::Connected { .. });
         let groups: Option<Vec<(String, Vec<alerts::ActiveAlert>)>> = connected.then(|| {
             alerts::alert_tables(values)
@@ -183,12 +186,12 @@ impl DashboardApp {
             .events()
             .map(|e| e.group.clone())
             .collect();
-        let filter = &mut self.history_filter;
+        let filter = &mut self.alert_history_filter;
         ui.horizontal(|ui| {
             for level in Level::ALL {
                 ui.checkbox(&mut filter.levels[level as usize], level.name(2));
             }
-            egui::ComboBox::from_id_salt("history_group")
+            egui::ComboBox::from_id_salt("alert_history_group")
                 .selected_text(filter.group.as_deref().unwrap_or("every group"))
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut filter.group, None, "every group");
@@ -198,14 +201,14 @@ impl DashboardApp {
                 });
         });
         ui.add(egui::TextEdit::singleline(&mut filter.text).hint_text("Text to look for"));
-        self.ignore_list(ui);
+        self.alert_history_ignore_list(ui);
         ui.separator();
         let now = Local::now();
         let shown: Vec<&AlertEvent> = self
             .alert_history
             .events()
             .rev()
-            .filter(|e| self.history_filter.shows(e))
+            .filter(|e| self.alert_history_filter.shows(e))
             .collect();
         if shown.is_empty() {
             ui.weak(if total == 0 {
@@ -280,7 +283,7 @@ impl DashboardApp {
 
     /// The "Not recorded" list: alerts the history skips, by text they
     /// contain, with a box to add one and a ✕ to take one off.
-    fn ignore_list(&mut self, ui: &mut egui::Ui) {
+    fn alert_history_ignore_list(&mut self, ui: &mut egui::Ui) {
         let list = self.alert_history.ignored().to_vec();
         let title = if list.is_empty() {
             "Not recorded: nothing".to_owned()
@@ -288,7 +291,7 @@ impl DashboardApp {
             format!("Not recorded: {}", list.len())
         };
         egui::CollapsingHeader::new(title)
-            .id_salt("history_ignore")
+            .id_salt("alert_history_ignore")
             .show(ui, |ui| {
                 ui.weak("Alerts whose text contains one of these aren't recorded (any case).");
                 let mut list = list.clone();
@@ -310,14 +313,14 @@ impl DashboardApp {
                 });
                 ui.horizontal(|ui| {
                     let add = ui.add(
-                        egui::TextEdit::singleline(&mut self.history_filter.new_ignore)
+                        egui::TextEdit::singleline(&mut self.alert_history_filter.new_ignore)
                             .hint_text("Text, such as Frame Timing:"),
                     );
                     let enter = add.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                     if (ui.button("Add").clicked() || enter)
-                        && !self.history_filter.new_ignore.trim().is_empty()
+                        && !self.alert_history_filter.new_ignore.trim().is_empty()
                     {
-                        list.push(std::mem::take(&mut self.history_filter.new_ignore));
+                        list.push(std::mem::take(&mut self.alert_history_filter.new_ignore));
                         changed = true;
                     }
                 });

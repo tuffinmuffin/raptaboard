@@ -1,9 +1,9 @@
 //! The main window: settings bar, tab bar and the widget grid.
 
+mod alert_history_panel;
 mod dialogs;
 mod drag;
 mod grid_view;
-mod history_panel;
 mod live;
 mod panels;
 mod style;
@@ -119,7 +119,7 @@ pub struct DashboardApp {
     /// Whether the alert history panel shows.
     show_alert_history: bool,
     /// What the alert history panel shows.
-    history_filter: history_panel::HistoryFilter,
+    alert_history_filter: alert_history_panel::AlertHistoryFilter,
     /// When each widget (or list child) on a tab last failed to send its value: (tab,
     /// sender) to the time, so its border flashes red for a moment.
     write_failed: HashMap<(usize, Sender), Instant>,
@@ -178,7 +178,7 @@ impl DashboardApp {
                 h
             },
             show_alert_history: false,
-            history_filter: Default::default(),
+            alert_history_filter: Default::default(),
             write_failed: HashMap::new(),
             send_failure: None,
             grid_area: egui::Rect::NOTHING,
@@ -531,7 +531,7 @@ impl DashboardApp {
             .iter()
             .filter_map(|t| Some((&*t.name, &t.value.as_ref()?.value)))
             .collect();
-        self.record_alerts(&values);
+        self.record_alert_history(&values);
         // A hidden tree costs nothing: it isn't built and asks for no values.
         let tree_topics = if self.show_tree {
             egui::Panel::left("nt_tree")
@@ -573,8 +573,8 @@ impl DashboardApp {
         // The history records every alert group, whatever the tab shows.
         let mut wanted = self.tab_topics();
         wanted.push((
-            history_panel::HISTORY_PERIOD_S,
-            self.history_topics(&topics),
+            alert_history_panel::ALERT_HISTORY_PERIOD_S,
+            self.alert_history_topics(&topics),
         ));
         self.nt.watch_widget_values(wanted);
 
