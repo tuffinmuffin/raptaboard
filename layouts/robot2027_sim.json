@@ -895,6 +895,65 @@
         "layouts": [],
         "containers": []
       }
+    },
+    {
+      "name": "Alerts",
+      "grid_layout": {
+        "layouts": [],
+        "containers": [
+          {
+            "title": "Robot alerts (text, sound on)",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 640.0,
+            "height": 256.0,
+            "type": "Alerts",
+            "properties": {
+              "topic": "/SmartDashboard/Alerts",
+              "period": 0.06
+            }
+          },
+          {
+            "title": "Light",
+            "x": 640.0,
+            "y": 0.0,
+            "width": 128.0,
+            "height": 128.0,
+            "type": "Alerts",
+            "properties": {
+              "topic": "/SmartDashboard/Alerts",
+              "period": 0.06,
+              "show_text": false
+            }
+          },
+          {
+            "title": "Every group",
+            "x": 640.0,
+            "y": 128.0,
+            "width": 512.0,
+            "height": 128.0,
+            "type": "Alerts",
+            "properties": {
+              "topic": "/SmartDashboard/Alerts",
+              "period": 0.06,
+              "all_groups": true
+            }
+          },
+          {
+            "title": "Errors only",
+            "x": 768.0,
+            "y": 0.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "Alerts",
+            "properties": {
+              "topic": "/SmartDashboard/Alerts",
+              "period": 0.06,
+              "min_level": "error"
+            }
+          }
+        ]
+      }
     }
   ]
 }

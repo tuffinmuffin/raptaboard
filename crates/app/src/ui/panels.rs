@@ -1,5 +1,7 @@
 //! The settings bar (connection, lock, file) and the tab bar.
 
+use std::collections::HashMap;
+
 use eframe::egui::{self, Color32, Sense};
 
 use crate::connection::{AddressMode, resolve};
@@ -7,6 +9,8 @@ use crate::edit::EditAction;
 use crate::layout_file::{self, FileAction};
 use crate::nt::ConnectionStatus;
 use crate::tabs::{self, TabAction};
+use crate::types::alerts::Level;
+use crate::widgets::builtin::alerts as alerts_widget;
 
 use super::DashboardApp;
 
@@ -73,6 +77,7 @@ impl DashboardApp {
             if ui.button(label).on_hover_text(hint).clicked() {
                 self.alert_sound = !self.alert_sound;
             }
+            self.alert_history_button(ui);
             ui.separator();
             ui.label("Team");
             // 0 is "no team yet", shown blank.
@@ -208,6 +213,44 @@ impl DashboardApp {
 
     /// The row of tabs. Click to switch; when unlocked, double-click to
     /// rename, right-click for more, and "+" adds a tab.
+    /// Each tab's mark from its Alerts widgets: the most urgent level
+    /// above info they show now, open or not. Nothing is read when no tab
+    /// has an Alerts widget.
+    pub(super) fn tab_alert_marks(&self) -> Vec<Option<Level>> {
+        let widgets_of = |t: &raptaboard_layout::Tab| {
+            let grid = &t.grid_layout;
+            grid.containers
+                .iter()
+                .chain(grid.layouts.iter().flat_map(|l| &l.children))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        let any = self
+            .layout
+            .tabs
+            .iter()
+            .flat_map(widgets_of)
+            .any(|w| w.widget_type == "Alerts");
+        if !any {
+            return vec![None; self.layout.tabs.len()];
+        }
+        let topics = self.nt.topics();
+        let values: HashMap<&str, &nt4::Value> = topics
+            .iter()
+            .filter_map(|t| Some((&*t.name, &t.value.as_ref()?.value)))
+            .collect();
+        self.layout
+            .tabs
+            .iter()
+            .map(|t| {
+                widgets_of(t)
+                    .iter()
+                    .filter_map(|w| alerts_widget::tab_level(w, &values))
+                    .min()
+            })
+            .collect()
+    }
+
     pub(super) fn tab_bar(&mut self, ui: &mut egui::Ui) -> Option<TabAction> {
         let mut action = None;
         let names: Vec<String> = self.layout.tabs.iter().map(|t| t.name.clone()).collect();
@@ -226,6 +269,7 @@ impl DashboardApp {
                     .any(|w| picked.iter().any(|p| p.is_shown_by(w)))
             })
             .collect();
+        let alert_marks = self.tab_alert_marks();
         ui.horizontal(|ui| {
             for (i, name) in names.iter().enumerate() {
                 if let Some((renaming, text, focused)) = &mut self.renaming
@@ -248,18 +292,32 @@ impl DashboardApp {
                     continue;
                 }
                 let marked = has_picked[i] && self.current_tab != i;
-                let label = if marked {
-                    egui::RichText::new(format!("{name} ●"))
+                let alert = alert_marks[i];
+                let mut text = if marked {
+                    format!("{name} ●")
                 } else {
-                    egui::RichText::new(name)
+                    name.clone()
                 };
+                // Room after the name for the alert's sign.
+                if alert.is_some() {
+                    text.push_str("     ");
+                }
                 let mut hint = tabs::tab_hint(ui.ctx(), i, self.locked);
                 if marked {
                     hint = format!("{hint}\nHas widgets for the topics picked in the tree");
                 }
+                if let Some(level) = alert {
+                    hint = format!("{hint}\nHas an active {}", level.name(1));
+                }
                 let tab = ui
-                    .selectable_label(self.current_tab == i, label)
+                    .selectable_label(self.current_tab == i, egui::RichText::new(text))
                     .on_hover_text(hint);
+                if let Some(level) = alert {
+                    let r = (tab.rect.height() * 0.32).min(7.0);
+                    let c = egui::pos2(tab.rect.right() - r - 4.0, tab.rect.center().y);
+                    ui.painter().circle_filled(c, r, level.color());
+                    alerts_widget::draw_sign(ui.painter(), level, c, r * 1.2, egui::Color32::BLACK);
+                }
                 if tab.clicked() {
                     action = Some(TabAction::Select(i));
                 }

@@ -35,7 +35,8 @@ use nt4::{NtType, Value};
 use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
 
-use super::chooser::{self, Chooser};
+use super::chooser;
+use crate::types::chooser::{self as chooser_table, Chooser};
 use crate::widgets::shared::{card, props};
 use crate::widgets::{Live, ValueInfo, WidgetType};
 
@@ -445,13 +446,13 @@ fn enum_topics(p: &Map<String, Json>) -> Vec<String> {
     match Source::of(p) {
         Source::List => Vec::new(),
         Source::Topic => vec![props::text(p, OPTIONS_TOPIC, "").to_owned()],
-        Source::Chooser => chooser::chooser_topics(props::text(p, "topic", "")),
+        Source::Chooser => chooser_table::chooser_topics(props::text(p, "topic", "")),
     }
 }
 
 /// Where both widgets send: a chooser table's `selected`, else the topic.
 fn enum_sends_to(p: &Map<String, Json>) -> Option<(&'static str, NtType)> {
-    (Source::of(p) == Source::Chooser).then_some((chooser::SELECTED, NtType::String))
+    (Source::of(p) == Source::Chooser).then_some((chooser_table::SELECTED, NtType::String))
 }
 
 impl EnumDropdown {
@@ -902,6 +903,7 @@ mod tests {
         };
         let others = Default::default();
         let traces = crate::traces::Traces::default();
+        let effects = Default::default();
         let live = |value| Live {
             value,
             traces: &traces,
@@ -910,6 +912,8 @@ mod tests {
             input: None,
             free: None,
             others: &others,
+            connected: true,
+            effects: &effects,
         };
         let seven = Value::Int(7);
         let s = shown(&widget, &live(Some(&seven))).unwrap();

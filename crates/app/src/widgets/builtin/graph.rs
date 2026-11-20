@@ -958,6 +958,8 @@ mod tests {
                 input: None,
                 free: None,
                 others: &Default::default(),
+                connected: true,
+                effects: &Default::default(),
             };
             Graph.show(ui, rect, &w, &live);
         });
@@ -1009,6 +1011,8 @@ mod tests {
                     input: None,
                     free: None,
                     others: &Default::default(),
+                    connected: true,
+                    effects: &Default::default(),
                 };
                 Graph.show(ui, rect, &w, &live);
             });
@@ -1128,6 +1132,8 @@ mod tests {
                     input: None,
                     free: None,
                     others: &Default::default(),
+                    connected: true,
+                    effects: &Default::default(),
                 };
                 Graph.show(ui, rect, &w, &live);
             });

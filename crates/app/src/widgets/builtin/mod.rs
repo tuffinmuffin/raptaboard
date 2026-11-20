@@ -2,6 +2,7 @@
 //! struct implementing [`WidgetType`](super::WidgetType) and is listed in
 //! [`TYPES`](super::TYPES).
 
+pub mod alerts;
 pub mod boolean_box;
 pub mod chooser;
 pub mod color_view;

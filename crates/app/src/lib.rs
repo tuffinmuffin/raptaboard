@@ -6,7 +6,7 @@
 //! open folders, and Text Display and Boolean Box widgets with live values
 //! (other widget types show as placeholders). See `docs/spec.md` for the plan.
 
-pub mod alert;
+pub mod alert_history;
 pub mod cli;
 pub mod connection;
 pub mod edit;
@@ -15,9 +15,11 @@ pub mod layout_file;
 pub mod nt;
 pub mod sampling;
 pub mod settings;
+pub mod sound;
 pub mod struct_view;
 pub mod tabs;
 pub mod traces;
 pub mod tree;
+pub mod types;
 pub mod ui;
 pub mod widgets;

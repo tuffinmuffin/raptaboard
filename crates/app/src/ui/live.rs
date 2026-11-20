@@ -6,9 +6,11 @@ use nt4::{Topic, Value};
 
 use crate::struct_view;
 use crate::traces::SeriesKey;
+use crate::widgets::builtin::alerts as alerts_widget;
 use crate::widgets::builtin::graph;
 use crate::widgets::shared::{format, props};
 use crate::widgets::{self, list_layout};
+use raptaboard_layout::WidgetContainer;
 
 use super::DashboardApp;
 
@@ -16,36 +18,81 @@ use super::DashboardApp;
 /// 60 a second, as a graph's default.
 pub(super) const DEFAULT_TRACE_PERIOD_S: f64 = graph::DEFAULT_PERIOD_S;
 
+/// How often the alerts of widgets on tabs that aren't open are sent, for
+/// the tabs' marks (seconds).
+const OTHER_TAB_ALERTS_PERIOD_S: f64 = 0.25;
+
+/// The widgets on `tab` raptaboard can draw: on the grid, and in lists
+/// (unless hidden).
+fn drawn(tab: &raptaboard_layout::Tab) -> impl Iterator<Item = &WidgetContainer> {
+    let grid = &tab.grid_layout;
+    grid.containers
+        .iter()
+        .chain(
+            grid.layouts
+                .iter()
+                .flat_map(|l| &l.children)
+                .filter(|w| !list_layout::is_hidden(w)),
+        )
+        .filter(|w| widgets::find(&w.widget_type).is_some())
+}
+
+/// Whether `w` is an Alerts widget.
+fn is_alerts(w: &WidgetContainer) -> bool {
+    widgets::find(&w.widget_type).is_some_and(|t| t.names()[0] == "Alerts")
+}
+
 impl DashboardApp {
     /// The topics the widgets on the open tab are bound to, grouped by how
     /// often they want updates (each widget's `period`, in seconds). Only
-    /// widgets raptaboard can draw are counted.
+    /// widgets raptaboard can draw are counted. Alerts widgets on other tabs
+    /// count too, so their tabs can be marked while they're not open.
     pub(super) fn tab_topics(&self) -> Vec<(f64, Vec<String>)> {
         let Some(tab) = self.layout.tabs.get(self.current_tab) else {
             return Vec::new();
         };
-        let grid = &tab.grid_layout;
-        let drawn = grid
-            .containers
-            .iter()
-            .chain(
-                grid.layouts
-                    .iter()
-                    .flat_map(|l| &l.children)
-                    .filter(|w| !list_layout::is_hidden(w)),
-            )
-            .filter(|w| widgets::find(&w.widget_type).is_some());
+        // An Alerts widget showing every group needs every table's `.type`.
+        let all_groups = |w: &WidgetContainer| {
+            is_alerts(w) && props::flag(&w.properties, alerts_widget::ALL_GROUPS, false)
+        };
+        let server: Vec<String> = if self.layout.tabs.iter().flat_map(drawn).any(all_groups) {
+            self.nt
+                .topics()
+                .into_iter()
+                .map(|t| t.name.to_string())
+                .filter(|n| n.ends_with("/.type"))
+                .collect()
+        } else {
+            Vec::new()
+        };
         let mut groups: Vec<(f64, Vec<String>)> = Vec::new();
-        for w in drawn {
+        let mut add = |period: f64, wanted: Vec<String>| match groups
+            .iter_mut()
+            .find(|(p, _)| *p == period)
+        {
+            Some((_, names)) => names.extend(wanted),
+            None => groups.push((period, wanted)),
+        };
+        for w in drawn(tab) {
             let Some(topic) = w.topic() else { continue };
-            let period = props::period_s(w);
             let mut wanted = vec![topic.to_owned()];
             if let Some(ty) = widgets::find(&w.widget_type) {
                 wanted.extend(ty.extra_topics(&w.properties));
             }
-            match groups.iter_mut().find(|(p, _)| *p == period) {
-                Some((_, names)) => names.extend(wanted),
-                None => groups.push((period, wanted)),
+            if is_alerts(w) {
+                wanted.extend(alerts_widget::needed_topics(&w.properties, &server));
+            }
+            add(props::period_s(w), wanted);
+        }
+        for (i, other) in self.layout.tabs.iter().enumerate() {
+            if i == self.current_tab {
+                continue;
+            }
+            for w in drawn(other).filter(|w| is_alerts(w)) {
+                add(
+                    OTHER_TAB_ALERTS_PERIOD_S,
+                    alerts_widget::needed_topics(&w.properties, &server),
+                );
             }
         }
         groups
