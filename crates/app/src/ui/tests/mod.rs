@@ -411,15 +411,32 @@ fn row_at(harness: &Harness, label: &str, nth: usize) -> Rect {
         .unwrap_or_else(|| panic!("no tree row {nth} labelled {label:?}: {rows:?}"))
 }
 
+/// Like [`row_at`], waiting up to 10 s for the row to be drawn: a struct's
+/// row shows once its value has arrived, which a slow machine (CI's
+/// coverage build) takes longer to do.
+fn row_soon(harness: &mut Harness, label: &str, nth: usize) -> Rect {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let found = harness
+            .query_all_by_label(label)
+            .filter(|n| n.rect().min.x < TREE_RIGHT)
+            .count();
+        if found > nth || Instant::now() >= deadline {
+            return row_at(harness, label, nth);
+        }
+        settle(harness);
+    }
+}
+
 /// Click the `nth` tree row labelled `label`, holding `modifiers`.
 fn click_row(harness: &mut Harness, label: &str, nth: usize, modifiers: Modifiers) {
-    let pos = row_at(harness, label, nth).center();
+    let pos = row_soon(harness, label, nth).center();
     click_at(harness, pos, egui::PointerButton::Primary, modifiers);
 }
 
 /// Right-click the `nth` tree row labelled `label`.
 fn right_click_row(harness: &mut Harness, label: &str, nth: usize) {
-    let pos = row_at(harness, label, nth).center();
+    let pos = row_soon(harness, label, nth).center();
     click_at(
         harness,
         pos,
@@ -491,7 +508,7 @@ fn open_drive(harness: &mut Harness) {
 
 /// Drag the `nth` tree row labelled `label` to `to`.
 fn drag_row(harness: &mut Harness, label: &str, nth: usize, to: Pos2) {
-    let from = row_at(harness, label, nth).center();
+    let from = row_soon(harness, label, nth).center();
     harness.hover_at(from);
     harness.step();
     harness.drag_at(from);
