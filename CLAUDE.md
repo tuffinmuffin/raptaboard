@@ -104,7 +104,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   WPILib `fields` JSONs from the repo's `fields/` folder (2026 built in) or one picked with a file dialog;
   poses read by `types/field.rs` in the 2027 centered frame, `origin` for the old one; `layers.rs` the
   overlays: AprilTags, and layers of other robots, paths, the tags seen and objects (markers, on the field or
-  robot-relative), each from a topic; `attachments.rs` cameras' views and parts fixed to the robot), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
+  robot-relative), each from a topic; `attachments.rs` cameras' views and parts fixed to the robot; `target.rs` click to publish a target,
+  through `Effect::PublishStruct` and `NtConnection::publish_struct`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
   from `show`, and `Place::locked` says whether their input covers the whole card; `show_body` is
   the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
   draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing
@@ -139,7 +140,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   with undo; next is List Layout editing.
 - `layouts/robot2027_sim.json`: a layout for trying widgets against the robot-2027 sim
   (`cargo run -p raptaboard -- --address sim layouts/robot2027_sim.json`). Its `/DashTest/`
-  topics come from robot-2027's `utils/dashboard_test_topics.py` (sim only).
+  topics come from robot-2027's `utils/dashboard_test_topics.py` (sim only), on robot-2027's
+  `raptaboard-test` branch: commit test-topic changes there (never robot-2027's `main`).
   It also keeps widgets for things that don't exist, on purpose, to test that handling: "Never
   published" and "Missing text" (topics never sent), "Missing field" (a field `OrbitPose` doesn't
   have), and the "Missing child" row in Module CAN. Keep them when editing the layout.

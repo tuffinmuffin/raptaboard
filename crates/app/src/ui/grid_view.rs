@@ -164,6 +164,21 @@ impl DashboardApp {
                         self.sound.play_tone(tone);
                     }
                 }
+                widgets::Effect::Write { topic, value, ty } => {
+                    if let Err(why) = self.nt.write_or_publish(&topic, value, ty) {
+                        self.status = why.to_string();
+                    }
+                }
+                widgets::Effect::PublishStruct {
+                    topic,
+                    struct_name,
+                    bytes,
+                    schemas,
+                } => {
+                    if let Err(why) = self.nt.publish_struct(&topic, struct_name, bytes, schemas) {
+                        self.status = why.to_string();
+                    }
+                }
             }
         }
         self.tree_drop(ui, &painter, view, &mut requests);

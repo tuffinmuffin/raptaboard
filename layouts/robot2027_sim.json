@@ -1046,7 +1046,8 @@
                   "length_topic": "/DashTest/IntakeExtensionIn",
                   "scale": 0.0254
                 }
-              ]
+              ],
+              "click_target": true
             }
           },
           {

@@ -495,6 +495,72 @@ impl NtConnection {
         publisher.set(value).map_err(|_| WriteError::NotConnected)
     }
 
+    /// Publish `bytes`, one `struct_name` struct (a `Pose2d`'s x, y and
+    /// rotation), to `name`: a topic the dashboard owns, such as a Field's
+    /// target. Unlike [`write`](Self::write), which never rewrites the
+    /// robot's structs, this publishes struct topics, but only one nobody
+    /// has published or that already holds this struct type. `schemas`
+    /// (struct name, schema text, nested ones too) are published under
+    /// `/.schema/` when the server doesn't have them, so other dashboards
+    /// can decode it.
+    pub fn publish_struct(
+        &mut self,
+        name: &str,
+        struct_name: &str,
+        bytes: Vec<u8>,
+        schemas: &[(&str, &str)],
+    ) -> Result<(), WriteError> {
+        let Ok(ty) = format!("struct:{struct_name}").parse::<NtType>();
+        let Some(running) = &mut self.running else {
+            return Err(WriteError::NotConnected);
+        };
+        if !running.client.is_connected() {
+            return Err(WriteError::NotConnected);
+        }
+        if let Some(topic) = running.client.topic(name)
+            && topic.ty != ty
+        {
+            return Err(WriteError::WrongType {
+                topic: name.to_owned(),
+                topic_type: topic.ty.to_string(),
+                value: format!("a {struct_name}"),
+            });
+        }
+        for (schema_name, text) in schemas {
+            let schema_topic = format!("{SCHEMA_PREFIX}struct:{schema_name}");
+            if running.client.topic(&schema_topic).is_some()
+                || running.publishers.contains_key(&schema_topic)
+            {
+                continue;
+            }
+            let Ok(schema_type) = "structschema".parse::<NtType>();
+            let publisher = running.client.publish_generic(
+                &schema_topic,
+                schema_type.clone(),
+                Properties::new(),
+                Default::default(),
+            );
+            // Best effort: the target is still sent if a schema isn't.
+            let _ = publisher.set(Value::Raw(text.as_bytes().to_vec()));
+            running
+                .publishers
+                .insert(schema_topic, (schema_type, publisher));
+        }
+        if !running.publishers.contains_key(name) {
+            let publisher = running.client.publish_generic(
+                name,
+                ty.clone(),
+                Properties::new(),
+                Default::default(),
+            );
+            running.publishers.insert(name.to_owned(), (ty, publisher));
+        }
+        let (_, publisher) = &running.publishers[name];
+        publisher
+            .set(Value::Raw(bytes))
+            .map_err(|_| WriteError::NotConnected)
+    }
+
     /// The running client, for subscribing widgets. `None` with no target.
     pub fn client(&self) -> Option<&Client> {
         self.running.as_ref().map(|r| &r.client)

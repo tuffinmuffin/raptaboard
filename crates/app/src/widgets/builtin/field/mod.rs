@@ -14,6 +14,10 @@
 //! The robot is drawn `robot_length` by `robot_width` meters, in
 //! `robot_color`, with an arrow the way it faces.
 //!
+//! With `click_target` on ([`target`]), a click on the field publishes a
+//! target there (a drag also sets which way it faces; right-click clears
+//! it), drawn as a green X from the topic's value.
+//!
 //! On the robot ([`attachments`]): cameras, as their field of view with
 //! range bands, and parts (an intake), shown while a boolean topic is true
 //! or lengthened by a number topic (`attachments`).
@@ -44,6 +48,7 @@ use crate::widgets::{Live, Server, ValueInfo, WidgetType};
 
 pub mod attachments;
 pub mod layers;
+pub mod target;
 
 /// The field shown: an id from [`fields::available`] or a field JSON's path
 /// (raptaboard).
@@ -64,7 +69,7 @@ pub const ROBOT_COLOR: &str = "robot_color";
 /// (Elastic).
 pub const FIELD_ROTATION: &str = "field_rotation";
 
-const KEYS: [&str; 12] = [
+const KEYS: [&str; 14] = [
     FIELD,
     FIELD_GAME,
     ORIGIN,
@@ -77,6 +82,8 @@ const KEYS: [&str; 12] = [
     layers::SHOW_OTHER_OBJECTS,
     layers::SHOW_TRAJECTORIES,
     attachments::ATTACHMENTS,
+    target::CLICK_TARGET,
+    target::TARGET_TOPIC,
 ];
 
 /// A WPILib `Field2d` table's `.type`.
@@ -138,6 +145,17 @@ impl Turn {
         }
     }
 
+    /// Where `(a, b)` on the turned field (0 to 1 across and down) is on the
+    /// unturned one: the opposite of [`place`](Self::place).
+    fn unplace(self, (a, b): (f32, f32)) -> (f32, f32) {
+        match self {
+            Turn::None => (a, b),
+            Turn::Quarter => (b, 1.0 - a),
+            Turn::Half => (1.0 - a, 1.0 - b),
+            Turn::ThreeQuarter => (1.0 - b, a),
+        }
+    }
+
     /// Whether the field's length runs up and down on screen.
     fn upright(self) -> bool {
         matches!(self, Turn::Quarter | Turn::ThreeQuarter)
@@ -178,6 +196,19 @@ impl FieldView {
     fn at_uv(&self, uv: (f32, f32)) -> Pos2 {
         let (x, y) = self.turn.place(uv);
         self.rect.min + egui::vec2(x * self.rect.width(), y * self.rect.height())
+    }
+
+    /// The field point (meters, 2027 frame) at `pos` on screen: the
+    /// opposite of [`to_screen`](Self::to_screen).
+    pub fn to_field(&self, pos: Pos2) -> (f64, f64) {
+        let a = (pos.x - self.rect.min.x) / self.rect.width();
+        let b = (pos.y - self.rect.min.y) / self.rect.height();
+        let (u, v) = self.turn.unplace((a, b));
+        let (length, width) = self.size;
+        (
+            f64::from(u) * length - length / 2.0,
+            width / 2.0 - f64::from(v) * width,
+        )
     }
 
     /// Where the field point `(x, y)` (meters, 2027 frame) is on screen.
@@ -407,6 +438,27 @@ fn robot_poses(widget: &WidgetContainer, live: &Live<'_>, size: (f64, f64)) -> V
         .collect()
 }
 
+/// `n` rounded to `places` decimals, never `-0` (a value a hair below 0
+/// reads as 0).
+fn rounded(n: f64, places: usize) -> String {
+    let text = format!("{n:.places$}");
+    match text.strip_prefix('-') {
+        Some(rest) if rest.chars().all(|c| c == '0' || c == '.') => rest.to_owned(),
+        _ => text,
+    }
+}
+
+/// Where `pose` is, for the widget's summary: `x 1.50 m, y -0.25 m, facing
+/// 90°`.
+fn where_text(pose: FieldPose) -> String {
+    format!(
+        "x {} m, y {} m, facing {}°",
+        rounded(pose.x, 2),
+        rounded(pose.y, 2),
+        rounded(pose.heading.to_degrees(), 0)
+    )
+}
+
 /// The robot's length and width in `p`, in meters.
 fn robot_size(p: &Map<String, Json>) -> (f64, f64) {
     (
@@ -470,17 +522,25 @@ impl FieldWidget {
         if let Some(pose) = poses.first() {
             draw_robot(&painter, &view, *pose, robot_size(p), color);
         }
+        // The target, from the server, over everything; and one being
+        // dragged, before it's sent.
+        let origin = Origin::from_key(props::text(p, ORIGIN, Origin::Center.key()));
+        let target = target::enabled(p)
+            .then(|| target::current(p, live, origin, size))
+            .flatten();
+        if let Some(t) = target {
+            target::draw(&painter, &view, t, false);
+        }
+        if target::enabled(p)
+            && let Some(dragging) = target::input(ui, view.rect, &view, p, live, origin)
+        {
+            target::draw(&painter, &view, dragging, true);
+        }
         let pose = poses.first().copied();
         let mut drawn = drawn;
         drawn.robots += poses.len().saturating_sub(1);
         let summary = match pose {
-            Some(pose) => format!(
-                "{}: robot at x {:.2} m, y {:.2} m, facing {:.0}°",
-                widget.title,
-                pose.x,
-                pose.y,
-                pose.heading.to_degrees()
-            ),
+            Some(pose) => format!("{}: robot at {}", widget.title, where_text(pose)),
             None => format!("{}: no robot pose", widget.title),
         };
         let mut summary = summary;
@@ -502,6 +562,9 @@ impl FieldWidget {
                 drawn.objects,
                 if drawn.objects == 1 { "" } else { "s" }
             );
+        }
+        if let Some(t) = target {
+            summary += &format!("; target at {}", where_text(t));
         }
         if drawn.paths > 0 {
             summary += &format!(
@@ -538,6 +601,7 @@ impl WidgetType for FieldWidget {
         let topic = props::text(p, "topic", "").trim_end_matches('/');
         let mut wanted = layers::layer_topics(p);
         wanted.extend(attachments::attachment_topics(p));
+        wanted.extend(target::topics(p));
         if !topic.is_empty() && !props::text(p, props::DATA_TYPE, "").starts_with("struct:") {
             wanted.extend(layers::table_topics(topic, server.topics));
         }
@@ -722,6 +786,7 @@ impl WidgetType for FieldWidget {
         }
         layers::settings_rows(ui, p, value.topics);
         attachments::settings_rows(ui, p, value.topics);
+        target::settings_rows(ui, p);
     }
     fn setting_keys(&self) -> &'static [&'static str] {
         &KEYS
@@ -771,6 +836,33 @@ mod tests {
         assert_eq!(Turn::of(p.as_object().unwrap()), Turn::Half);
         let p = serde_json::json!({"field_rotation": -90});
         assert_eq!(Turn::of(p.as_object().unwrap()), Turn::ThreeQuarter);
+    }
+
+    #[test]
+    fn the_summary_never_says_minus_zero() {
+        assert_eq!(rounded(-0.001, 2), "0.00");
+        assert_eq!(rounded(-0.004, 0), "0");
+        assert_eq!(rounded(-0.25, 2), "-0.25");
+        let p = FieldPose {
+            x: -0.0004,
+            y: 1.0,
+            heading: -0.001,
+        };
+        assert_eq!(where_text(p), "x 0.00 m, y 1.00 m, facing 0°");
+    }
+
+    #[test]
+    fn a_screen_point_maps_back_to_the_field_for_every_turn() {
+        for turn in Turn::ALL {
+            let v = view(turn);
+            for (x, y) in [(0.0, 0.0), (5.0, 2.5), (-7.5, -3.0), (8.0, 4.0)] {
+                let (bx, by) = v.to_field(v.to_screen(x, y));
+                assert!(
+                    (bx - x).abs() < 1e-4 && (by - y).abs() < 1e-4,
+                    "{turn:?} ({x}, {y}) came back ({bx}, {by})"
+                );
+            }
+        }
     }
 
     #[test]
