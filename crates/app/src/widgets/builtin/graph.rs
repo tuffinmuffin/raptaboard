@@ -27,10 +27,11 @@ use raptaboard_layout::{StructMeta, WidgetContainer};
 use serde_json::{Map, Value as Json};
 
 use crate::traces::SeriesKey;
+use crate::tree::DraggedTopic;
 use crate::widgets::shared::card;
 use crate::widgets::shared::format::number_of;
 use crate::widgets::shared::props::{self, DATA_TYPE, set_property};
-use crate::widgets::{Live, ValueInfo, WidgetType, source_title};
+use crate::widgets::{Live, Server, ValueInfo, WidgetType, source_title};
 
 /// Seconds of history shown (Elastic).
 pub const TIME_DISPLAYED: &str = "time_displayed";
@@ -675,12 +676,39 @@ impl WidgetType for Graph {
         DEFAULT_PERIOD_S
     }
 
-    fn extra_topics(&self, props: &Map<String, Json>) -> Vec<String> {
+    fn extra_topics(&self, props: &Map<String, Json>, _: Server<'_>) -> Vec<String> {
         entries(props)
             .into_iter()
             .skip(1)
             .map(|e| e.topic)
             .collect()
+    }
+
+    fn traced(&self, widget: &WidgetContainer) -> Vec<(SeriesKey, f64)> {
+        let seconds = time_displayed(&widget.properties);
+        series(widget)
+            .into_iter()
+            .map(|s| (s.key, seconds))
+            .collect()
+    }
+
+    fn takes_topics(&self) -> bool {
+        true
+    }
+
+    /// Each topic that's a number or boolean, and not already a line,
+    /// becomes a line.
+    fn add_topics(&self, widget: &mut WidgetContainer, topics: &[DraggedTopic]) -> String {
+        let added = topics
+            .iter()
+            .filter(|t| self.shows(&t.ty))
+            .filter(|t| add_series(widget, &t.name, &t.ty, t.field.as_ref()))
+            .count();
+        match added {
+            0 => "Nothing new to add to that graph (numbers and booleans only)".to_owned(),
+            1 => format!("Added a line to \"{}\"", widget.title),
+            n => format!("Added {n} lines to \"{}\"", widget.title),
+        }
     }
 
     fn settings(&self, ui: &mut egui::Ui, p: &mut Map<String, Json>, _: ValueInfo<'_>) {
@@ -889,7 +917,7 @@ mod tests {
         let colors: Vec<Color32> = series(&w).iter().map(|s| s.color).collect();
         assert_eq!(colors, [DEFAULT_COLOR, PALETTE[0], PALETTE[1]]);
         assert_eq!(
-            Graph.extra_topics(&w.properties),
+            Graph.extra_topics(&w.properties, Server::default()),
             ["/Drive/pose", "/Drive/target"]
         );
         assert!(show_legend(&w.properties, 3));

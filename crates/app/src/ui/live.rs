@@ -1,4 +1,5 @@
-//! Which topics the open tab needs, and recording graph values as they arrive.
+//! Which topics the open tab needs, and recording traced values (graphs')
+//! as they arrive.
 
 use std::collections::HashMap;
 
@@ -6,21 +7,19 @@ use nt4::{Topic, Value};
 
 use crate::traces::SeriesKey;
 use crate::types::structs;
-use crate::widgets::builtin::alerts as alerts_widget;
-use crate::widgets::builtin::graph;
 use crate::widgets::shared::{format, props};
 use crate::widgets::{self, list_layout};
 use raptaboard_layout::WidgetContainer;
 
 use super::DashboardApp;
 
-/// How often graphs' topics are sent when no graph says (seconds): about
-/// 60 a second, as a graph's default.
-pub(super) const DEFAULT_TRACE_PERIOD_S: f64 = graph::DEFAULT_PERIOD_S;
+/// How often traced topics are sent when no widget tracing them says
+/// (seconds): about 60 a second.
+const DEFAULT_TRACE_PERIOD_S: f64 = 0.016;
 
-/// How often the alerts of widgets on tabs that aren't open are sent, for
+/// How often the topics of widgets on tabs that aren't open are sent, for
 /// the tabs' marks (seconds).
-const OTHER_TAB_ALERTS_PERIOD_S: f64 = 0.25;
+const BACKGROUND_PERIOD_S: f64 = 0.25;
 
 /// The widgets on `tab` raptaboard can draw: on the grid, and in lists
 /// (unless hidden).
@@ -37,34 +36,21 @@ fn drawn(tab: &raptaboard_layout::Tab) -> impl Iterator<Item = &WidgetContainer>
         .filter(|w| widgets::find(&w.widget_type).is_some())
 }
 
-/// Whether `w` is an Alerts widget.
-fn is_alerts(w: &WidgetContainer) -> bool {
-    widgets::find(&w.widget_type).is_some_and(|t| t.names()[0] == "Alerts")
-}
-
 impl DashboardApp {
     /// The topics the widgets on the open tab are bound to, grouped by how
-    /// often they want updates (each widget's `period`, in seconds). Only
-    /// widgets raptaboard can draw are counted. Alerts widgets on other tabs
-    /// count too, so their tabs can be marked while they're not open.
-    pub(super) fn tab_topics(&self) -> Vec<(f64, Vec<String>)> {
+    /// often they want updates (each widget's `period`, in seconds), with
+    /// what each needs besides (`extra_topics`), from the server's `topics`.
+    /// Only widgets raptaboard can draw are counted. Widgets on other tabs
+    /// add what they need for their tab's mark (`background_topics`).
+    pub(super) fn tab_topics(&self, topics: &[Topic]) -> Vec<(f64, Vec<String>)> {
         let Some(tab) = self.layout.tabs.get(self.current_tab) else {
             return Vec::new();
         };
-        // An Alerts widget showing every group needs every table's `.type`.
-        let all_groups = |w: &WidgetContainer| {
-            is_alerts(w) && props::flag(&w.properties, alerts_widget::ALL_GROUPS, false)
-        };
-        let server: Vec<String> = if self.layout.tabs.iter().flat_map(drawn).any(all_groups) {
-            self.nt
-                .topics()
-                .into_iter()
-                .map(|t| t.name.to_string())
-                .filter(|n| n.ends_with("/.type"))
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let tables: Vec<String> = topics
+            .iter()
+            .filter_map(|t| t.name.strip_suffix("/.type").map(str::to_owned))
+            .collect();
+        let server = widgets::Server { tables: &tables };
         let mut groups: Vec<(f64, Vec<String>)> = Vec::new();
         let mut add = |period: f64, wanted: Vec<String>| match groups
             .iter_mut()
@@ -77,10 +63,7 @@ impl DashboardApp {
             let Some(topic) = w.topic() else { continue };
             let mut wanted = vec![topic.to_owned()];
             if let Some(ty) = widgets::find(&w.widget_type) {
-                wanted.extend(ty.extra_topics(&w.properties));
-            }
-            if is_alerts(w) {
-                wanted.extend(alerts_widget::needed_topics(&w.properties, &server));
+                wanted.extend(ty.extra_topics(&w.properties, server));
             }
             add(props::period_s(w), wanted);
         }
@@ -88,18 +71,20 @@ impl DashboardApp {
             if i == self.current_tab {
                 continue;
             }
-            for w in drawn(other).filter(|w| is_alerts(w)) {
-                add(
-                    OTHER_TAB_ALERTS_PERIOD_S,
-                    alerts_widget::needed_topics(&w.properties, &server),
-                );
+            for w in drawn(other) {
+                if let Some(ty) = widgets::find(&w.widget_type) {
+                    let wanted = ty.background_topics(&w.properties, server);
+                    if !wanted.is_empty() {
+                        add(BACKGROUND_PERIOD_S, wanted);
+                    }
+                }
             }
         }
         groups
     }
 
-    /// Record the newest values of the series the open tab's graphs show,
-    /// and forget what no graph shows any more.
+    /// Record the newest values of the series the open tab's widgets trace
+    /// (graphs' lines), and forget what none traces any more.
     pub(super) fn record_traces(&mut self, topics: &[Topic]) {
         // Every value received since last frame, for the traced topics.
         let arrived = self.nt.take_traced();
@@ -107,19 +92,23 @@ impl DashboardApp {
             return;
         };
         let grid = &tab.grid_layout;
-        let graphs = grid
+        let mut wanted = Vec::new();
+        let mut fastest = f64::INFINITY;
+        for w in grid
             .containers
             .iter()
             .chain(grid.layouts.iter().flat_map(|l| &l.children))
-            .filter(|w| w.widget_type == "Graph");
-        let mut wanted = Vec::new();
-        let mut fastest = f64::INFINITY;
-        for w in graphs {
-            let seconds = graph::time_displayed(&w.properties);
-            fastest = fastest.min(props::period_s(w));
-            wanted.extend(graph::series(w).into_iter().map(|s| (s.key, seconds)));
+        {
+            let Some(ty) = widgets::find(&w.widget_type) else {
+                continue;
+            };
+            let traced = ty.traced(w);
+            if !traced.is_empty() {
+                fastest = fastest.min(props::period_s(w));
+                wanted.extend(traced);
+            }
         }
-        // Ask for every change of the graphs' topics, not only the newest.
+        // Ask for every change of the traced topics, not only the newest.
         let mut names: Vec<String> = wanted.iter().map(|(k, _)| k.topic.clone()).collect();
         names.sort();
         names.dedup();

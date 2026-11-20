@@ -21,7 +21,6 @@ use crate::nt::WriteError;
 use crate::sampling::Sampler;
 use crate::tree::DraggedTopics;
 use crate::types::structs;
-use crate::widgets::builtin::graph;
 use crate::widgets::shared::{card, format, props};
 use crate::widgets::{self, list_layout};
 
@@ -597,8 +596,9 @@ impl DashboardApp {
         })
     }
 
-    /// The graph under screen point `p` as a drop target, if there is one.
-    fn graph_drop(&self, view: GridView, p: Pos2) -> Option<DropTarget> {
+    /// The widget under screen point `p` that takes dropped topics (a
+    /// graph), as a drop target, if there is one.
+    fn topic_taker_drop(&self, view: GridView, p: Pos2) -> Option<DropTarget> {
         let at = view.to_grid(p);
         self.tab()?
             .grid_layout
@@ -607,13 +607,13 @@ impl DashboardApp {
             .enumerate()
             .find(|(_, w)| {
                 let r = w.rect;
-                w.widget_type == "Graph"
+                widgets::find(&w.widget_type).is_some_and(|t| t.takes_topics())
                     && at.0 >= r.x
                     && at.0 < r.x + r.width
                     && at.1 >= r.y
                     && at.1 < r.y + r.height
             })
-            .map(|(index, w)| DropTarget::Graph {
+            .map(|(index, w)| DropTarget::Widget {
                 index,
                 card: view.to_screen(&w.rect).shrink(CELL_GAP),
             })
@@ -749,8 +749,10 @@ impl DashboardApp {
             width: view.cell,
             height: view.cell,
         };
-        // Over a graph, the topics become more lines on it.
-        let into = self.graph_drop(view, p).or_else(|| self.list_drop(view, p));
+        // Over a widget that takes topics, they go to it (a graph's lines).
+        let into = self
+            .topic_taker_drop(view, p)
+            .or_else(|| self.list_drop(view, p));
         let target = grid::snap_move(under, view.cell, view.room);
         match &into {
             Some(drop) => draw_drop(painter, drop, &|r: &LayoutRect| view.to_screen(r)),
@@ -965,21 +967,12 @@ impl DashboardApp {
                 children.splice(at..at, made);
                 self.selected = Some(Item::List(list));
             }
-            Some(DropTarget::Graph { index, .. }) => {
-                let graph = &mut grid.containers[index];
-                let plottable = widgets::find("Graph").expect("graphs are built");
-                let added = topics
-                    .0
-                    .iter()
-                    .filter(|t| plottable.shows(&t.ty))
-                    .filter(|t| graph::add_series(graph, &t.name, &t.ty, t.field.as_ref()))
-                    .count();
+            Some(DropTarget::Widget { index, .. }) => {
+                let widget = &mut grid.containers[index];
+                if let Some(ty) = widgets::find(&widget.widget_type) {
+                    self.status = ty.add_topics(widget, &topics.0);
+                }
                 self.selected = Some(Item::Widget(index));
-                self.status = match added {
-                    0 => "Nothing new to add to that graph (numbers and booleans only)".to_owned(),
-                    1 => format!("Added a line to \"{}\"", graph.title),
-                    n => format!("Added {n} lines to \"{}\"", graph.title),
-                };
             }
             None => {
                 let placed = grid::place_near(grid, made, (target.x, target.y), cell, view.room);

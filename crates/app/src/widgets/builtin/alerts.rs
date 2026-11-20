@@ -27,7 +27,7 @@ use crate::sound::Tone;
 use crate::types::alerts::{self, ActiveAlert, AlertWatch, Freshness, Level};
 use crate::widgets::shared::alert_sign::{self, draw_sign};
 use crate::widgets::shared::{card, props};
-use crate::widgets::{Effect, Live, ValueInfo, WidgetType};
+use crate::widgets::{Effect, Live, Server, ValueInfo, WidgetType};
 
 /// Every alert group on the server, not just the widget's `topic`.
 pub const ALL_GROUPS: &str = "all_groups";
@@ -338,36 +338,21 @@ impl AlertsWidget {
     }
 }
 
-/// The highest level above info active in the alerts a widget shows, from
-/// the server's `values`, for a mark on its tab. `None` for other widget
-/// types, no alerts, or only infos.
-pub fn tab_level(widget: &WidgetContainer, values: &HashMap<&str, &Value>) -> Option<Level> {
-    if crate::widgets::find(&widget.widget_type).map(|t| t.names()[0]) != Some("Alerts") {
-        return None;
-    }
-    let shown: Vec<ActiveAlert> = alerts::read_groups(&tables(widget, values), values)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|a| a.level <= min_level(&widget.properties))
-        .collect();
-    alerts::highest(&shown).filter(|l| *l != Level::Info)
-}
-
-/// The topics an Alerts widget with settings `p` needs, given every topic
-/// on the server: its group's, or every group's with `all_groups` (every
-/// table's `.type`, to tell which are alert groups, and their lists).
-pub fn needed_topics(p: &Map<String, Json>, server: &[String]) -> Vec<String> {
+/// The topics an Alerts widget with settings `p` needs: its group's, or
+/// with `all_groups` every table's on the `server` (their `.type`, to tell
+/// which are alert groups, and their lists).
+fn needed_topics(p: &Map<String, Json>, server: Server<'_>) -> Vec<String> {
     if props::flag(p, ALL_GROUPS, false) {
         server
+            .tables
             .iter()
-            .filter_map(|t| t.strip_suffix("/.type"))
-            .flat_map(alerts::table_topics)
+            .flat_map(|t| alerts::table_topics(t))
             .collect()
     } else {
-        props::text(p, "topic", "")
-            .is_empty()
-            .then(Vec::new)
-            .unwrap_or_else(|| alerts::table_topics(props::text(p, "topic", "")))
+        match props::text(p, "topic", "") {
+            "" => Vec::new(),
+            topic => alerts::table_topics(topic),
+        }
     }
 }
 
@@ -381,13 +366,22 @@ impl WidgetType for AlertsWidget {
     fn table_types(&self) -> &'static [&'static str] {
         &[alerts::ALERTS_TYPE]
     }
-    fn extra_topics(&self, p: &Map<String, Json>) -> Vec<String> {
-        // Every group's are added by the app (it knows the server's topics).
-        if props::flag(p, ALL_GROUPS, false) {
-            Vec::new()
-        } else {
-            needed_topics(p, &[])
-        }
+    fn extra_topics(&self, p: &Map<String, Json>, server: Server<'_>) -> Vec<String> {
+        needed_topics(p, server)
+    }
+    /// Its tab is marked while it's closed too, so the lists are needed.
+    fn background_topics(&self, p: &Map<String, Json>, server: Server<'_>) -> Vec<String> {
+        needed_topics(p, server)
+    }
+    /// The most urgent level above info it shows: errors and warnings mark
+    /// the tab, infos don't.
+    fn tab_mark(&self, widget: &WidgetContainer, values: &HashMap<&str, &Value>) -> Option<Level> {
+        let shown: Vec<ActiveAlert> = alerts::read_groups(&tables(widget, values), values)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|a| a.level <= min_level(&widget.properties))
+            .collect();
+        alerts::highest(&shown).filter(|l| *l != Level::Info)
     }
     fn show(
         &self,
@@ -506,16 +500,14 @@ mod tests {
     fn all_groups_needs_every_tables_lists() {
         let mut p = Map::new();
         p.insert("topic".into(), "/SmartDashboard/Alerts".into());
-        assert_eq!(needed_topics(&p, &[]).len(), 4);
+        let tables = vec!["/A".to_string(), "/B".to_string()];
+        let server = Server { tables: &tables };
+        assert_eq!(AlertsWidget.extra_topics(&p, server).len(), 4);
         p.insert(ALL_GROUPS.into(), true.into());
-        let server = vec![
-            "/A/.type".to_string(),
-            "/B/.type".to_string(),
-            "/A/x".to_string(),
-        ];
-        let needed = needed_topics(&p, &server);
+        let needed = AlertsWidget.extra_topics(&p, server);
         assert_eq!(needed.len(), 8);
         assert!(needed.contains(&"/B/errors".to_string()));
-        assert!(AlertsWidget.extra_topics(&p).is_empty());
+        // Its tab is marked while closed, so it needs them then too.
+        assert_eq!(AlertsWidget.background_topics(&p, server), needed);
     }
 }

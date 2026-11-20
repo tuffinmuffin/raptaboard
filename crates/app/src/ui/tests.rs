@@ -375,8 +375,9 @@ fn the_window_draws_every_widget_type_with_live_values() {
             .all(|s| app.traces.points(&s.key).count() >= 3)
     });
     // Every widget's topic is subscribed, at the widgets' period.
+    let topics = app.nt.topics();
     let wanted: Vec<String> = app
-        .tab_topics()
+        .tab_topics(&topics)
         .into_iter()
         .flat_map(|(_, names)| names)
         .collect();
@@ -399,7 +400,12 @@ fn the_window_draws_every_widget_type_with_live_values() {
     // that tab's mark.
     app.current_tab = 1;
     frame(&ctx, &mut app, vec![]);
-    let wanted: Vec<String> = app.tab_topics().into_iter().flat_map(|(_, n)| n).collect();
+    let topics = app.nt.topics();
+    let wanted: Vec<String> = app
+        .tab_topics(&topics)
+        .into_iter()
+        .flat_map(|(_, n)| n)
+        .collect();
     assert!(!wanted.is_empty());
     assert!(
         wanted.iter().all(|n| n.starts_with("/Test/Auto/")),
@@ -842,6 +848,40 @@ fn struct_fields_drag_onto_the_grid_as_field_widgets() {
     click_row(&mut harness, "value", 2, Modifiers::COMMAND);
     drag_row(&mut harness, "x", 0, Pos2::new(1700.0, 650.0));
     assert_eq!(widgets(&harness).len(), before + 4);
+}
+
+#[test]
+fn topics_dropped_on_a_graph_become_its_lines() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    open_drive(&mut harness);
+    let widgets = |h: &Harness| h.state().layout.tabs[0].grid_layout.containers.clone();
+    let index = widgets(&harness)
+        .iter()
+        .position(|w| w.widget_type == "Graph")
+        .expect("the test layout has a graph");
+    let on_graph = {
+        let app = harness.state();
+        let r = widgets(&harness)[index].rect;
+        app.grid_area.min + egui::vec2((r.x + r.width / 2.0) as f32, (r.y + r.height / 2.0) as f32)
+    };
+    let count = widgets(&harness).len();
+    let lines = |h: &Harness| graph::series(&widgets(h)[index]);
+    let before = lines(&harness).len();
+    // A struct field dropped on the graph is one more line, not a widget.
+    drag_row(&mut harness, "y", 0, on_graph);
+    assert_eq!(widgets(&harness).len(), count);
+    let now = lines(&harness);
+    assert_eq!(now.len(), before + 1);
+    assert_eq!(
+        now.last().unwrap().key.field.as_deref(),
+        Some(&["translation".to_string(), "y".to_string()][..])
+    );
+    assert!(harness.state().status.starts_with("Added a line"));
+    // The same again adds nothing, and says so.
+    drag_row(&mut harness, "y", 0, on_graph);
+    assert_eq!(lines(&harness).len(), before + 1);
+    assert!(harness.state().status.starts_with("Nothing new"));
 }
 
 #[test]
@@ -2350,7 +2390,13 @@ fn all_groups_and_the_tab_marks_follow_every_alert_widget() {
     // A warning on tab 0; tab 1's group has nothing; tab 2 has no widget.
     let marks = |h: &mut Harness| {
         settle(h);
-        h.state().tab_alert_marks()
+        let app = h.state();
+        let topics = app.nt.topics();
+        let values: std::collections::HashMap<&str, &nt4::Value> = topics
+            .iter()
+            .filter_map(|t| Some((&*t.name, &t.value.as_ref()?.value)))
+            .collect();
+        app.tab_marks(&values)
     };
     assert_eq!(marks(&mut harness), [Some(Level::Warning), None, None]);
     // An error in the arm group: on tab 1, whose tab isn't open, and in
