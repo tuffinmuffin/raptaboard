@@ -28,7 +28,7 @@ use serde_json::{Map, Value as Json};
 
 use super::number_bar::{DIVISIONS, MAX_VALUE, MIN_VALUE, fraction, labels};
 use crate::widgets::shared::format::{number_of, short_number};
-use crate::widgets::shared::{card, entry, props, scale};
+use crate::widgets::shared::{card, entry, pointer, props, scale};
 use crate::widgets::{Live, ValueInfo, WidgetType};
 
 /// Send every value during a drag, not only the last (Elastic).
@@ -329,7 +329,27 @@ fn show_slider(
         entry::open(ui, entry_id, text);
     }
     let editing = entry::is_open(ui, entry_id);
-    if response.is_pointer_button_down_on()
+    // A tap whose press and release came in the same frame (a touchscreen
+    // on macOS sends one so) is never held down at a frame's end: it's set
+    // and sent here, where it was let go. A mouse click is held for a frame
+    // first, so it has a hold going and goes the usual way below.
+    let holding = held.is_some_and(|h| h.released.is_none());
+    if response.clicked()
+        && !holding
+        && !response.is_pointer_button_down_on()
+        && let Some(pos) = pointer::released_at(ui).or(response.interact_pointer_pos())
+    {
+        let at = (pos.x - track.min.x) / track.width().max(1.0);
+        let value = value_at(at, setup.min, setup.max, setup.step);
+        held = Some(Held {
+            value,
+            start: topic,
+            sent: Some(value),
+            released: Some(now),
+            cancelled: false,
+        });
+        send = Some(value);
+    } else if response.is_pointer_button_down_on()
         && let Some(pos) = response.interact_pointer_pos()
     {
         let ongoing = held.filter(|h| h.released.is_none());

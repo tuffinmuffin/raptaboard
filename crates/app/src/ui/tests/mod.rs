@@ -771,3 +771,38 @@ fn labelled_soon(harness: &mut Harness, label: &str) {
         settle(harness);
     }
 }
+
+/// Tap at `tap` the way a touchscreen on macOS sends one (from a real
+/// input log): one frame with a move to the tap, the press and release
+/// there, then the cursor put back at `mouse` (where the mouse was) and the
+/// pointer gone. The frames go through the app's [`TapHold`](super::taps::TapHold) as
+/// eframe's `raw_input_hook` does. All in one frame: `Harness::event` would
+/// run a frame for each, which hides what goes wrong. The mouse is moved to
+/// `mouse` first.
+fn tap_burst(harness: &mut Harness, tap: Pos2, mouse: Pos2) {
+    harness.hover_at(mouse);
+    harness.step();
+    let button = |pressed| Event::PointerButton {
+        pos: tap,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::NONE,
+    };
+    let mut frame = vec![
+        Event::PointerMoved(tap),
+        button(true),
+        Event::PointerMoved(tap),
+        button(false),
+        Event::PointerMoved(mouse),
+        Event::PointerGone,
+    ];
+    harness.state_mut().taps.apply(&mut frame);
+    harness.input_mut().events.extend(frame);
+    harness.step();
+    // The next frame, with what was held back.
+    let mut next = Vec::new();
+    harness.state_mut().taps.apply(&mut next);
+    harness.input_mut().events.extend(next);
+    harness.step();
+    settle(harness);
+}

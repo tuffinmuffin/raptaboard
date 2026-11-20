@@ -387,3 +387,47 @@ fn an_editable_text_display_takes_typed_values() {
     server_has_setpoint(&mut harness, &robot, -1.0);
     assert!(harness.state().sends.failed.is_empty());
 }
+
+#[test]
+fn a_touchscreen_tap_on_a_slider_sets_it_there() {
+    let robot = Robot::start();
+    let mut harness = slider_harness(&robot);
+    harness.state_mut().locked = true;
+    settle(&mut harness);
+    let track = slider_track(&harness, 0);
+    // The mouse went back to another slider: this one takes the tap, where
+    // it was.
+    let other = slider_track(&harness, 1);
+    tap_burst(&mut harness, along(track, 0.3), along(other, 0.9));
+    server_has_setpoint(&mut harness, &robot, 3.0);
+    // And sent once, not again when the hold ends.
+    std::thread::sleep(Duration::from_millis(200));
+    settle(&mut harness);
+    assert_eq!(robot.seen_setpoint.get(), Some(3.0));
+}
+
+#[test]
+fn a_touchscreen_tap_on_a_slider_in_a_list_sets_it_there() {
+    let robot = Robot::start();
+    let mut harness = slider_harness(&robot);
+    harness.state_mut().locked = true;
+    settle(&mut harness);
+    // The list's slider, tapped in its middle, with the mouse back on the
+    // first grid slider's left end.
+    let middle = child_middle(&harness, 0, 0);
+    let mouse = along(slider_track(&harness, 0), 0.05);
+    tap_burst(&mut harness, middle, mouse);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while robot
+        .seen_setpoint
+        .get()
+        .is_none_or(|v| (v - 5.0).abs() > 1.0)
+    {
+        assert!(
+            Instant::now() < deadline,
+            "the list's slider didn't take the tap: {:?}",
+            robot.seen_setpoint.get()
+        );
+        settle(&mut harness);
+    }
+}

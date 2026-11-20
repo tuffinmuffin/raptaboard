@@ -186,12 +186,15 @@ impl DashboardApp {
         // whatever the widget does with the click (a toggle, a chooser's
         // button). Clicks in a popup or dialog over the grid don't count.
         if requests.find_in_tree.is_none()
-            && let Some(pos) = ui.input(|i| {
-                i.pointer
-                    .primary_clicked()
-                    .then(|| i.pointer.interact_pos())
-                    .flatten()
-            })
+            && let Some(pos) = ui
+                .input(|i| i.pointer.primary_clicked())
+                .then(|| {
+                    // Where it was let go: after a touchscreen tap the
+                    // pointer is already back where the mouse was.
+                    crate::widgets::shared::pointer::released_at(ui)
+                        .or(ui.input(|i| i.pointer.interact_pos()))
+                })
+                .flatten()
             && area.contains(pos)
             && ui.ctx().layer_id_at(pos) == Some(ui.layer_id())
         {
