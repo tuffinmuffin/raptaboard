@@ -497,7 +497,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    to empty, which is a restart), a pick is dropped: the robot's `active` (or `default`) is sent.
    In the tree, a table whose `.type` has a widget (`WidgetType::table_types`, "String Chooser") is
    one draggable row (its `.type` values are always watched) with an open arrow of its own that lists
-   its parts and their values (`options`, `active`, ...); with metadata shown it's a plain folder.
+   its parts and their values (`options`, `active`, ...; with metadata shown, `.type` and the other
+   hidden ones too), so it's found and dragged the same either way.
    Enums (`builtin/enums.rs`, done): Enum Dropdown and Enum Toggle for a plain string or int topic
    that robot code and dashboards both change (the newest value wins), or a chooser table. Names
    from a list in the settings, a string[] topic, or the chooser (`enum_source`). When a widget is

@@ -1826,11 +1826,18 @@ fn a_chooser_table_drags_from_the_tree_as_a_dropdown() {
     );
     assert!(harness.query_by_label("active").is_some());
     assert_eq!(widgets(&harness).len(), before + 1);
-    // With metadata shown it's a folder again, its parts listed.
+    // With metadata shown it's still the chooser's row, and its arrow
+    // lists the hidden parts too.
     harness.state_mut().show_metadata = true;
     settle(&mut harness);
-    open(&mut harness, "Auto  (");
-    assert!(harness.query_by_label("options").is_some());
+    assert!(
+        harness.query_by_label(".type").is_some(),
+        "no .type under it"
+    );
+    assert!(
+        harness.query_by_label("Auto  (5)").is_none(),
+        "shown as a folder"
+    );
 }
 
 /// A layout of enum widgets, each 512 by 256 (the last 256 wide):
@@ -2193,5 +2200,13 @@ fn any_click_on_a_widget_finds_it_in_the_tree_locked_or_not() {
             "list child, locked {locked}"
         );
     }
-    server_has_pick(&mut harness, &robot, "Right");
+    // With hidden fields shown it's still a chooser row, found the same.
+    harness.state_mut().show_metadata = true;
+    harness.state_mut().tree_sel.clear();
+    settle(&mut harness);
+    let card = card_on_screen(&harness, 1);
+    click_label_in(&mut harness, "Middle", card);
+    settle(&mut harness);
+    assert_eq!(picked(&harness), ["/Test/Auto"], "with hidden fields shown");
+    server_has_pick(&mut harness, &robot, "Middle");
 }
