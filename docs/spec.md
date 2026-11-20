@@ -185,6 +185,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `show_labels` | `shared/scale.rs` | the same | show the numbers along the scale | true |
 | `time_displayed` (Elastic; older `visibleTime`) | `builtin/graph.rs` | Graph | seconds shown | 5 |
 | `min_value`, `max_value` (Elastic) | `builtin/graph.rs` | Graph | a fixed range; both unset fits the values | unset |
+| `counter_clockwise_positive` (Elastic) | `builtin/gyro.rs` | Gyro | `true`: a number (or a `Gyro` table's `Value`) counts counterclockwise; a `Rotation2d` always does | off (clockwise) |
 | `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
 | `series` | `builtin/graph.rs` | Graph | the lines after the main one: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
 | `show_legend` | `builtin/graph.rs` | Graph | show the legend | when there's more than one line |
@@ -611,14 +612,19 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      (driver input). Free points and one target for now; still open: snapping to tags or game pieces,
      and a list of targets for a route. robot-2027's `raptaboard-test` test topics log the target.
 
-   Struct widgets after the Field, each its own widget: a Gyro (Rotation2d or a number), motion
+   Struct widgets after the Field, each its own widget: a Gyro (**done**, `builtin/gyro.rs`, read by
+   `types/angle.rs`: a `Rotation2d`, a `Rotation3d`'s yaw, a number of degrees or a WPILib `Gyro`
+   table, on a compass dial with 0° up and a robot outline, the angle 0 to 360°; rotations count
+   counterclockwise, numbers clockwise unless Elastic's `counter_clockwise_positive` is on;
+   robot-2027's test topics publish `OrbitHeading` and a `Gyro` table, both shown on the sim layout's
+   Field tab), motion
    vectors (2 or 3 arrows, Translation2d or ChassisSpeeds, showing relative motion more than
    values), and a swerve view (SwerveModuleState[]: each wheel's direction and speed, requested
    against measured). Mechanisms: WPILib's Mechanism2d first; it only chains rigid ligaments, so
    later raptaboard may get its own mechanism data model and tools to build and preview one.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
-   WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro, SwerveModuleState[] → swerve view.
+   WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro (done), SwerveModuleState[] → swerve view.
    Milestone 4 plugins may also match a struct type (a `struct = "ArmState"` rule).
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, Mechanism2d,

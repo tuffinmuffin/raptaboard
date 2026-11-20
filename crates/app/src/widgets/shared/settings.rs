@@ -370,14 +370,14 @@ mod tests {
         assert!(!has_custom_settings(&field));
 
         // A type not built yet: only the period resets.
-        let mut unbuilt = widget("Gyro", false);
+        let mut unbuilt = widget("Swerve Drive", false);
         unbuilt.properties.insert(PERIOD.into(), 0.033.into());
         unbuilt
             .properties
-            .insert("counter_clockwise_positive".into(), true.into());
+            .insert("show_robot_rotation".into(), false.into());
         reset_settings(&mut unbuilt);
         assert_eq!(unbuilt.period(), Some(DEFAULT_PERIOD_S));
-        assert_eq!(unbuilt.properties["counter_clockwise_positive"], true);
+        assert_eq!(unbuilt.properties["show_robot_rotation"], false);
 
         // A graph keeps its extra lines through a reset.
         let mut lines = widget("Graph", false);
