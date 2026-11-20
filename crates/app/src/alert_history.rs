@@ -6,8 +6,11 @@
 //! setting), dropping the oldest when full; nothing goes by age, so after a
 //! match the alerts from it are still there to look at. It's in memory
 //! only: quitting raptaboard forgets it. Alerts carry only their text, so
-//! an alert is known by its group, level and text (and which copy, if the
-//! same text is active twice).
+//! an alert is known by its group, level and text with its numbers left out
+//! ([`pattern`]): robot code that puts a reading in its text
+//! (`Loop at 37%`, then `38%`) is one alert whose text changes, not a new
+//! one each time. Alerts whose text contains one of the ignore list's
+//! entries (the `alert_history_ignore` setting) aren't recorded at all.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -56,8 +59,58 @@ pub struct AlertEvent {
     pub seen: DateTime<Local>,
     /// When and how it stopped; `None` while it's active.
     pub ended: Option<(DateTime<Local>, Ending)>,
+    /// How many times its text changed (only its numbers can) while active;
+    /// `text` is the newest.
+    pub changes: u32,
     /// Its place in the order events arrived, for finding it again.
     id: u64,
+}
+
+/// `text` with each number in it as `#`, which is how the history knows an
+/// alert whose reading changes is still the same alert.
+///
+/// ```
+/// use raptaboard::alert_history::pattern;
+/// assert_eq!(pattern("Frame Timing: OVERRUN 112% (22.4ms)"), "Frame Timing: OVERRUN #% (#ms)");
+/// assert_eq!(pattern("Module 3 lost"), "Module # lost");
+/// ```
+pub fn pattern(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_number = false;
+    for c in text.chars() {
+        let part_of_number = c.is_ascii_digit() || (in_number && c == '.');
+        if part_of_number {
+            if !in_number {
+                out.push('#');
+            }
+        } else {
+            out.push(c);
+        }
+        in_number = part_of_number;
+    }
+    out
+}
+
+/// What "Don't record alerts like this" adds to the ignore list for an
+/// alert saying `text`: the text up to its first number, or all of it if
+/// that's nothing.
+///
+/// ```
+/// use raptaboard::alert_history::ignore_entry;
+/// assert_eq!(ignore_entry("Frame Timing: 37%"), "Frame Timing:");
+/// assert_eq!(ignore_entry("3 modules lost"), "3 modules lost");
+/// ```
+pub fn ignore_entry(text: &str) -> String {
+    let before = text
+        .split(|c: char| c.is_ascii_digit())
+        .next()
+        .unwrap_or("")
+        .trim();
+    if before.is_empty() {
+        text.trim().to_owned()
+    } else {
+        before.to_owned()
+    }
 }
 
 impl AlertEvent {
@@ -67,8 +120,8 @@ impl AlertEvent {
     }
 }
 
-/// What identifies an active alert: group, level, text, and which copy of
-/// that text (0 for the first).
+/// What identifies an active alert: group, level, text with its numbers
+/// left out ([`pattern`]), and which copy (0 for the first).
 type Key = (String, Level, String, usize);
 
 /// The history: events in the order they were seen, oldest first.
@@ -79,6 +132,8 @@ pub struct AlertHistory {
     /// The events still active, by key.
     active: HashMap<Key, u64>,
     next_id: u64,
+    /// Alerts whose text contains one of these aren't recorded.
+    ignore: Vec<String>,
 }
 
 impl Default for AlertHistory {
@@ -95,7 +150,33 @@ impl AlertHistory {
             capacity: capacity.clamp(MIN_CAPACITY, MAX_CAPACITY),
             active: HashMap::new(),
             next_id: 0,
+            ignore: Vec::new(),
         }
+    }
+
+    /// The ignore list: alerts whose text contains one of these (ignoring
+    /// case) aren't recorded.
+    pub fn ignored(&self) -> &[String] {
+        &self.ignore
+    }
+
+    /// Replace the ignore list (empty entries are dropped), and forget the
+    /// events it now covers.
+    pub fn set_ignored(&mut self, list: Vec<String>) {
+        self.ignore = list
+            .into_iter()
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let ignore = self.ignore.clone();
+        let covered = |text: &str| ignored_by(&ignore, text);
+        self.events.retain(|e| !covered(&e.text));
+        self.active.retain(|(_, _, text, _), _| !covered(text));
+    }
+
+    /// Whether alerts saying `text` aren't recorded.
+    pub fn is_ignored(&self, text: &str) -> bool {
+        ignored_by(&self.ignore, text)
     }
 
     /// The events, oldest first.
@@ -146,18 +227,33 @@ impl AlertHistory {
             }
             return;
         };
-        // What's active now, each text counted so a second copy is its own.
-        let mut current: HashMap<Key, ()> = HashMap::new();
+        // What's active now, by key (each pattern counted so a second copy
+        // is its own), with its text now.
+        let mut current: HashMap<Key, String> = HashMap::new();
         let mut order: Vec<Key> = Vec::new();
         for (group, alerts) in groups {
-            let mut copies: HashMap<(Level, &str), usize> = HashMap::new();
+            let mut copies: HashMap<(Level, String), usize> = HashMap::new();
             for a in alerts {
-                let n = copies.entry((a.level, a.text.as_str())).or_insert(0);
-                let key = (group.clone(), a.level, a.text.clone(), *n);
+                if self.is_ignored(&a.text) {
+                    continue;
+                }
+                let like = pattern(&a.text);
+                let n = copies.entry((a.level, like.clone())).or_insert(0);
+                let key = (group.clone(), a.level, like, *n);
                 *n += 1;
-                if current.insert(key.clone(), ()).is_none() {
+                if current.insert(key.clone(), a.text.clone()).is_none() {
                     order.push(key);
                 }
+            }
+        }
+        // Still active with new numbers: the newest text, counted.
+        for (key, id) in &self.active {
+            if let Some(text) = current.get(key)
+                && let Ok(i) = self.events.binary_search_by_key(id, |e| e.id)
+                && self.events[i].text != *text
+            {
+                self.events[i].text = text.clone();
+                self.events[i].changes += 1;
             }
         }
         let gone: Vec<(Key, u64)> = self
@@ -190,9 +286,10 @@ impl AlertHistory {
             self.events.push_back(AlertEvent {
                 group: key.0.clone(),
                 level: key.1,
-                text: key.2.clone(),
+                text: current[&key].clone(),
                 seen: now,
                 ended: None,
+                changes: 0,
                 id,
             });
             self.active.insert(key, id);
@@ -214,6 +311,12 @@ impl AlertHistory {
             self.active.retain(|_, id| *id != old.id);
         }
     }
+}
+
+/// Whether `text` contains one of `ignore`'s entries, ignoring case.
+fn ignored_by(ignore: &[String], text: &str) -> bool {
+    let text = text.to_lowercase();
+    ignore.iter().any(|i| text.contains(&i.to_lowercase()))
 }
 
 #[cfg(test)]
@@ -238,6 +341,46 @@ mod tests {
         h.events()
             .map(|e| (e.text.clone(), e.ended.map(|(_, how)| how)))
             .collect()
+    }
+
+    #[test]
+    fn a_changing_reading_is_one_alert_and_ignored_ones_arent_kept() {
+        let now = Local::now();
+        let mut h = AlertHistory::default();
+        for pct in [37, 38, 36, 38] {
+            let text = format!("Frame Timing: {pct}%");
+            h.update(now, Some(&[group("A", vec![alert(Level::Info, &text)])]));
+        }
+        assert_eq!(h.events().len(), 1);
+        let e = h.events().next().unwrap();
+        assert_eq!((e.text.as_str(), e.changes), ("Frame Timing: 38%", 3));
+        assert!(e.ended.is_none());
+        // Different words are a different alert.
+        h.update(
+            now,
+            Some(&[group(
+                "A",
+                vec![alert(Level::Info, "Frame Timing: 38% - possible overrun")],
+            )]),
+        );
+        assert_eq!(h.events().len(), 2);
+        // Ignoring it forgets what's kept, and records no more of it.
+        h.set_ignored(vec!["frame timing:".into(), "  ".into()]);
+        assert_eq!(h.ignored(), ["frame timing:"]);
+        assert_eq!(h.events().len(), 0);
+        h.update(
+            now,
+            Some(&[group(
+                "A",
+                vec![
+                    alert(Level::Info, "Frame Timing: 12%"),
+                    alert(Level::Error, "Brownout"),
+                ],
+            )]),
+        );
+        let left: Vec<&str> = h.events().map(|e| e.text.as_str()).collect();
+        assert_eq!(left, ["Brownout"]);
+        assert_eq!(h.active_count(), 1);
     }
 
     #[test]
@@ -310,14 +453,13 @@ mod tests {
     fn it_keeps_the_newest_up_to_its_capacity() {
         let now = Local::now();
         let mut h = AlertHistory::new(MIN_CAPACITY);
-        for i in 0..15 {
-            h.update(
-                now,
-                Some(&[group("A", vec![alert(Level::Error, &i.to_string())])]),
-            );
+        // Words, not numbers: numbers alone would all be one alert.
+        let names: Vec<String> = ('a'..='o').map(|c| format!("alert {c}")).collect();
+        for name in &names {
+            h.update(now, Some(&[group("A", vec![alert(Level::Error, name)])]));
         }
         assert_eq!(h.events().len(), MIN_CAPACITY);
-        assert_eq!(h.events().next().unwrap().text, "5");
+        assert_eq!(h.events().next().unwrap().text, "alert f");
         // Smaller drops the oldest; capacity is kept within its limits.
         h.set_capacity(1);
         assert_eq!(h.capacity(), MIN_CAPACITY);

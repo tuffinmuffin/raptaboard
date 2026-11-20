@@ -172,7 +172,11 @@ impl DashboardApp {
             traces: Traces::default(),
             alert_sound: options.alert_sound,
             sound: Sound::new(),
-            alert_history: crate::alert_history::AlertHistory::new(options.alert_history),
+            alert_history: {
+                let mut h = crate::alert_history::AlertHistory::new(options.alert_history);
+                h.set_ignored(options.alert_history_ignore);
+                h
+            },
             show_alert_history: false,
             history_filter: Default::default(),
             write_failed: HashMap::new(),
@@ -219,6 +223,7 @@ impl DashboardApp {
             locked: Some(self.locked),
             alert_sound: Some(self.alert_sound),
             alert_history: Some(self.alert_history.capacity()),
+            alert_history_ignore: Some(self.alert_history.ignored().to_vec()),
             tab: self
                 .layout
                 .tabs

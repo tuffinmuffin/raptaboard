@@ -24,6 +24,7 @@
 //! locked = false
 //! alert_sound = true # a tone when a value can't be sent
 //! alert_history = 1000 # alert events kept in the alert history
+//! alert_history_ignore = ["Frame Timing:"] # alerts not recorded, by text they contain
 //! layout = "/Users/me/layouts/match.json"
 //! tab = "Teleoperated"
 //! tab_index = 0
@@ -70,6 +71,10 @@ pub struct Settings {
     /// How many events the alert history keeps (the oldest go first).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alert_history: Option<usize>,
+    /// Alerts the history doesn't record: those whose text contains one of
+    /// these (ignoring case).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alert_history_ignore: Option<Vec<String>>,
     /// The layout file to open at start: the one last opened or saved.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<String>,
@@ -114,6 +119,7 @@ pub fn defaults() -> Settings {
         locked: Some(false),
         alert_sound: Some(true),
         alert_history: Some(crate::alert_history::DEFAULT_CAPACITY),
+        alert_history_ignore: Some(Vec::new()),
         layout: None,
         tab: None,
         tab_index: None,
@@ -165,6 +171,7 @@ impl Settings {
             locked: self.locked.or(lower.locked),
             alert_sound: self.alert_sound.or(lower.alert_sound),
             alert_history: self.alert_history.or(lower.alert_history),
+            alert_history_ignore: self.alert_history_ignore.or(lower.alert_history_ignore),
             layout: self.layout.or(lower.layout),
             tab: self.tab.or(lower.tab),
             tab_index: self.tab_index.or(lower.tab_index),
@@ -311,6 +318,7 @@ impl Tracker {
         note!(locked);
         note!(alert_sound);
         note!(alert_history);
+        note!(alert_history_ignore);
         note!(layout);
         note!(tab);
         note!(tab_index);

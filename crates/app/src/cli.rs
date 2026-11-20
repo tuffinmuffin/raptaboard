@@ -93,6 +93,8 @@ pub struct StartupOptions {
     pub alert_sound: bool,
     /// How many events the alert history keeps.
     pub alert_history: usize,
+    /// Alerts the history doesn't record, by text they contain.
+    pub alert_history_ignore: Vec<String>,
     /// The settings file changes go to.
     pub store: settings::Store,
     /// Things to tell the user at startup, such as a settings file that
@@ -130,6 +132,7 @@ impl From<Loaded> for StartupOptions {
             alert_history: s
                 .alert_history
                 .unwrap_or(crate::alert_history::DEFAULT_CAPACITY),
+            alert_history_ignore: s.alert_history_ignore.unwrap_or_default(),
             store: loaded.store,
             notes: loaded.notes,
         }

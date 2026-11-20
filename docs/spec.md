@@ -535,7 +535,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    Alert history (`alert_history.rs`, `ui/history_panel.rs`, done): every alert group is recorded
    from connect, whether or not an Alerts widget shows it (every table's `.type` and the alert
    groups' lists are subscribed every 0.02 s). An event per alert, known by group, level and text
-   (and which copy): when it was seen, and when and how it ended (cleared; robot disconnected;
+   with its numbers left out (`alert_history::pattern`), and which copy, so robot code that puts a
+   reading in its text (`Loop at 37%`, `38%`) is one event whose newest text is kept and whose
+   changes are counted; the `alert_history_ignore` setting (edited in the panel's "Not recorded"
+   list, or a row's right-click "Don't record alerts like this", which adds its text up to the
+   first number) leaves out alerts whose text contains an entry. Events: when it was seen, and when and how it ended (cleared; robot disconnected;
    group not published). Count-based: the last `alert_history` events (setting, default 1,000,
    also set in the panel), oldest dropped; nothing goes by age, so a match's alerts are there
    afterwards; memory only. A top-bar "Alerts" button with the number active and the worst one's

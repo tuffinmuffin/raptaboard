@@ -28,6 +28,8 @@ pub(super) struct HistoryFilter {
     levels: [bool; 3],
     group: Option<String>,
     text: String,
+    /// What's typed in the "Not recorded" list's box.
+    new_ignore: String,
 }
 
 impl Default for HistoryFilter {
@@ -36,6 +38,7 @@ impl Default for HistoryFilter {
             levels: [true; 3],
             group: None,
             text: String::new(),
+            new_ignore: String::new(),
         }
     }
 }
@@ -195,6 +198,7 @@ impl DashboardApp {
                 });
         });
         ui.add(egui::TextEdit::singleline(&mut filter.text).hint_text("Text to look for"));
+        self.ignore_list(ui);
         ui.separator();
         let now = Local::now();
         let shown: Vec<&AlertEvent> = self
@@ -211,6 +215,7 @@ impl DashboardApp {
             });
             return;
         }
+        let mut ignore = None;
         egui::ScrollArea::both()
             .auto_shrink([false, false])
             .show_rows(ui, ROW_HEIGHT, shown.len(), |ui, rows| {
@@ -230,16 +235,94 @@ impl DashboardApp {
                             Some((at, how)) => format!("{} {}", how.label(), at.format("%H:%M:%S")),
                             None => "active".to_owned(),
                         };
-                        ui.weak(format!("{} · {}", short_duration(e.duration(now)), ended));
+                        let changed = match e.changes {
+                            0 => String::new(),
+                            1 => " · changed once".to_owned(),
+                            n => format!(" · changed {n} times"),
+                        };
+                        ui.weak(format!(
+                            "{} · {}{changed}",
+                            short_duration(e.duration(now)),
+                            ended
+                        ));
                         let text = format!("{}: {}", e.group, e.text);
                         let label = if e.ended.is_some() {
                             egui::RichText::new(&text).weak()
                         } else {
                             egui::RichText::new(&text)
                         };
-                        ui.add(egui::Label::new(label).truncate())
+                        let row = ui
+                            .add(egui::Label::new(label).truncate().sense(Sense::click()))
                             .on_hover_text(&text);
+                        row.context_menu(|ui| {
+                            let entry = alert_history::ignore_entry(&e.text);
+                            if ui
+                                .button("Don't record alerts like this")
+                                .on_hover_text(format!(
+                                    "Add \"{entry}\" to the list of alerts not recorded, and \
+                                     forget the ones recorded"
+                                ))
+                                .clicked()
+                            {
+                                ignore = Some(entry);
+                                ui.close();
+                            }
+                        });
                     });
+                }
+            });
+        if let Some(entry) = ignore {
+            let mut list = self.alert_history.ignored().to_vec();
+            list.push(entry);
+            self.alert_history.set_ignored(list);
+        }
+    }
+
+    /// The "Not recorded" list: alerts the history skips, by text they
+    /// contain, with a box to add one and a ✕ to take one off.
+    fn ignore_list(&mut self, ui: &mut egui::Ui) {
+        let list = self.alert_history.ignored().to_vec();
+        let title = if list.is_empty() {
+            "Not recorded: nothing".to_owned()
+        } else {
+            format!("Not recorded: {}", list.len())
+        };
+        egui::CollapsingHeader::new(title)
+            .id_salt("history_ignore")
+            .show(ui, |ui| {
+                ui.weak("Alerts whose text contains one of these aren't recorded (any case).");
+                let mut list = list.clone();
+                let mut changed = false;
+                list.retain(|entry| {
+                    let mut keep = true;
+                    ui.horizontal(|ui| {
+                        if ui
+                            .small_button("✕")
+                            .on_hover_text("Record these again")
+                            .clicked()
+                        {
+                            keep = false;
+                            changed = true;
+                        }
+                        ui.monospace(entry);
+                    });
+                    keep
+                });
+                ui.horizontal(|ui| {
+                    let add = ui.add(
+                        egui::TextEdit::singleline(&mut self.history_filter.new_ignore)
+                            .hint_text("Text, such as Frame Timing:"),
+                    );
+                    let enter = add.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    if (ui.button("Add").clicked() || enter)
+                        && !self.history_filter.new_ignore.trim().is_empty()
+                    {
+                        list.push(std::mem::take(&mut self.history_filter.new_ignore));
+                        changed = true;
+                    }
+                });
+                if changed {
+                    self.alert_history.set_ignored(list);
                 }
             });
     }

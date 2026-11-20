@@ -2464,3 +2464,66 @@ fn the_alert_history_records_every_group_and_opens_from_the_top_bar() {
         settle(&mut harness);
     }
 }
+
+#[test]
+fn a_changing_alert_is_one_row_and_can_be_left_out_of_the_history() {
+    let robot = Robot::start();
+    let mut harness = alerts_harness(&robot);
+    let app = harness.state_mut();
+    app.layout = ElasticLayout {
+        tabs: vec![Tab::new("Nothing")],
+        ..ElasticLayout::default()
+    };
+    app.current_tab = 0;
+    app.show_alert_history = true;
+    settle(&mut harness);
+    // Robot code that puts a reading in its alert's text, every loop.
+    for pct in [37, 38, 36, 39] {
+        robot
+            .arm_warnings
+            .set(vec![format!("Loop at {pct}% of its budget")]);
+        settle(&mut harness);
+        std::thread::sleep(Duration::from_millis(30));
+        settle(&mut harness);
+    }
+    let rows = |h: &Harness| -> Vec<(String, u32)> {
+        h.state()
+            .alert_history
+            .events()
+            .filter(|e| e.group == "Arm")
+            .map(|e| (e.text.clone(), e.changes))
+            .collect()
+    };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while rows(&harness).first().map(|r| r.0.as_str()) != Some("Loop at 39% of its budget") {
+        assert!(Instant::now() < deadline, "{:?}", rows(&harness));
+        settle(&mut harness);
+    }
+    let got = rows(&harness);
+    assert_eq!(got.len(), 1, "one alert, not one per reading: {got:?}");
+    assert!(got[0].1 >= 1, "its changes are counted");
+    // Right-click its row: don't record alerts like this.
+    let row = harness
+        .get_by_label("Arm: Loop at 39% of its budget")
+        .rect()
+        .center();
+    click_at(
+        &mut harness,
+        row,
+        egui::PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    harness
+        .get_by_label("Don't record alerts like this")
+        .click();
+    settle(&mut harness);
+    assert_eq!(harness.state().alert_history.ignored(), ["Loop at"]);
+    assert!(rows(&harness).is_empty());
+    // New readings aren't recorded now.
+    robot
+        .arm_warnings
+        .set(vec!["Loop at 81% of its budget".into()]);
+    std::thread::sleep(Duration::from_millis(100));
+    settle(&mut harness);
+    assert!(rows(&harness).is_empty());
+}
