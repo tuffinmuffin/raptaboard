@@ -26,9 +26,9 @@ pub const DEFAULT_BANDS_M: [f64; 3] = [4.0, 6.0, 8.0];
 pub const DEFAULT_FOV_DEG: f64 = 70.0;
 /// The bands' colors, nearest first.
 const BAND_COLORS: [Color32; 3] = [
-    Color32::from_rgba_premultiplied(0x2E, 0x7D, 0x32, 0x50),
-    Color32::from_rgba_premultiplied(0x9E, 0x86, 0x00, 0x45),
-    Color32::from_rgba_premultiplied(0x9A, 0x22, 0x1C, 0x38),
+    Color32::from_rgba_unmultiplied_const(0x4C, 0xAF, 0x50, 0x48),
+    Color32::from_rgba_unmultiplied_const(0xFF, 0xC1, 0x07, 0x38),
+    Color32::from_rgba_unmultiplied_const(0xF4, 0x43, 0x36, 0x28),
 ];
 /// A part's color when not set.
 const PART_COLOR: Color32 = Color32::from_rgb(0x00, 0xBC, 0xD4);
