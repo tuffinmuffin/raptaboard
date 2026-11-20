@@ -307,3 +307,192 @@ fn cameras_and_a_part_ride_on_the_robot() {
         "Field: robot at x 1.50 m, y 2.50 m, facing 43°; 2 cameras",
     );
 }
+
+/// Where the Field's drawing area is on screen (its node, named with the
+/// robot's pose).
+fn field_area(harness: &Harness) -> Rect {
+    harness.get_by_label_contains("Field: robot at").rect()
+}
+
+/// Drag with the primary button from `from` to `to`.
+fn drag_on(harness: &mut Harness, from: Pos2, to: Pos2) {
+    harness.hover_at(from);
+    harness.step();
+    harness.drag_at(from);
+    harness.step();
+    for step in 1..=10 {
+        harness.hover_at(from + (to - from) * (step as f32 / 10.0));
+        harness.step();
+    }
+    harness.drop_at(to);
+    settle(harness);
+}
+
+#[test]
+fn clicking_the_field_sets_a_target_and_right_click_clears_it() {
+    let robot = Robot::start();
+    let set = robot
+        ._server
+        .subscribe::<bool>("/raptaboard/target_set", Default::default());
+    let mut field = pose_field();
+    field.properties.insert("click_target".into(), json!(true));
+    let mut harness = field_harness(&robot, field);
+    harness.state_mut().locked = true;
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°",
+    );
+    // A click in the middle: the target at the field's center.
+    let middle = field_area(&harness).center();
+    click_at(
+        &mut harness,
+        middle,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°; target at x 0.00 m, y 0.00 m, facing 0°",
+    );
+    assert_eq!(set.get(), Some(true));
+    // A drag up the screen: facing +Y.
+    drag_on(&mut harness, middle, middle - egui::vec2(0.0, 80.0));
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°; target at x 0.00 m, y 0.00 m, facing 90°",
+    );
+    // Right-click: cleared, and the robot is told so.
+    click_at(
+        &mut harness,
+        middle,
+        egui::PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°",
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while set.get() != Some(false) {
+        assert!(Instant::now() < deadline, "target_set never went false");
+        settle(&mut harness);
+    }
+}
+
+#[test]
+fn a_target_goes_out_in_the_widgets_origin() {
+    let robot = Robot::start();
+    let sent = robot
+        ._server
+        .subscribe::<Vec<u8>>("/Driver/aim", Default::default());
+    let mut field = pose_field();
+    field.properties.insert("click_target".into(), json!(true));
+    field
+        .properties
+        .insert("target_topic".into(), json!("/Driver/aim"));
+    field
+        .properties
+        .insert("origin".into(), json!("blue_corner"));
+    let mut harness = field_harness(&robot, field);
+    harness.state_mut().locked = true;
+    let middle = loop {
+        if let Some(node) = harness.query_by_label_contains("Field: robot at") {
+            break node.rect().center();
+        }
+        settle(&mut harness);
+    };
+    click_at(
+        &mut harness,
+        middle,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    // The field's center in the pre-2027 frame is half its length and
+    // width from the blue corner (16.541 by 8.069 m), facing back toward
+    // blue.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let bytes = loop {
+        if let Some(b) = sent.get() {
+            break b;
+        }
+        assert!(Instant::now() < deadline, "no target sent");
+        settle(&mut harness);
+    };
+    let read = |i: usize| f64::from_le_bytes(bytes[i * 8..i * 8 + 8].try_into().unwrap());
+    assert!((read(0) - 16.541 / 2.0).abs() < 0.05, "x {}", read(0));
+    assert!((read(1) - 8.069 / 2.0).abs() < 0.05, "y {}", read(1));
+    assert!(
+        (read(2).abs() - std::f64::consts::PI).abs() < 1e-6,
+        "heading {}",
+        read(2)
+    );
+}
+
+#[test]
+fn a_target_robot_code_sets_shows_too() {
+    let robot = Robot::start();
+    let aim = robot._server.publish_generic(
+        "/raptaboard/target",
+        "struct:Pose2d".parse().unwrap(),
+        nt4::Properties::new(),
+    );
+    aim.set(pose_array(&[[3.0, -1.0, std::f64::consts::PI]]))
+        .unwrap();
+    let flag = robot._server.publish::<bool>("/raptaboard/target_set");
+    flag.set(true);
+    let mut field = pose_field();
+    field.properties.insert("click_target".into(), json!(true));
+    let mut harness = field_harness(&robot, field);
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°; target at x 3.00 m, y -1.00 m, facing 180°",
+    );
+    // Cleared by the robot: gone.
+    flag.set(false);
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°",
+    );
+}
+
+#[test]
+fn a_touchscreen_tap_sets_the_target_where_it_was_not_where_the_mouse_went_back() {
+    // As a touchscreen on macOS sends a tap (from a real log): one frame
+    // with a move to the tap, the press and release there, then the cursor
+    // put back where the mouse was, and the pointer gone.
+    let robot = Robot::start();
+    let mut field = pose_field();
+    field.properties.insert("click_target".into(), json!(true));
+    let mut harness = field_harness(&robot, field);
+    harness.state_mut().locked = true;
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°",
+    );
+    let tap = field_area(&harness).center();
+    let mouse = tap + egui::vec2(200.0, 100.0);
+    harness.hover_at(mouse);
+    harness.step();
+    let button = |pressed| Event::PointerButton {
+        pos: tap,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::NONE,
+    };
+    // All in one frame, as macOS sends them (`Harness::event` would run a
+    // frame for each).
+    harness.input_mut().events.extend([
+        Event::PointerMoved(tap),
+        button(true),
+        Event::PointerMoved(tap),
+        button(false),
+        Event::PointerMoved(mouse),
+        Event::PointerGone,
+    ]);
+    harness.step();
+    settle(&mut harness);
+    labelled_soon(
+        &mut harness,
+        "Field: robot at x 1.50 m, y 2.50 m, facing 43°; target at x 0.00 m, y 0.00 m, facing 0°",
+    );
+}

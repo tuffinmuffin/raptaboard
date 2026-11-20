@@ -168,11 +168,19 @@ fn a_slider_works_inside_a_list() {
     // padding, so the row's middle is the middle of the range.
     let middle = child_middle(&harness, 0, 0);
     click_at(&mut harness, middle, primary, Modifiers::NONE);
-    let got = robot.seen_setpoint.get().unwrap();
-    assert!(got > 0.0, "the list's slider sent nothing");
+    // Waited for: on a slow machine (CI's Ubuntu) the value can still be on
+    // its way when the click's frames are done.
     let deadline = Instant::now() + Duration::from_secs(10);
-    while (robot.seen_setpoint.get().unwrap() - 5.0).abs() > 1.0 {
-        assert!(Instant::now() < deadline, "{:?}", robot.seen_setpoint.get());
+    while robot
+        .seen_setpoint
+        .get()
+        .is_none_or(|v| (v - 5.0).abs() > 1.0)
+    {
+        assert!(
+            Instant::now() < deadline,
+            "the list's slider never sent the middle of its range: {:?}",
+            robot.seen_setpoint.get()
+        );
         settle(&mut harness);
     }
 }

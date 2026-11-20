@@ -109,10 +109,33 @@ pub struct Place {
 }
 
 /// Something a widget asks the app to do, through [`Frame::effects`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Effect {
     /// Play a tone (unless sounds are turned off with the bell button).
     Tone(crate::sound::Tone),
+    /// Write `value` to `topic`, a topic besides the widget's own (a
+    /// Field's target set), publishing it as `ty` if nobody has.
+    Write {
+        /// The topic's full name.
+        topic: String,
+        /// What to send.
+        value: Value,
+        /// Its type, if the dashboard publishes it.
+        ty: nt4::NtType,
+    },
+    /// Publish one struct to `topic`, a topic the dashboard owns (a Field's
+    /// target), with the schemas it needs (see
+    /// [`NtConnection::publish_struct`](crate::nt::NtConnection::publish_struct)).
+    PublishStruct {
+        /// The topic's full name.
+        topic: String,
+        /// The struct's name: `Pose2d`.
+        struct_name: &'static str,
+        /// The struct's bytes.
+        bytes: Vec<u8>,
+        /// (struct name, schema) for it and the structs in it.
+        schemas: &'static [(&'static str, &'static str)],
+    },
 }
 
 /// What's on the server, for widgets whose topics depend on more than their
