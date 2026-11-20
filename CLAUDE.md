@@ -117,7 +117,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   for the failed-write flash, tone and message; keep it too. Two Number Sliders on
   `/DashTest/Setpoint` (0 to 100; one sends on release, one every value in steps of 5) with a Text
   Display on `/DashTest/SetpointEcho`, and "Setpoint (typed)", an editable Text Display. "Auto mode" (Dropdown) and "Test" (Split Button) are choosers on
-  robot-2027's `/SmartDashboard/DashTest Auto` and `DashTest Test` SendableChoosers. "Manual chooser" is on
+  robot-2027's `/SmartDashboard/DashTest/Auto mode` and `DashTest/Test mode` SendableChoosers. "Manual chooser" is on
   `/DashTest/ManualChooser`, one made by hand from plain topics (`.type` and all) to show a chooser is
   found by its `.type` at any path.
   Its Enums tab has enum widgets on robot-2027's `/DashTest/IntakeMode` (two-way: the robot steps

@@ -698,7 +698,7 @@
             "height": 128.0,
             "type": "Dropdown Chooser",
             "properties": {
-              "topic": "/SmartDashboard/DashTest Auto",
+              "topic": "/SmartDashboard/DashTest/Auto mode",
               "period": 0.06
             }
           },
@@ -710,7 +710,7 @@
             "height": 128.0,
             "type": "Split Button Chooser",
             "properties": {
-              "topic": "/SmartDashboard/DashTest Test",
+              "topic": "/SmartDashboard/DashTest/Test mode",
               "period": 0.06
             }
           },
@@ -722,7 +722,7 @@
             "height": 128.0,
             "type": "Split Button Chooser",
             "properties": {
-              "topic": "/SmartDashboard/DashTest Auto",
+              "topic": "/SmartDashboard/DashTest/Auto mode",
               "period": 0.06
             }
           },
@@ -842,14 +842,14 @@
             }
           },
           {
-            "title": "DashTest Test chooser (Enum Toggle: Module check / Drive square)",
+            "title": "Test mode (Enum Toggle on a chooser)",
             "x": 0.0,
             "y": 256.0,
             "width": 384.0,
             "height": 128.0,
             "type": "Enum Toggle",
             "properties": {
-              "topic": "/SmartDashboard/DashTest Test",
+              "topic": "/SmartDashboard/DashTest/Test mode",
               "period": 0.06,
               "enum_source": "chooser"
             }
@@ -862,7 +862,7 @@
             "height": 128.0,
             "type": "Split Button Chooser",
             "properties": {
-              "topic": "/SmartDashboard/DashTest Auto",
+              "topic": "/SmartDashboard/DashTest/Auto mode",
               "period": 0.06,
               "editable": false
             }
