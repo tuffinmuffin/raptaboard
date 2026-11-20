@@ -58,7 +58,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
 - `crates/plugin-host`: manifest parsing and matching; `path` has topic path helpers
   (`.type` tables). wasmtime hosting comes in milestone 4.
 - `crates/app`: the eframe app. `ui/` holds the window (`DashboardApp` in `ui/mod.rs` with file open/save and the edit and tab
-  actions; `panels.rs` the settings and tab bars; `tree_panel.rs` the tree panel and adding topics;
+  actions; its state is grouped in `ui/state.rs`: `file` (`LayoutFile`), `address`, `tree` (`TreeView`), `grid`
+  (`GridState`: drags, where the grid was), `alerts` (the history and its panel) and `sends` (failed sends),
+  beside `layout`, `current_tab`, `locked`, `selected` and `status`; `panels.rs` the settings and tab bars; `tree_panel.rs` the tree panel and adding topics;
   `grid_view.rs` the grid; `drag.rs` drag and drop; `dialogs.rs` the settings dialogs; `live.rs`
   the topics the tab needs and graph recording; `style.rs` the drawing constants; each file adds
   its own `impl DashboardApp` block; `ui/tests.rs` runs the whole window headless against an
@@ -103,7 +105,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   listed in `docs/spec.md` under "raptaboard widget settings" (keep that table in step); adding a
   widget is a new file in `builtin/` (listed in `builtin/mod.rs`) plus one line in `TYPES`, `layout_file.rs` opening and saving layout files (atomic
   writes, Ctrl+O/S/Shift+S; a file that's missing or isn't a layout, at startup or from Open, gets a dialog,
-  `DashboardApp::load_problem`, offering Open, a new layout saved at that path (missing only), or Close), `grid.rs` the snap-grid rules
+  `LayoutFile::load_problem`, offering Open, a new layout saved at that path (missing only), or Close), `grid.rs` the snap-grid rules
   (snapping, overlap) and `tabs.rs` tab actions and their shortcuts, `edit.rs` undo/redo (`History`, which
   notices any layout change once a frame) and the widget editing shortcuts; the drag handling is in
   `ui/drag.rs` and `ui/grid_view.rs`. A widget draws from `widgets::Live`: its value, the frame's shared

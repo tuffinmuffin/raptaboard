@@ -135,14 +135,14 @@ impl DashboardApp {
             cell: f64::from(self.layout.grid_size()),
             room: (f64::from(area.width()), f64::from(area.height())),
         };
-        self.grid_area = area;
+        self.grid.area = area;
         let mut requests = Requests::default();
         self.empty_grid_input(&response, view, &mut requests);
         draw_lines(&painter, ui.visuals(), view);
         if self.tab().is_none() {
             return;
         }
-        self.grid_room = view.room;
+        self.grid.room = view.room;
         if !self.locked {
             self.item_input(ui, view, &mut requests);
         }
@@ -225,7 +225,7 @@ impl DashboardApp {
     ) {
         if response.clicked() {
             self.selected = None;
-            self.tree_sel.clear();
+            self.tree.selection.clear();
         }
         if self.locked {
             return;
@@ -233,7 +233,7 @@ impl DashboardApp {
         if response.secondary_clicked()
             && let Some(p) = response.interact_pointer_pos()
         {
-            self.menu_at = view.to_grid(p);
+            self.grid.menu_at = view.to_grid(p);
             self.selected = None;
         }
         response.context_menu(|ui| {
@@ -273,7 +273,7 @@ impl DashboardApp {
                     if child.drag_started()
                         && let Some(p) = child.interact_pointer_pos()
                     {
-                        self.child_drag = Some(ChildDrag {
+                        self.grid.child_drag = Some(ChildDrag {
                             list: index,
                             child: row.index,
                             grab: p - row.row.min,
@@ -300,20 +300,20 @@ impl DashboardApp {
             let corner = ui.interact(corner, id.with("resize"), Sense::drag());
             for (handle, mode) in [(&body, DragMode::Move), (&corner, DragMode::Resize)] {
                 if handle.drag_started() {
-                    self.drag = Some(Drag {
+                    self.grid.drag = Some(Drag {
                         item,
                         mode,
                         start: r,
                         moved: Vec2::ZERO,
                     });
                 }
-                if let Some(drag) = &mut self.drag
+                if let Some(drag) = &mut self.grid.drag
                     && drag.item == item
                     && drag.mode == mode
                 {
                     drag.moved += handle.drag_delta();
                     if handle.drag_stopped() {
-                        requests.dropped = self.drag.take();
+                        requests.dropped = self.grid.drag.take();
                     }
                 }
             }
@@ -380,7 +380,7 @@ impl DashboardApp {
             return writes;
         };
         let visuals = ui.visuals().clone();
-        let dragging = self.drag.map(|d| d.item);
+        let dragging = self.grid.drag.map(|d| d.item);
         let frame = widgets::Frame {
             traces: &self.traces,
             now_us: self.nt.client().map_or(0, |c| c.now_us()),
@@ -442,7 +442,7 @@ impl DashboardApp {
     /// value is already shown.
     fn draw_outlines(&self, painter: &egui::Painter, visuals: &egui::Visuals, view: GridView) {
         let Some(tab) = self.tab() else { return };
-        let dragging = self.drag.map(|d| d.item);
+        let dragging = self.grid.drag.map(|d| d.item);
         if let Some(item) = self.selected
             && Some(item) != dragging
             && let Some(r) = item.rect(&tab.grid_layout)
@@ -456,7 +456,7 @@ impl DashboardApp {
         }
         // Widgets whose value just failed to send flash red a few times.
         let now = Instant::now();
-        for (&(t, sender), &when) in &self.write_failed {
+        for (&(t, sender), &when) in &self.sends.failed {
             let age = now.duration_since(when).as_secs_f32();
             if t != self.current_tab || age >= FLASH_S {
                 continue;
@@ -501,7 +501,7 @@ impl DashboardApp {
                 .ctx()
                 .request_repaint_after(std::time::Duration::from_millis(30));
         }
-        let picked = self.tree_sel.selected();
+        let picked = self.tree.selection.selected();
         if picked.is_empty() {
             return;
         }
@@ -599,7 +599,7 @@ impl DashboardApp {
         view: GridView,
         value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
     ) {
-        let (Some(drag), Some(tab)) = (self.drag, self.tab()) else {
+        let (Some(drag), Some(tab)) = (self.grid.drag, self.tab()) else {
             return;
         };
         let to_screen = |r: &LayoutRect| view.to_screen(r);
@@ -631,7 +631,9 @@ impl DashboardApp {
         value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
         requests: &mut Requests,
     ) {
-        let Some(cd) = self.child_drag else { return };
+        let Some(cd) = self.grid.child_drag else {
+            return;
+        };
         let Some(p) = ui.ctx().pointer_latest_pos() else {
             return;
         };
@@ -751,7 +753,7 @@ impl DashboardApp {
             self.drop_dragged(drag, into, view);
         }
         if let Some((cd, target)) = child_dropped {
-            self.child_drag = None;
+            self.grid.child_drag = None;
             if let Some(tab) = self.layout.tabs.get_mut(self.current_tab) {
                 let grid = &mut tab.grid_layout;
                 match target {
@@ -795,7 +797,7 @@ impl DashboardApp {
             let grid = &mut tab.grid_layout;
             let made = match wrap {
                 Some(widget) => grid::wrap_in_list(grid, widget, view.cell, view.room),
-                None => grid::add_list(grid, self.menu_at, view.cell, view.room),
+                None => grid::add_list(grid, self.grid.menu_at, view.cell, view.room),
             };
             match made {
                 Some(list) => self.selected = Some(Item::List(list)),
@@ -859,17 +861,23 @@ impl DashboardApp {
         };
         match result {
             Ok(()) => {
-                self.write_failed.remove(&(self.current_tab, sender));
+                self.sends.failed.remove(&(self.current_tab, sender));
                 // A failure's message is out of date once a send works
                 // (unless something else has said something since).
-                if self.send_failure.take().is_some_and(|m| m == self.status) {
+                if self
+                    .sends
+                    .last_failure
+                    .take()
+                    .is_some_and(|m| m == self.status)
+                {
                     self.status.clear();
                 }
             }
             Err(why) => {
                 self.status = why.to_string();
-                self.send_failure = Some(self.status.clone());
-                self.write_failed
+                self.sends.last_failure = Some(self.status.clone());
+                self.sends
+                    .failed
                     .insert((self.current_tab, sender), Instant::now());
                 if self.alert_sound {
                     self.sound.play();
@@ -1052,7 +1060,7 @@ mod tests {
         drag(&ctx, &mut app, (40.0, 40.0), (40.0 + 270.0, 40.0));
         assert_eq!(rect_of(&app, 0), (256.0, 0.0, 128.0, 128.0));
         assert_eq!(app.selected, Some(Item::Widget(0)));
-        assert!(app.drag.is_none());
+        assert!(app.grid.drag.is_none());
     }
 
     #[test]

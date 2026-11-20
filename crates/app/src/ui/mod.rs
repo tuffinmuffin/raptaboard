@@ -6,6 +6,7 @@ mod drag;
 mod grid_view;
 mod live;
 mod panels;
+mod state;
 mod style;
 mod tree_panel;
 
@@ -21,7 +22,6 @@ use nt4::Value;
 use raptaboard_layout::ElasticLayout;
 
 use crate::cli::StartupOptions;
-use crate::connection::AddressMode;
 use crate::edit::{self, EditAction, History};
 use crate::grid::Item;
 use crate::layout_file::{self, FileAction, LoadError};
@@ -31,11 +31,9 @@ use crate::settings::{self, Settings};
 use crate::sound::Sound;
 use crate::tabs::{self, TabAction};
 use crate::traces::Traces;
-use crate::tree::TreeSelection;
 
 use self::dialogs::Editing;
-use self::drag::{ChildDrag, Drag};
-use self::grid_view::Sender;
+use self::state::{Address, Alerts, GridState, LayoutFile, Sends, TreeView};
 
 /// The shortest time between redraws: about 60 a second.
 const MIN_REDRAW: Duration = Duration::from_millis(16);
@@ -74,46 +72,22 @@ impl LoadProblem {
 
 /// Top-level app state.
 pub struct DashboardApp {
+    /// The layout shown, as it's being edited.
     layout: ElasticLayout,
-    /// The file the layout was opened from or last saved to, if any.
-    layout_path: Option<PathBuf>,
-    /// The layout as it is in the file, to tell when there are unsaved changes.
-    saved: ElasticLayout,
-    /// The last thing that happened to the layout file, shown in the settings bar.
+    /// Its file, and the questions about it waiting for an answer.
+    file: LayoutFile,
+    /// The last thing that happened, shown in the settings bar.
     status: String,
-    /// What [`ElasticLayout::sanitize`] fixed in the open file, until it's saved.
-    fixes: Vec<String>,
-    /// Waiting for an answer to "save changes?" before doing this.
-    unsaved_prompt: Option<AfterSaving>,
-    /// A layout file that couldn't be opened, until the user answers.
-    load_problem: Option<LoadProblem>,
-    /// The user chose to quit without saving, so let the window close.
-    allow_close: bool,
-    /// The window title last set, so it's only sent when it changes.
-    title: String,
     current_tab: usize,
-    team: u32,
-    mode: AddressMode,
-    custom_address: String,
-    port: u16,
+    /// Where to find the robot.
+    address: Address,
     nt: NtConnection,
-    show_tree: bool,
-    tree_filter: String,
-    show_metadata: bool,
+    /// The NetworkTables tree panel.
+    tree: TreeView,
     /// When locked, widgets and tabs can't be moved, resized or edited.
     locked: bool,
-    drag: Option<Drag>,
-    /// A List Layout child being dragged, if any.
-    child_drag: Option<ChildDrag>,
-    /// Where empty grid was last right-clicked, in grid pixels, for the
-    /// menu's "New List Layout".
-    menu_at: (f64, f64),
-    /// The NT tree rows picked, for adding several at once and for
-    /// highlighting their widgets.
-    tree_sel: TreeSelection,
-    /// Whether the status line shows why a clicked widget couldn't be found
-    /// in the tree, so the next click that finds one clears it.
-    find_status: bool,
+    /// What's being dragged on the grid, and where it was.
+    grid: GridState,
     /// Saves settings changed in the app to the settings file.
     settings: settings::Tracker,
     /// The tab being renamed, the name typed so far, and whether its text
@@ -126,33 +100,20 @@ pub struct DashboardApp {
     selected: Option<Item>,
     /// Earlier versions of the layout, for undo and redo.
     history: History,
-    /// The visible grid's width and height last frame, in pixels, for
-    /// finding room for a duplicate.
-    grid_room: (f64, f64),
     /// The widget whose settings dialog is open, if any.
     editing: Option<Editing>,
     /// The values widgets show, taken once per each widget's period.
     sampler: Sampler,
     /// Recent values of the series graphs on the open tab show.
     traces: Traces,
-    /// Whether a tone plays when a widget's value can't be sent.
+    /// Whether tones play (a failed send's, and Alerts widgets').
     alert_sound: bool,
-    /// Plays the tones (a failed send's, and Alerts widgets').
+    /// Plays the tones.
     sound: Sound,
-    /// Every alert seen since connecting, from every group.
-    alert_history: crate::alert_history::AlertHistory,
-    /// Whether the alert history panel shows.
-    show_alert_history: bool,
-    /// What the alert history panel shows.
-    alert_history_filter: alert_history_panel::AlertHistoryFilter,
-    /// When each widget (or list child) on a tab last failed to send its value: (tab,
-    /// sender) to the time, so its border flashes red for a moment.
-    write_failed: HashMap<(usize, Sender), Instant>,
-    /// The status message the last failed send left, so the next send that
-    /// works clears it (if it's still showing).
-    send_failure: Option<String>,
-    /// Where the grid was drawn last frame, in screen points.
-    grid_area: egui::Rect,
+    /// The alert history and its panel.
+    alerts: Alerts,
+    /// Values widgets couldn't send.
+    sends: Sends,
 }
 
 impl DashboardApp {
@@ -162,29 +123,22 @@ impl DashboardApp {
     pub fn new(options: StartupOptions) -> std::io::Result<Self> {
         let mut app = DashboardApp {
             layout: ElasticLayout::default(),
-            layout_path: None,
-            saved: ElasticLayout::default(),
+            file: LayoutFile::default(),
             status: String::new(),
-            fixes: Vec::new(),
-            unsaved_prompt: None,
-            load_problem: None,
-            allow_close: false,
-            title: String::new(),
             current_tab: 0,
-            team: options.team,
-            mode: options.mode,
-            custom_address: options.custom_address,
-            port: options.port,
+            address: Address {
+                team: options.team,
+                mode: options.mode,
+                custom: options.custom_address,
+                port: options.port,
+            },
             nt: NtConnection::new()?,
-            show_tree: options.show_tree,
-            tree_filter: String::new(),
-            show_metadata: false,
+            tree: TreeView {
+                shown: options.show_tree,
+                ..TreeView::default()
+            },
             locked: options.locked,
-            drag: None,
-            child_drag: None,
-            menu_at: (0.0, 0.0),
-            tree_sel: TreeSelection::default(),
-            find_status: false,
+            grid: GridState::default(),
             // A stand-in with nowhere to save, replaced below once the
             // starting settings are known.
             settings: settings::Tracker::new(settings::Store::default(), Settings::default()),
@@ -192,22 +146,21 @@ impl DashboardApp {
             confirm_close: None,
             selected: None,
             history: History::new(&ElasticLayout::default()),
-            grid_room: (0.0, 0.0),
             editing: None,
             sampler: Sampler::default(),
             traces: Traces::default(),
             alert_sound: options.alert_sound,
             sound: Sound::new(),
-            alert_history: {
-                let mut h = crate::alert_history::AlertHistory::new(options.alert_history);
-                h.set_ignored(options.alert_history_ignore);
-                h
+            alerts: Alerts {
+                history: {
+                    let mut h = crate::alert_history::AlertHistory::new(options.alert_history);
+                    h.set_ignored(options.alert_history_ignore);
+                    h
+                },
+                panel_shown: false,
+                filter: Default::default(),
             },
-            show_alert_history: false,
-            alert_history_filter: Default::default(),
-            write_failed: HashMap::new(),
-            send_failure: None,
-            grid_area: egui::Rect::NOTHING,
+            sends: Sends::default(),
         };
         if let Some(path) = options.layout_path {
             let path = PathBuf::from(path);
@@ -238,14 +191,14 @@ impl DashboardApp {
     /// and place, if known.
     fn current_settings(&self, window: Option<settings::Window>) -> Settings {
         Settings {
-            team: Some(self.team),
-            address: Some(self.mode.keyword(&self.custom_address)),
-            port: Some(self.port),
-            show_tree: Some(self.show_tree),
+            team: Some(self.address.team),
+            address: Some(self.address.mode.keyword(&self.address.custom)),
+            port: Some(self.address.port),
+            show_tree: Some(self.tree.shown),
             locked: Some(self.locked),
             alert_sound: Some(self.alert_sound),
-            alert_history: Some(self.alert_history.capacity()),
-            alert_history_ignore: Some(self.alert_history.ignored().to_vec()),
+            alert_history: Some(self.alerts.history.capacity()),
+            alert_history_ignore: Some(self.alerts.history.ignored().to_vec()),
             tab: self
                 .layout
                 .tabs
@@ -253,7 +206,8 @@ impl DashboardApp {
                 .map(|t| t.name.clone()),
             tab_index: Some(self.current_tab),
             layout: self
-                .layout_path
+                .file
+                .path
                 .as_ref()
                 .map(|p| std::path::absolute(p).unwrap_or_else(|_| p.clone()))
                 .map(|p| p.to_string_lossy().into_owned()),
@@ -263,7 +217,7 @@ impl DashboardApp {
 
     /// Whether the layout has changed since it was opened or saved.
     fn unsaved(&self) -> bool {
-        self.layout != self.saved
+        self.layout != self.file.saved
     }
 
     /// Show a layout just read from `path`.
@@ -276,14 +230,14 @@ impl DashboardApp {
             plural(layout.tabs.len(), "tab"),
             plural(layout.widgets().count(), "widget")
         );
-        self.saved = layout.clone();
+        self.file.saved = layout.clone();
         let mut layout = layout;
-        self.fixes = layout.sanitize();
+        self.file.fixes = layout.sanitize();
         self.layout = layout;
-        self.layout_path = Some(path);
+        self.file.path = Some(path);
         self.current_tab = 0;
-        self.drag = None;
-        self.child_drag = None;
+        self.grid.drag = None;
+        self.grid.child_drag = None;
         self.renaming = None;
         self.confirm_close = None;
         self.selected = None;
@@ -295,7 +249,9 @@ impl DashboardApp {
     /// to save them first.
     fn run_file_action(&mut self, action: FileAction) {
         match action {
-            FileAction::Open if self.unsaved() => self.unsaved_prompt = Some(AfterSaving::Open),
+            FileAction::Open if self.unsaved() => {
+                self.file.unsaved_prompt = Some(AfterSaving::Open)
+            }
             FileAction::Open => self.open(),
             FileAction::Save => {
                 self.save(false);
@@ -308,7 +264,7 @@ impl DashboardApp {
 
     /// Ask for a layout file and open it.
     fn open(&mut self) {
-        let Some(path) = layout_file::pick_open(self.layout_path.as_deref()) else {
+        let Some(path) = layout_file::pick_open(self.file.path.as_deref()) else {
             return;
         };
         match layout_file::load(&path) {
@@ -321,14 +277,14 @@ impl DashboardApp {
     /// line, and in a dialog until it's answered.
     fn cant_open(&mut self, path: PathBuf, error: &LoadError) {
         self.status = format!("Could not open {}: {error}", path.display());
-        self.load_problem = Some(LoadProblem::new(path, error));
+        self.file.load_problem = Some(LoadProblem::new(path, error));
     }
 
     /// The "couldn't open the layout" dialog, while one is open: open
     /// another, or carry on with what's open (for a missing file, also
     /// start a new layout that saves there).
     fn load_problem_dialog(&mut self, ctx: &egui::Context) {
-        let Some(problem) = self.load_problem.clone() else {
+        let Some(problem) = self.file.load_problem.clone() else {
             return;
         };
         enum Answer {
@@ -384,12 +340,12 @@ impl DashboardApp {
             None if modal.should_close() => Answer::Close,
             None => return,
         };
-        self.load_problem = None;
+        self.file.load_problem = None;
         match answer {
             Answer::Open => self.run_file_action(FileAction::Open),
             Answer::NewHere => {
                 self.status = format!("New layout; Save writes {}", problem.path.display());
-                self.layout_path = Some(problem.path);
+                self.file.path = Some(problem.path);
             }
             Answer::Close => {}
         }
@@ -398,7 +354,7 @@ impl DashboardApp {
     /// Save the layout, asking where if `choose` is set or it has no file
     /// yet. Returns whether it was saved.
     fn save(&mut self, choose: bool) -> bool {
-        let path = match &self.layout_path {
+        let path = match &self.file.path {
             Some(path) if !choose => path.clone(),
             near => match layout_file::pick_save(near.as_deref()) {
                 Some(path) => path,
@@ -408,9 +364,9 @@ impl DashboardApp {
         match layout_file::save(&self.layout, &path) {
             Ok(()) => {
                 self.status = format!("Saved {}", path.display());
-                self.saved = self.layout.clone();
-                self.fixes.clear();
-                self.layout_path = Some(path);
+                self.file.saved = self.layout.clone();
+                self.file.fixes.clear();
+                self.file.path = Some(path);
                 true
             }
             Err(e) => {
@@ -422,10 +378,10 @@ impl DashboardApp {
 
     /// The "save changes?" question, while one is open.
     fn unsaved_dialog(&mut self, ctx: &egui::Context) {
-        let Some(after) = self.unsaved_prompt else {
+        let Some(after) = self.file.unsaved_prompt else {
             return;
         };
-        let name = layout_file::display_name(self.layout_path.as_deref());
+        let name = layout_file::display_name(self.file.path.as_deref());
         let mut answer = None;
         let modal = egui::Modal::new(egui::Id::unique("unsaved_changes")).show(ctx, |ui| {
             ui.heading(format!("Save changes to {name}?"));
@@ -441,24 +397,24 @@ impl DashboardApp {
                     answer = Some(false);
                 }
                 if ui.button("Cancel").clicked() {
-                    self.unsaved_prompt = None;
+                    self.file.unsaved_prompt = None;
                 }
             });
         });
         if answer.is_none() {
             if modal.should_close() {
-                self.unsaved_prompt = None;
+                self.file.unsaved_prompt = None;
             }
             return;
         }
-        self.unsaved_prompt = None;
+        self.file.unsaved_prompt = None;
         if answer == Some(true) && !self.save(false) {
             return;
         }
         match after {
             AfterSaving::Open => self.open(),
             AfterSaving::Quit => {
-                self.allow_close = true;
+                self.file.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
@@ -480,8 +436,8 @@ impl DashboardApp {
             return;
         }
         self.confirm_close = None;
-        self.drag = None;
-        self.child_drag = None;
+        self.grid.drag = None;
+        self.grid.child_drag = None;
         self.selected = None;
         self.current_tab = tabs::apply(&mut self.layout, self.current_tab, action);
     }
@@ -491,7 +447,7 @@ impl DashboardApp {
     fn run_edit_action(&mut self, ctx: &egui::Context, action: EditAction) {
         // Esc also unpicks tree rows, which can be picked while locked.
         if action == EditAction::Deselect {
-            self.tree_sel.clear();
+            self.tree.selection.clear();
         }
         if self.locked {
             return;
@@ -509,8 +465,8 @@ impl DashboardApp {
                         .current_tab
                         .min(self.layout.tabs.len().saturating_sub(1));
                     self.selected = None;
-                    self.drag = None;
-                    self.child_drag = None;
+                    self.grid.drag = None;
+                    self.grid.child_drag = None;
                     self.renaming = None;
                     self.confirm_close = None;
                 }
@@ -524,8 +480,8 @@ impl DashboardApp {
                 };
                 let title = item.title(&tab.grid_layout).unwrap_or_default().to_owned();
                 item.remove(&mut tab.grid_layout);
-                self.drag = None;
-                self.child_drag = None;
+                self.grid.drag = None;
+                self.grid.child_drag = None;
                 self.status = format!("Deleted \"{title}\"; {undo_key} brings it back");
             }
             EditAction::Duplicate => {
@@ -534,7 +490,7 @@ impl DashboardApp {
                 let Some(tab) = self.layout.tabs.get_mut(self.current_tab) else {
                     return;
                 };
-                match item.duplicate(&mut tab.grid_layout, cell, self.grid_room) {
+                match item.duplicate(&mut tab.grid_layout, cell, self.grid.room) {
                     Some(copy) => self.selected = Some(copy),
                     None => {
                         let title = item.title(&tab.grid_layout).unwrap_or_default();
@@ -565,8 +521,8 @@ impl DashboardApp {
                     }),
                     None => None,
                 };
-                self.drag = None;
-                self.child_drag = None;
+                self.grid.drag = None;
+                self.grid.child_drag = None;
             }
         }
     }
@@ -600,8 +556,8 @@ impl DashboardApp {
             .inner;
         let ctx = ui.ctx().clone();
         let dialog_open = self.confirm_close.is_some()
-            || self.unsaved_prompt.is_some()
-            || self.load_problem.is_some()
+            || self.file.unsaved_prompt.is_some()
+            || self.file.load_problem.is_some()
             || self.editing.is_some();
         let pressed = if dialog_open {
             None
@@ -618,9 +574,10 @@ impl DashboardApp {
             self.run_edit_action(&ctx, action);
         }
         // Closing the window with unsaved changes asks first.
-        if ctx.input(|i| i.viewport().close_requested()) && self.unsaved() && !self.allow_close {
+        if ctx.input(|i| i.viewport().close_requested()) && self.unsaved() && !self.file.allow_close
+        {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.unsaved_prompt = Some(AfterSaving::Quit);
+            self.file.unsaved_prompt = Some(AfterSaving::Quit);
         }
         self.close_dialog(&ctx);
         self.unsaved_dialog(&ctx);
@@ -628,16 +585,16 @@ impl DashboardApp {
         self.widget_dialog(&ctx);
         let title = format!(
             "{}{} - raptaboard",
-            layout_file::display_name(self.layout_path.as_deref()),
+            layout_file::display_name(self.file.path.as_deref()),
             if self.unsaved() { " •" } else { "" }
         );
-        if title != self.title {
+        if title != self.file.title {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
-            self.title = title;
+            self.file.title = title;
         }
         self.record_alert_history(&values);
         // A hidden tree costs nothing: it isn't built and asks for no values.
-        let tree_topics = if self.show_tree {
+        let tree_topics = if self.tree.shown {
             egui::Panel::left("nt_tree")
                 .resizable(true)
                 .default_size(300.0)
@@ -646,7 +603,7 @@ impl DashboardApp {
         } else {
             Vec::new()
         };
-        if self.show_alert_history {
+        if self.alerts.panel_shown {
             egui::Panel::right("alert_history")
                 .resizable(true)
                 .default_size(460.0)
@@ -654,9 +611,9 @@ impl DashboardApp {
         }
         // "Add to grid" from the tree's right-click menu: widgets in the
         // free spots nearest the top left of the open tab.
-        let add = std::mem::take(&mut self.tree_sel.add);
+        let add = std::mem::take(&mut self.tree.selection.add);
         if !add.is_empty() && !self.locked {
-            self.add_topics(&add, self.tree_sel.add_to);
+            self.add_topics(&add, self.tree.selection.add_to);
         }
         self.record_traces(&topics);
         let now = Instant::now();

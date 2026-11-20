@@ -295,14 +295,14 @@ fn every_widget_layout() -> ElasticLayout {
 fn app_for(robot: &Robot) -> DashboardApp {
     let mut app = DashboardApp::new(StartupOptions::default()).expect("app starts");
     app.layout = every_widget_layout();
-    app.saved = app.layout.clone();
+    app.file.saved = app.layout.clone();
     app.history = History::new(&app.layout);
     app.sound = crate::sound::Sound::silent();
     app.current_tab = 0;
     app.locked = false;
-    app.mode = AddressMode::Custom;
-    app.custom_address = "127.0.0.1".into();
-    app.port = robot.port;
+    app.address.mode = AddressMode::Custom;
+    app.address.custom = "127.0.0.1".into();
+    app.address.port = robot.port;
     app
 }
 
@@ -472,13 +472,13 @@ fn clicking_a_widget_finds_its_topic_in_the_tree() {
         .unwrap()
         .clone();
     app.find_in_tree(&number);
-    assert!(app.tree_sel.not_found.is_none());
+    assert!(app.tree.selection.not_found.is_none());
     // The tree opens the way and shows the rows with their values.
     for _ in 0..5 {
         frame(&ctx, &mut app, vec![]);
     }
-    assert_eq!(app.tree_sel.selected().len(), 1);
-    assert_eq!(app.tree_sel.selected()[0].name, "/Test/number");
+    assert_eq!(app.tree.selection.selected().len(), 1);
+    assert_eq!(app.tree.selection.selected()[0].name, "/Test/number");
     // A topic that's never sent can't be found, and says so.
     let missing = app.layout.tabs[0]
         .grid_layout
@@ -489,17 +489,17 @@ fn clicking_a_widget_finds_its_topic_in_the_tree() {
         .clone();
     app.find_in_tree(&missing);
     frame(&ctx, &mut app, vec![]);
-    assert!(app.tree_sel.selected().is_empty());
+    assert!(app.tree.selection.selected().is_empty());
     assert_eq!(app.status, "/Test/never_sent isn't published");
     // A click that finds one clears that message.
     app.find_in_tree(&number);
     assert_eq!(app.status, "");
     // Metadata rows and the filter.
-    app.show_metadata = true;
-    app.tree_filter = "count".into();
+    app.tree.show_metadata = true;
+    app.tree.filter = "count".into();
     frame(&ctx, &mut app, vec![]);
     // Hiding the tree.
-    app.show_tree = false;
+    app.tree.shown = false;
     frame(&ctx, &mut app, vec![]);
 }
 
@@ -573,7 +573,7 @@ fn saving_writes_the_file_and_clears_unsaved() {
     let folder = std::env::temp_dir().join(format!("raptaboard_save_{}", std::process::id()));
     std::fs::create_dir_all(&folder).unwrap();
     let path = folder.join("layout.json");
-    app.layout_path = Some(path.clone());
+    app.file.path = Some(path.clone());
     app.layout.tabs[0].name = "Renamed".into();
     assert!(app.unsaved());
     assert!(app.save(false));
@@ -696,7 +696,8 @@ fn open(harness: &mut Harness, start: &str) {
 fn picked(harness: &Harness) -> Vec<String> {
     harness
         .state()
-        .tree_sel
+        .tree
+        .selection
         .selected()
         .iter()
         .map(|t| match &t.field {
@@ -863,7 +864,7 @@ fn topics_dropped_on_a_graph_become_its_lines() {
     let on_graph = {
         let app = harness.state();
         let r = widgets(&harness)[index].rect;
-        app.grid_area.min + egui::vec2((r.x + r.width / 2.0) as f32, (r.y + r.height / 2.0) as f32)
+        app.grid.area.min + egui::vec2((r.x + r.width / 2.0) as f32, (r.y + r.height / 2.0) as f32)
     };
     let count = widgets(&harness).len();
     let lines = |h: &Harness| graph::series(&widgets(h)[index]);
@@ -989,7 +990,7 @@ fn writing_harness(robot: &Robot) -> Harness {
     let mut harness = harness_for(robot);
     let app = harness.state_mut();
     app.layout = writing_layout();
-    app.saved = app.layout.clone();
+    app.file.saved = app.layout.clone();
     app.history = History::new(&app.layout);
     app.current_tab = 0;
     settle(&mut harness);
@@ -1000,7 +1001,7 @@ fn writing_harness(robot: &Robot) -> Harness {
 fn body_and_title(harness: &Harness, index: usize) -> (Pos2, Pos2) {
     let app = harness.state();
     let r = app.layout.tabs[0].grid_layout.containers[index].rect;
-    let min = app.grid_area.min + egui::vec2(r.x as f32, r.y as f32);
+    let min = app.grid.area.min + egui::vec2(r.x as f32, r.y as f32);
     let size = egui::vec2(r.width as f32, r.height as f32);
     let rect = Rect::from_min_size(min, size);
     (
@@ -1062,7 +1063,7 @@ fn toggles_send_the_opposite_value_locked_or_not() {
     assert_eq!(robot.seen_enabled.get(), Some(false));
     // Nothing failed.
     assert_eq!(harness.state().sound.played(), 0);
-    assert!(harness.state().write_failed.is_empty());
+    assert!(harness.state().sends.failed.is_empty());
 }
 
 #[test]
@@ -1113,7 +1114,7 @@ fn a_failed_send_flashes_beeps_and_says_why() {
         "Can't send to /Test/never_sent: the robot hasn't published it"
     );
     assert_eq!(app.sound.played(), 1);
-    assert!(app.write_failed.contains_key(&(0, Sender::Widget(2))));
+    assert!(app.sends.failed.contains_key(&(0, Sender::Widget(2))));
     // A struct field.
     let (body, _) = body_and_title(&harness, 3);
     click_at(&mut harness, body, primary, Modifiers::NONE);
@@ -1130,18 +1131,20 @@ fn a_failed_send_flashes_beeps_and_says_why() {
     // A later good send clears that widget's flash.
     harness
         .state_mut()
-        .write_failed
+        .sends
+        .failed
         .insert((0, Sender::Widget(0)), Instant::now());
     let (good, _) = body_and_title(&harness, 0);
     click_at(&mut harness, good, primary, Modifiers::NONE);
     assert!(
         !harness
             .state()
-            .write_failed
+            .sends
+            .failed
             .contains_key(&(0, Sender::Widget(0)))
     );
     // Disconnected: says so.
-    harness.state_mut().custom_address = "".into();
+    harness.state_mut().address.custom = "".into();
     settle(&mut harness);
     click_at(&mut harness, good, primary, Modifiers::NONE);
     assert_eq!(
@@ -1154,7 +1157,7 @@ fn a_failed_send_flashes_beeps_and_says_why() {
 fn child_middle(harness: &Harness, list: usize, child: usize) -> Pos2 {
     let app = harness.state();
     let l = &app.layout.tabs[0].grid_layout.layouts[list];
-    let min = app.grid_area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
+    let min = app.grid.area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
     let card = Rect::from_min_size(min, egui::vec2(l.rect.width as f32, l.rect.height as f32))
         .shrink(super::style::CELL_GAP);
     list_layout::rows_on_screen(card, l)
@@ -1193,7 +1196,8 @@ fn toggles_work_inside_a_list() {
     click_at(&mut harness, failing, primary, Modifiers::NONE);
     let app = harness.state();
     assert!(
-        app.write_failed
+        app.sends
+            .failed
             .contains_key(&(0, Sender::Child { list: 0, child: 1 }))
     );
     assert_eq!(
@@ -1224,7 +1228,7 @@ fn a_send_that_works_clears_the_last_failures_message() {
 fn child_label(harness: &Harness, list: usize, child: usize) -> Rect {
     let app = harness.state();
     let l = &app.layout.tabs[0].grid_layout.layouts[list];
-    let min = app.grid_area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
+    let min = app.grid.area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
     let card = Rect::from_min_size(min, egui::vec2(l.rect.width as f32, l.rect.height as f32))
         .shrink(super::style::CELL_GAP);
     list_layout::rows_on_screen(card, l)
@@ -1268,7 +1272,7 @@ fn unlocked_a_list_childs_label_drags_it_and_the_rest_toggles() {
         grid(&harness).containers.len(),
         grid(&harness).layouts[0].children.len(),
     );
-    let to = harness.state().grid_area.min + egui::vec2(640.0, 400.0);
+    let to = harness.state().grid.area.min + egui::vec2(640.0, 400.0);
     harness.hover_at(label);
     harness.step();
     harness.drag_at(label);
@@ -1367,7 +1371,7 @@ fn slider_harness(robot: &Robot) -> Harness {
     let mut harness = harness_for(robot);
     let app = harness.state_mut();
     app.layout = slider_layout();
-    app.saved = app.layout.clone();
+    app.file.saved = app.layout.clone();
     app.history = History::new(&app.layout);
     app.current_tab = 0;
     settle(&mut harness);
@@ -1378,7 +1382,7 @@ fn slider_harness(robot: &Robot) -> Harness {
 fn card_on_screen(harness: &Harness, index: usize) -> Rect {
     let app = harness.state();
     let r = app.layout.tabs[0].grid_layout.containers[index].rect;
-    let min = app.grid_area.min + egui::vec2(r.x as f32, r.y as f32);
+    let min = app.grid.area.min + egui::vec2(r.x as f32, r.y as f32);
     Rect::from_min_size(min, egui::vec2(r.width as f32, r.height as f32))
         .shrink(super::style::CELL_GAP)
 }
@@ -1570,7 +1574,7 @@ fn clicking_a_sliders_value_types_one_in() {
     // A click somewhere else closes it unsent too.
     click_at(&mut harness, value, primary, Modifiers::NONE);
     type_text(&mut harness, "2");
-    let empty = harness.state().grid_area.min + egui::vec2(1400.0, 900.0);
+    let empty = harness.state().grid.area.min + egui::vec2(1400.0, 900.0);
     click_at(&mut harness, empty, primary, Modifiers::NONE);
     assert!(!wants_keys(&harness));
     // Past the range goes to its end.
@@ -1639,7 +1643,7 @@ fn a_list_sliders_whole_value_opens_the_box() {
     // The child's value is written just below its inside label.
     let app = harness.state();
     let l = &app.layout.tabs[0].grid_layout.layouts[0];
-    let min = app.grid_area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
+    let min = app.grid.area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
     let card = Rect::from_min_size(min, egui::vec2(l.rect.width as f32, l.rect.height as f32))
         .shrink(super::style::CELL_GAP);
     let row = list_layout::rows_on_screen(card, l)[0];
@@ -1699,19 +1703,19 @@ fn an_editable_text_display_takes_typed_values() {
     // Unlocked, the title bar selects it; the body still opens the box.
     harness.state_mut().locked = false;
     settle(&mut harness);
-    let grid_at = harness.state().grid_area.min;
+    let grid_at = harness.state().grid.area.min;
     click_at(&mut harness, title, primary, Modifiers::NONE);
     assert!(!wants_keys(&harness));
     assert_eq!(harness.state().selected, Some(Item::Widget(4)));
     // Selecting it opened its folder in the tree, whose rows are wider
     // than the tree: the tree scrolls rather than pushing the grid over.
-    assert_eq!(harness.state().grid_area.min, grid_at, "the grid moved");
+    assert_eq!(harness.state().grid.area.min, grid_at, "the grid moved");
     click_at(&mut harness, body, primary, Modifiers::NONE);
     assert!(wants_keys(&harness));
     type_text(&mut harness, "-1");
     press(&mut harness, Key::Enter);
     server_has_setpoint(&mut harness, &robot, -1.0);
-    assert!(harness.state().write_failed.is_empty());
+    assert!(harness.state().sends.failed.is_empty());
 }
 
 /// A layout of choosers on `/Test/Auto` along the top: a Dropdown Chooser
@@ -1765,7 +1769,7 @@ fn chooser_harness(robot: &Robot) -> Harness {
     let mut harness = harness_for(robot);
     let app = harness.state_mut();
     app.layout = chooser_layout();
-    app.saved = app.layout.clone();
+    app.file.saved = app.layout.clone();
     app.history = History::new(&app.layout);
     app.current_tab = 0;
     settle(&mut harness);
@@ -1864,7 +1868,7 @@ fn split_button_choosers_send_on_the_grid_and_in_a_list() {
         // The list's child, below its label.
         let app = harness.state();
         let l = &app.layout.tabs[0].grid_layout.layouts[0];
-        let min = app.grid_area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
+        let min = app.grid.area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
         let list = Rect::from_min_size(min, egui::vec2(l.rect.width as f32, l.rect.height as f32));
         click_label_in(&mut harness, "Middle", list);
         server_has_pick(&mut harness, &robot, "Middle");
@@ -1890,7 +1894,7 @@ fn a_chooser_table_drags_from_the_tree_as_a_dropdown() {
     open(&mut harness, "Test  (");
     let widgets = |h: &Harness| h.state().layout.tabs[0].grid_layout.containers.clone();
     let before = widgets(&harness).len();
-    let to = harness.state().grid_area.min + egui::vec2(1200.0, 700.0);
+    let to = harness.state().grid.area.min + egui::vec2(1200.0, 700.0);
     drag_row(&mut harness, "Auto", 0, to);
     assert_eq!(widgets(&harness).len(), before + 1);
     let made = widgets(&harness).pop().unwrap();
@@ -1915,7 +1919,7 @@ fn a_chooser_table_drags_from_the_tree_as_a_dropdown() {
     assert_eq!(widgets(&harness).len(), before + 1);
     // With metadata shown it's still the chooser's row, and its arrow
     // lists the hidden parts too.
-    harness.state_mut().show_metadata = true;
+    harness.state_mut().tree.show_metadata = true;
     settle(&mut harness);
     assert!(
         harness.query_by_label(".type").is_some(),
@@ -2018,7 +2022,7 @@ fn enum_harness(robot: &Robot) -> Harness {
     let mut harness = harness_for(robot);
     let app = harness.state_mut();
     app.layout = enum_layout();
-    app.saved = app.layout.clone();
+    app.file.saved = app.layout.clone();
     app.history = History::new(&app.layout);
     app.current_tab = 0;
     app.locked = true;
@@ -2266,7 +2270,7 @@ fn any_click_on_a_widget_finds_it_in_the_tree_locked_or_not() {
     let mut harness = chooser_harness(&robot);
     for locked in [true, false] {
         harness.state_mut().locked = locked;
-        harness.state_mut().tree_sel.clear();
+        harness.state_mut().tree.selection.clear();
         settle(&mut harness);
         // A click on one of the chooser's buttons picks and finds it.
         let card = card_on_screen(&harness, 1);
@@ -2274,10 +2278,10 @@ fn any_click_on_a_widget_finds_it_in_the_tree_locked_or_not() {
         settle(&mut harness);
         assert_eq!(picked(&harness), ["/Test/Auto"], "locked {locked}");
         // So does a click on a list's child.
-        harness.state_mut().tree_sel.clear();
+        harness.state_mut().tree.selection.clear();
         let app = harness.state();
         let l = &app.layout.tabs[0].grid_layout.layouts[0];
-        let min = app.grid_area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
+        let min = app.grid.area.min + egui::vec2(l.rect.x as f32, l.rect.y as f32);
         let list = Rect::from_min_size(min, egui::vec2(l.rect.width as f32, l.rect.height as f32));
         click_label_in(&mut harness, "Right", list);
         settle(&mut harness);
@@ -2288,8 +2292,8 @@ fn any_click_on_a_widget_finds_it_in_the_tree_locked_or_not() {
         );
     }
     // With hidden fields shown it's still a chooser row, found the same.
-    harness.state_mut().show_metadata = true;
-    harness.state_mut().tree_sel.clear();
+    harness.state_mut().tree.show_metadata = true;
+    harness.state_mut().tree.selection.clear();
     settle(&mut harness);
     let card = card_on_screen(&harness, 1);
     click_label_in(&mut harness, "Middle", card);
@@ -2335,7 +2339,7 @@ fn alerts_harness(robot: &Robot) -> Harness {
     let mut harness = harness_for(robot);
     let app = harness.state_mut();
     app.layout = alerts_layout();
-    app.saved = app.layout.clone();
+    app.file.saved = app.layout.clone();
     app.history = History::new(&app.layout);
     app.current_tab = 0;
     app.locked = true;
@@ -2423,7 +2427,7 @@ fn an_alert_group_drags_from_the_tree_as_an_alerts_widget() {
     harness.state_mut().current_tab = 2;
     settle(&mut harness);
     open(&mut harness, "Test  (");
-    let to = harness.state().grid_area.min + egui::vec2(300.0, 300.0);
+    let to = harness.state().grid.area.min + egui::vec2(300.0, 300.0);
     drag_row(&mut harness, "Arm", 0, to);
     let made = harness.state().layout.tabs[2]
         .grid_layout
@@ -2464,7 +2468,8 @@ fn the_alert_history_records_every_group_and_opens_from_the_top_bar() {
     robot.arm_errors.set(vec!["Arm motor fault".into()]);
     let ended = |h: &Harness, text: &str| {
         h.state()
-            .alert_history
+            .alerts
+            .history
             .events()
             .rev()
             .find(|e| e.text == text)
@@ -2485,7 +2490,7 @@ fn the_alert_history_records_every_group_and_opens_from_the_top_bar() {
         egui::PointerButton::Primary,
         Modifiers::NONE,
     );
-    assert!(harness.state().show_alert_history);
+    assert!(harness.state().alerts.panel_shown);
     labelled_soon(&mut harness, "Arm: Arm motor fault");
     // Cleared by the robot.
     robot.arm_errors.set(vec![]);
@@ -2528,7 +2533,7 @@ fn a_changing_alert_is_one_row_and_can_be_left_out_of_the_history() {
         ..ElasticLayout::default()
     };
     app.current_tab = 0;
-    app.show_alert_history = true;
+    app.alerts.panel_shown = true;
     settle(&mut harness);
     // Robot code that puts a reading in its alert's text, every loop.
     for pct in [37, 38, 36, 39] {
@@ -2541,7 +2546,8 @@ fn a_changing_alert_is_one_row_and_can_be_left_out_of_the_history() {
     }
     let rows = |h: &Harness| -> Vec<(String, u32)> {
         h.state()
-            .alert_history
+            .alerts
+            .history
             .events()
             .filter(|e| e.group == "Arm")
             .map(|e| (e.text.clone(), e.changes))
@@ -2570,7 +2576,7 @@ fn a_changing_alert_is_one_row_and_can_be_left_out_of_the_history() {
         .get_by_label("Don't record alerts like this")
         .click();
     settle(&mut harness);
-    assert_eq!(harness.state().alert_history.ignored(), ["Loop at"]);
+    assert_eq!(harness.state().alerts.history.ignored(), ["Loop at"]);
     assert!(rows(&harness).is_empty());
     // New readings aren't recorded now.
     robot
@@ -2613,18 +2619,18 @@ fn a_missing_layout_file_says_so_in_a_dialog() {
     // to the missing path.
     harness.get_by_label("Layout file not found");
     harness.get_by_label(&path.display().to_string());
-    assert_eq!(harness.state().layout_path, None);
+    assert_eq!(harness.state().file.path, None);
     // Starting a new layout there is one of the choices.
     harness.get_by_label("New layout saved here").click();
     settle(&mut harness);
     assert!(harness.query_by_label("Layout file not found").is_none());
-    assert_eq!(harness.state().layout_path.as_deref(), Some(path.as_path()));
+    assert_eq!(harness.state().file.path.as_deref(), Some(path.as_path()));
     // Closing instead leaves an untitled layout.
     let mut harness = harness_opening(&path);
     harness.get_by_label("Close").click();
     settle(&mut harness);
     assert!(harness.query_by_label("Layout file not found").is_none());
-    assert_eq!(harness.state().layout_path, None);
+    assert_eq!(harness.state().file.path, None);
     std::fs::remove_dir_all(path.parent().unwrap()).ok();
 }
 
@@ -2639,6 +2645,6 @@ fn a_file_that_isnt_a_layout_says_why_in_a_dialog() {
     harness.key_press(Key::Escape);
     settle(&mut harness);
     assert!(harness.query_by_label("Couldn't open the layout").is_none());
-    assert_eq!(harness.state().layout_path, None);
+    assert_eq!(harness.state().file.path, None);
     std::fs::remove_dir_all(path.parent().unwrap()).ok();
 }
