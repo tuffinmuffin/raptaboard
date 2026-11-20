@@ -387,6 +387,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      and when the robot reconnects). Taken from every value received, as graphs record them
      (`traces.rs`), not from the widget's sampled period, so short peaks count. Bars and gauges
      could also mark the min and max on their scale.
+   - Widget type choices that fit: the settings dialog's Widget list should offer only the types
+     that can show what the widget is bound to. A table (a chooser) isn't a topic, so it has no NT
+     type and every type is listed now: offer the chooser widgets (and the enum widgets on a
+     chooser) for a chooser table, and only number, text and so on for a topic of that type.
    - Drag tabs to reorder them: unlocked, drag a tab along the tab bar, with a marker where it
      will land, and drop it to move it (one step for undo, like Move left and Move right in the
      tab's right-click menu, which stay). Tabs can only be reordered from that menu now, and

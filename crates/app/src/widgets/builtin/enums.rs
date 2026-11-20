@@ -327,6 +327,25 @@ fn send_state(s: &Shown, i: usize) -> Option<Value> {
     Some(state.value.clone())
 }
 
+/// The example and the help under the "States" box, for an int topic
+/// (`whole`) or a string one.
+fn list_help(whole: bool) -> (&'static str, &'static str) {
+    if whole {
+        (
+            "Idle\nIntake\n5 = Shoot",
+            "The topic is a number. Type one state per line: its name, which stands for 0, \
+             1, 2 ... in order, or `5 = Shoot` to give the number. The widget shows the name \
+             and sends the number.",
+        )
+    } else {
+        (
+            "Stowed\nIntaking\nShooting",
+            "The topic is text. Type one state per line, spelled exactly as robot code sends \
+             it. The widget shows and sends that text.",
+        )
+    }
+}
+
 /// The settings both enum widgets have: where the names come from, the
 /// list or topic, Guess again, Editable and Text size.
 fn enum_settings(ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<'_>) {
@@ -354,17 +373,26 @@ fn enum_settings(ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<
     ui.end_row();
     match Source::of(p) {
         Source::List => {
+            let whole = value.nt_type.map_or_else(
+                || props::text(p, props::DATA_TYPE, "") == "int",
+                |t| t == "int",
+            );
             ui.label("States");
-            let mut text = value_lines(p).join("\n");
-            let edit = egui::TextEdit::multiline(&mut text)
-                .desired_rows(4)
-                .hint_text(
-                    "One per line. For a number topic: 0 = Idle, or a name for the next number",
-                );
-            if ui.add(edit).changed() {
-                let lines: Vec<Json> = text.split('\n').map(|l| Json::from(l.to_owned())).collect();
-                props::set_property(p, ENUM_VALUES, Some(Json::Array(lines)));
-            }
+            ui.vertical(|ui| {
+                let mut text = value_lines(p).join("\n");
+                let (hint, help) = list_help(whole);
+                let edit = egui::TextEdit::multiline(&mut text)
+                    .desired_rows(4)
+                    .desired_width(240.0)
+                    .hint_text(hint);
+                if ui.add(edit).changed() {
+                    let lines: Vec<Json> =
+                        text.split('\n').map(|l| Json::from(l.to_owned())).collect();
+                    props::set_property(p, ENUM_VALUES, Some(Json::Array(lines)));
+                }
+                ui.set_max_width(240.0);
+                ui.add(egui::Label::new(egui::RichText::new(help).weak()).wrap());
+            });
             ui.end_row();
         }
         Source::Topic => {

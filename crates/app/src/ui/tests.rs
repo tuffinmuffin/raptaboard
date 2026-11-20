@@ -2118,3 +2118,25 @@ fn an_enum_toggle_can_switch_between_two_of_its_states() {
         "Stowed".into(),
     );
 }
+
+#[test]
+fn a_long_topic_name_wraps_in_the_settings() {
+    let robot = Robot::start();
+    let mut harness = enum_harness(&robot);
+    let long = "/SmartDashboard/A table with a long name for testing/and a long topic under it";
+    let app = harness.state_mut();
+    app.layout.tabs[0].grid_layout.containers[5]
+        .properties
+        .insert("topic".into(), json!(long));
+    let original = app.layout.tabs[0].grid_layout.containers[5].clone();
+    app.editing = Some(Editing::Widget {
+        tab: 0,
+        index: 5,
+        original,
+    });
+    settle(&mut harness);
+    // All of it, on more than one line, no wider than the row allows.
+    let shown = harness.get_by_label(long).rect();
+    assert!(shown.width() <= 321.0, "{shown:?}");
+    assert!(shown.height() > 20.0, "on one line: {shown:?}");
+}

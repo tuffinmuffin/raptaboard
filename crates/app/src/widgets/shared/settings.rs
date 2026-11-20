@@ -15,6 +15,9 @@ use super::props::{self, DEFAULT_PERIOD_S, MAX_PERIOD_S, MIN_PERIOD_S, PERIOD, s
 use crate::struct_view::FieldInfo;
 use crate::widgets::{TYPES, ValueInfo, find, source_title};
 
+/// The widest the "Shows" row's topic name gets before it wraps, in points.
+const SHOWS_WIDTH: f32 = 320.0;
+
 /// Whether any of `widget`'s settings differ from the defaults, so
 /// [`reset_settings`] would change something. The title doesn't count.
 pub fn has_custom_settings(widget: &WidgetContainer) -> bool {
@@ -101,7 +104,9 @@ pub fn show(
 
             ui.label("Shows");
             ui.vertical(|ui| {
-                ui.monospace(&source);
+                // The whole name, wrapped onto more lines if it's long.
+                ui.set_max_width(SHOWS_WIDTH);
+                ui.add(egui::Label::new(egui::RichText::new(&source).monospace()).wrap());
                 if let Some(field) = &field {
                     ui.weak(format!(
                         "field {} of {}",
