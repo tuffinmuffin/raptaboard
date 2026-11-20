@@ -89,7 +89,7 @@ pub fn table_topics(table: &str) -> Vec<String> {
 /// ```
 /// use std::collections::HashMap;
 /// use nt4::Value;
-/// use raptaboard::alerts::{read_group, Level};
+/// use raptaboard::types::alerts::{read_group, Level};
 /// let errors = Value::StringArray(vec!["Encoder lost".into()]);
 /// let values = HashMap::from([("/SmartDashboard/Alerts/errors", &errors)]);
 /// let alerts = read_group("/SmartDashboard/Alerts", &values).unwrap();
@@ -122,7 +122,7 @@ pub fn read_group(table: &str, values: &HashMap<&str, &Value>) -> Option<Vec<Act
 /// ```
 /// use std::collections::HashMap;
 /// use nt4::Value;
-/// use raptaboard::alerts::alert_tables;
+/// use raptaboard::types::alerts::alert_tables;
 /// let alerts = Value::String("Alerts".into());
 /// let chooser = Value::String("String Chooser".into());
 /// let values = HashMap::from([

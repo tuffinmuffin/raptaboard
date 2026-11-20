@@ -23,8 +23,8 @@ use nt4::Value;
 use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
 
-use crate::alert::Tone;
-use crate::alerts::{self, ActiveAlert, Level};
+use crate::sound::Tone;
+use crate::types::alerts::{self, ActiveAlert, Level};
 use crate::widgets::shared::{card, props};
 use crate::widgets::{Effect, Live, ValueInfo, WidgetType};
 

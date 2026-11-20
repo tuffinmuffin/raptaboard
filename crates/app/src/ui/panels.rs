@@ -4,12 +4,12 @@ use std::collections::HashMap;
 
 use eframe::egui::{self, Color32, Sense};
 
-use crate::alerts::Level;
 use crate::connection::{AddressMode, resolve};
 use crate::edit::EditAction;
 use crate::layout_file::{self, FileAction};
 use crate::nt::ConnectionStatus;
 use crate::tabs::{self, TabAction};
+use crate::types::alerts::Level;
 use crate::widgets::builtin::alerts as alerts_widget;
 
 use super::DashboardApp;

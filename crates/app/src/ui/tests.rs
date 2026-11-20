@@ -105,7 +105,7 @@ impl Robot {
         setpoint.set(0.0);
         let seen_setpoint = server.subscribe::<f64>("/Test/setpoint", Default::default());
         let auto_type = server.publish::<String>("/Test/Auto/.type");
-        auto_type.set(widgets::builtin::chooser::CHOOSER_TYPE.into());
+        auto_type.set(crate::types::chooser::CHOOSER_TYPE.into());
         let auto_options = server.publish::<Vec<String>>("/Test/Auto/options");
         auto_options.set(vec!["Left".into(), "Middle".into(), "Right".into()]);
         let auto_default = server.publish::<String>("/Test/Auto/default");
@@ -120,7 +120,7 @@ impl Robot {
         };
         let alerts_type = |table: &str| {
             let p = server.publish::<String>(&format!("{table}/.type"));
-            p.set(crate::alerts::ALERTS_TYPE.into());
+            p.set(crate::types::alerts::ALERTS_TYPE.into());
             p
         };
         let alert_rest = vec![alerts_type("/Test/Alerts"), alerts_type("/Test/Arm")];
@@ -297,7 +297,7 @@ fn app_for(robot: &Robot) -> DashboardApp {
     app.layout = every_widget_layout();
     app.saved = app.layout.clone();
     app.history = History::new(&app.layout);
-    app.alert = crate::alert::Alert::silent();
+    app.sound = crate::sound::Sound::silent();
     app.current_tab = 0;
     app.locked = false;
     app.mode = AddressMode::Custom;
@@ -1014,7 +1014,7 @@ fn toggles_send_the_opposite_value_locked_or_not() {
     assert_eq!((moved.x, moved.y), (256.0, 256.0));
     assert_eq!(robot.seen_enabled.get(), Some(false));
     // Nothing failed.
-    assert_eq!(harness.state().alert.played(), 0);
+    assert_eq!(harness.state().sound.played(), 0);
     assert!(harness.state().write_failed.is_empty());
 }
 
@@ -1065,7 +1065,7 @@ fn a_failed_send_flashes_beeps_and_says_why() {
         app.status,
         "Can't send to /Test/never_sent: the robot hasn't published it"
     );
-    assert_eq!(app.alert.played(), 1);
+    assert_eq!(app.sound.played(), 1);
     assert!(app.write_failed.contains_key(&(0, Sender::Widget(2))));
     // A struct field.
     let (body, _) = body_and_title(&harness, 3);
@@ -1075,11 +1075,11 @@ fn a_failed_send_flashes_beeps_and_says_why() {
         app.status,
         "Can't send to /Drive/pose: struct values can't be changed"
     );
-    assert_eq!(app.alert.played(), 2);
+    assert_eq!(app.sound.played(), 2);
     // With the sound off: still flashes and says why, but no tone.
     harness.state_mut().alert_sound = false;
     click_at(&mut harness, body, primary, Modifiers::NONE);
-    assert_eq!(harness.state().alert.played(), 2);
+    assert_eq!(harness.state().sound.played(), 2);
     // A later good send clears that widget's flash.
     harness
         .state_mut()
@@ -1414,7 +1414,7 @@ fn a_slider_sends_where_it_is_let_go_even_outside_the_widget() {
     // The drags didn't move or resize the widget, locked or not.
     let r = harness.state().layout.tabs[0].grid_layout.containers[0].rect;
     assert_eq!((r.x, r.y, r.width), (0.0, 0.0, 512.0));
-    assert_eq!(harness.state().alert.played(), 0);
+    assert_eq!(harness.state().sound.played(), 0);
 }
 
 #[test]
@@ -1638,7 +1638,7 @@ fn an_editable_text_display_takes_typed_values() {
     assert!(wants_keys(&harness), "the box closed on a bad value");
     press(&mut harness, Key::Escape);
     assert!(!wants_keys(&harness));
-    assert_eq!(harness.state().alert.played(), 0);
+    assert_eq!(harness.state().sound.played(), 0);
     // A boolean takes true or false.
     let (flag, _) = body_and_title(&harness, 5);
     click_at(&mut harness, flag, primary, Modifiers::NONE);
@@ -1799,7 +1799,7 @@ fn a_dropdown_chooser_sends_the_pick_and_drops_it_for_a_new_list() {
         .auto_options
         .set(vec!["Left".into(), "Middle".into(), "Far".into()]);
     server_has_pick(&mut harness, &robot, "Middle");
-    assert_eq!(harness.state().alert.played(), 0);
+    assert_eq!(harness.state().sound.played(), 0);
 }
 
 #[test]
@@ -2039,7 +2039,7 @@ fn an_enum_dropdown_sends_and_follows_the_robot() {
     // A value that isn't a state says so.
     robot.mode.set("Climbing".into());
     shows_soon(&mut harness, "Mode", "Climbing (not listed)");
-    assert_eq!(harness.state().alert.played(), 0);
+    assert_eq!(harness.state().sound.played(), 0);
 }
 
 #[test]
@@ -2312,11 +2312,11 @@ fn an_alerts_widget_counts_by_level_and_sounds_once_for_a_new_error() {
     let mut harness = alerts_harness(&robot);
     labelled_soon(&mut harness, "Alerts: 0 errors, 1 warning, 1 info");
     // Already active when it first looked: no tone for those.
-    assert!(harness.state().alert.tones().is_empty());
+    assert!(harness.state().sound.tones().is_empty());
     // A new error: one tone.
     robot.alert_errors.set(vec!["Encoder lost".into()]);
     labelled_soon(&mut harness, "Alerts: 1 error, 1 warning, 1 info");
-    assert_eq!(harness.state().alert.tones(), [crate::alert::Tone::Beep]);
+    assert_eq!(harness.state().sound.tones(), [crate::sound::Tone::Beep]);
     // Another right after: no second tone so soon. A warning never sounds.
     robot
         .alert_errors
@@ -2325,13 +2325,13 @@ fn an_alerts_widget_counts_by_level_and_sounds_once_for_a_new_error() {
         .alert_warnings
         .set(vec!["Battery low".into(), "Hot motor".into()]);
     labelled_soon(&mut harness, "Alerts: 2 errors, 2 warnings, 1 info");
-    assert_eq!(harness.state().alert.tones().len(), 1);
+    assert_eq!(harness.state().sound.tones().len(), 1);
     // The bell button's mute stops it.
     harness.state_mut().alert_sound = false;
     std::thread::sleep(Duration::from_millis(3100));
     robot.alert_errors.set(vec!["Brownout".into()]);
     labelled_soon(&mut harness, "Alerts: 1 error, 2 warnings, 1 info");
-    assert_eq!(harness.state().alert.tones().len(), 1);
+    assert_eq!(harness.state().sound.tones().len(), 1);
 }
 
 #[test]
@@ -2339,7 +2339,7 @@ fn all_groups_and_the_tab_marks_follow_every_alert_widget() {
     let robot = Robot::start();
     let mut harness = alerts_harness(&robot);
     labelled_soon(&mut harness, "Everything: 0 errors, 1 warning, 1 info");
-    use crate::alerts::Level;
+    use crate::types::alerts::Level;
     // A warning on tab 0; tab 1's group has nothing; tab 2 has no widget.
     let marks = |h: &mut Harness| {
         settle(h);

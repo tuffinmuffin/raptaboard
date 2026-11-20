@@ -37,7 +37,7 @@ impl Tone {
     /// The tone saved as `name` (one of [`Tone::CHOICES`]), or a beep.
     ///
     /// ```
-    /// use raptaboard::alert::Tone;
+    /// use raptaboard::sound::Tone;
     /// assert_eq!(Tone::named("chirp"), Tone::Chirp);
     /// assert_eq!(Tone::named("??"), Tone::Beep);
     /// ```
@@ -62,17 +62,17 @@ impl Tone {
 /// How loud the alert is, from 0 to 1: noticeable, not startling.
 const VOLUME: f32 = 0.25;
 
-/// Plays the alert tone, or counts it when silent (in tests, or when the
-/// user turned the sound off).
+/// Plays raptaboard's sounds (tones and clips), or counts them when silent
+/// (in tests, or when the user turned sound off).
 ///
 /// ```
-/// use raptaboard::alert::Alert;
-/// let mut alert = Alert::silent();
-/// alert.play();
-/// assert_eq!(alert.played(), 1);
+/// use raptaboard::sound::Sound;
+/// let mut sound = Sound::silent();
+/// sound.play();
+/// assert_eq!(sound.played(), 1);
 /// ```
 #[derive(Debug)]
-pub struct Alert {
+pub struct Sound {
     /// Sends the tone to play to the sound thread; `None` when silent.
     sound: Option<Sender<Tone>>,
     /// How many times the alert was asked for.
@@ -81,19 +81,19 @@ pub struct Alert {
     tones: Vec<Tone>,
 }
 
-impl Default for Alert {
-    /// The same as [`Alert::new`].
+impl Default for Sound {
+    /// The same as [`Sound::new`].
     fn default() -> Self {
-        Alert::new()
+        Sound::new()
     }
 }
 
-impl Alert {
+impl Sound {
     /// An alert that plays through the computer's speakers.
-    pub fn new() -> Alert {
+    pub fn new() -> Sound {
         let (send, receive) = mpsc::channel::<Tone>();
         let started = std::thread::Builder::new()
-            .name("raptaboard-alert".into())
+            .name("raptaboard-sound".into())
             .spawn(move || {
                 // Opened on the first alert, and kept open after that.
                 let mut sink = None;
@@ -125,7 +125,7 @@ impl Alert {
                     }
                 }
             });
-        Alert {
+        Sound {
             sound: started.ok().map(|_| send),
             played: 0,
             tones: Vec::new(),
@@ -133,8 +133,8 @@ impl Alert {
     }
 
     /// An alert that makes no sound, only counts.
-    pub fn silent() -> Alert {
-        Alert {
+    pub fn silent() -> Sound {
+        Sound {
             sound: None,
             played: 0,
             tones: Vec::new(),

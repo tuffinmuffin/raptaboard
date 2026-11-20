@@ -457,7 +457,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    (numbers convert, ints round, text is parsed), published once and kept until the connection
    restarts, without changing its properties; struct topics and fields aren't written. Unlike
    Elastic, a write that can't happen says so: the widget's border flashes red three times,
-   an alert tone plays (`alert.rs`, `rodio`; the `alert_sound` setting and a bell button in the
+   an alert tone plays (`sound.rs`, `rodio`; the `alert_sound` setting and a bell button in the
    settings bar turn it off), and the status line gives the reason ("the robot hasn't published
    it", "struct values can't be changed", "it's a boolean", "not connected"). Input: the lock
    only stops layout edits, controls always work; locked, input starts anywhere on the widget;
@@ -521,13 +521,13 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    choosers) makes them show only: a state display for a subsystem, or a chooser watched from the
    pit. Struct enum fields stay display-only (Text Display shows their names). The tree scrolls
    sideways, so a wide row (opened by selecting a widget) doesn't widen it and move the grid.
-   Alerts (`builtin/alerts.rs`, `alerts.rs`; decided with the user): WPILib's alert groups are
+   Alerts (`builtin/alerts.rs`, `types/alerts.rs`; decided with the user): WPILib's alert groups are
    tables with `.type` "Alerts" and three string[] lists, `errors`, `warnings`, `infos` (the active
    alerts' text, newest first; text is all an alert carries; 2027 calls the levels HIGH, MEDIUM,
    LOW and Glass still reads these lists). The widget is a circle with a red ✕, yellow ! and blue i
    (painted, not glyphs), each lit with a count while that level has alerts, the ring in the most
    urgent color; optionally the text beside or below. One group, or all groups. A new error (not
-   warnings) pulses it for N seconds and can play a tone (`alert.rs` `Tone`, generated, a few to
+   warnings) pulses it for N seconds and can play a tone (`sound.rs` `Tone`, generated, a few to
    pick; widgets ask through `Live::effects`). When the connection drops, or the topics go before
    it does, the last alerts stay, greyed. A tab with an Alerts widget showing an error or a warning
    gets that sign after its name, open or not (alert topics of other tabs' Alerts widgets are

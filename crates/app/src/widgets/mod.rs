@@ -82,7 +82,7 @@ pub struct Live<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Effect {
     /// Play a tone (unless sounds are turned off with the bell button).
-    Tone(crate::alert::Tone),
+    Tone(crate::sound::Tone),
 }
 
 /// What the settings dialog knows about the value a widget shows, so a

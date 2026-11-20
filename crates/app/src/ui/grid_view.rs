@@ -165,7 +165,7 @@ impl DashboardApp {
             match effect {
                 widgets::Effect::Tone(tone) => {
                     if self.alert_sound {
-                        self.alert.play_tone(tone);
+                        self.sound.play_tone(tone);
                     }
                 }
             }
@@ -923,7 +923,7 @@ impl DashboardApp {
                 self.write_failed
                     .insert((self.current_tab, sender), Instant::now());
                 if self.alert_sound {
-                    self.alert.play();
+                    self.sound.play();
                 }
             }
         }
