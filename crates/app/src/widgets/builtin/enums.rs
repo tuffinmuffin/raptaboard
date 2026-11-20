@@ -41,7 +41,7 @@ use crate::types::enums::{
     Source, State, guess, listed_states, locate, named_states, next_state, pair_target,
 };
 use crate::widgets::shared::{card, props};
-use crate::widgets::{Live, ValueInfo, WidgetType};
+use crate::widgets::{Live, Server, ValueInfo, WidgetType};
 
 /// Where the states' names come from: `list`, `topic` or `chooser`.
 pub const ENUM_SOURCE: &str = "enum_source";
@@ -361,7 +361,7 @@ impl WidgetType for EnumDropdown {
     fn chosen(&self, p: &mut Map<String, Json>, value: ValueInfo<'_>) {
         apply_guess(p, value.topics);
     }
-    fn extra_topics(&self, p: &Map<String, Json>) -> Vec<String> {
+    fn extra_topics(&self, p: &Map<String, Json>, _: Server<'_>) -> Vec<String> {
         enum_topics(p)
     }
     fn show(
@@ -553,7 +553,7 @@ impl WidgetType for EnumToggle {
     fn chosen(&self, p: &mut Map<String, Json>, value: ValueInfo<'_>) {
         apply_guess(p, value.topics);
     }
-    fn extra_topics(&self, p: &Map<String, Json>) -> Vec<String> {
+    fn extra_topics(&self, p: &Map<String, Json>, _: Server<'_>) -> Vec<String> {
         enum_topics(p)
     }
     fn show(

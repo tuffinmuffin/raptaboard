@@ -29,7 +29,7 @@ use serde_json::{Map, Value as Json};
 
 use crate::types::chooser::{CHOOSER_TYPE, Chooser, SELECTED, chooser_topics};
 use crate::widgets::shared::{card, props};
-use crate::widgets::{Live, ValueInfo, WidgetType};
+use crate::widgets::{Live, Server, ValueInfo, WidgetType};
 
 /// Sort the options by name in the drop-down (Elastic; off unless set).
 pub const SORT_OPTIONS: &str = "sort_options";
@@ -370,7 +370,7 @@ impl WidgetType for DropdownChooser {
         Some((SELECTED, NtType::String))
     }
 
-    fn extra_topics(&self, p: &Map<String, Json>) -> Vec<String> {
+    fn extra_topics(&self, p: &Map<String, Json>, _: Server<'_>) -> Vec<String> {
         table_topics(p)
     }
 
@@ -574,7 +574,7 @@ impl WidgetType for SplitButtonChooser {
         Some((SELECTED, NtType::String))
     }
 
-    fn extra_topics(&self, p: &Map<String, Json>) -> Vec<String> {
+    fn extra_topics(&self, p: &Map<String, Json>, _: Server<'_>) -> Vec<String> {
         table_topics(p)
     }
 

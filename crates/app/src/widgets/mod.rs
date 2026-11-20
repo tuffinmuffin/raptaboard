@@ -41,6 +41,9 @@ use nt4::Value;
 use raptaboard_layout::{Rect as LayoutRect, StructMeta, WidgetContainer};
 use serde_json::{Map, Value as Json};
 
+use crate::traces::SeriesKey;
+use crate::tree::DraggedTopic;
+use crate::types::alerts::Level;
 use crate::types::structs::FieldInfo;
 use shared::{card, props};
 
@@ -83,6 +86,14 @@ pub struct Live<'a> {
 pub enum Effect {
     /// Play a tone (unless sounds are turned off with the bell button).
     Tone(crate::sound::Tone),
+}
+
+/// What's on the server, for widgets whose topics depend on more than their
+/// own settings (an Alerts widget showing every group).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Server<'a> {
+    /// Every table with a `.type` topic, by full name (without `/.type`).
+    pub tables: &'a [String],
 }
 
 /// What the settings dialog knows about the value a widget shows, so a
@@ -218,9 +229,43 @@ pub trait WidgetType: Sync {
     fn chosen(&self, _props: &mut Map<String, Json>, _value: ValueInfo<'_>) {}
 
     /// Topics this widget needs values for besides its own `topic`, such as
-    /// a graph's other lines. None by default.
-    fn extra_topics(&self, _props: &Map<String, Json>) -> Vec<String> {
+    /// a graph's other lines, given what's on the `server`. None by default.
+    fn extra_topics(&self, _props: &Map<String, Json>, _server: Server<'_>) -> Vec<String> {
         Vec::new()
+    }
+
+    /// Topics this widget needs values for while its tab isn't open, for
+    /// its [`tab_mark`](Self::tab_mark). None by default.
+    fn background_topics(&self, _props: &Map<String, Json>, _server: Server<'_>) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// The mark this widget puts on its tab, open or not, from the server's
+    /// `values`: the most urgent alert it shows. None by default.
+    fn tab_mark(
+        &self,
+        _widget: &WidgetContainer,
+        _values: &HashMap<&str, &Value>,
+    ) -> Option<Level> {
+        None
+    }
+
+    /// The series of values over time this widget draws, and how many
+    /// seconds of each to keep, for the app to record. None by default.
+    fn traced(&self, _widget: &WidgetContainer) -> Vec<(SeriesKey, f64)> {
+        Vec::new()
+    }
+
+    /// Whether topics dragged from the tree can be dropped onto this widget
+    /// (a graph takes them as lines). No by default.
+    fn takes_topics(&self) -> bool {
+        false
+    }
+
+    /// Take `topics` dropped onto `widget`, if [`takes_topics`](Self::takes_topics).
+    /// Returns what to say about it in the status line.
+    fn add_topics(&self, _widget: &mut WidgetContainer, _topics: &[DraggedTopic]) -> String {
+        String::new()
     }
 
     /// Draw the widget's body (the card below the title) in `rect`, for the
