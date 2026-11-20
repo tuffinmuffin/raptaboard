@@ -532,10 +532,17 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    it does, the last alerts stay, greyed. A tab with an Alerts widget showing an error or a warning
    gets that sign after its name, open or not (alert topics of other tabs' Alerts widgets are
    subscribed too). An alert group in the tree is a draggable row like a chooser.
-   Next: alert history (an app-level recorder of every group from connect, count-based, default
-   1,000 events, oldest dropped; a top-bar button with the highest level shows and hides its panel
-   of level, group, text, seen, cleared and how long, with Clear and filters; memory only), then
-   Field, struct widgets.
+   Alert history (`alert_history.rs`, `ui/history_panel.rs`, done): every alert group is recorded
+   from connect, whether or not an Alerts widget shows it (every table's `.type` and the alert
+   groups' lists are subscribed every 0.02 s). An event per alert, known by group, level and text
+   (and which copy): when it was seen, and when and how it ended (cleared; robot disconnected;
+   group not published). Count-based: the last `alert_history` events (setting, default 1,000,
+   also set in the panel), oldest dropped; nothing goes by age, so a match's alerts are there
+   afterwards; memory only. A top-bar "Alerts" button with the number active and the worst one's
+   sign shows and hides a right-side panel: newest first, with level, group, text, seen, how long,
+   and the ending; filters by level, group and text; Clear forgets ended events (active ones
+   stay). Match time isn't recorded yet (no standard topic for it).
+   Next: Field, struct widgets.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
    WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro, SwerveModuleState[] → swerve view.

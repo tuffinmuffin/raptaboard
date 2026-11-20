@@ -73,7 +73,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   not), `sound.rs` the sounds (`Sound`: a failed write's tone, and the Alerts widget's `Tone`s; its own
   thread, `rodio`; `Sound::silent` in tests), `types/` the robot data types raptaboard reads, apart
   from the widgets that draw them (`types/alerts.rs` WPILib's alert groups, `types/chooser.rs` a
-  SendableChooser's table; more custom data structures go here), `tree.rs` the (row picking in `TreeSelection`, drag payload `DraggedTopics`)
+  SendableChooser's table; more custom data structures go here), `alert_history.rs` the alert history (every
+  group from connect, count-based; its panel and top-bar button are `ui/history_panel.rs`), `tree.rs` the (row picking in `TreeSelection`, drag payload `DraggedTopics`)
   read-only NT tree (values only for topics in open folders, via `NtConnection::watch_values`),
   `struct_view.rs` struct values decoded with the server's `/.schema/` topics
   (`nt4::proto::structs::StructDatabase` + `DynamicStruct`), `widgets/` the grid widgets,

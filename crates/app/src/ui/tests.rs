@@ -2394,3 +2394,73 @@ fn alerts_stay_shown_greyed_when_the_connection_drops() {
         "Alerts: 1 error, 1 warning, 1 info (disconnected)",
     );
 }
+
+#[test]
+fn the_alert_history_records_every_group_and_opens_from_the_top_bar() {
+    let robot = Robot::start();
+    let mut harness = alerts_harness(&robot);
+    use crate::alert_history::Ending;
+    // With no Alerts widget anywhere: it records anyway.
+    let app = harness.state_mut();
+    app.layout = ElasticLayout {
+        tabs: vec![Tab::new("Nothing")],
+        ..ElasticLayout::default()
+    };
+    app.current_tab = 0;
+    settle(&mut harness);
+    robot.arm_errors.set(vec!["Arm motor fault".into()]);
+    let ended = |h: &Harness, text: &str| {
+        h.state()
+            .alert_history
+            .events()
+            .rev()
+            .find(|e| e.text == text)
+            .map(|e| e.ended.map(|(_, how)| how))
+    };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while ended(&harness, "Arm motor fault") != Some(None) {
+        assert!(Instant::now() < deadline, "the fault was never recorded");
+        settle(&mut harness);
+    }
+    // The starting warning and info are in it too.
+    assert_eq!(ended(&harness, "Battery low"), Some(None));
+    // The top-bar button counts what's active and opens the history.
+    let button = harness.get_by_label_contains("Alerts 3").rect().center();
+    click_at(
+        &mut harness,
+        button,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert!(harness.state().show_alert_history);
+    labelled_soon(&mut harness, "Arm: Arm motor fault");
+    // Cleared by the robot.
+    robot.arm_errors.set(vec![]);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while ended(&harness, "Arm motor fault") != Some(Some(Ending::Cleared)) {
+        assert!(Instant::now() < deadline, "never cleared");
+        settle(&mut harness);
+    }
+    // Clear forgets ended ones, keeps active ones.
+    // The history's Clear (the tree's filter has one too), at the right.
+    let clear = harness
+        .get_all_by_label("Clear")
+        .map(|n| n.rect())
+        .max_by(|a, b| a.min.x.total_cmp(&b.min.x))
+        .unwrap();
+    click_at(
+        &mut harness,
+        clear.center(),
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(ended(&harness, "Arm motor fault"), None);
+    assert_eq!(ended(&harness, "Battery low"), Some(None));
+    // The robot goes: what was active ends as disconnected.
+    drop(robot);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while ended(&harness, "Battery low") != Some(Some(Ending::Disconnected)) {
+        assert!(Instant::now() < deadline, "never ended by the disconnect");
+        settle(&mut harness);
+    }
+}

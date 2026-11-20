@@ -20,6 +20,7 @@ rfd = "0.17.2"
 clap = { version = "4.6.8", features = ["derive"] }
 egui_plot = "0.38.0"
 rodio = { version = "0.23", default-features = false, features = ["playback"] }
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 
 [lints]
 workspace = true

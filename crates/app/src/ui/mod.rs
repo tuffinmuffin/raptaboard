@@ -3,6 +3,7 @@
 mod dialogs;
 mod drag;
 mod grid_view;
+mod history_panel;
 mod live;
 mod panels;
 mod style;
@@ -113,6 +114,12 @@ pub struct DashboardApp {
     alert_sound: bool,
     /// Plays the tones (a failed send's, and Alerts widgets').
     sound: Sound,
+    /// Every alert seen since connecting, from every group.
+    alert_history: crate::alert_history::AlertHistory,
+    /// Whether the alert history panel shows.
+    show_alert_history: bool,
+    /// What the alert history panel shows.
+    history_filter: history_panel::HistoryFilter,
     /// When each widget (or list child) on a tab last failed to send its value: (tab,
     /// sender) to the time, so its border flashes red for a moment.
     write_failed: HashMap<(usize, Sender), Instant>,
@@ -165,6 +172,9 @@ impl DashboardApp {
             traces: Traces::default(),
             alert_sound: options.alert_sound,
             sound: Sound::new(),
+            alert_history: crate::alert_history::AlertHistory::new(options.alert_history),
+            show_alert_history: false,
+            history_filter: Default::default(),
             write_failed: HashMap::new(),
             send_failure: None,
             grid_area: egui::Rect::NOTHING,
@@ -208,6 +218,7 @@ impl DashboardApp {
             show_tree: Some(self.show_tree),
             locked: Some(self.locked),
             alert_sound: Some(self.alert_sound),
+            alert_history: Some(self.alert_history.capacity()),
             tab: self
                 .layout
                 .tabs
@@ -515,6 +526,7 @@ impl DashboardApp {
             .iter()
             .filter_map(|t| Some((&*t.name, &t.value.as_ref()?.value)))
             .collect();
+        self.record_alerts(&values);
         // A hidden tree costs nothing: it isn't built and asks for no values.
         let tree_topics = if self.show_tree {
             egui::Panel::left("nt_tree")
@@ -525,6 +537,12 @@ impl DashboardApp {
         } else {
             Vec::new()
         };
+        if self.show_alert_history {
+            egui::Panel::right("alert_history")
+                .resizable(true)
+                .default_size(460.0)
+                .show(ui, |ui| self.alert_history_panel(ui));
+        }
         // "Add to grid" from the tree's right-click menu: widgets in the
         // free spots nearest the top left of the open tab.
         let add = std::mem::take(&mut self.tree_sel.add);
@@ -547,7 +565,13 @@ impl DashboardApp {
         }
 
         self.nt.watch_values(tree_topics);
-        self.nt.watch_widget_values(self.tab_topics());
+        // The history records every alert group, whatever the tab shows.
+        let mut wanted = self.tab_topics();
+        wanted.push((
+            history_panel::HISTORY_PERIOD_S,
+            self.history_topics(&topics),
+        ));
+        self.nt.watch_widget_values(wanted);
 
         // The client runs on its own thread, so egui doesn't know when values
         // change. Redraw when the next widget is due for a new value, and at
