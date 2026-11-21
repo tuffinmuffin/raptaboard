@@ -17,6 +17,7 @@ pub mod number_bar;
 pub mod number_slider;
 pub mod pose3d;
 pub mod radial_gauge;
+pub mod struct_view;
 pub mod swerve;
 pub mod text_display;
 pub mod toggle;

@@ -13,6 +13,7 @@ mod files;
 mod gyro;
 mod pose3d;
 mod sliders;
+mod struct_view;
 mod swerve;
 mod tree;
 mod window;

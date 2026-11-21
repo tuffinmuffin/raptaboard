@@ -651,8 +651,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    widget while the program runs. A Rotation3d, Transform3d or Quaternion dragged from the tree makes
    one (a Pose3d still makes a Field; a Gyro still shows a Rotation3d's yaw). robot-2027's
    `TumblePose` (pitching and rolling) is on the sim layout's Field tab, below the Gyros.
-   Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
-   enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
+   Whole structs dragged from the tree: a generic struct widget (**done**: Struct, `builtin/struct_view.rs`,
+   last in `TYPES` so a struct another widget is made for makes that one; its fields like the tree shows
+   them, from `types::structs::decode`: nested structs indented under their kind, struct arrays as
+   `[0]`, `[1]`, ..., enum names; it scrolls; "waiting for the schema" until robot code sends one; the
+   sim layout's Widgets tab shows robot-2027's `CyclingMode`) for any struct, and defaults for common
    WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro (done), Rotation3d → 3D Pose (done), SwerveModuleState[] → swerve view (done).
    Milestone 4 plugins may also match a struct type (a `struct = "ArmState"` rule).
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
