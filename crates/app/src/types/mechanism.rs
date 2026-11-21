@@ -147,7 +147,9 @@ fn subtables(inside: &HashMap<&str, &Value>, path: &str) -> Vec<String> {
         .collect()
 }
 
-/// The ligaments directly in `path`.
+/// The ligaments directly in `path`. A ligament counts once its `angle`
+/// and `length` have both arrived (WPILib always sends both): one half
+/// sent would be drawn wrong for a moment, and its children with it.
 fn ligaments(inside: &HashMap<&str, &Value>, path: &str) -> Vec<Ligament> {
     subtables(inside, path)
         .into_iter()
@@ -155,14 +157,18 @@ fn ligaments(inside: &HashMap<&str, &Value>, path: &str) -> Vec<Ligament> {
             let at = format!("{path}/{name}");
             let field = |f: &str| inside.get(format!("{at}/{f}").as_str());
             let is_line = text(field(".type")).as_deref() == Some(LIGAMENT_TYPE);
-            let length = number(field("length"));
-            if !is_line && length.is_none() {
+            let (angle, length) = (number(field("angle")), number(field("length")));
+            let (Some(angle), Some(length)) = (angle, length) else {
+                return None;
+            };
+            // Any other `.type` is something else in the table.
+            if !is_line && text(field(".type")).is_some() {
                 return None;
             }
             Some(Ligament {
                 name,
-                angle: number(field("angle")).unwrap_or(0.0),
-                length: length.unwrap_or(0.0),
+                angle,
+                length,
                 color: text(field("color")),
                 weight: number(field("weight")).unwrap_or(10.0),
                 children: ligaments(inside, &at),
@@ -298,6 +304,12 @@ mod tests {
             ("/SD/Mech/base/elevator/arm/length", Value::Double(0.5)),
             // A root with no x or y yet isn't one.
             ("/SD/Mech/half/y", Value::Double(1.0)),
+            // A ligament half sent (no length yet) isn't one, nor its
+            // children, until the rest arrives.
+            ("/SD/Mech/base/claw/.type", Value::String("line".into())),
+            ("/SD/Mech/base/claw/angle", Value::Double(10.0)),
+            ("/SD/Mech/base/claw/tip/angle", Value::Double(0.0)),
+            ("/SD/Mech/base/claw/tip/length", Value::Double(1.0)),
             // Another table's topics aren't read.
             ("/SD/Other/base/x", Value::Double(9.0)),
         ];

@@ -314,3 +314,48 @@ fn the_view_zooms_to_what_the_mechanism_has_used_and_only_grows() {
         "showing 0.00 to 3.00 across, 0.00 to 2.00 up"
     );
 }
+
+#[test]
+fn values_arriving_a_few_at_a_time_dont_stretch_the_view() {
+    // A dashboard connecting gets a table's topics as they come, not all
+    // at once. In the worst order: the canvas alone first, then a root,
+    // then an elevator without its length while the arm on it is
+    // complete. Neither the canvas shown meanwhile nor a half-sent
+    // ligament (drawn with no length, the arm hanging off the base) may
+    // count as "used", or the view, which only grows, would stay stretched.
+    let robot = Robot::start();
+    let mut m = Mechanism::publish(&robot, "/Test/Lift", (3.0, 2.0), None, &[], &[]);
+    let mut harness = mechanism_harness(&robot, "/Test/Lift", "Lift");
+    harness.state_mut().locked = true;
+    labelled_soon(&mut harness, "Lift: no ligaments");
+    assert_eq!(
+        showing(&harness, "Lift"),
+        "showing 0.00 to 3.00 across, 0.00 to 2.00 up",
+        "the canvas, until there's a mechanism"
+    );
+    m.set("base/x", 1.5);
+    m.set("base/y", 0.2);
+    m.text("base/elevator/.type", "line");
+    m.set("base/elevator/angle", 90.0);
+    m.add(&Ligament {
+        path: "base/elevator/arm",
+        angle: -45.0,
+        length: 0.5,
+        color: None,
+        weight: None,
+    });
+    for _ in 0..20 {
+        settle(&mut harness);
+    }
+    labelled_soon(&mut harness, "Lift: no ligaments");
+    m.set("base/elevator/length", 0.8);
+    labelled_soon(
+        &mut harness,
+        "Lift: base/elevator: 0.80 at 90°; base/elevator/arm: 0.50 at -45°",
+    );
+    // The same view as when it all arrives at once.
+    assert_eq!(
+        showing(&harness, "Lift"),
+        "showing 1.38 to 1.97 across, 0.08 to 1.47 up"
+    );
+}

@@ -6,7 +6,7 @@
 //! The view fills the card at one scale for x and y (angles stay true). By
 //! default it zooms to the part of the canvas the mechanism has used (its
 //! roots and every place a ligament has reached, plus a margin), which only
-//! grows, so a tall elevator fills a tall card and the view doesn't jump as
+//! grows (a ligament counts once its angle and length have both arrived), so a tall elevator fills a tall card and the view doesn't jump as
 //! it moves; a double-click starts it over. `fit` set to `canvas` shows the
 //! whole canvas (`dims`) instead.
 //!
@@ -214,13 +214,21 @@ impl Mechanism2d {
                     [0.0, 0.0, m.width, m.height]
                 } else {
                     let seen: Option<Area> = ui.data(|d| d.get_temp(id));
-                    let now = used(m).map(|a| padded(a, m));
-                    let area = match (seen, now) {
-                        (Some(s), Some(n)) => union(s, n),
-                        (s, n) => s.or(n).unwrap_or([0.0, 0.0, m.width, m.height]),
+                    // What the mechanism has really used is kept, without
+                    // the margin (added to whatever is kept, so it fits
+                    // all of it); the whole canvas, shown before any root
+                    // arrives, isn't, or the view could never zoom in again.
+                    let kept = match (seen, used(m)) {
+                        (Some(s), Some(n)) => Some(union(s, n)),
+                        (s, n) => s.or(n),
                     };
-                    ui.data_mut(|d| d.insert_temp(id, area));
-                    area
+                    match kept {
+                        Some(area) => {
+                            ui.data_mut(|d| d.insert_temp(id, area));
+                            padded(area, m)
+                        }
+                        None => [0.0, 0.0, m.width, m.height],
+                    }
                 };
                 draw(&painter, &visuals, rect, m, View::fit(rect, area));
                 shown = Some(area_text(area));
