@@ -421,10 +421,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      that can show what the widget is bound to. A table (a chooser) isn't a topic, so it has no NT
      type and every type is listed now: offer the chooser widgets (and the enum widgets on a
      chooser) for a chooser table, and only number, text and so on for a topic of that type.
-   - Alerts: the most urgent active sign in the circle grows larger (an error's ✕ while there are
-     errors, else the ! while there are warnings), the other two shrinking to make room, so the
-     worst one reads at a glance from across the driver station; back to equal sizes when nothing
-     above info is active.
+   - Alerts (**done**, `sign_places` in `builtin/alerts.rs`): the most urgent active sign in the circle
+     grows large in the middle (an error's ✕ while there are errors, else the ! while there are
+     warnings), the other two shrinking along the bottom, so the worst one reads at a glance from
+     across the driver station; back to equal sizes when nothing above info is active.
    - Alert history "Not recorded" entries as regular expressions too (a per-entry choice beside
      today's partial text match, which stays the default), if more robot code turns up whose
      alerts need it. Not needed yet: the one noisy alert (robot-2027's Frame Timing) is fixed at

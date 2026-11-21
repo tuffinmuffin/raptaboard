@@ -4,7 +4,8 @@
 //! The circle has a red ✕ (errors), a yellow ! (warnings) and a blue i
 //! (infos); each sign lights while there's an alert of its level, with a
 //! count when there's more than one, and the circle's ring takes the color
-//! of the most urgent. With `show_text` (on unless set) the alerts' text is
+//! of the most urgent. While an error or warning is active, the most urgent
+//! sign grows large in the middle and the other two shrink below it. With `show_text` (on unless set) the alerts' text is
 //! listed beside the circle or below it (`text_position`): errors first,
 //! each level newest first. Small, it's a status light; big, a list.
 //!
@@ -134,14 +135,8 @@ fn draw_circle(
         .find(|l| counts[*l as usize] > 0)
         .map_or(off, lit);
     painter.circle_stroke(c, r, Stroke::new((r * 0.08).clamp(1.5, 4.0), ring));
-    // ✕ top left, ! top right, i at the bottom.
-    let size = r * 0.42;
-    let places = [
-        (Level::Error, c + egui::vec2(-r * 0.4, -r * 0.25)),
-        (Level::Warning, c + egui::vec2(r * 0.4, -r * 0.25)),
-        (Level::Info, c + egui::vec2(0.0, r * 0.45)),
-    ];
-    for (level, at) in places {
+    for (level, (dx, dy), size) in sign_places(counts) {
+        let (at, size) = (c + egui::vec2(dx, dy) * r, size * r);
         let color = lit(level);
         draw_sign(painter, level, at, size, color);
         let n = counts[level as usize];
@@ -155,6 +150,35 @@ fn draw_circle(
             );
         }
     }
+}
+
+/// Where each sign goes in a circle of radius 1 (center at 0, y down), and
+/// its size, for alert `counts`: the three the same (✕ top left, ! top
+/// right, i at the bottom) unless an error or warning is active; then the
+/// most urgent one grows large in the middle, so it reads at a glance from
+/// across the driver station, and the other two shrink along the bottom,
+/// the more urgent on the left.
+fn sign_places(counts: [usize; 3]) -> [(Level, (f32, f32), f32); 3] {
+    let worst = [Level::Error, Level::Warning]
+        .into_iter()
+        .find(|l| counts[*l as usize] > 0);
+    let Some(worst) = worst else {
+        return [
+            (Level::Error, (-0.4, -0.25), 0.42),
+            (Level::Warning, (0.4, -0.25), 0.42),
+            (Level::Info, (0.0, 0.45), 0.42),
+        ];
+    };
+    let mut others = Level::ALL.into_iter().filter(|l| *l != worst);
+    let (left, right) = (
+        others.next().unwrap_or(Level::Info),
+        others.next().unwrap_or(Level::Info),
+    );
+    [
+        (worst, (0.0, -0.15), 0.72),
+        (left, (-0.5, 0.5), 0.26),
+        (right, (0.5, 0.5), 0.26),
+    ]
 }
 
 /// Where the circle and the text go in `rect`: the circle's area and the
@@ -482,6 +506,32 @@ impl WidgetType for AlertsWidget {
 mod tests {
     // Tests written by Claude.
     use super::*;
+
+    #[test]
+    fn the_most_urgent_active_sign_grows_and_the_others_shrink() {
+        let size = |counts, level| {
+            sign_places(counts)
+                .into_iter()
+                .find(|(l, _, _)| *l == level)
+                .map(|(_, _, s)| s)
+                .unwrap()
+        };
+        // Nothing above info: all the same.
+        for counts in [[0, 0, 0], [0, 0, 3]] {
+            let sizes: Vec<f32> = sign_places(counts).iter().map(|p| p.2).collect();
+            assert!(sizes.iter().all(|s| *s == sizes[0]), "{counts:?}");
+        }
+        // An error, even with warnings: the ✕ is the big one.
+        assert!(size([1, 2, 0], Level::Error) > 2.0 * size([1, 2, 0], Level::Warning));
+        // Only warnings: the !.
+        assert!(size([0, 1, 1], Level::Warning) > 2.0 * size([0, 1, 1], Level::Error));
+        // Every sign stays inside the circle.
+        for counts in [[0, 0, 0], [1, 0, 0], [0, 1, 0]] {
+            for (_, (x, y), s) in sign_places(counts) {
+                assert!(x.hypot(y) + s / 2.0 < 1.0, "{counts:?}");
+            }
+        }
+    }
 
     #[test]
     fn text_goes_beside_a_wide_widget_and_below_a_tall_one() {
