@@ -8,7 +8,7 @@
 //! WPILib defines them. Numbers count the way Elastic's
 //! `counter_clockwise_positive` says: clockwise unless it's on, as most
 //! gyros' `getAngle` counts. A `Rotation2d` dragged from the tree makes a
-//! Gyro.
+//! Gyro (a `Rotation3d` makes a 3D Pose; a Gyro can still show its yaw).
 
 use std::f32::consts::PI;
 
@@ -204,11 +204,15 @@ impl WidgetType for Gyro {
     }
 
     fn accepts(&self, nt_type: &str) -> bool {
-        matches!(nt_type, "struct:Rotation2d" | "struct:Rotation3d")
+        nt_type == "struct:Rotation2d"
     }
 
     fn shows(&self, nt_type: &str) -> bool {
-        self.accepts(nt_type) || matches!(nt_type, "double" | "float" | "int")
+        // A Rotation3d shows its yaw (it makes a 3D Pose when dragged).
+        matches!(
+            nt_type,
+            "struct:Rotation2d" | "struct:Rotation3d" | "double" | "float" | "int"
+        )
     }
 
     fn table_types(&self) -> &'static [&'static str] {

@@ -73,7 +73,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   its own `impl DashboardApp` block; `ui/tests/` runs the whole window headless against an
   in-process `nt4::Server` with one widget of every type (and struct and struct-array topics),
   the place for new UI tests (`mod.rs` the harness, test server, layouts and shared helpers; one file per
-  area: window, tree, writing, sliders, choosers, enums, alerts, files, field, gyro, swerve, chassis, clips); its `egui_kittest` harness finds
+  area: window, tree, writing, sliders, choosers, enums, alerts, files, field, gyro, pose3d, swerve, chassis, clips); its `egui_kittest` harness finds
   tree rows and menu items by label and clicks or drags them;
   `DashboardApp::show` is one frame without an `eframe::Frame`), `connection.rs` the robot address modes,
   `cli.rs` the startup flags (`clap` derive, `cli::Args`: `--team`, `--address`, `--port`,
@@ -89,7 +89,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   thread, `rodio`; `Sound::silent` in tests), `types/` the robot data types raptaboard reads, apart
   from the widgets that draw them: no egui and no widget setting keys here, just topics in and typed
   data and rules out (`types/alerts.rs` WPILib's alert groups and `AlertWatch`, which spots new errors
-  and keeps the last alerts seen; `types/chooser.rs` a SendableChooser's table; `types/angle.rs` headings (Rotation2d, Rotation3d yaw, a pose's, a gyro's degrees) and which way they count; `types/swerve.rs` swerve modules' speeds and angles; `types/motion.rs` a robot's velocity and spin (`ChassisSpeeds`); `types/enums.rs` named
+  and keeps the last alerts seen; `types/chooser.rs` a SendableChooser's table; `types/angle.rs` headings (Rotation2d, Rotation3d yaw, a pose's, a gyro's degrees) and which way they count; `types/swerve.rs` swerve modules' speeds and angles; `types/motion.rs` a robot's velocity and spin (`ChassisSpeeds`); `types/pose3d.rs` 3D poses and quaternions (roll, pitch, yaw); `types/enums.rs` named
   states and where their names come from, with `guess`; `types/field.rs` a field's size, image bounds and AprilTags, and poses in WPILib 2027's frame;
   `types/structs.rs` struct values decoded with
   the server's `/.schema/` topics (`nt4::proto::structs::StructDatabase` + `DynamicStruct`);
@@ -176,7 +176,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `/Drive/CommandedSpeeds`, turned by `/Drive/Pose`. Beside the red-side Field, a Chassis Speeds on `/Drive/MeasuredSpeeds` against
   `/Drive/CommandedSpeeds` (the keyboard joystick can't spin the sim drivetrain: rotation is Xbox axis 4
   and it has three axes), and one on robot-2027's scripted `/DashTest/CommandedSpeeds` against
-  `MeasuredSpeeds`, which lag 0.3 s and reach 90% of the speed and 80% of the spin. Its Alerts tab shows robot-2027's alerts (its
+  `MeasuredSpeeds`, which lag 0.3 s and reach 90% of the speed and 80% of the spin. Below the Gyros, a 3D Pose on robot-2027's `TumblePose` (a
+  Pose3d that pitches and rolls). Its Alerts tab shows robot-2027's alerts (its
   test topics add a warning, an info, and an error on for 3 s every 10 s). "Writing in a list" holds the toggles and a slider as List
   Layout children.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.
