@@ -320,6 +320,18 @@
               "period": 0.06,
               "data_type": "struct:DashTestMode"
             }
+          },
+          {
+            "title": "Lift (Mechanism2d)",
+            "x": 1280.0,
+            "y": 0.0,
+            "width": 384.0,
+            "height": 256.0,
+            "type": "Mechanism2d",
+            "properties": {
+              "topic": "/SmartDashboard/DashTest/Lift",
+              "period": 0.06
+            }
           }
         ]
       }

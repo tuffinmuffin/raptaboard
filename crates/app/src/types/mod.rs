@@ -11,6 +11,7 @@
 //! - [`field`]: a field (size, image, AprilTags) and poses on it.
 //! - [`angle`]: headings (a `Rotation2d`, a gyro's degrees) and which way
 //!   they count.
+//! - [`mechanism`]: WPILib's Mechanism2d (ligaments on a canvas).
 //! - [`motion`]: a robot's velocity and spin (`ChassisSpeeds`).
 //! - [`pose3d`]: poses and rotations in 3D (quaternions, roll, pitch, yaw).
 //! - [`swerve`]: swerve modules' speeds and angles.
@@ -22,6 +23,7 @@ pub mod angle;
 pub mod chooser;
 pub mod enums;
 pub mod field;
+pub mod mechanism;
 pub mod motion;
 pub mod pose3d;
 pub mod structs;

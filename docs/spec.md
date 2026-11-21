@@ -641,7 +641,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    topics (`speeds_topic`, `speeds_setpoint_topic`, suggested by the user 2026-11-20) is drawn from
    its center on the wheels' scale, with the spin arc behind the way it's going; the sim layout shows
    robot-2027's `/Drive/MeasuredStates` against `/Drive/SetpointStates`, with `/Drive/MeasuredSpeeds`
-   against `/Drive/CommandedSpeeds`). Mechanisms: WPILib's Mechanism2d first; it only chains rigid ligaments, so
+   against `/Drive/CommandedSpeeds`). Mechanisms: WPILib's Mechanism2d first (**done**: `builtin/mechanism.rs`, read by
+   `types/mechanism.rs`; bound to the `Mechanism2d` table, whose topics it all asks for so ligaments added
+   later show; the canvas fitted to the card keeping its shape, y up, each ligament in its color with its
+   weight scaled to the card; the sim layout's Widgets tab shows robot-2027's `DashTest/Lift`, an
+   elevator with a swinging arm); it only chains rigid ligaments, so
    later raptaboard may get its own mechanism data model and tools to build and preview one.
    3D Pose (**done**, asked for by the user 2026-11-20; `builtin/pose3d.rs`, read by `types/pose3d.rs`):
    a `Pose3d`, `Transform3d`, `Rotation3d` or `Quaternion` (or a `Pose2d`, flat) as X, Y and Z axis
@@ -659,8 +663,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro (done), Rotation3d → 3D Pose (done), SwerveModuleState[] → swerve view (done).
    Milestone 4 plugins may also match a struct type (a `struct = "ArmState"` rule).
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
-5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, Mechanism2d,
-   units, MJPEG cameras.
+5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, units, MJPEG
+   cameras (Mechanism2d was done in milestone 3).
    Low priority, after the other features (asked for by the user 2026-11-20), both for the Field:
    - Path files as layers: load a PathWeaver `.wpilib.json` trajectory (or a PathPlanner `.path`)
      straight into a path layer, so planned paths show without robot code publishing them. Today

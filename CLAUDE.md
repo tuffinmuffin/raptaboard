@@ -73,7 +73,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   its own `impl DashboardApp` block; `ui/tests/` runs the whole window headless against an
   in-process `nt4::Server` with one widget of every type (and struct and struct-array topics),
   the place for new UI tests (`mod.rs` the harness, test server, layouts and shared helpers; one file per
-  area: window, tree, writing, sliders, choosers, enums, alerts, files, field, gyro, pose3d, swerve, chassis, struct_view, clips); its `egui_kittest` harness finds
+  area: window, tree, writing, sliders, choosers, enums, alerts, files, field, gyro, pose3d, swerve, chassis, struct_view, mechanism, clips); its `egui_kittest` harness finds
   tree rows and menu items by label and clicks or drags them;
   `DashboardApp::show` is one frame without an `eframe::Frame`), `connection.rs` the robot address modes,
   `cli.rs` the startup flags (`clap` derive, `cli::Args`: `--team`, `--address`, `--port`,
@@ -89,7 +89,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   thread, `rodio`; `Sound::silent` in tests), `types/` the robot data types raptaboard reads, apart
   from the widgets that draw them: no egui and no widget setting keys here, just topics in and typed
   data and rules out (`types/alerts.rs` WPILib's alert groups and `AlertWatch`, which spots new errors
-  and keeps the last alerts seen; `types/chooser.rs` a SendableChooser's table; `types/angle.rs` headings (Rotation2d, Rotation3d yaw, a pose's, a gyro's degrees) and which way they count; `types/swerve.rs` swerve modules' speeds and angles; `types/motion.rs` a robot's velocity and spin (`ChassisSpeeds`); `types/pose3d.rs` 3D poses and quaternions (roll, pitch, yaw); `types/enums.rs` named
+  and keeps the last alerts seen; `types/chooser.rs` a SendableChooser's table; `types/angle.rs` headings (Rotation2d, Rotation3d yaw, a pose's, a gyro's degrees) and which way they count; `types/swerve.rs` swerve modules' speeds and angles; `types/motion.rs` a robot's velocity and spin (`ChassisSpeeds`); `types/pose3d.rs` 3D poses and quaternions (roll, pitch, yaw); `types/mechanism.rs` WPILib's Mechanism2d (roots, ligaments, where each lands); `types/enums.rs` named
   states and where their names come from, with `guess`; `types/field.rs` a field's size, image bounds and AprilTags, and poses in WPILib 2027's frame;
   `types/structs.rs` struct values decoded with
   the server's `/.schema/` topics (`nt4::proto::structs::StructDatabase` + `DynamicStruct`);
@@ -114,7 +114,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `ChassisSpeeds` or `Translation2d` as velocity and spin arrows, with requested speeds and a heading, read by `types/motion.rs`), 3D Pose (`builtin/pose3d.rs`: a Pose3d, Transform3d,
   Rotation3d or Quaternion as turning X, Y, Z axes; drag to orbit the view; read by `types/pose3d.rs`), Struct
   (`builtin/struct_view.rs`: any other struct or struct array as its fields, the way the tree shows them; last in
-  `TYPES`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
+  `TYPES`), Mechanism2d (`builtin/mechanism.rs`: WPILib's `Mechanism2d` table, its ligaments drawn on its
+  canvas; read by `types/mechanism.rs`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
   from `show`, and `Place::locked` says whether their input covers the whole card; `show_body` is
   the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
   draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing
@@ -171,7 +172,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   Its Enums tab has enum widgets on robot-2027's `/DashTest/IntakeMode` (two-way: the robot steps
   it every 5 s, names in `IntakeModeOptions`) and `/DashTest/ArmLevel` (int, names listed), an
   Enum Toggle on the Test chooser, and watch-only (not editable) widgets. Its Widgets tab has a Struct on `/DashTest/CyclingMode` (an enum that
-  steps through values, one with no name). Its Field tab has Fields on `OrbitPose` (blue-corner origin, robot-2027 being on RobotPy 2026),
+  steps through values, one with no name) and a Mechanism2d on robot-2027's
+  `/SmartDashboard/DashTest/Lift` (an elevator rising and falling with an arm swinging on top). Its Field tab has Fields on `OrbitPose` (blue-corner origin, robot-2027 being on RobotPy 2026),
   one with layers for `Fleet`, `OrbitPath`, `SeenTags` (the tags Robot-2026's cameras would see), `Fuel` (balls,
   field positions) and `SeenFuel` (the balls ahead, robot-relative: each ring should land on a ball), with Robot-2026's two
   cameras and an intake (on `IntakeDeployed`, reaching `IntakeExtensionIn` inches) attached to the robot. Below them, two Gyros: one on `OrbitHeading` (a Rotation2d) and one on the `Gyro` table (degrees,
