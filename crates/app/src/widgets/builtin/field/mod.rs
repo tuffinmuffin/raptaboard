@@ -432,11 +432,7 @@ fn robot_poses(widget: &WidgetContainer, live: &Live<'_>, size: (f64, f64)) -> V
         // the mouse moved (each redraw between samples). The period still
         // sets how often the server sends it.
         let ty = props::text(p, props::DATA_TYPE, "");
-        let newest = widget
-            .topic()
-            .and_then(|t| live.frame.others.get(t).copied());
-        newest
-            .or(live.value)
+        live.newest(widget)
             .map(|v| crate::types::field::poses_of(v, ty, live.frame.structs))
             .unwrap_or_default()
     };
@@ -597,7 +593,12 @@ impl WidgetType for FieldWidget {
     fn names(&self) -> &'static [&'static str] {
         &["Field", "Field2d"]
     }
-    fn accepts(&self, nt_type: &str) -> bool {
+    /// Not a default: a struct dragged from the tree makes a Struct; "Add
+    /// as" in the tree's menu makes a Field.
+    fn accepts(&self, _: &str) -> bool {
+        false
+    }
+    fn shows(&self, nt_type: &str) -> bool {
         matches!(
             nt_type,
             "struct:Pose2d" | "struct:Pose3d" | "struct:Pose2d[]" | "struct:Pose3d[]"
@@ -951,7 +952,11 @@ mod tests {
                 .extra_topics(pose.as_object().unwrap(), Server::default())
                 .is_empty()
         );
-        assert!(FieldWidget.accepts("struct:Pose3d") && FieldWidget.accepts("struct:Pose2d[]"));
-        assert!(!FieldWidget.accepts("struct:Translation2d[]"));
+        assert!(FieldWidget.shows("struct:Pose3d") && FieldWidget.shows("struct:Pose2d[]"));
+        assert!(!FieldWidget.shows("struct:Translation2d[]"));
+        assert!(
+            !FieldWidget.accepts("struct:Pose2d"),
+            "a Struct is the default"
+        );
     }
 }

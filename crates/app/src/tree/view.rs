@@ -75,6 +75,28 @@ fn selectable_row(
             if ui.button(label).clicked() {
                 sel.add = group.clone();
             }
+            // Any widget type that can show all of them (a Pose2d as a
+            // Field or a 3D Pose, a number as a Graph), the default first.
+            let choices: Vec<&'static str> = group.first().map_or_else(Vec::new, |first| {
+                widgets::types_showing(&first.ty)
+                    .into_iter()
+                    .filter(|name| {
+                        group
+                            .iter()
+                            .all(|t| widgets::types_showing(&t.ty).contains(name))
+                    })
+                    .collect()
+            });
+            if choices.len() > 1 {
+                ui.menu_button("Add as", |ui| {
+                    for name in choices {
+                        if ui.button(name).clicked() {
+                            sel.add = group.clone();
+                            sel.add_as = Some(name);
+                        }
+                    }
+                });
+            }
             let lists = sel.lists.clone();
             ui.menu_button("Add to list", |ui| {
                 if ui
@@ -542,6 +564,68 @@ fn show_children(
                         );
                 }
                 let open = source.is_some_and(|src| sel.reveals_in_struct(src.topic, &field_path));
+                // A whole struct inside (a Pose2d's translation, an item of a
+                // struct array) is a widget source too: a row that drags,
+                // with an arrow to open it, as a struct topic's row is.
+                let payload = source.and_then(|src| {
+                    let (ty, _) =
+                        structs::nested_struct(src.structs, src.schema, src.bytes, &field_path)?;
+                    widgets::type_for_topic(&ty)?;
+                    Some(DraggedTopic {
+                        name: src.topic.to_owned(),
+                        ty,
+                        field: Some(StructMeta {
+                            path: field_path.clone(),
+                            schema_name: src.schema.to_owned(),
+                        }),
+                    })
+                });
+                if let Some(payload) = payload {
+                    let state_id = ui.make_persistent_id(("struct part", &child_id));
+                    let mut state =
+                        egui::collapsing_header::CollapsingState::load_with_default_open(
+                            ui.ctx(),
+                            state_id,
+                            true,
+                        );
+                    if open {
+                        state.set_open(true);
+                    }
+                    let mut hover = hover.unwrap_or_default();
+                    if draggable {
+                        hover = format!("{hover}\n\n{DRAG_HINT}");
+                    }
+                    let mut clicked = false;
+                    state
+                        .show_header(ui, |ui| {
+                            clicked = selectable_row(ui, sel, payload, draggable, &hover, |ui| {
+                                ui.label(title);
+                            })
+                            .clicked();
+                        })
+                        .body(|ui| {
+                            show_children(
+                                ui,
+                                &child_id,
+                                children,
+                                fields,
+                                source,
+                                &field_path,
+                                Rows {
+                                    sel: &mut *sel,
+                                    draggable,
+                                },
+                            )
+                        });
+                    if clicked
+                        && let Some(mut state) =
+                            egui::collapsing_header::CollapsingState::load(ui.ctx(), state_id)
+                    {
+                        state.toggle(ui);
+                        state.store(ui.ctx());
+                    }
+                    continue;
+                }
                 let header = egui::CollapsingHeader::new(title)
                     .id_salt(&child_id)
                     .default_open(true)

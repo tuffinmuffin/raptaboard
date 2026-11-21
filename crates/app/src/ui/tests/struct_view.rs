@@ -129,3 +129,85 @@ fn any_struct_drags_from_the_tree_as_a_struct() {
     assert_eq!(made.widget_type, "Struct");
     assert_eq!(made.properties["data_type"], "struct:ArmState");
 }
+
+/// Where the tree row for `path` (`/Drive/pose → translation`) is: its
+/// hover text names it, first line exactly.
+fn struct_row(harness: &mut Harness, path: &str) -> Pos2 {
+    use egui_kittest::kittest::NodeT;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let found = harness
+            .query_all_by_label_contains(path)
+            .find(|n| {
+                n.accesskit_node()
+                    .label()
+                    .is_some_and(|l| l.lines().next() == Some(path))
+            })
+            .map(|n| n.rect().center());
+        if let Some(at) = found {
+            return at;
+        }
+        assert!(Instant::now() < deadline, "no tree row for {path:?}");
+        settle(harness);
+    }
+}
+
+#[test]
+fn a_nested_struct_drags_out_on_its_own() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    open_drive(&mut harness);
+    let widgets = |h: &Harness| h.state().layout.tabs[0].grid_layout.containers.clone();
+    let before = widgets(&harness).len();
+    // The test server's pose is (1.5, 2.5), 0.75 rad: its translation.
+    let from = struct_row(&mut harness, "/Drive/pose → translation");
+    drag_from(&mut harness, from, Pos2::new(1700.0, 1150.0));
+    assert_eq!(widgets(&harness).len(), before + 1);
+    let made = widgets(&harness).pop().unwrap();
+    assert_eq!(made.widget_type, "Struct");
+    assert_eq!(made.title, "pose.translation");
+    assert_eq!(made.properties["data_type"], "struct:Translation2d");
+    assert_eq!(made.struct_meta().unwrap().path, ["translation"]);
+    labelled_soon(
+        &mut harness,
+        "pose.translation: Translation2d; x = 1.5; y = 2.5",
+    );
+    // An item of a struct array, too: the second swerve module.
+    let from = struct_row(&mut harness, "/Drive/modules → [1]");
+    drag_from(&mut harness, from, Pos2::new(1700.0, 900.0));
+    let made = widgets(&harness).pop().unwrap();
+    assert_eq!(made.properties["data_type"], "struct:SwerveModuleState");
+    labelled_soon(
+        &mut harness,
+        "modules[1]: SwerveModuleState; speed = 4; angle.value = 0.2",
+    );
+}
+
+#[test]
+fn an_item_of_a_pose_array_adds_as_a_3d_pose_showing_that_item() {
+    let robot = Robot::start();
+    let fleet = robot._server.publish_generic(
+        "/Drive/fleet",
+        "struct:Pose2d[]".parse().unwrap(),
+        nt4::Properties::new(),
+    );
+    fleet
+        .set(nt4::Value::Raw(
+            [1.0f64, 2.0, 0.0, 3.0, 4.0, std::f64::consts::FRAC_PI_2]
+                .iter()
+                .flat_map(|d| d.to_le_bytes())
+                .collect(),
+        ))
+        .unwrap();
+    let mut harness = harness_for(&robot);
+    open(&mut harness, "Drive  (");
+    open(&mut harness, "fleet  ");
+    let at = struct_row(&mut harness, "/Drive/fleet → [1]");
+    add_as_at(&mut harness, at, "3D Pose");
+    // The second pose, not the array's first (the widget reads the item,
+    // not its topic's whole value).
+    labelled_soon(
+        &mut harness,
+        "fleet[1]: x 3.00 m, y 4.00 m, z 0.00 m; roll 0°, pitch 0°, yaw 90°",
+    );
+}

@@ -347,7 +347,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      (a toggle or chooser button still does its own thing too; such a click says nothing if the
      topic isn't in the tree, so a failed send's message stays).
      Right-click → "Add to grid" (or "Add N to grid") puts them in the free spots nearest the top
-     left, and "Add to list ▸" adds them to a new list (sized to fit them; always offered) or to the end of
+     left, "Add as ▸" makes them as any widget type that can show them all (the default first: a
+     Pose2d as a Struct, Field or 3D Pose, a number as a Text Display, Graph, Radial Gauge, ...; set up
+     as the settings dialog sets up a type picked there, with that type's update period), and "Add to
+     list ▸" adds them to a new list (sized to fit them; always offered) or to the end of
      one of the tab's lists; dragging a picked row takes them all, onto the grid (around the drop) or into a list.
    - List Layout editing. Done: lists draw like Elastic's (children compact with no card each:
      a label placed by `label_position` and the child's body, each row its saved height less 48
@@ -663,8 +666,16 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    last in `TYPES` so a struct another widget is made for makes that one; its fields like the tree shows
    them, from `types::structs::decode`: nested structs indented under their kind, struct arrays as
    `[0]`, `[1]`, ..., enum names; it scrolls; "waiting for the schema" until robot code sends one; the
-   sim layout's Widgets tab shows robot-2027's `CyclingMode`) for any struct, and defaults for common
-   WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro (done), Rotation3d → 3D Pose (done), SwerveModuleState[] → swerve view (done).
+   sim layout's Widgets tab shows robot-2027's `CyclingMode`) for any struct. Decided with the user
+   2026-11-21: every whole struct dragged from the tree makes a Struct (structs are as often debugging
+   or telemetry as something to draw, and a Field is usually one per dashboard); the Field, Gyro, 3D
+   Pose, swerve view and Chassis Speeds come from the tree's right-click "Add as ▸" (they `show` their
+   types but don't `accept` them; tables such as `Field2d`, `Gyro`, `SwerveDrive` and `Mechanism2d`
+   still make their widget). A struct inside a struct (a Pose2d's `translation`), an item of a struct
+   array (`[1]`) and an array field of structs drag out on their own too (the user's ask, 2026-11-21),
+   saved as a `struct_meta` path with the inner struct's `data_type`; the widget gets the inner struct's
+   bytes (`types::structs::nested_struct`), and widgets that read their topic's newest value use
+   `Live::newest`, which gives the part for a `struct_meta` widget.
    Milestone 4 plugins may also match a struct type (a `struct = "ArmState"` rule).
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, units, MJPEG

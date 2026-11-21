@@ -153,7 +153,7 @@ fn dragging_turns_the_view_and_a_double_click_puts_it_back() {
 }
 
 #[test]
-fn a_rotation3d_drags_from_the_tree_as_a_3d_pose() {
+fn a_rotation3d_drags_as_a_struct_and_adds_as_a_3d_pose() {
     let robot = Robot::start();
     let _r = struct_topic(
         &robot,
@@ -172,6 +172,12 @@ fn a_rotation3d_drags_from_the_tree_as_a_3d_pose() {
         Pos2::new(1700.0, 1150.0),
     );
     assert_eq!(widgets(&harness).len(), before + 1);
+    let made = widgets(&harness).pop().unwrap();
+    // A whole struct drags out as a Struct (decided with the user
+    // 2026-11-21); "Add as" makes the 3D Pose.
+    assert_eq!(made.widget_type, "Struct");
+    add_as(&mut harness, "tilt  Rotation3d", 0, "3D Pose");
+    assert_eq!(widgets(&harness).len(), before + 2);
     let made = widgets(&harness).pop().unwrap();
     assert_eq!(made.widget_type, "3D Pose");
     assert_eq!(made.properties["data_type"], "struct:Rotation3d");

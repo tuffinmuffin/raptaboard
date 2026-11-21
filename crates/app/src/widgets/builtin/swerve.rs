@@ -114,7 +114,7 @@ fn shown(widget: &WidgetContainer, live: &Live<'_>) -> Shown {
         )
     } else {
         let ty = props::text(p, props::DATA_TYPE, "");
-        let value = newest(live, topic).or(live.value);
+        let value = live.newest(widget);
         (
             value
                 .map(|v| swerve::modules_of(v, ty, structs))
@@ -308,7 +308,14 @@ impl WidgetType for SwerveDrive {
         &["SwerveDrive"]
     }
 
-    fn accepts(&self, nt_type: &str) -> bool {
+    /// Not a default for a topic: module states dragged from the tree make
+    /// a Struct; "Add as" in the tree's menu makes a swerve view. (Elastic's
+    /// table still makes one.)
+    fn accepts(&self, _: &str) -> bool {
+        false
+    }
+
+    fn shows(&self, nt_type: &str) -> bool {
         swerve::is_module_array(nt_type)
     }
 

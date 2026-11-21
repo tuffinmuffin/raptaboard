@@ -128,7 +128,7 @@ fn elastics_swerve_table_shows_in_its_unit() {
 }
 
 #[test]
-fn module_states_drag_from_the_tree_as_a_swerve_view() {
+fn module_states_drag_as_a_struct_and_add_as_a_swerve_view() {
     let robot = Robot::start();
     let mut harness = harness_for(&robot);
     open(&mut harness, "Drive  (");
@@ -141,6 +141,17 @@ fn module_states_drag_from_the_tree_as_a_swerve_view() {
         Pos2::new(1700.0, 1150.0),
     );
     assert_eq!(widgets(&harness).len(), before + 1);
+    let made = widgets(&harness).pop().unwrap();
+    // A whole struct drags out as a Struct (decided with the user
+    // 2026-11-21); "Add as" makes the SwerveDrive.
+    assert_eq!(made.widget_type, "Struct");
+    add_as(
+        &mut harness,
+        "modules  SwerveModuleState[2]",
+        0,
+        "SwerveDrive",
+    );
+    assert_eq!(widgets(&harness).len(), before + 2);
     let made = widgets(&harness).pop().unwrap();
     assert_eq!(made.widget_type, "SwerveDrive");
     assert_eq!(made.topic(), Some("/Drive/modules"));

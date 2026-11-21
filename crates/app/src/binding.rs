@@ -54,12 +54,15 @@ impl<'a> WidgetValues<'a> {
         match (widget.struct_meta(), &value) {
             (None, _) => Some(value),
             (Some(meta), Value::Raw(bytes)) => {
-                let (value, name) = structs::field_value_named(
-                    self.structs?,
-                    &meta.schema_name,
-                    bytes,
-                    &meta.path,
-                )?;
+                let db = self.structs?;
+                let Some((value, name)) =
+                    structs::field_value_named(db, &meta.schema_name, bytes, &meta.path)
+                else {
+                    // A whole struct inside it: its bytes, read by the widget
+                    // as a topic of that struct's type.
+                    return structs::nested_struct(db, &meta.schema_name, bytes, &meta.path)
+                        .map(|(_, inner)| Value::Raw(inner));
+                };
                 Some(format::enum_shown(
                     value,
                     name.as_deref(),

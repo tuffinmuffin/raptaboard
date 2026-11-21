@@ -91,11 +91,12 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   data and rules out (`types/alerts.rs` WPILib's alert groups and `AlertWatch`, which spots new errors
   and keeps the last alerts seen; `types/chooser.rs` a SendableChooser's table; `types/angle.rs` headings (Rotation2d, Rotation3d yaw, a pose's, a gyro's degrees) and which way they count; `types/swerve.rs` swerve modules' speeds and angles; `types/motion.rs` a robot's velocity and spin (`ChassisSpeeds`); `types/pose3d.rs` 3D poses and quaternions (roll, pitch, yaw); `types/mechanism.rs` WPILib's Mechanism2d (roots, ligaments, where each lands); `types/enums.rs` named
   states and where their names come from, with `guess`; `types/field.rs` a field's size, image bounds and AprilTags, and poses in WPILib 2027's frame;
-  `types/structs.rs` struct values decoded with
+  `types/structs.rs` struct values decoded with (and `nested_struct`, a struct inside one, as its own type and bytes)
   the server's `/.schema/` topics (`nt4::proto::structs::StructDatabase` + `DynamicStruct`);
   `types::format_number`; more custom data structures go here), `alert_history.rs` the alert history (every
   group from connect, count-based; its panel and top-bar button are `ui/alert_history_panel.rs`), `tree/` the read-only NT tree (`mod.rs` building it, `selection.rs` row picking in
-  `TreeSelection` and the drag payload `DraggedTopics`, `view.rs` drawing, `format.rs` short value text;
+  `TreeSelection` and the drag payload `DraggedTopics`, `view.rs` drawing and the right-click menu (Add to grid, Add as ▸
+  any type that shows the row via `widgets::types_showing`, Add to list), `format.rs` short value text;
   values only for topics in open folders, via `NtConnection::watch_values`),
   `widgets/` the grid widgets,
   one file per type implementing `widgets::WidgetType` and listed in `widgets::TYPES`; `ui/` only talks to
@@ -114,7 +115,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `ChassisSpeeds` or `Translation2d` as velocity and spin arrows, with requested speeds and a heading, read by `types/motion.rs`), 3D Pose (`builtin/pose3d.rs`: a Pose3d, Transform3d,
   Rotation3d or Quaternion as turning X, Y, Z axes; drag to orbit the view; read by `types/pose3d.rs`), Struct
   (`builtin/struct_view.rs`: any other struct or struct array as its fields, the way the tree shows them; last in
-  `TYPES`), Mechanism2d (`builtin/mechanism.rs`: WPILib's `Mechanism2d` table, its ligaments drawn on its
+  `TYPES`; every whole struct dragged from the tree makes one, the Field, Gyro, 3D Pose, swerve view and Chassis
+  Speeds come from "Add as"), Mechanism2d (`builtin/mechanism.rs`: WPILib's `Mechanism2d` table, its ligaments drawn on its
   canvas, zoomed to what the mechanism has used (`fit`); read by `types/mechanism.rs`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
   from `show`, and `Place::locked` says whether their input covers the whole card; `show_body` is
   the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
@@ -135,7 +137,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `LayoutFile::load_problem`, offering Open, a new layout saved at that path (missing only), or Close), `grid.rs` the snap-grid rules
   (snapping, overlap) and `tabs.rs` tab actions and their shortcuts, `edit.rs` undo/redo (`History`, which
   notices any layout change once a frame) and the widget editing shortcuts; the drag handling is in
-  `ui/drag.rs` and `ui/grid_view.rs`. A widget draws from `widgets::Live`: its value, the frame's shared
+  `ui/drag.rs` and `ui/grid_view.rs`. A widget draws from `widgets::Live`: its value (`Live::newest` for its topic's newest, the part for a
+  widget bound to part of a struct), the frame's shared
   `Frame` (traces, the time, other topics' values, connection state, effects) and its `Place` (locked,
   input and free areas). `binding.rs` (no egui) is what a widget is bound to: `WidgetValues::of` (its value
   now: sampled per period, struct fields decoded) and `write_target` (where a sent value goes, or why it

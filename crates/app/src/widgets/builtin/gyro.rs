@@ -203,12 +203,15 @@ impl WidgetType for Gyro {
         &["Gyro"]
     }
 
-    fn accepts(&self, nt_type: &str) -> bool {
-        nt_type == "struct:Rotation2d"
+    /// Not a default: a Rotation2d dragged from the tree makes a Struct;
+    /// "Add as" in the tree's menu makes a Gyro. (A Gyro table still makes
+    /// one.)
+    fn accepts(&self, _: &str) -> bool {
+        false
     }
 
     fn shows(&self, nt_type: &str) -> bool {
-        // A Rotation3d shows its yaw (it makes a 3D Pose when dragged).
+        // A Rotation3d shows its yaw.
         matches!(
             nt_type,
             "struct:Rotation2d" | "struct:Rotation3d" | "double" | "float" | "int"
@@ -340,7 +343,8 @@ mod tests {
             Gyro.extra_topics(topic.as_object().unwrap(), Server::default())
                 .is_empty()
         );
-        assert!(Gyro.accepts("struct:Rotation2d") && !Gyro.accepts("double"));
+        // It shows them but isn't their default (a Struct is, from "Add as").
+        assert!(Gyro.shows("struct:Rotation2d") && !Gyro.accepts("struct:Rotation2d"));
         assert!(Gyro.shows("double"));
     }
 }
