@@ -38,7 +38,10 @@ pub const SHOW_POINTER: &str = "show_pointer";
 /// Draw tick marks at the labels (Elastic).
 pub const SHOW_TICKS: &str = "show_ticks";
 
-const KEYS: [&str; 18] = [
+const KEYS: [&str; 21] = [
+    crate::widgets::shared::value_colors::COLOR_BY,
+    crate::widgets::shared::value_colors::COLOR_BELOW,
+    crate::widgets::shared::value_colors::COLOR_ABOVE,
     scale::THICKNESS,
     scale::SHOW_VALUE,
     MIN_VALUE,

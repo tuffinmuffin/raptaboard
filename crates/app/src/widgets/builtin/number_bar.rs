@@ -29,7 +29,10 @@ pub const INVERTED: &str = "inverted";
 /// `horizontal` or `vertical` (Elastic).
 pub const ORIENTATION: &str = "orientation";
 
-const KEYS: [&str; 15] = [
+const KEYS: [&str; 18] = [
+    crate::widgets::shared::value_colors::COLOR_BY,
+    crate::widgets::shared::value_colors::COLOR_BELOW,
+    crate::widgets::shared::value_colors::COLOR_ABOVE,
     scale::THICKNESS,
     scale::SHOW_VALUE,
     MIN_VALUE,

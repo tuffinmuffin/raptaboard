@@ -194,6 +194,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `speeds_topic`, `speeds_setpoint_topic` | `builtin/swerve.rs` | SwerveDrive | the whole robot's measured and requested motion, `ChassisSpeeds` topics, drawn from the robot's center as Chassis Speeds draws them | none |
 | `max_spin` | `builtin/chassis_speeds.rs` | Chassis Speeds, SwerveDrive | the spin drawn as a three-quarter turn, degrees per second | 360 |
 | `fit` | `builtin/mechanism.rs` | Mechanism2d | what the view fits: `mechanism` (the part of the canvas it has used, plus a margin, growing only; a double-click starts it over) or `canvas` (all of `dims`) | `mechanism` |
+| `color_by`, `color_below`, `color_above` | `shared/value_colors.rs` | Text Display, Large Text Display, Number Bar, Voltage View, Radial Gauge | color by value: `thresholds` or `gradient` between the two numbers, with `low_color`/`mid_color`/`high_color` | off; 10, 20 |
 | `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
 | `series` | `builtin/graph.rs` | Graph | the lines after the main one: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
 | `show_legend` | `builtin/graph.rs` | Graph | show the legend | when there's more than one line |
@@ -366,9 +367,12 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      files keep their own settings), or right-click a
      widget → "Put in a new list" (a list in its place, at least 2 x 2 and a cell taller than the
      widget, holding it).
-   - Color by value for number widgets (ints and floats): a background color chosen by thresholds
-     (below 10 red, 10 to 20 yellow, above green), or a gradient between colors across a range.
-     raptaboard-only settings in the widget dialog.
+   - Color by value for number widgets (**done**, `shared/value_colors.rs`): `color_by` `thresholds`
+     (low color below `color_below`, high above `color_above`, middle between; 10 and 20, red, yellow
+     and green if not set) or `gradient` (blended low → middle → high between the same two numbers).
+     Text Display and Large Text Display fill their body with it, the text black or white to read on
+     it; Number Bar, Voltage View and Radial Gauge use it for their fill unless their own gradient (over
+     their scale) is on. The colors are the scale's `low_color`, `mid_color`, `high_color`.
    - Text style: a font dialog (from the widget dialog's Text size row) for the value text and the
      title: font family, size, color, bold, italic. Saved as raptaboard keys (`font_family`,
      `font_color`, `font_bold`, ...; `font_size` exists), with a layout-wide default style later.
