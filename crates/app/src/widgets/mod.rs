@@ -371,6 +371,7 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::swerve::SwerveDrive,
     &builtin::chassis_speeds::ChassisSpeeds,
     &builtin::pose3d::Pose3dView,
+    &builtin::mechanism::Mechanism2d,
     // Last: any struct no widget above is made for.
     &builtin::struct_view::StructView,
 ];
@@ -426,7 +427,8 @@ pub fn type_for_topic(nt_type: &str) -> Option<&'static str> {
 /// ```
 /// use raptaboard::widgets::type_for_table;
 /// assert_eq!(type_for_table("String Chooser"), Some("Dropdown Chooser"));
-/// assert_eq!(type_for_table("Mechanism2d"), None);
+/// assert_eq!(type_for_table("Mechanism2d"), Some("Mechanism2d"));
+/// assert_eq!(type_for_table("DifferentialDrive"), None);
 /// ```
 pub fn type_for_table(table_type: &str) -> Option<&'static str> {
     TYPES
