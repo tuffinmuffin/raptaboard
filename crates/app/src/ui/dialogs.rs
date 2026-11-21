@@ -130,7 +130,8 @@ pub(super) fn widget_window(
 impl DashboardApp {
     /// The NT type of the value `widget` shows: its saved `data_type`, or
     /// for a struct field the type in its `struct_meta`, or else the type
-    /// the server announced for its topic. `None` if none of those is known.
+    /// the server announced for its topic, or for a table (a chooser) its
+    /// `.type` (`String Chooser`). `None` if none of those is known.
     pub(super) fn value_type(&self, widget: &WidgetContainer) -> Option<String> {
         let saved = |v: Option<&serde_json::Value>| v?.as_str().map(str::to_owned);
         if let Some(ty) = saved(widget.properties.get(props::DATA_TYPE)) {
@@ -144,8 +145,20 @@ impl DashboardApp {
                     .and_then(|m| m.get("type")),
             );
         }
-        let topic = self.nt.client()?.topic(widget.topic()?)?;
-        Some(topic.ty.to_string())
+        let name = widget.topic()?;
+        if let Some(topic) = self.nt.client()?.topic(name) {
+            return Some(topic.ty.to_string());
+        }
+        // A table: its `.type`.
+        let table_type = format!("{}/.type", name.trim_end_matches('/'));
+        self.nt
+            .topics()
+            .into_iter()
+            .find(|t| *t.name == *table_type)
+            .and_then(|t| match t.value?.value {
+                nt4::Value::String(ty) => Some(ty),
+                _ => None,
+            })
     }
 
     /// The settings dialog for a widget or List Layout, while one is open.
