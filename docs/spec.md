@@ -188,9 +188,11 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `counter_clockwise_positive` (Elastic) | `builtin/gyro.rs` | Gyro | `true`: a number (or a `Gyro` table's `Value`) counts counterclockwise; a `Rotation2d` always does | off (clockwise) |
 | `show_robot_rotation` (Elastic) | `builtin/swerve.rs` | SwerveDrive | turn the robot with its heading (the table's `Robot Angle`, or `heading_topic`); off: front up | on |
 | `rotation_unit` (Elastic) | `builtin/swerve.rs` | SwerveDrive (Elastic's table) | the table's angles: `Radians`, `Degrees` or `Rotations` | `Degrees` (as Elastic reads a file without it) |
-| `setpoint_topic` | `builtin/swerve.rs` | SwerveDrive | the requested states, a `SwerveModuleState[]` topic, drawn as dashed arrows against the measured ones | none |
-| `heading_topic` | `builtin/swerve.rs` | SwerveDrive | the robot's heading for a struct-bound widget: a `Rotation2d`, `Rotation3d`, `Pose2d` or `Pose3d` topic, or degrees counterclockwise | none |
-| `max_speed` | `builtin/swerve.rs` | SwerveDrive | the speed of a full-length arrow (as long as the module spacing), m/s | 4.5 |
+| `setpoint_topic` | `builtin/swerve.rs` | SwerveDrive, Chassis Speeds | the requested states (a `SwerveModuleState[]` topic) or speeds (a `ChassisSpeeds`), drawn dashed against the measured ones | none |
+| `heading_topic` | `builtin/swerve.rs` | SwerveDrive, Chassis Speeds | the robot's heading for a struct-bound widget: a `Rotation2d`, `Rotation3d`, `Pose2d` or `Pose3d` topic, or degrees counterclockwise | none |
+| `max_speed` | `builtin/swerve.rs` | SwerveDrive, Chassis Speeds | the speed of a full-length arrow (the module spacing; Chassis Speeds: most of the card), m/s | 4.5 |
+| `speeds_topic`, `speeds_setpoint_topic` | `builtin/swerve.rs` | SwerveDrive | the whole robot's measured and requested motion, `ChassisSpeeds` topics, drawn from the robot's center as Chassis Speeds draws them | none |
+| `max_spin` | `builtin/chassis_speeds.rs` | Chassis Speeds, SwerveDrive | the spin drawn as a three-quarter turn, degrees per second | 360 |
 | `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
 | `series` | `builtin/graph.rs` | Graph | the lines after the main one: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
 | `show_legend` | `builtin/graph.rs` | Graph | show the legend | when there's more than one line |
@@ -623,14 +625,23 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    counterclockwise, numbers clockwise unless Elastic's `counter_clockwise_positive` is on;
    robot-2027's test topics publish `OrbitHeading` and a `Gyro` table, both shown on the sim layout's
    Field tab), motion
-   vectors (2 or 3 arrows, Translation2d or ChassisSpeeds, showing relative motion more than
-   values), and a swerve view (**done**, `builtin/swerve.rs`, read by `types/swerve.rs`; Elastic's
+   vectors (**done** as Chassis Speeds, `builtin/chassis_speeds.rs`, read by `types/motion.rs`: a
+   `ChassisSpeeds` (2027: `ChassisVelocities`) or a `Translation2d`, robot-relative: an arrow for the
+   velocity and a curved arrow round the robot for its spin, requested speeds dashed against measured,
+   turned by a heading topic, as the swerve view; the robot drawing is `widgets/shared/robot_view.rs`;
+   the measured and requested numbers are written below the robot when the card has room; the sim layout
+   shows robot-2027's `/Drive/MeasuredSpeeds` against `/Drive/CommandedSpeeds`, and its scripted
+   `/DashTest/` pair, whose measured speeds lag and fall short, since the keyboard joystick can't spin
+   the sim drivetrain), and a swerve view (**done**, `builtin/swerve.rs`, read by `types/swerve.rs`; Elastic's
    `SwerveDrive` name and table (`Front Left Angle`, `... Velocity`, `Robot Angle`), or a
    `SwerveModuleState[]` (2027: `SwerveModuleVelocity[]`) in FL, FR, BL, BR order: each wheel turned
    the way it points with an arrow for its speed, the requested states (`setpoint_topic`) dashed
    against the measured ones, the robot turned with its heading (`heading_topic`); states or a
-   rotation dropped on it from the tree set those; the sim layout shows robot-2027's
-   `/Drive/MeasuredStates` against `/Drive/SetpointStates`). Mechanisms: WPILib's Mechanism2d first; it only chains rigid ligaments, so
+   rotation dropped on it from the tree set those; the whole robot's motion from `ChassisSpeeds`
+   topics (`speeds_topic`, `speeds_setpoint_topic`, suggested by the user 2026-11-20) is drawn from
+   its center on the wheels' scale, with the spin arc behind the way it's going; the sim layout shows
+   robot-2027's `/Drive/MeasuredStates` against `/Drive/SetpointStates`, with `/Drive/MeasuredSpeeds`
+   against `/Drive/CommandedSpeeds`). Mechanisms: WPILib's Mechanism2d first; it only chains rigid ligaments, so
    later raptaboard may get its own mechanism data model and tools to build and preview one.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common

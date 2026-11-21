@@ -1118,7 +1118,38 @@
               "period": 0.02,
               "data_type": "struct:SwerveModuleState[]",
               "setpoint_topic": "/Drive/SetpointStates",
+              "heading_topic": "/Drive/Pose",
+              "speeds_topic": "/Drive/MeasuredSpeeds",
+              "speeds_setpoint_topic": "/Drive/CommandedSpeeds"
+            }
+          },
+          {
+            "title": "Drive: measured vs commanded speeds",
+            "x": 1024.0,
+            "y": 256.0,
+            "width": 256.0,
+            "height": 256.0,
+            "type": "Chassis Speeds",
+            "properties": {
+              "topic": "/Drive/MeasuredSpeeds",
+              "period": 0.02,
+              "data_type": "struct:ChassisSpeeds",
+              "setpoint_topic": "/Drive/CommandedSpeeds",
               "heading_topic": "/Drive/Pose"
+            }
+          },
+          {
+            "title": "Scripted speeds (lagging robot)",
+            "x": 1536.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 256.0,
+            "type": "Chassis Speeds",
+            "properties": {
+              "topic": "/DashTest/MeasuredSpeeds",
+              "period": 0.02,
+              "data_type": "struct:ChassisSpeeds",
+              "setpoint_topic": "/DashTest/CommandedSpeeds"
             }
           }
         ]

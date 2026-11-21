@@ -9,19 +9,27 @@
 //! the requested states (`setpoint_topic`, drawn as dashed arrows against
 //! the measured ones), a topic for the robot's heading (`heading_topic`)
 //! for a struct-bound widget, and the speed of a full-length arrow
-//! (`max_speed`). Dropping a states topic from the tree on the widget sets
-//! the requested states; a rotation or pose sets the heading.
+//! (`max_speed`), and the whole robot's motion from `ChassisSpeeds` topics
+//! (`speeds_topic`, `speeds_setpoint_topic`): an arrow from its center for
+//! its velocity and an arc inside the frame for its spin, as Chassis Speeds
+//! draws them (`max_spin` scales the arc). Dropping a states topic from
+//! the tree on the widget sets the requested states; chassis speeds the
+//! robot's motion (measured first, then requested); a rotation or pose
+//! the heading.
 
 use std::f32::consts::PI;
 
-use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Vec2};
+use eframe::egui::{self, Rect, Sense, Stroke};
 use nt4::Value;
 use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
 
+use super::chassis_speeds::{DEFAULT_MAX_SPIN, MAX_SPIN, motion_text};
 use crate::tree::DraggedTopic;
 use crate::types::angle;
+use crate::types::motion::{self, Motion};
 use crate::types::swerve::{self, CORNER_SHORT, Module, RotationUnit, SWERVE_TYPE};
+use crate::widgets::shared::robot_view::{MEASURED, REQUESTED, RobotView, arrow, motion_arrows};
 use crate::widgets::shared::{card, props};
 use crate::widgets::{Live, Server, ValueInfo, WidgetType};
 
@@ -39,13 +47,21 @@ pub const SETPOINT_TOPIC: &str = "setpoint_topic";
 pub const HEADING_TOPIC: &str = "heading_topic";
 /// The speed drawn as a full-length arrow, meters per second (raptaboard).
 pub const MAX_SPEED: &str = "max_speed";
+/// The whole robot's measured motion, a `ChassisSpeeds` topic, drawn from
+/// its center (raptaboard).
+pub const SPEEDS_TOPIC: &str = "speeds_topic";
+/// The whole robot's requested motion, a `ChassisSpeeds` topic (raptaboard).
+pub const SPEEDS_SETPOINT_TOPIC: &str = "speeds_setpoint_topic";
 
-const KEYS: [&str; 5] = [
+const KEYS: [&str; 8] = [
     SHOW_ROBOT_ROTATION,
     ROTATION_UNIT,
     SETPOINT_TOPIC,
     HEADING_TOPIC,
     MAX_SPEED,
+    SPEEDS_TOPIC,
+    SPEEDS_SETPOINT_TOPIC,
+    MAX_SPIN,
 ];
 
 /// A full-length arrow's speed when `max_speed` isn't set, m/s (about a
@@ -53,10 +69,6 @@ const KEYS: [&str; 5] = [
 const DEFAULT_MAX_SPEED: f64 = 4.5;
 /// Slower than this (m/s), a module draws no arrow: it's standing still.
 const STILL: f64 = 0.05;
-/// The measured arrows' color (Material blue 500, as the Gyro's needle).
-const MEASURED: Color32 = Color32::from_rgb(0x21, 0x96, 0xF3);
-/// The requested arrows' color (Material orange 500).
-const REQUESTED: Color32 = Color32::from_rgb(0xFF, 0x98, 0x00);
 
 /// The Swerve Drive widget.
 pub struct SwerveDrive;
@@ -82,6 +94,9 @@ struct Shown {
     measured: Vec<Module>,
     requested: Vec<Module>,
     heading: Option<f64>,
+    /// The whole robot's measured and requested motion, if set.
+    speeds: Option<Motion>,
+    speeds_requested: Option<Motion>,
 }
 
 /// What `widget` shows now. The newest values are used for all of it, so
@@ -108,7 +123,7 @@ fn shown(widget: &WidgetContainer, live: &Live<'_>) -> Shown {
         )
     };
     if let Some(value) = topic_in(p, HEADING_TOPIC).and_then(|t| newest(live, t)) {
-        heading = heading_in(value, structs);
+        heading = angle::untyped_heading(value, structs);
     }
     let requested = topic_in(p, SETPOINT_TOPIC)
         .and_then(|t| newest(live, t))
@@ -124,96 +139,17 @@ fn shown(widget: &WidgetContainer, live: &Live<'_>) -> Shown {
             .unwrap_or_default()
         })
         .unwrap_or_default();
+    let motion_in = |key: &str| {
+        topic_in(p, key)
+            .and_then(|t| newest(live, t))
+            .and_then(|v| motion::untyped_motion(v, structs))
+    };
     Shown {
         measured,
         requested,
         heading: heading.filter(|_| props::flag(p, SHOW_ROBOT_ROTATION, true)),
-    }
-}
-
-/// The heading (radians counterclockwise) in `value`, a heading topic's,
-/// whose type the widget doesn't know: a number is degrees
-/// counterclockwise; a struct is told by its size (a `Rotation2d` is 8
-/// bytes, a `Pose2d` 24, a `Rotation3d` 32, a `Pose3d` 56).
-fn heading_in(value: &Value, structs: Option<&nt4::proto::structs::StructDatabase>) -> Option<f64> {
-    let ty = match value {
-        Value::Raw(bytes) => match bytes.len() {
-            8 => "struct:Rotation2d",
-            24 => "struct:Pose2d",
-            32 => "struct:Rotation3d",
-            56 => "struct:Pose3d",
-            _ => return None,
-        },
-        _ => "double",
-    };
-    angle::heading_of(value, ty, structs, true).map(|h| h.degrees.to_radians())
-}
-
-/// Where the robot is drawn in a rect: its center, its size, and which way
-/// it's turned.
-struct Robot {
-    center: Pos2,
-    /// Half the distance between modules, points.
-    half: f32,
-    /// The robot's turn, radians counterclockwise.
-    heading: f32,
-}
-
-impl Robot {
-    fn fit(rect: Rect, heading: Option<f64>) -> Robot {
-        let side = rect.width().min(rect.height());
-        Robot {
-            center: rect.center(),
-            // Small enough that a robot turned 45° (modules half·√2 from
-            // the center, plus their rings) still fits.
-            half: side * 0.2,
-            heading: heading.unwrap_or(0.0) as f32,
-        }
-    }
-
-    /// The on-screen direction of `angle` (radians counterclockwise from
-    /// the robot's front): the front is up when the robot isn't turned.
-    fn dir(&self, angle: f32) -> Vec2 {
-        let a = angle + self.heading;
-        egui::vec2(-a.sin(), -a.cos())
-    }
-
-    /// The point `forward` and `left` points from the robot's center.
-    fn at(&self, forward: f32, left: f32) -> Pos2 {
-        self.center + self.dir(0.0) * forward + self.dir(PI / 2.0) * left
-    }
-
-    /// Module `i`'s center (front left, front right, back left, back right).
-    fn module(&self, i: usize) -> Pos2 {
-        let forward = if i < 2 { self.half } else { -self.half };
-        let left = if i.is_multiple_of(2) {
-            self.half
-        } else {
-            -self.half
-        };
-        self.at(forward, left)
-    }
-}
-
-/// An arrow from `from` along `dir` (a unit vector) `length` points long.
-fn arrow(
-    painter: &egui::Painter,
-    from: Pos2,
-    dir: Vec2,
-    length: f32,
-    stroke: Stroke,
-    dashed: bool,
-) {
-    let tip = from + dir * length;
-    if dashed {
-        painter.extend(egui::Shape::dashed_line(&[from, tip], stroke, 5.0, 3.0));
-    } else {
-        painter.line_segment([from, tip], stroke);
-    }
-    let head = (length * 0.3).clamp(5.0, 10.0);
-    let side = egui::vec2(-dir.y, dir.x);
-    for s in [1.0, -1.0] {
-        painter.line_segment([tip, tip - dir * head + side * s * head * 0.6], stroke);
+        speeds: motion_in(SPEEDS_TOPIC),
+        speeds_requested: motion_in(SPEEDS_SETPOINT_TOPIC),
     }
 }
 
@@ -224,41 +160,19 @@ fn draw_robot(
     rect: Rect,
     shown: &Shown,
     max_speed: f64,
+    max_spin: f64,
 ) {
-    let robot = Robot::fit(rect, shown.heading);
+    // Small enough that a robot turned 45° (modules half·√2 from the
+    // center, plus their rings) still fits.
+    let robot = RobotView::fit(rect, 0.4, shown.heading);
     let frame = visuals.widgets.inactive.bg_fill;
     let wheel = visuals.weak_text_color();
-    // The frame between the modules, with its front edge picked out.
+    robot.draw_frame(painter, visuals);
     let h = robot.half;
-    let corners = [
-        robot.at(h, h),
-        robot.at(h, -h),
-        robot.at(-h, -h),
-        robot.at(-h, h),
-    ];
-    painter.add(egui::Shape::closed_line(
-        corners.to_vec(),
-        Stroke::new(2.0, frame),
-    ));
-    painter.line_segment(
-        [corners[0], corners[1]],
-        Stroke::new(4.0, visuals.weak_text_color()),
-    );
-    // Which way is front: an arrowhead in the middle.
-    let nose = h * 0.35;
-    painter.add(egui::Shape::convex_polygon(
-        vec![
-            robot.at(nose, 0.0),
-            robot.at(-nose * 0.6, nose * 0.4),
-            robot.at(-nose * 0.6, -nose * 0.4),
-        ],
-        visuals.weak_text_color(),
-        Stroke::NONE,
-    ));
     let ring = h * 0.4;
     let reach = 2.0 * h;
     for i in 0..4 {
-        let c = robot.module(i);
+        let c = robot.corner(i);
         painter.circle(c, ring, visuals.extreme_bg_color, Stroke::new(1.5, frame));
         let speed_dir = |m: &Module| {
             // A wheel driving backwards moves the other way.
@@ -293,6 +207,33 @@ fn draw_robot(
                 true,
             );
         }
+    }
+    // The whole robot's motion, from its center, on the wheels' scale (a
+    // robot driving straight has every arrow the same length); the spin
+    // arcs inside the frame.
+    if let Some(m) = &shown.speeds_requested {
+        motion_arrows(
+            painter,
+            &robot,
+            m,
+            true,
+            reach,
+            h * 0.8,
+            max_speed,
+            max_spin,
+        );
+    }
+    if let Some(m) = &shown.speeds {
+        motion_arrows(
+            painter,
+            &robot,
+            m,
+            false,
+            reach,
+            h * 0.65,
+            max_speed,
+            max_spin,
+        );
     }
 }
 
@@ -332,6 +273,12 @@ fn summary(title: &str, shown: &Shown) -> String {
     if !shown.requested.is_empty() {
         text += &format!("; requested {}", list(&shown.requested));
     }
+    if let Some(m) = &shown.speeds {
+        text += &format!("; robot {}", motion_text(m));
+    }
+    if let Some(m) = &shown.speeds_requested {
+        text += &format!("; robot requested {}", motion_text(m));
+    }
     if let Some(h) = shown.heading {
         text += &format!("; heading {:.0}°", h.to_degrees() + 0.0);
     }
@@ -345,7 +292,8 @@ impl SwerveDrive {
         let p = &widget.properties;
         let now = shown(widget, live);
         let max_speed = props::number(p, MAX_SPEED, DEFAULT_MAX_SPEED).max(0.1);
-        draw_robot(&painter, &visuals, rect, &now, max_speed);
+        let max_spin = props::number(p, MAX_SPIN, DEFAULT_MAX_SPIN).max(1.0);
+        draw_robot(&painter, &visuals, rect, &now, max_speed, max_spin);
         if now.measured.is_empty() {
             card::draw_message(&painter, &visuals, rect, "no module states");
         }
@@ -376,9 +324,14 @@ impl WidgetType for SwerveDrive {
             vec![topic.to_owned()]
         };
         wanted.extend(
-            [SETPOINT_TOPIC, HEADING_TOPIC]
-                .into_iter()
-                .filter_map(|k| topic_in(p, k).map(str::to_owned)),
+            [
+                SETPOINT_TOPIC,
+                HEADING_TOPIC,
+                SPEEDS_TOPIC,
+                SPEEDS_SETPOINT_TOPIC,
+            ]
+            .into_iter()
+            .filter_map(|k| topic_in(p, k).map(str::to_owned)),
         );
         wanted.retain(|t| !t.is_empty());
         wanted
@@ -389,13 +342,25 @@ impl WidgetType for SwerveDrive {
     }
 
     /// Module states dropped on the widget become its requested states; a
-    /// rotation, pose or number becomes its heading.
+    /// rotation, pose or number becomes its heading; chassis speeds become
+    /// the robot's measured motion, then its requested motion.
     fn add_topics(&self, widget: &mut WidgetContainer, topics: &[DraggedTopic]) -> String {
         let own = widget.topic().unwrap_or("").to_owned();
         let mut said = Vec::new();
         for t in topics.iter().filter(|t| t.field.is_none() && t.name != own) {
+            let speeds = matches!(
+                crate::types::structs::struct_type(&t.ty),
+                Some(("ChassisSpeeds" | "ChassisVelocities", false))
+            );
             let key = if swerve::is_module_array(&t.ty) {
                 SETPOINT_TOPIC
+            } else if speeds {
+                // The first speeds are the measured ones; then requested.
+                if topic_in(&widget.properties, SPEEDS_TOPIC).is_none() {
+                    SPEEDS_TOPIC
+                } else {
+                    SPEEDS_SETPOINT_TOPIC
+                }
             } else if matches!(
                 crate::types::structs::struct_type(&t.ty),
                 Some(("Rotation2d" | "Rotation3d" | "Pose2d" | "Pose3d", false))
@@ -406,14 +371,15 @@ impl WidgetType for SwerveDrive {
                 continue;
             };
             props::set_property(&mut widget.properties, key, Some(t.name.clone().into()));
-            said.push(if key == SETPOINT_TOPIC {
-                format!("requested states from {}", t.name)
-            } else {
-                format!("heading from {}", t.name)
+            said.push(match key {
+                SETPOINT_TOPIC => format!("requested states from {}", t.name),
+                SPEEDS_TOPIC => format!("the robot's motion from {}", t.name),
+                SPEEDS_SETPOINT_TOPIC => format!("the robot's requested motion from {}", t.name),
+                _ => format!("heading from {}", t.name),
             });
         }
         if said.is_empty() {
-            "A swerve view takes requested module states, or a rotation or pose for its heading"
+            "A swerve view takes requested module states, chassis speeds, or a rotation or pose for its heading"
                 .to_owned()
         } else {
             format!("\"{}\" now shows {}", widget.title, said.join(" and "))
@@ -456,8 +422,17 @@ impl WidgetType for SwerveDrive {
             measured: Vec::new(),
             requested: Vec::new(),
             heading: None,
+            speeds: None,
+            speeds_requested: None,
         };
-        draw_robot(painter, visuals, rect, &none, DEFAULT_MAX_SPEED);
+        draw_robot(
+            painter,
+            visuals,
+            rect,
+            &none,
+            DEFAULT_MAX_SPEED,
+            DEFAULT_MAX_SPIN,
+        );
     }
 
     fn settings(&self, ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<'_>) {
@@ -477,6 +452,35 @@ impl WidgetType for SwerveDrive {
             SHOW_ROBOT_ROTATION,
             true,
         );
+        props::number_row(
+            ui,
+            p,
+            "¾ turn (°/s)",
+            MAX_SPIN,
+            DEFAULT_MAX_SPIN,
+            1.0..=3600.0,
+        );
+        for (label, key, hover) in [
+            (
+                "Robot speeds",
+                SPEEDS_TOPIC,
+                "The whole robot's measured motion (ChassisSpeeds), drawn from its center",
+            ),
+            (
+                "Requested speeds",
+                SPEEDS_SETPOINT_TOPIC,
+                "The whole robot's requested motion (ChassisSpeeds), dashed",
+            ),
+        ] {
+            ui.label(label).on_hover_text(hover);
+            let mut topic = props::text(p, key, "").to_owned();
+            if props::topic_picker(ui, key, &mut topic, value.topics, |t| {
+                motion::is_motion_type(t) && !t.contains("Translation2d")
+            }) {
+                props::set_property(p, key, (!topic.is_empty()).then(|| topic.into()));
+            }
+            ui.end_row();
+        }
         if is_table(p) {
             let units: Vec<&str> = RotationUnit::ALL.iter().map(|u| u.key()).collect();
             props::choice_row(
@@ -499,7 +503,7 @@ impl WidgetType for SwerveDrive {
             (
                 "Heading",
                 HEADING_TOPIC,
-                heading_type as fn(&str) -> bool,
+                angle::is_heading_type as fn(&str) -> bool,
                 "Turns the robot the way it faces: a rotation, a pose, or degrees counterclockwise",
             ),
         ] {
@@ -517,43 +521,10 @@ impl WidgetType for SwerveDrive {
     }
 }
 
-/// Whether a topic of NT type `ty` can be a swerve view's heading.
-fn heading_type(ty: &str) -> bool {
-    matches!(ty, "double" | "float" | "int")
-        || matches!(
-            crate::types::structs::struct_type(ty),
-            Some(("Rotation2d" | "Rotation3d" | "Pose2d" | "Pose3d", false))
-        )
-}
-
 #[cfg(test)]
 mod tests {
     // Tests written by Claude.
     use super::*;
-
-    #[test]
-    fn modules_sit_at_the_corners_and_turn_with_the_robot() {
-        let rect = Rect::from_center_size(Pos2::ZERO, egui::vec2(100.0, 100.0));
-        let upright = Robot::fit(rect, None);
-        let fl = upright.module(0);
-        assert!(
-            fl.x < 0.0 && fl.y < 0.0,
-            "front left is up and left: {fl:?}"
-        );
-        let br = upright.module(3);
-        assert!(
-            br.x > 0.0 && br.y > 0.0,
-            "back right is down and right: {br:?}"
-        );
-        // A wheel at 90° points left.
-        let left = upright.dir(PI / 2.0);
-        assert!((left.x + 1.0).abs() < 1e-6 && left.y.abs() < 1e-6);
-        // Turned 90° counterclockwise, the front points left, so front left
-        // is down and left.
-        let turned = Robot::fit(rect, Some(std::f64::consts::FRAC_PI_2));
-        let fl = turned.module(0);
-        assert!(fl.x < 0.0 && fl.y > 0.0, "{fl:?}");
-    }
 
     #[test]
     fn the_summary_lists_modules_requested_and_heading() {
@@ -565,6 +536,8 @@ mod tests {
             measured: vec![m(2.0, 90.0), m(-0.001, 270.0), m(0.0, -180.0), m(1.0, 0.0)],
             requested: vec![m(2.5, 90.0)],
             heading: Some(std::f64::consts::PI),
+            speeds: None,
+            speeds_requested: None,
         };
         assert_eq!(
             summary("Swerve", &shown),
@@ -575,6 +548,8 @@ mod tests {
             measured: Vec::new(),
             requested: Vec::new(),
             heading: None,
+            speeds: None,
+            speeds_requested: None,
         };
         assert_eq!(summary("S", &empty), "S: no module states");
     }
@@ -607,7 +582,15 @@ mod tests {
                 dragged("/Drive/SetpointStates", "struct:SwerveModuleState[]"),
                 dragged("/Drive/Pose", "struct:Pose2d"),
                 dragged("/Drive/flag", "boolean"),
+                dragged("/Drive/MeasuredSpeeds", "struct:ChassisSpeeds"),
+                dragged("/Drive/CommandedSpeeds", "struct:ChassisSpeeds"),
             ],
+        );
+        // The first speeds dropped are the measured ones, then requested.
+        assert_eq!(w.properties[SPEEDS_TOPIC], "/Drive/MeasuredSpeeds");
+        assert_eq!(
+            w.properties[SPEEDS_SETPOINT_TOPIC],
+            "/Drive/CommandedSpeeds"
         );
         assert_eq!(w.properties[SETPOINT_TOPIC], "/Drive/SetpointStates");
         assert_eq!(w.properties[HEADING_TOPIC], "/Drive/Pose");
@@ -620,7 +603,9 @@ mod tests {
             [
                 "/Drive/MeasuredStates",
                 "/Drive/SetpointStates",
-                "/Drive/Pose"
+                "/Drive/Pose",
+                "/Drive/MeasuredSpeeds",
+                "/Drive/CommandedSpeeds"
             ]
         );
     }
