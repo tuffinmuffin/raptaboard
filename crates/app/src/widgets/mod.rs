@@ -368,6 +368,7 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::graph::Graph,
     &builtin::field::FieldWidget,
     &builtin::gyro::Gyro,
+    &builtin::swerve::SwerveDrive,
 ];
 
 /// The widget type saved as `type_name` (including Elastic's other names
@@ -378,7 +379,8 @@ pub static TYPES: &[&dyn WidgetType] = &[
 /// assert_eq!(find("Text View").unwrap().names()[0], "Text Display");
 /// assert!(find("Boolean Box").is_some());
 /// assert!(find("Gyro").is_some());
-/// assert!(find("Swerve Drive").is_none());
+/// assert!(find("SwerveDrive").is_some());
+/// assert!(find("DifferentialDrive").is_none());
 /// ```
 pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
     TYPES
@@ -390,7 +392,7 @@ pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
 /// The widget type name to make for a topic dropped on the grid, by its NT
 /// type string: a Boolean Box for booleans, a Text Display for numbers,
 /// strings and arrays of them, a Field for a Pose2d or Pose3d, a Gyro
-/// for a Rotation2d. `None` for
+/// for a Rotation2d, a SwerveDrive for swerve module states. `None` for
 /// types with no widget yet, such as other structs; those can't be
 /// dragged.
 ///
@@ -400,7 +402,8 @@ pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
 /// assert_eq!(type_for_topic("double"), Some("Text Display"));
 /// assert_eq!(type_for_topic("struct:Pose2d"), Some("Field"));
 /// assert_eq!(type_for_topic("struct:Rotation2d"), Some("Gyro"));
-/// assert_eq!(type_for_topic("struct:SwerveModuleState[]"), None);
+/// assert_eq!(type_for_topic("struct:SwerveModuleState[]"), Some("SwerveDrive"));
+/// assert_eq!(type_for_topic("struct:ChassisSpeeds"), None);
 /// ```
 pub fn type_for_topic(nt_type: &str) -> Option<&'static str> {
     TYPES
@@ -445,7 +448,7 @@ pub fn type_for_table(table_type: &str) -> Option<&'static str> {
 /// assert_eq!(w.widget_type, "Boolean Box");
 /// assert_eq!(w.topic(), Some("/Drive/Health/allModulesHealthy"));
 /// assert_eq!(w.period(), Some(0.06));
-/// assert!(for_topic("/Drive/modules", "struct:SwerveModuleState[]", None, at).is_none());
+/// assert!(for_topic("/Drive/speeds", "struct:ChassisSpeeds", None, at).is_none());
 /// ```
 pub fn for_topic(
     name: &str,

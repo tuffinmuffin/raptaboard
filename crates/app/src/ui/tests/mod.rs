@@ -11,6 +11,7 @@ mod field;
 mod files;
 mod gyro;
 mod sliders;
+mod swerve;
 mod tree;
 mod window;
 mod writing;

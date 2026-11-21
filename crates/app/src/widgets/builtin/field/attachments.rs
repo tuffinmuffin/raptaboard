@@ -336,42 +336,6 @@ fn number_edit(
     .changed()
 }
 
-/// A topic picker: the server's `topics` (name, NT type) of the types
-/// `fits` says, or none.
-fn topic_edit(
-    ui: &mut egui::Ui,
-    id: (&str, usize),
-    topic: &mut String,
-    topics: &[(String, String)],
-    fits: impl Fn(&str) -> bool,
-) -> bool {
-    let mut changed = false;
-    let shown = if topic.is_empty() {
-        "(none)"
-    } else {
-        topic.as_str()
-    };
-    egui::ComboBox::from_id_salt(id)
-        .selected_text(shown)
-        .width(220.0)
-        .show_ui(ui, |ui| {
-            if ui.selectable_label(topic.is_empty(), "(none)").clicked() {
-                topic.clear();
-                changed = true;
-            }
-            for (name, ty) in topics.iter().filter(|(_, ty)| fits(ty)) {
-                if ui
-                    .selectable_label(topic == name, format!("{name}  ({ty})"))
-                    .clicked()
-                {
-                    *topic = name.clone();
-                    changed = true;
-                }
-            }
-        });
-    changed
-}
-
 /// The settings dialog rows for the attachments: each camera's and part's
 /// place and size (parts also their topics and color), a remove button,
 /// then "Add camera" and "Add part".
@@ -426,9 +390,10 @@ pub fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, topics: &[(St
             }
             Attachment::Part(part) => {
                 ui.label("Shown while");
-                changed |= topic_edit(ui, ("part shown", i), &mut part.shown_by, topics, |t| {
-                    t == "boolean"
-                });
+                changed |=
+                    props::topic_picker(ui, ("part shown", i), &mut part.shown_by, topics, |t| {
+                        t == "boolean"
+                    });
                 let mut color = part.color();
                 if egui::color_picker::color_edit_button_srgba(
                     ui,
@@ -451,7 +416,7 @@ pub fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, topics: &[(St
                     changed |= number_edit(ui, "length (m)", &mut part.length, 0.0..=10.0, 0.01);
                 }
                 ui.label("length from");
-                changed |= topic_edit(
+                changed |= props::topic_picker(
                     ui,
                     ("part length", i),
                     &mut part.length_topic,

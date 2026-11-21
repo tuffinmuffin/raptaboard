@@ -59,7 +59,7 @@ impl Heading {
 
 /// The heading in `value`, a topic of NT type `nt_type`: a
 /// `struct:Rotation2d` or `struct:Rotation3d` (counterclockwise, as WPILib
-/// defines them), or a number of degrees, counterclockwise if
+/// defines them), a `Pose2d` or `Pose3d` (its rotation), or a number of degrees, counterclockwise if
 /// `numbers_ccw`. `structs` decodes structs; `None` until the server's
 /// schemas arrive, or if it's none of those.
 ///
@@ -98,13 +98,23 @@ pub fn heading_of(
                     _ => None,
                 }
             };
-            let radians = match schema {
-                "Rotation2d" => number(&["value"])?,
+            // A pose's heading is its rotation's.
+            let (rotation, inside): (&str, &[&str]) = match schema {
+                "Pose2d" => ("Rotation2d", &["rotation"]),
+                "Pose3d" => ("Rotation3d", &["rotation"]),
+                other => (other, &[]),
+            };
+            let at = |field: &[&str]| -> Option<f64> {
+                let path: Vec<&str> = inside.iter().chain(field).copied().collect();
+                number(&path)
+            };
+            let radians = match rotation {
+                "Rotation2d" => at(&["value"])?,
                 "Rotation3d" => super::field::yaw_of(
-                    number(&["q", "w"])?,
-                    number(&["q", "x"])?,
-                    number(&["q", "y"])?,
-                    number(&["q", "z"])?,
+                    at(&["q", "w"])?,
+                    at(&["q", "x"])?,
+                    at(&["q", "y"])?,
+                    at(&["q", "z"])?,
                 ),
                 _ => return None,
             };
@@ -157,12 +167,27 @@ mod tests {
     }
 
     #[test]
+    fn a_poses_heading_is_its_rotations() {
+        let mut db = StructDatabase::new();
+        db.add("Translation2d", "double x;double y").unwrap();
+        db.add("Rotation2d", "double value").unwrap();
+        db.add("Pose2d", "Translation2d translation;Rotation2d rotation")
+            .unwrap();
+        let bytes: Vec<u8> = [1.0, 2.0, -std::f64::consts::FRAC_PI_2]
+            .iter()
+            .flat_map(|d| d.to_le_bytes())
+            .collect();
+        let h = heading_of(&Value::Raw(bytes), "struct:Pose2d", Some(&db), false).unwrap();
+        assert!((h.degrees + 90.0).abs() < 1e-9 && h.ccw, "{h:?}");
+    }
+
+    #[test]
     fn other_values_have_no_heading() {
         let mut db = StructDatabase::new();
         db.add("Rotation2d", "double value").unwrap();
         let bytes = Value::Raw(1f64.to_le_bytes().to_vec());
         assert!(heading_of(&bytes, "struct:Rotation2d[]", Some(&db), true).is_none());
-        assert!(heading_of(&bytes, "struct:Pose2d", Some(&db), true).is_none());
+        assert!(heading_of(&bytes, "struct:Translation2d", Some(&db), true).is_none());
         assert!(heading_of(&bytes, "struct:Rotation2d", None, true).is_none());
         assert!(heading_of(&Value::Double(f64::NAN), "double", None, true).is_none());
         assert!(heading_of(&Value::String("90".into()), "string", None, true).is_none());

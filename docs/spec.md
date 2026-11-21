@@ -186,6 +186,11 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `time_displayed` (Elastic; older `visibleTime`) | `builtin/graph.rs` | Graph | seconds shown | 5 |
 | `min_value`, `max_value` (Elastic) | `builtin/graph.rs` | Graph | a fixed range; both unset fits the values | unset |
 | `counter_clockwise_positive` (Elastic) | `builtin/gyro.rs` | Gyro | `true`: a number (or a `Gyro` table's `Value`) counts counterclockwise; a `Rotation2d` always does | off (clockwise) |
+| `show_robot_rotation` (Elastic) | `builtin/swerve.rs` | SwerveDrive | turn the robot with its heading (the table's `Robot Angle`, or `heading_topic`); off: front up | on |
+| `rotation_unit` (Elastic) | `builtin/swerve.rs` | SwerveDrive (Elastic's table) | the table's angles: `Radians`, `Degrees` or `Rotations` | `Degrees` (as Elastic reads a file without it) |
+| `setpoint_topic` | `builtin/swerve.rs` | SwerveDrive | the requested states, a `SwerveModuleState[]` topic, drawn as dashed arrows against the measured ones | none |
+| `heading_topic` | `builtin/swerve.rs` | SwerveDrive | the robot's heading for a struct-bound widget: a `Rotation2d`, `Rotation3d`, `Pose2d` or `Pose3d` topic, or degrees counterclockwise | none |
+| `max_speed` | `builtin/swerve.rs` | SwerveDrive | the speed of a full-length arrow (as long as the module spacing), m/s | 4.5 |
 | `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
 | `series` | `builtin/graph.rs` | Graph | the lines after the main one: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
 | `show_legend` | `builtin/graph.rs` | Graph | show the legend | when there's more than one line |
@@ -619,12 +624,17 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    robot-2027's test topics publish `OrbitHeading` and a `Gyro` table, both shown on the sim layout's
    Field tab), motion
    vectors (2 or 3 arrows, Translation2d or ChassisSpeeds, showing relative motion more than
-   values), and a swerve view (SwerveModuleState[]: each wheel's direction and speed, requested
-   against measured). Mechanisms: WPILib's Mechanism2d first; it only chains rigid ligaments, so
+   values), and a swerve view (**done**, `builtin/swerve.rs`, read by `types/swerve.rs`; Elastic's
+   `SwerveDrive` name and table (`Front Left Angle`, `... Velocity`, `Robot Angle`), or a
+   `SwerveModuleState[]` (2027: `SwerveModuleVelocity[]`) in FL, FR, BL, BR order: each wheel turned
+   the way it points with an arrow for its speed, the requested states (`setpoint_topic`) dashed
+   against the measured ones, the robot turned with its heading (`heading_topic`); states or a
+   rotation dropped on it from the tree set those; the sim layout shows robot-2027's
+   `/Drive/MeasuredStates` against `/Drive/SetpointStates`). Mechanisms: WPILib's Mechanism2d first; it only chains rigid ligaments, so
    later raptaboard may get its own mechanism data model and tools to build and preview one.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
-   WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro (done), SwerveModuleState[] → swerve view.
+   WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro (done), SwerveModuleState[] → swerve view (done).
    Milestone 4 plugins may also match a struct type (a `struct = "ArmState"` rule).
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, Mechanism2d,

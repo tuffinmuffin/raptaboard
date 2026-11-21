@@ -73,7 +73,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   its own `impl DashboardApp` block; `ui/tests/` runs the whole window headless against an
   in-process `nt4::Server` with one widget of every type (and struct and struct-array topics),
   the place for new UI tests (`mod.rs` the harness, test server, layouts and shared helpers; one file per
-  area: window, tree, writing, sliders, choosers, enums, alerts, files, field, gyro, clips); its `egui_kittest` harness finds
+  area: window, tree, writing, sliders, choosers, enums, alerts, files, field, gyro, swerve, clips); its `egui_kittest` harness finds
   tree rows and menu items by label and clicks or drags them;
   `DashboardApp::show` is one frame without an `eframe::Frame`), `connection.rs` the robot address modes,
   `cli.rs` the startup flags (`clap` derive, `cli::Args`: `--team`, `--address`, `--port`,
@@ -89,7 +89,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   thread, `rodio`; `Sound::silent` in tests), `types/` the robot data types raptaboard reads, apart
   from the widgets that draw them: no egui and no widget setting keys here, just topics in and typed
   data and rules out (`types/alerts.rs` WPILib's alert groups and `AlertWatch`, which spots new errors
-  and keeps the last alerts seen; `types/chooser.rs` a SendableChooser's table; `types/angle.rs` headings (Rotation2d, Rotation3d yaw, a gyro's degrees) and which way they count; `types/enums.rs` named
+  and keeps the last alerts seen; `types/chooser.rs` a SendableChooser's table; `types/angle.rs` headings (Rotation2d, Rotation3d yaw, a pose's, a gyro's degrees) and which way they count; `types/swerve.rs` swerve modules' speeds and angles; `types/enums.rs` named
   states and where their names come from, with `guess`; `types/field.rs` a field's size, image bounds and AprilTags, and poses in WPILib 2027's frame;
   `types/structs.rs` struct values decoded with
   the server's `/.schema/` topics (`nt4::proto::structs::StructDatabase` + `DynamicStruct`);
@@ -109,7 +109,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   overlays: AprilTags, and layers of other robots, paths, the tags seen and objects (markers, on the field or
   robot-relative), each from a topic; `attachments.rs` cameras' views and parts fixed to the robot; `target.rs` click to publish a target,
   through `Effect::PublishStruct` and `NtConnection::publish_struct`), Gyro (`builtin/gyro.rs`: a Rotation2d or Rotation3d struct topic, a number of
-  degrees or a WPILib `Gyro` table, read by `types/angle.rs`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
+  degrees or a WPILib `Gyro` table, read by `types/angle.rs`), SwerveDrive (`builtin/swerve.rs`: a `SwerveModuleState[]` with
+  requested states and a heading from other topics, or Elastic's `SwerveDrive` table, read by `types/swerve.rs`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
   from `show`, and `Place::locked` says whether their input covers the whole card; `show_body` is
   the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
   draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing
@@ -120,7 +121,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   move back to the mouse for the next frame so egui gives the tap to the widget tapped; tests replay it
   with `tap_burst`, mouse on another widget), `format.rs` (number and
   enum text, `EnumDisplay`), `alert_sign.rs` (alert level colors and signs, for the widget, tab marks
-  and history), `props.rs` (period, font size, colors) and `settings.rs` (the settings dialog's shared
+  and history), `props.rs` (period, font size, colors, a topic picker) and `settings.rs` (the settings dialog's shared
   rows; the dialog window is in `ui/dialogs.rs`); setting keys are constants in the file that owns them,
   listed in `docs/spec.md` under "raptaboard widget settings" (keep that table in step); adding a
   widget is a new file in `builtin/` (listed in `builtin/mod.rs`) plus one line in `TYPES`, `layout_file.rs` opening and saving layout files (atomic
@@ -167,8 +168,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   Enum Toggle on the Test chooser, and watch-only (not editable) widgets. Its Field tab has Fields on `OrbitPose` (blue-corner origin, robot-2027 being on RobotPy 2026),
   one with layers for `Fleet`, `OrbitPath`, `SeenTags` (the tags Robot-2026's cameras would see), `Fuel` (balls,
   field positions) and `SeenFuel` (the balls ahead, robot-relative: each ring should land on a ball), with Robot-2026's two
-  cameras and an intake (on `IntakeDeployed`, reaching `IntakeExtensionIn` inches) attached to the robot. Beside them, two Gyros: one on `OrbitHeading` (a Rotation2d) and one on the `Gyro` table (degrees,
-  clockwise); both should read the same. Its Alerts tab shows robot-2027's alerts (its
+  cameras and an intake (on `IntakeDeployed`, reaching `IntakeExtensionIn` inches) attached to the robot. Below them, two Gyros: one on `OrbitHeading` (a Rotation2d) and one on the `Gyro` table (degrees,
+  clockwise), which should read the same, and two swerve views: `ModuleStates` (spinning) and robot-2027's
+  drivetrain, `/Drive/MeasuredStates` against `/Drive/SetpointStates`, turned by `/Drive/Pose`. Its Alerts tab shows robot-2027's alerts (its
   test topics add a warning, an info, and an error on for 3 s every 10 s). "Writing in a list" holds the toggles and a slider as List
   Layout children.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.
