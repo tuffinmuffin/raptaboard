@@ -11,7 +11,8 @@
 //!
 //! Bound to one alert group's table (`topic`, `.type` `"Alerts"`), or with
 //! `all_groups` to every group on the server. When a new error arrives the
-//! widget pulses for `pulse_seconds` (`pulse`, on unless set), and can play
+//! widget pulses for `pulse_seconds`, or until no error is active if that's
+//! sooner (`pulse`, on unless set), and can play
 //! a tone (`sound`, off unless set; `tone` picks which; the bell button
 //! mutes it). Warnings and infos don't ask for attention. While the
 //! connection is down it keeps showing the last alerts it saw, greyed, so
@@ -285,6 +286,13 @@ fn draw_list(
     }
 }
 
+/// Whether a pulse started to end at `until` still runs at `now` with
+/// `errors` active: until its time is up, or the errors are gone, whichever
+/// comes first (a 3 s error doesn't flash for 5).
+fn pulsing(now: f64, until: f64, errors: usize) -> bool {
+    errors > 0 && now < until
+}
+
 /// The Alerts widget (Elastic's `"Alerts"`).
 pub struct AlertsWidget;
 
@@ -322,6 +330,11 @@ impl AlertsWidget {
         let lowest = min_level(p);
         let shown: Vec<ActiveAlert> = shown.into_iter().filter(|a| a.level <= lowest).collect();
         let counts = alerts::counts(&shown);
+        // The pulse stops once the errors that started it are gone, not
+        // only when its time is up.
+        if !pulsing(now, memory.pulse_until, counts[Level::Error as usize]) {
+            memory.pulse_until = 0.0;
+        }
         let pulse = if now < memory.pulse_until {
             ui.ctx().request_repaint();
             (0.5 - 0.5 * (now * PULSE_RATE * std::f64::consts::TAU).cos()) as f32
@@ -506,6 +519,14 @@ impl WidgetType for AlertsWidget {
 mod tests {
     // Tests written by Claude.
     use super::*;
+
+    #[test]
+    fn the_pulse_stops_when_the_errors_are_gone() {
+        // Started at 10 s for 5 s.
+        assert!(pulsing(12.0, 15.0, 1));
+        assert!(!pulsing(16.0, 15.0, 1), "time's up");
+        assert!(!pulsing(12.0, 15.0, 0), "the error went away first");
+    }
 
     #[test]
     fn the_most_urgent_active_sign_grows_and_the_others_shrink() {
