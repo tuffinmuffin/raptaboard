@@ -432,11 +432,7 @@ fn robot_poses(widget: &WidgetContainer, live: &Live<'_>, size: (f64, f64)) -> V
         // the mouse moved (each redraw between samples). The period still
         // sets how often the server sends it.
         let ty = props::text(p, props::DATA_TYPE, "");
-        let newest = widget
-            .topic()
-            .and_then(|t| live.frame.others.get(t).copied());
-        newest
-            .or(live.value)
+        live.newest(widget)
             .map(|v| crate::types::field::poses_of(v, ty, live.frame.structs))
             .unwrap_or_default()
     };

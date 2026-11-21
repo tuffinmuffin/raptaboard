@@ -80,6 +80,23 @@ pub struct Frame<'a> {
     pub structs: Option<&'a nt4::proto::structs::StructDatabase>,
 }
 
+impl<'a> Live<'a> {
+    /// The newest value of `widget`'s own topic, not the one taken once per
+    /// `period`, for widgets that draw it with other topics' newest values
+    /// (a Field's robot under robot-relative layers). For a widget bound to
+    /// part of a struct (`struct_meta`), the part: [`Live::value`], since the
+    /// topic's newest value is the whole struct.
+    pub fn newest(&self, widget: &WidgetContainer) -> Option<&'a Value> {
+        if widget.struct_meta().is_some() {
+            return self.value;
+        }
+        widget
+            .topic()
+            .and_then(|t| self.frame.others.get(t).copied())
+            .or(self.value)
+    }
+}
+
 impl<'a> Frame<'a> {
     /// What a widget showing `value` draws from, at `place`.
     pub fn live(&'a self, value: Option<&'a Value>, place: Place) -> Live<'a> {

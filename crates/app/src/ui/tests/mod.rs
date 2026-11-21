@@ -473,8 +473,14 @@ fn right_click_row(harness: &mut Harness, label: &str, nth: usize) {
 /// its right-click menu's "Add as" (the menu's button, not a widget on the
 /// grid with that title).
 fn add_as(harness: &mut Harness, label: &str, nth: usize, type_name: &str) {
+    let at = row_soon(harness, label, nth).center();
+    add_as_at(harness, at, type_name);
+}
+
+/// Like [`add_as`], for the tree row at `at`.
+fn add_as_at(harness: &mut Harness, at: Pos2, type_name: &str) {
     use egui_kittest::kittest::NodeT;
-    right_click_row(harness, label, nth);
+    click_at(harness, at, egui::PointerButton::Secondary, Modifiers::NONE);
     harness.get_by_label("Add as").hover();
     settle(harness);
     harness
@@ -549,6 +555,11 @@ fn open_drive(harness: &mut Harness) {
 /// Drag the `nth` tree row labelled `label` to `to`.
 fn drag_row(harness: &mut Harness, label: &str, nth: usize, to: Pos2) {
     let from = row_soon(harness, label, nth).center();
+    drag_from(harness, from, to);
+}
+
+/// Drag from `from` (a tree row) to `to`.
+fn drag_from(harness: &mut Harness, from: Pos2, to: Pos2) {
     harness.hover_at(from);
     harness.step();
     harness.drag_at(from);

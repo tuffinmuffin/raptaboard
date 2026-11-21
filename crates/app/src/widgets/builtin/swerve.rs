@@ -114,7 +114,7 @@ fn shown(widget: &WidgetContainer, live: &Live<'_>) -> Shown {
         )
     } else {
         let ty = props::text(p, props::DATA_TYPE, "");
-        let value = newest(live, topic).or(live.value);
+        let value = live.newest(widget);
         (
             value
                 .map(|v| swerve::modules_of(v, ty, structs))

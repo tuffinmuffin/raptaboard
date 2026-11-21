@@ -242,6 +242,75 @@ fn item_index(step: &str) -> Option<usize> {
     step.strip_prefix('[')?.strip_suffix(']')?.parse().ok()
 }
 
+/// A whole struct inside a struct value, as if it were a topic of its
+/// own: its NT type (`struct:Translation2d`, or `struct:Translation2d[]`
+/// for an array of them) and its bytes. `path` names it inside `bytes`, a
+/// struct of `schema` (or an array of them, the path starting `[i]`): a
+/// nested struct (`["translation"]`), an item of a struct array topic
+/// (`["[2]"]`), or an array field or one of its items (`["modules"]`,
+/// `["modules", "[1]"]`). `None` if it isn't a whole struct.
+///
+/// This is how a widget bound to a nested struct gets its value: a Struct,
+/// Field or 3D Pose reads the bytes as it would a topic of that type.
+///
+/// ```
+/// use nt4::proto::structs::StructDatabase;
+/// use raptaboard::types::structs::nested_struct;
+/// let mut db = StructDatabase::new();
+/// db.add("Translation2d", "double x;double y").unwrap();
+/// db.add("Rotation2d", "double value").unwrap();
+/// db.add("Pose2d", "Translation2d translation;Rotation2d rotation").unwrap();
+/// let bytes: Vec<u8> = [1.0f64, 2.0, 0.5].iter().flat_map(|d| d.to_le_bytes()).collect();
+/// let (ty, inner) = nested_struct(&db, "Pose2d", &bytes, &["translation".into()]).unwrap();
+/// assert_eq!(ty, "struct:Translation2d");
+/// assert_eq!(inner, bytes[..16]);
+/// assert!(nested_struct(&db, "Pose2d", &bytes, &["translation".into(), "x".into()]).is_none());
+/// ```
+pub fn nested_struct(
+    db: &StructDatabase,
+    schema: &str,
+    bytes: &[u8],
+    path: &[String],
+) -> Option<(String, Vec<u8>)> {
+    let (last, parents) = path.split_last()?;
+    if let Some(i) = item_index(last) {
+        // An item: of the topic's own array, or of an array field.
+        let (name, array_bytes) = if parents.is_empty() {
+            (schema.to_owned(), bytes.to_vec())
+        } else {
+            let (ty, b) = nested_struct(db, schema, bytes, parents)?;
+            let (name, true) = struct_type(&ty)? else {
+                return None;
+            };
+            (name.to_owned(), b)
+        };
+        let item = DynamicStruct::array(db, &name, &array_bytes)?
+            .into_iter()
+            .nth(i)?;
+        return Some((format!("struct:{name}"), item.data().to_vec()));
+    }
+    let (s, field) = find_field(db, schema, bytes, path)?;
+    match s.value(field)? {
+        FieldValue::Struct(inner) => Some((
+            format!("struct:{}", inner.descriptor().name()),
+            inner.data().to_vec(),
+        )),
+        FieldValue::Array(items) => {
+            let mut name = None;
+            let mut all = Vec::new();
+            for item in items {
+                let FieldValue::Struct(inner) = item else {
+                    return None;
+                };
+                name.get_or_insert_with(|| inner.descriptor().name().to_owned());
+                all.extend_from_slice(inner.data());
+            }
+            Some((format!("struct:{}[]", name?), all))
+        }
+        _ => None,
+    }
+}
+
 /// The struct holding the field `path` names, and that field. Steps like
 /// `[2]` pick an item: first in the path for a struct array topic
 /// (`Pose2d[]`), or after a field that's an array of structs.

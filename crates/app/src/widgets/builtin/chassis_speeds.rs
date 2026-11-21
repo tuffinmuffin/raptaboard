@@ -66,10 +66,8 @@ fn shown(widget: &WidgetContainer, live: &Live<'_>) -> Shown {
     let structs = live.frame.structs;
     let newest = |t: &str| live.frame.others.get(t).copied();
     let ty = props::text(p, props::DATA_TYPE, "");
-    let measured = widget
-        .topic()
-        .and_then(newest)
-        .or(live.value)
+    let measured = live
+        .newest(widget)
         .and_then(|v| motion::motion_of(v, ty, structs));
     let requested = topic_in(p, SETPOINT_TOPIC)
         .and_then(newest)

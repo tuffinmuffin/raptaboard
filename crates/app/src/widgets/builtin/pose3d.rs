@@ -80,10 +80,7 @@ impl View {
 /// The pose `widget` shows now, from its newest value.
 fn pose(widget: &WidgetContainer, live: &Live<'_>) -> Option<Pose3> {
     let ty = props::text(&widget.properties, props::DATA_TYPE, "");
-    let value = widget
-        .topic()
-        .and_then(|t| live.frame.others.get(t).copied())
-        .or(live.value)?;
+    let value = live.newest(widget)?;
     pose3d::pose3_of(value, ty, live.frame.structs)
 }
 

@@ -671,7 +671,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    or telemetry as something to draw, and a Field is usually one per dashboard); the Field, Gyro, 3D
    Pose, swerve view and Chassis Speeds come from the tree's right-click "Add as ▸" (they `show` their
    types but don't `accept` them; tables such as `Field2d`, `Gyro`, `SwerveDrive` and `Mechanism2d`
-   still make their widget).
+   still make their widget). A struct inside a struct (a Pose2d's `translation`), an item of a struct
+   array (`[1]`) and an array field of structs drag out on their own too (the user's ask, 2026-11-21),
+   saved as a `struct_meta` path with the inner struct's `data_type`; the widget gets the inner struct's
+   bytes (`types::structs::nested_struct`), and widgets that read their topic's newest value use
+   `Live::newest`, which gives the part for a `struct_meta` widget.
    Milestone 4 plugins may also match a struct type (a `struct = "ArmState"` rule).
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, units, MJPEG
