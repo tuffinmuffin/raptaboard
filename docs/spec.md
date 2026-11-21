@@ -384,9 +384,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      see and grab. A 1x1 on top of a 1x2 is fine (part of the 1x2 still shows); two 1x1s on the same
      cell, or a big widget over a smaller one, are not. Needs a draw order (front/back), and the
      overlap fix when opening a layout must allow the same partial overlaps.
-   - Boolean Box text: an option for a backing behind the true/false text (like inside list
-     labels: a see-through rounded box, so it reads over any color), and a text color per state
-     instead of only the automatic black or white.
+   - Boolean Box text (**done**): `text_backing`, a see-through box behind the text so it reads over
+     any color, and `true_text_color` / `false_text_color` (automatic black or white if not set; white
+     on the backing).
    - Group widget: a card holding its own small grid, so widgets inside can sit side by side and
      be any size (a List Layout only stacks them). Same dragging in and out as lists; saved as a
      raptaboard-only container type (Elastic would show a placeholder). Its settings can reach the
@@ -452,9 +452,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Battery widget: a battery icon filled by charge (voltage between a low and high setting),
      colored by level, for battery voltage instead of Voltage View.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
-     A built-in library of standard images (Elastic's `true_icon`/`false_icon` set: Checkmark, X,
-     Exclamation Point, so its layouts keep their icons, plus more), and any PNG/SVG the team
-     picks. Open (decide when built), likely both: embed the image in the layout, scaled down to a
+     **Done**: Elastic's `true_icon`/`false_icon` set (Checkmark, X, Exclamation Point, any for either
+     state in raptaboard), drawn alone in the state's color as Elastic does, or on the filled box with
+     `icon_on_color`. After the first release: any PNG/SVG the team picks. Open (decide when built), likely both: embed the image in the layout, scaled down to a
      small fixed size so the file stays well under its 10 MB limit and is fully portable, and/or
      keep image files next to the layout or served by the robot.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
