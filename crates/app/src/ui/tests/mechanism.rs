@@ -166,6 +166,21 @@ fn showing(harness: &Harness, title: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Wait until the card titled `title` shows the area `want`. Values reach
+/// the dashboard a few at a time (a label can be there before `dims`), so
+/// an area is waited for, not read once.
+fn showing_soon(harness: &mut Harness, title: &str, want: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while showing(harness, title) != want {
+        assert!(
+            Instant::now() < deadline,
+            "{title} shows {:?}, not {want:?}",
+            showing(harness, title)
+        );
+        settle(harness);
+    }
+}
+
 #[test]
 fn a_mechanism_shows_its_ligaments_and_follows_them() {
     let robot = Robot::start();
@@ -244,9 +259,10 @@ fn several_roots_and_a_deep_chain_land_where_their_angles_add_up_to() {
     // 2 (the top of a), with a margin of a tenth of the larger side (3.4)
     // all round. Had the angles not added up, b would have gone down, not
     // right, and the area would end at 3.5 plus the margin.
-    assert_eq!(
-        showing(&harness, "Arm"),
-        "showing 0.26 to 4.34 across, -0.14 to 2.34 up"
+    showing_soon(
+        &mut harness,
+        "Arm",
+        "showing 0.26 to 4.34 across, -0.14 to 2.34 up",
     );
 }
 
@@ -281,7 +297,7 @@ fn the_view_zooms_to_what_the_mechanism_has_used_and_only_grows() {
     // The base up the elevator and the arm, plus a margin: not the whole
     // 3 by 2 canvas.
     let start = "showing 1.38 to 1.97 across, 0.08 to 1.47 up";
-    assert_eq!(showing(&harness, "Lift"), start);
+    showing_soon(&mut harness, "Lift", start);
     // The elevator comes down: the view stays (it only grows), so it
     // doesn't jump as the mechanism moves.
     lift.set("base/elevator/length", 0.4);
@@ -289,7 +305,7 @@ fn the_view_zooms_to_what_the_mechanism_has_used_and_only_grows() {
         &mut harness,
         "Lift: base/elevator: 0.40 at 90°; base/elevator/arm: 0.50 at -45°",
     );
-    assert_eq!(showing(&harness, "Lift"), start);
+    showing_soon(&mut harness, "Lift", start);
     // A double-click starts it over, from where the mechanism is now.
     let middle = card_on_screen(&harness, 0).center();
     for _ in 0..2 {
@@ -300,18 +316,20 @@ fn the_view_zooms_to_what_the_mechanism_has_used_and_only_grows() {
             Modifiers::NONE,
         );
     }
-    assert_eq!(
-        showing(&harness, "Lift"),
-        "showing 1.42 to 1.93 across, 0.12 to 1.03 up"
+    showing_soon(
+        &mut harness,
+        "Lift",
+        "showing 1.42 to 1.93 across, 0.12 to 1.03 up",
     );
     // Fit set to the canvas: the whole of it.
     harness.state_mut().layout.tabs[0].grid_layout.containers[0]
         .properties
         .insert("fit".into(), json!("canvas"));
     settle(&mut harness);
-    assert_eq!(
-        showing(&harness, "Lift"),
-        "showing 0.00 to 3.00 across, 0.00 to 2.00 up"
+    showing_soon(
+        &mut harness,
+        "Lift",
+        "showing 0.00 to 3.00 across, 0.00 to 2.00 up",
     );
 }
 
@@ -328,10 +346,10 @@ fn values_arriving_a_few_at_a_time_dont_stretch_the_view() {
     let mut harness = mechanism_harness(&robot, "/Test/Lift", "Lift");
     harness.state_mut().locked = true;
     labelled_soon(&mut harness, "Lift: no ligaments");
-    assert_eq!(
-        showing(&harness, "Lift"),
+    showing_soon(
+        &mut harness,
+        "Lift",
         "showing 0.00 to 3.00 across, 0.00 to 2.00 up",
-        "the canvas, until there's a mechanism"
     );
     m.set("base/x", 1.5);
     m.set("base/y", 0.2);
@@ -354,8 +372,9 @@ fn values_arriving_a_few_at_a_time_dont_stretch_the_view() {
         "Lift: base/elevator: 0.80 at 90°; base/elevator/arm: 0.50 at -45°",
     );
     // The same view as when it all arrives at once.
-    assert_eq!(
-        showing(&harness, "Lift"),
-        "showing 1.38 to 1.97 across, 0.08 to 1.47 up"
+    showing_soon(
+        &mut harness,
+        "Lift",
+        "showing 1.38 to 1.97 across, 0.08 to 1.47 up",
     );
 }
