@@ -460,10 +460,16 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      `icon_on_color`; and the team's own images (decided with the user 2026-11-21), `true_image` /
      `false_image`, chosen from a list of the images in the images folders (`images.rs`: `images/`
      where raptaboard starts, beside the program, and `~/.raptaboard/images/`, as fields are found),
-     with an Import… button that copies a picked PNG or JPEG into `~/.raptaboard/images/` (a
+     with an Import… button that copies a picked PNG, JPEG or SVG into `~/.raptaboard/images/` (a
      different image with the same name gets `-2`, ...). Layouts save the file name, so another
-     computer needs the same image in its images folder. Later: SVG, and embedding images in the
-     layout.
+     computer needs the same image in its images folder. SVGs are drawn with `resvg` (0.49, no text
+     features; about 0.7 MB). Built in (decided with the user 2026-11-21), examples to show the feature
+     and a starting place: `checkmark.svg`, `motor.svg`, `motor-on.svg` and `motor-off.svg` (the motor
+     in a green or red border, a Boolean Box's true and false images) and `armed.svg` (a target
+     reticle), drawn for raptaboard and dedicated CC0, in the repo's `images/`
+     with a README saying so and where any outside image's credit goes; a folder's file of the same
+     name takes their place. The sim layout's Widgets tab has a Boolean Box on robot-2027's
+     `IntakeDeployed` with `motor-on.svg` and `motor-off.svg`. Later: embedding images in the layout.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
    **Started**: the read-only single-topic widgets: Large Text Display, Number Bar, Voltage View,
    Radial Gauge (also Simple Dial), Match Time, Single Color View, Multi Color View, with Elastic's

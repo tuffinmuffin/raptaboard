@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- A motor from the side: finned body, face plate, shaft and leads.
+       raptaboard, CC0 (see README.md). -->
+  <rect x="6" y="16" width="38" height="32" rx="6" fill="#455A64"/>
+  <g stroke="#90A4AE" stroke-width="2.5" stroke-linecap="round">
+    <line x1="14" y1="21" x2="14" y2="43"/>
+    <line x1="21" y1="21" x2="21" y2="43"/>
+    <line x1="28" y1="21" x2="28" y2="43"/>
+    <line x1="35" y1="21" x2="35" y2="43"/>
+  </g>
+  <rect x="44" y="19" width="7" height="26" rx="2" fill="#78909C"/>
+  <rect x="51" y="29" width="11" height="6" rx="2" fill="#CFD8DC"/>
+  <path d="M10 48 Q9 55 4 60" fill="none" stroke="#E53935" stroke-width="3" stroke-linecap="round"/>
+  <path d="M16 48 Q15 56 11 61" fill="none" stroke="#212121" stroke-width="3" stroke-linecap="round"/>
+</svg>

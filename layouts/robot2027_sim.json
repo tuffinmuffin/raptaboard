@@ -332,6 +332,21 @@
               "topic": "/SmartDashboard/DashTest/Lift",
               "period": 0.06
             }
+          },
+          {
+            "title": "Intake motor (images)",
+            "x": 1024.0,
+            "y": 256.0,
+            "width": 128.0,
+            "height": 128.0,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/DashTest/IntakeDeployed",
+              "period": 0.06,
+              "data_type": "boolean",
+              "true_image": "motor-on.svg",
+              "false_image": "motor-off.svg"
+            }
           }
         ]
       }
