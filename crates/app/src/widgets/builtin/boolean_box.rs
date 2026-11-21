@@ -5,7 +5,9 @@
 //! `false_icon` (Elastic's: `None`, `Checkmark`, `X` or `Exclamation
 //! Point`; an icon set for the current state is drawn in that state's color
 //! instead of filling the box, as Elastic draws it); and raptaboard's
-//! `icon_on_color` (fill the box and draw the icon on it), `show_text`,
+//! `true_image` and `false_image` (an image from the images folders,
+//! [`crate::images`], in place of an icon), `icon_on_color` (fill the box
+//! and draw the icon or image on it), `show_text`,
 //! `true_text`, `false_text`, `font_size`, `text_backing` (a see-through
 //! box behind the text, so it reads over any color) and `true_text_color`
 //! and `false_text_color` (automatic black or white if not set). raptaboard
@@ -15,6 +17,7 @@ use eframe::egui::{self, Color32, CornerRadius, Rect};
 use nt4::Value;
 use serde_json::{Map, Value as Json};
 
+use crate::images;
 use crate::widgets::shared::card;
 use crate::widgets::shared::props::{self, set_property};
 use crate::widgets::{ValueInfo, WidgetType};
@@ -34,8 +37,13 @@ pub const FALSE_TEXT: &str = "false_text";
 pub const TRUE_ICON: &str = "true_icon";
 /// The icon drawn when false (Elastic).
 pub const FALSE_ICON: &str = "false_icon";
-/// Fill the box and draw the icon on it, instead of the icon alone in the
-/// state's color (raptaboard).
+/// The image shown when true (raptaboard): a file name in the images
+/// folders ([`crate::images`]).
+pub const TRUE_IMAGE: &str = "true_image";
+/// The image shown when false (raptaboard).
+pub const FALSE_IMAGE: &str = "false_image";
+/// Fill the box and draw the icon (or image) on it, instead of it alone
+/// (raptaboard).
 pub const ICON_ON_COLOR: &str = "icon_on_color";
 /// A see-through box behind the text (raptaboard).
 pub const TEXT_BACKING: &str = "text_backing";
@@ -90,6 +98,9 @@ pub struct Look {
     pub fill: Option<Color32>,
     /// The icon and its color.
     pub icon: Option<(Icon, Color32)>,
+    /// The image's file name (in the images folders), drawn in place of an
+    /// icon.
+    pub image: Option<String>,
     /// The text and its color.
     pub text: Option<(String, Color32)>,
     /// A see-through box behind the text.
@@ -160,16 +171,20 @@ pub fn fill(
 pub fn look(p: &Map<String, Json>, value: Option<&Value>) -> Result<Look, &'static str> {
     let (color, text) = fill(p, value)?;
     let on = matches!(value, Some(Value::Boolean(true)));
-    let (icon_key, text_color_key) = if on {
-        (TRUE_ICON, TRUE_TEXT_COLOR)
+    let (icon_key, text_color_key, image_key) = if on {
+        (TRUE_ICON, TRUE_TEXT_COLOR, TRUE_IMAGE)
     } else {
-        (FALSE_ICON, FALSE_TEXT_COLOR)
+        (FALSE_ICON, FALSE_TEXT_COLOR, FALSE_IMAGE)
     };
-    let icon = Icon::from_key(props::text(p, icon_key, ""));
+    // An image takes the icon's place.
+    let image = Some(props::text(p, image_key, "").trim())
+        .filter(|n| !n.is_empty())
+        .map(str::to_owned);
+    let icon = Icon::from_key(props::text(p, icon_key, "")).filter(|_| image.is_none());
     let on_color = props::flag(p, ICON_ON_COLOR, false);
     // An icon alone (Elastic's way) sits on the card, so it's drawn in the
     // state's color; on a filled box it's black or white, whichever reads.
-    let fill = (icon.is_none() || on_color).then_some(color);
+    let fill = ((icon.is_none() && image.is_none()) || on_color).then_some(color);
     let ground = fill.unwrap_or(Color32::TRANSPARENT);
     let auto = if fill.is_some() {
         props::text_color_on(color)
@@ -188,9 +203,31 @@ pub fn look(p: &Map<String, Json>, value: Option<&Value>) -> Result<Look, &'stat
     Ok(Look {
         fill,
         icon,
+        image,
         text: text.map(|t| (t, text_color)),
         backing,
     })
+}
+
+/// Draw the image named `name` (in the images folders) in `rect`, as big
+/// as fits with its shape kept; or say it isn't there.
+fn draw_image(painter: &egui::Painter, visuals: &egui::Visuals, rect: Rect, name: &str) {
+    let Some(path) = images::find(name, &images::default_folders()) else {
+        return card::draw_message(painter, visuals, rect, &format!("no image {name}"));
+    };
+    // Still being read: nothing yet (a repaint comes when it's ready).
+    let Some(texture) = images::texture(painter.ctx(), &path) else {
+        return;
+    };
+    let [w, h] = texture.size().map(|n| n as f32);
+    let scale = (rect.width() / w).min(rect.height() / h);
+    let fitted = Rect::from_center_size(rect.center(), egui::vec2(w, h) * scale);
+    painter.image(
+        texture.id(),
+        fitted,
+        Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+        Color32::WHITE,
+    );
 }
 
 /// Draw `icon` centered in `rect`, as big as fits, in `color`.
@@ -230,6 +267,58 @@ fn draw_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
     }
 }
 
+/// A settings row choosing an image for `key` from the images folders, or
+/// importing one (copied into `~/.raptaboard/images/`).
+fn image_row(ui: &mut egui::Ui, props: &mut Map<String, Json>, label: &str, key: &str) {
+    // Where a failed import's message is kept, to show under the row.
+    let id = ui.scope_id().with(("image import", key));
+    ui.label(label);
+    ui.horizontal(|ui| {
+        let current = props::text(props, key, "").to_owned();
+        let mut picked = current.clone();
+        let found = images::available(&images::default_folders());
+        egui::ComboBox::from_id_salt(key)
+            .selected_text(if picked.is_empty() { "(none)" } else { picked.as_str() })
+            .width(160.0)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut picked, String::new(), "(none)");
+                for name in &found {
+                    ui.selectable_value(&mut picked, name.clone(), name);
+                }
+            })
+            .response
+            .on_hover_text("Images in the images folders: images/ where raptaboard starts, beside the program, and ~/.raptaboard/images/");
+        if ui
+            .button("Import…")
+            .on_hover_text("Pick a PNG or JPEG; it's copied into ~/.raptaboard/images/")
+            .clicked()
+            && let Some(from) = rfd::FileDialog::new()
+                .add_filter("Image", &images::EXTENSIONS)
+                .pick_file()
+            && let Some(into) = images::import_folder()
+        {
+            match images::import(&from, &into) {
+                Ok(name) => picked = name,
+                Err(why) => {
+                    ui.ctx().data_mut(|d| {
+                        d.insert_temp(id, why)
+                    });
+                }
+            }
+        }
+        if picked != current {
+            set_property(props, key, (!picked.is_empty()).then(|| picked.into()));
+        }
+    });
+    ui.end_row();
+    // An import that failed says why, under the row.
+    if let Some(why) = ui.ctx().data(|d| d.get_temp::<String>(id)) {
+        ui.label("");
+        ui.colored_label(ui.visuals().warn_fg_color, why);
+        ui.end_row();
+    }
+}
+
 impl WidgetType for BooleanBox {
     fn names(&self) -> &'static [&'static str] {
         &["Boolean Box"]
@@ -254,9 +343,10 @@ impl WidgetType for BooleanBox {
         if let Some(color) = look.fill {
             painter.rect_filled(rect, CornerRadius::same(card::BODY_CORNER_RADIUS), color);
         }
-        // With text too, the icon takes the top two thirds.
-        let (icon_rect, text_at) = match (&look.icon, &look.text) {
-            (Some(_), Some(_)) => {
+        // With text too, the icon (or image) takes the top two thirds.
+        let pictured = look.icon.is_some() || look.image.is_some();
+        let (icon_rect, text_at) = match (pictured, &look.text) {
+            (true, Some(_)) => {
                 let (top, bottom) = rect.split_top_bottom_at_fraction(0.68);
                 (top, bottom.center())
             }
@@ -264,6 +354,9 @@ impl WidgetType for BooleanBox {
         };
         if let Some((icon, color)) = look.icon {
             draw_icon(painter, icon_rect, icon, color);
+        }
+        if let Some(name) = &look.image {
+            draw_image(painter, visuals, icon_rect.shrink(4.0), name);
         }
         if let Some((text, color)) = look.text {
             let galley = painter.layout_no_wrap(
@@ -309,11 +402,18 @@ impl WidgetType for BooleanBox {
             }
             ui.end_row();
         }
+        for (label, key) in [
+            ("Image when true", TRUE_IMAGE),
+            ("Image when false", FALSE_IMAGE),
+        ] {
+            image_row(ui, props, label, key);
+        }
         props::flag_row(
             ui,
             props,
-            "Icon on the color",
-            "Fill the box and draw the icon on it (off: the icon alone, in the state's color, as Elastic)",
+            "Icon or image on the color",
+            "Fill the box and draw the icon or image on it (off: it alone, an icon in the state's \
+             color, as Elastic)",
             ICON_ON_COLOR,
             false,
         );
@@ -397,6 +497,8 @@ impl WidgetType for BooleanBox {
             props::FONT_SIZE,
             TRUE_ICON,
             FALSE_ICON,
+            TRUE_IMAGE,
+            FALSE_IMAGE,
             ICON_ON_COLOR,
             TEXT_BACKING,
             TRUE_TEXT_COLOR,
@@ -459,6 +561,31 @@ mod tests {
         // An unknown name is no icon.
         let odd = props(serde_json::json!({"true_icon": "Smiley"}));
         assert_eq!(look(&odd, value(true).as_ref()).unwrap().icon, None);
+    }
+
+    #[test]
+    fn an_image_takes_the_icons_place_for_its_state() {
+        let value = |b| Some(Value::Boolean(b));
+        let p = props(serde_json::json!({
+            "true_icon": "Checkmark", "true_image": "intake-down.png", "false_icon": "X"
+        }));
+        let t = look(&p, value(true).as_ref()).unwrap();
+        assert_eq!(t.image.as_deref(), Some("intake-down.png"));
+        assert_eq!(t.icon, None, "the image, not the icon");
+        assert_eq!(t.fill, None, "alone, as an icon is");
+        // The other state keeps its icon.
+        let f = look(&p, value(false).as_ref()).unwrap();
+        assert_eq!(f.image, None);
+        assert_eq!(f.icon, Some((Icon::X, DEFAULT_FALSE_COLOR)));
+        // On the color.
+        let on = props(serde_json::json!({"true_image": "a.png", "icon_on_color": true}));
+        assert_eq!(
+            look(&on, value(true).as_ref()).unwrap().fill,
+            Some(DEFAULT_TRUE_COLOR)
+        );
+        // A blank name is no image.
+        let blank = props(serde_json::json!({"true_image": "  "}));
+        assert_eq!(look(&blank, value(true).as_ref()).unwrap().image, None);
     }
 
     #[test]

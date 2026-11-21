@@ -194,6 +194,9 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `speeds_topic`, `speeds_setpoint_topic` | `builtin/swerve.rs` | SwerveDrive | the whole robot's measured and requested motion, `ChassisSpeeds` topics, drawn from the robot's center as Chassis Speeds draws them | none |
 | `max_spin` | `builtin/chassis_speeds.rs` | Chassis Speeds, SwerveDrive | the spin drawn as a three-quarter turn, degrees per second | 360 |
 | `fit` | `builtin/mechanism.rs` | Mechanism2d | what the view fits: `mechanism` (the part of the canvas it has used, plus a margin, growing only; a double-click starts it over) or `canvas` (all of `dims`) | `mechanism` |
+| `true_icon`, `false_icon` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | `None`, `Checkmark`, `X` or `Exclamation Point`, drawn alone in the state's color | `None` |
+| `true_image`, `false_image`, `icon_on_color` | `builtin/boolean_box.rs` | Boolean Box | an image's file name in the images folders, in place of an icon; draw the icon or image on the filled box | none; off |
+| `text_backing`, `true_text_color`, `false_text_color` | `builtin/boolean_box.rs` | Boolean Box | a see-through box behind the text; the text's color per state | off; automatic |
 | `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
 | `series` | `builtin/graph.rs` | Graph | the lines after the main one: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
 | `show_legend` | `builtin/graph.rs` | Graph | show the legend | when there's more than one line |
@@ -454,9 +457,13 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      **Done**: Elastic's `true_icon`/`false_icon` set (Checkmark, X, Exclamation Point, any for either
      state in raptaboard), drawn alone in the state's color as Elastic does, or on the filled box with
-     `icon_on_color`. After the first release: any PNG/SVG the team picks. Open (decide when built), likely both: embed the image in the layout, scaled down to a
-     small fixed size so the file stays well under its 10 MB limit and is fully portable, and/or
-     keep image files next to the layout or served by the robot.
+     `icon_on_color`; and the team's own images (decided with the user 2026-11-21), `true_image` /
+     `false_image`, chosen from a list of the images in the images folders (`images.rs`: `images/`
+     where raptaboard starts, beside the program, and `~/.raptaboard/images/`, as fields are found),
+     with an Import… button that copies a picked PNG or JPEG into `~/.raptaboard/images/` (a
+     different image with the same name gets `-2`, ...). Layouts save the file name, so another
+     computer needs the same image in its images folder. Later: SVG, and embedding images in the
+     layout.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
    **Started**: the read-only single-topic widgets: Large Text Display, Number Bar, Voltage View,
    Radial Gauge (also Simple Dial), Match Time, Single Color View, Multi Color View, with Elastic's
