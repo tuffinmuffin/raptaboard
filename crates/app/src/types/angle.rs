@@ -131,6 +131,46 @@ pub fn heading_of(
     })
 }
 
+/// Whether a topic of NT type `ty` holds a heading [`untyped_heading`]
+/// reads: a number, or a `Rotation2d`, `Rotation3d`, `Pose2d` or `Pose3d`.
+///
+/// ```
+/// use raptaboard::types::angle::is_heading_type;
+/// assert!(is_heading_type("struct:Pose2d") && is_heading_type("double"));
+/// assert!(!is_heading_type("struct:Pose2d[]") && !is_heading_type("string"));
+/// ```
+pub fn is_heading_type(ty: &str) -> bool {
+    matches!(ty, "double" | "float" | "int")
+        || matches!(
+            structs::struct_type(ty),
+            Some(("Rotation2d" | "Rotation3d" | "Pose2d" | "Pose3d", false))
+        )
+}
+
+/// The heading in `value`, radians counterclockwise, when its topic's type
+/// isn't known (a widget's second topic): a number is degrees
+/// counterclockwise; a struct is told by its size (a `Rotation2d` is 8
+/// bytes, a `Pose2d` 24, a `Rotation3d` 32, a `Pose3d` 56).
+///
+/// ```
+/// use nt4::Value;
+/// use raptaboard::types::angle::untyped_heading;
+/// assert_eq!(untyped_heading(&Value::Double(180.0), None), Some(std::f64::consts::PI));
+/// ```
+pub fn untyped_heading(value: &Value, structs: Option<&StructDatabase>) -> Option<f64> {
+    let ty = match value {
+        Value::Raw(bytes) => match bytes.len() {
+            8 => "struct:Rotation2d",
+            24 => "struct:Pose2d",
+            32 => "struct:Rotation3d",
+            56 => "struct:Pose3d",
+            _ => return None,
+        },
+        _ => "double",
+    };
+    heading_of(value, ty, structs, true).map(|h| h.degrees.to_radians())
+}
+
 /// Where a `Gyro` table's angle is: `<table>/Value`.
 ///
 /// ```

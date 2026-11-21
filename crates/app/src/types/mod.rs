@@ -11,6 +11,7 @@
 //! - [`field`]: a field (size, image, AprilTags) and poses on it.
 //! - [`angle`]: headings (a `Rotation2d`, a gyro's degrees) and which way
 //!   they count.
+//! - [`motion`]: a robot's velocity and spin (`ChassisSpeeds`).
 //! - [`swerve`]: swerve modules' speeds and angles.
 //! - [`enums`]: named states on a string or int topic, and where their
 //!   names come from.
@@ -20,6 +21,7 @@ pub mod angle;
 pub mod chooser;
 pub mod enums;
 pub mod field;
+pub mod motion;
 pub mod structs;
 pub mod swerve;
 

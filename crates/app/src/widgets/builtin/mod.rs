@@ -4,6 +4,7 @@
 
 pub mod alerts;
 pub mod boolean_box;
+pub mod chassis_speeds;
 pub mod chooser;
 pub mod color_view;
 pub mod enums;

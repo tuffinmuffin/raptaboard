@@ -4,6 +4,7 @@
 // Tests written by Claude.
 
 mod alerts;
+mod chassis;
 mod choosers;
 mod clips;
 mod enums;
@@ -46,6 +47,7 @@ const TOPICS: &[(&str, &str)] = &[
     ("/Test/colors", "string[]"),
     ("/Test/numbers", "double[]"),
     ("/Drive/pose", "struct:Pose2d"),
+    ("/Drive/speeds", "struct:ChassisSpeeds"),
 ];
 
 /// A server publishing [`TOPICS`], on its own runtime as robot code would
@@ -92,7 +94,11 @@ struct Robot {
         Publisher<Vec<String>>,
         Publisher<Vec<f64>>,
     ),
-    _structs: (nt4::GenericPublisher, nt4::GenericPublisher),
+    _structs: (
+        nt4::GenericPublisher,
+        nt4::GenericPublisher,
+        nt4::GenericPublisher,
+    ),
 }
 
 impl Robot {
@@ -161,7 +167,8 @@ impl Robot {
         let numbers = server.publish::<Vec<f64>>("/Test/numbers");
         numbers.set(vec![1.0, 2.0]);
         // Structs as robot code sends them: schemas, then bytes. A Pose2d
-        // has nested structs; the swerve states are a struct array.
+        // has nested structs; the swerve states are a struct array; the
+        // speeds are 1.5 m/s forward, 0.5 right, 0.5 rad/s.
         server.add_schema("struct:Translation2d", "structschema", b"double x;double y");
         server.add_schema("struct:Rotation2d", "structschema", b"double value");
         server.add_schema(
@@ -189,6 +196,17 @@ impl Robot {
             nt4::Properties::new(),
         );
         modules.set(doubles(&[3.0, 0.1, 4.0, 0.2])).unwrap();
+        server.add_schema(
+            "struct:ChassisSpeeds",
+            "structschema",
+            b"double vx;double vy;double omega",
+        );
+        let speeds = server.publish_generic(
+            "/Drive/speeds",
+            "struct:ChassisSpeeds".parse().unwrap(),
+            nt4::Properties::new(),
+        );
+        speeds.set(doubles(&[1.5, -0.5, 0.5])).unwrap();
         Robot {
             _rt: rt,
             _server: server,
@@ -216,7 +234,7 @@ impl Robot {
             _mode_options: mode_options,
             _auto: (auto_type, auto_default),
             _others: (color, colors, numbers),
-            _structs: (pose, modules),
+            _structs: (pose, modules, speeds),
         }
     }
 

@@ -369,6 +369,7 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::field::FieldWidget,
     &builtin::gyro::Gyro,
     &builtin::swerve::SwerveDrive,
+    &builtin::chassis_speeds::ChassisSpeeds,
 ];
 
 /// The widget type saved as `type_name` (including Elastic's other names
@@ -392,7 +393,8 @@ pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
 /// The widget type name to make for a topic dropped on the grid, by its NT
 /// type string: a Boolean Box for booleans, a Text Display for numbers,
 /// strings and arrays of them, a Field for a Pose2d or Pose3d, a Gyro
-/// for a Rotation2d, a SwerveDrive for swerve module states. `None` for
+/// for a Rotation2d, a SwerveDrive for swerve module states, Chassis
+/// Speeds for a ChassisSpeeds. `None` for
 /// types with no widget yet, such as other structs; those can't be
 /// dragged.
 ///
@@ -403,7 +405,8 @@ pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
 /// assert_eq!(type_for_topic("struct:Pose2d"), Some("Field"));
 /// assert_eq!(type_for_topic("struct:Rotation2d"), Some("Gyro"));
 /// assert_eq!(type_for_topic("struct:SwerveModuleState[]"), Some("SwerveDrive"));
-/// assert_eq!(type_for_topic("struct:ChassisSpeeds"), None);
+/// assert_eq!(type_for_topic("struct:ChassisSpeeds"), Some("Chassis Speeds"));
+/// assert_eq!(type_for_topic("struct:ArmState"), None);
 /// ```
 pub fn type_for_topic(nt_type: &str) -> Option<&'static str> {
     TYPES
@@ -448,7 +451,7 @@ pub fn type_for_table(table_type: &str) -> Option<&'static str> {
 /// assert_eq!(w.widget_type, "Boolean Box");
 /// assert_eq!(w.topic(), Some("/Drive/Health/allModulesHealthy"));
 /// assert_eq!(w.period(), Some(0.06));
-/// assert!(for_topic("/Drive/speeds", "struct:ChassisSpeeds", None, at).is_none());
+/// assert!(for_topic("/Arm/state", "struct:ArmState", None, at).is_none());
 /// ```
 pub fn for_topic(
     name: &str,

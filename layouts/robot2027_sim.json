@@ -1120,6 +1120,21 @@
               "setpoint_topic": "/Drive/SetpointStates",
               "heading_topic": "/Drive/Pose"
             }
+          },
+          {
+            "title": "Drive: measured vs commanded speeds",
+            "x": 1024.0,
+            "y": 256.0,
+            "width": 256.0,
+            "height": 256.0,
+            "type": "Chassis Speeds",
+            "properties": {
+              "topic": "/Drive/MeasuredSpeeds",
+              "period": 0.02,
+              "data_type": "struct:ChassisSpeeds",
+              "setpoint_topic": "/Drive/CommandedSpeeds",
+              "heading_topic": "/Drive/Pose"
+            }
           }
         ]
       }
