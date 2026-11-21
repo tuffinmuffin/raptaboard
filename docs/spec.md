@@ -643,9 +643,17 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    robot-2027's `/Drive/MeasuredStates` against `/Drive/SetpointStates`, with `/Drive/MeasuredSpeeds`
    against `/Drive/CommandedSpeeds`). Mechanisms: WPILib's Mechanism2d first; it only chains rigid ligaments, so
    later raptaboard may get its own mechanism data model and tools to build and preview one.
+   3D Pose (**done**, asked for by the user 2026-11-20; `builtin/pose3d.rs`, read by `types/pose3d.rs`):
+   a `Pose3d`, `Transform3d`, `Rotation3d` or `Quaternion` (or a `Pose2d`, flat) as X, Y and Z axis
+   arrows (red, green, blue) turned by its rotation over faint world axes, with a box turning with
+   them, and its place and roll, pitch and yaw below (hidden on a small card). Dragging the card
+   orbits the view (from where the press began), a double-click resets it; the view is kept per
+   widget while the program runs. A Rotation3d, Transform3d or Quaternion dragged from the tree makes
+   one (a Pose3d still makes a Field; a Gyro still shows a Rotation3d's yaw). robot-2027's
+   `TumblePose` (pitching and rolling) is on the sim layout's Field tab.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
-   WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro (done), SwerveModuleState[] → swerve view (done).
+   WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro (done), Rotation3d → 3D Pose (done), SwerveModuleState[] → swerve view (done).
    Milestone 4 plugins may also match a struct type (a `struct = "ArmState"` rule).
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, Mechanism2d,

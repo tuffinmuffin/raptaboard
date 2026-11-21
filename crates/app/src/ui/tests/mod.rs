@@ -11,6 +11,7 @@ mod enums;
 mod field;
 mod files;
 mod gyro;
+mod pose3d;
 mod sliders;
 mod swerve;
 mod tree;
