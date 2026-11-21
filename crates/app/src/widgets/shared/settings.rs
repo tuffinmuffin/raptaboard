@@ -370,7 +370,7 @@ mod tests {
         assert!(!has_custom_settings(&field));
 
         // A type not built yet: only the period resets.
-        let mut unbuilt = widget("Swerve Drive", false);
+        let mut unbuilt = widget("DifferentialDrive", false);
         unbuilt.properties.insert(PERIOD.into(), 0.033.into());
         unbuilt
             .properties

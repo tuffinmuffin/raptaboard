@@ -249,6 +249,43 @@ pub fn choice_row(
     ui.end_row();
 }
 
+/// A topic picker: one of the server's `topics` (name, NT type) of the
+/// types `fits` says, or none (an empty `topic`). Returns whether it
+/// changed. `id` tells pickers in one dialog apart.
+pub fn topic_picker(
+    ui: &mut egui::Ui,
+    id: impl std::hash::Hash + std::fmt::Debug,
+    topic: &mut String,
+    topics: &[(String, String)],
+    fits: impl Fn(&str) -> bool,
+) -> bool {
+    let mut changed = false;
+    let shown = if topic.is_empty() {
+        "(none)"
+    } else {
+        topic.as_str()
+    };
+    egui::ComboBox::from_id_salt(id)
+        .selected_text(shown)
+        .width(220.0)
+        .show_ui(ui, |ui| {
+            if ui.selectable_label(topic.is_empty(), "(none)").clicked() {
+                topic.clear();
+                changed = true;
+            }
+            for (name, ty) in topics.iter().filter(|(_, ty)| fits(ty)) {
+                if ui
+                    .selectable_label(topic == name, format!("{name}  ({ty})"))
+                    .clicked()
+                {
+                    *topic = name.clone();
+                    changed = true;
+                }
+            }
+        });
+    changed
+}
+
 /// Read a color saved by Elastic: a 32-bit ARGB number, such as
 /// `4283215696` (`0xFF4CAF50`, green).
 ///

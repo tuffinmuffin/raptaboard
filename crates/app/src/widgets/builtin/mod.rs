@@ -15,5 +15,6 @@ pub mod match_time;
 pub mod number_bar;
 pub mod number_slider;
 pub mod radial_gauge;
+pub mod swerve;
 pub mod text_display;
 pub mod toggle;

@@ -11,6 +11,7 @@
 //! - [`field`]: a field (size, image, AprilTags) and poses on it.
 //! - [`angle`]: headings (a `Rotation2d`, a gyro's degrees) and which way
 //!   they count.
+//! - [`swerve`]: swerve modules' speeds and angles.
 //! - [`enums`]: named states on a string or int topic, and where their
 //!   names come from.
 
@@ -20,6 +21,7 @@ pub mod chooser;
 pub mod enums;
 pub mod field;
 pub mod structs;
+pub mod swerve;
 
 /// A number with up to 4 decimal places and no trailing zeros, as the
 /// tree and struct fields show numbers.

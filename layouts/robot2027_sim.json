@@ -1069,8 +1069,8 @@
           },
           {
             "title": "OrbitHeading (Rotation2d)",
-            "x": 1024.0,
-            "y": 256.0,
+            "x": 0.0,
+            "y": 512.0,
             "width": 256.0,
             "height": 256.0,
             "type": "Gyro",
@@ -1082,14 +1082,43 @@
           },
           {
             "title": "Gyro table (clockwise)",
-            "x": 1280.0,
-            "y": 256.0,
+            "x": 256.0,
+            "y": 512.0,
             "width": 256.0,
             "height": 256.0,
             "type": "Gyro",
             "properties": {
               "topic": "/DashTest/Gyro",
               "period": 0.02
+            }
+          },
+          {
+            "title": "ModuleStates (spinning)",
+            "x": 512.0,
+            "y": 512.0,
+            "width": 256.0,
+            "height": 256.0,
+            "type": "SwerveDrive",
+            "properties": {
+              "topic": "/DashTest/ModuleStates",
+              "period": 0.02,
+              "data_type": "struct:SwerveModuleState[]",
+              "heading_topic": "/DashTest/OrbitHeading"
+            }
+          },
+          {
+            "title": "Drive: measured vs setpoint",
+            "x": 768.0,
+            "y": 512.0,
+            "width": 256.0,
+            "height": 256.0,
+            "type": "SwerveDrive",
+            "properties": {
+              "topic": "/Drive/MeasuredStates",
+              "period": 0.02,
+              "data_type": "struct:SwerveModuleState[]",
+              "setpoint_topic": "/Drive/SetpointStates",
+              "heading_topic": "/Drive/Pose"
             }
           }
         ]
