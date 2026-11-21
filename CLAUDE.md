@@ -176,7 +176,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `/Drive/CommandedSpeeds`, turned by `/Drive/Pose`. Beside the red-side Field, a Chassis Speeds on `/Drive/MeasuredSpeeds` against
   `/Drive/CommandedSpeeds` (the keyboard joystick can't spin the sim drivetrain: rotation is Xbox axis 4
   and it has three axes), and one on robot-2027's scripted `/DashTest/CommandedSpeeds` against
-  `MeasuredSpeeds`, which lag 0.3 s and reach 90% of the speed and 80% of the spin. Beside the red-side Field, a 3D Pose on robot-2027's `TumblePose` (a
+  `MeasuredSpeeds`, which lag 0.3 s and reach 90% of the speed and 80% of the spin. Below the Gyros, a 3D Pose on robot-2027's `TumblePose` (a
   Pose3d that pitches and rolls). Its Alerts tab shows robot-2027's alerts (its
   test topics add a warning, an info, and an error on for 3 s every 10 s). "Writing in a list" holds the toggles and a slider as List
   Layout children.

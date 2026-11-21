@@ -650,7 +650,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    orbits the view (from where the press began), a double-click resets it; the view is kept per
    widget while the program runs. A Rotation3d, Transform3d or Quaternion dragged from the tree makes
    one (a Pose3d still makes a Field; a Gyro still shows a Rotation3d's yaw). robot-2027's
-   `TumblePose` (pitching and rolling) is on the sim layout's Field tab.
+   `TumblePose` (pitching and rolling) is on the sim layout's Field tab, below the Gyros.
    Whole structs dragged from the tree: a generic struct widget (fields like the tree shows them,
    enum names, struct arrays as items; raptaboard-only type) for any struct, and defaults for common
    WPILib ones: Pose2d/Pose3d → Field, Rotation2d → Gyro (done), Rotation3d → 3D Pose (done), SwerveModuleState[] → swerve view (done).
