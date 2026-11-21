@@ -194,6 +194,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `speeds_topic`, `speeds_setpoint_topic` | `builtin/swerve.rs` | SwerveDrive | the whole robot's measured and requested motion, `ChassisSpeeds` topics, drawn from the robot's center as Chassis Speeds draws them | none |
 | `max_spin` | `builtin/chassis_speeds.rs` | Chassis Speeds, SwerveDrive | the spin drawn as a three-quarter turn, degrees per second | 360 |
 | `fit` | `builtin/mechanism.rs` | Mechanism2d | what the view fits: `mechanism` (the part of the canvas it has used, plus a margin, growing only; a double-click starts it over) or `canvas` (all of `dims`) | `mechanism` |
+| `warn_below`, `low_below` | `builtin/battery.rs` | Battery | volts below which it's yellow, red; `min_value`/`max_value` (Elastic's keys) are empty and full | 12, 11.5; 11 to 13 |
 | `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
 | `series` | `builtin/graph.rs` | Graph | the lines after the main one: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
 | `show_legend` | `builtin/graph.rs` | Graph | show the legend | when there's more than one line |
@@ -449,8 +450,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      from two topics, two struct fields (Pose2d x/y, Translation2d), or a dropped struct with a
      known pair. Angle units for polar (degrees or radians, zero direction, clockwise or not).
      Shares Graph's recording (`traces.rs`), pause and measuring.
-   - Battery widget: a battery icon filled by charge (voltage between a low and high setting),
-     colored by level, for battery voltage instead of Voltage View.
+   - Battery widget (**done**, `builtin/battery.rs`): a battery icon filled by charge (the voltage
+     between `min_value` and `max_value`, 11 to 13 V), green, yellow below `warn_below` (12 V) and red
+     below `low_below` (11.5 V), with the volts and charge on a see-through backing; on its side on a
+     wide card, upright on a tall one. A number's "Add as" or Widget list choice (a number still makes
+     a Text Display). The sim layout's More widgets tab shows robot-2027's scripted `BatteryVoltage`.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      A built-in library of standard images (Elastic's `true_icon`/`false_icon` set: Checkmark, X,
      Exclamation Point, so its layouts keep their icons, plus more), and any PNG/SVG the team
