@@ -140,3 +140,58 @@ fn a_mechanism2d_table_drags_from_the_tree() {
     assert_eq!(made.widget_type, "Mechanism2d");
     assert_eq!(made.topic(), Some("/Test/Lift"));
 }
+
+/// The area the Lift card says it shows.
+fn showing(harness: &Harness) -> String {
+    harness
+        .query_by_label_contains("Lift: ")
+        .and_then(|n| n.value())
+        .unwrap_or_default()
+}
+
+#[test]
+fn the_view_zooms_to_what_the_mechanism_has_used_and_only_grows() {
+    let robot = Robot::start();
+    let lift = Lift::publish(&robot);
+    let mut harness = lift_harness(&robot);
+    harness.state_mut().locked = true;
+    labelled_soon(
+        &mut harness,
+        "Lift: base/elevator: 0.80 at 90°; base/elevator/arm: 0.50 at -45°",
+    );
+    // The base up the elevator and the arm, plus a margin: not the whole
+    // 3 by 2 canvas.
+    let start = "showing 1.38 to 1.97 across, 0.08 to 1.47 up";
+    assert_eq!(showing(&harness), start);
+    // The elevator comes down: the view stays (it only grows), so it
+    // doesn't jump as the mechanism moves.
+    lift.set("base/elevator/length", 0.4);
+    labelled_soon(
+        &mut harness,
+        "Lift: base/elevator: 0.40 at 90°; base/elevator/arm: 0.50 at -45°",
+    );
+    assert_eq!(showing(&harness), start);
+    // A double-click starts it over, from where the mechanism is now.
+    let middle = card_on_screen(&harness, 0).center();
+    for _ in 0..2 {
+        click_at(
+            &mut harness,
+            middle,
+            egui::PointerButton::Primary,
+            Modifiers::NONE,
+        );
+    }
+    assert_eq!(
+        showing(&harness),
+        "showing 1.42 to 1.93 across, 0.12 to 1.03 up"
+    );
+    // Fit set to the canvas: the whole of it.
+    harness.state_mut().layout.tabs[0].grid_layout.containers[0]
+        .properties
+        .insert("fit".into(), json!("canvas"));
+    settle(&mut harness);
+    assert_eq!(
+        showing(&harness),
+        "showing 0.00 to 3.00 across, 0.00 to 2.00 up"
+    );
+}

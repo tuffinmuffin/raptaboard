@@ -115,7 +115,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   Rotation3d or Quaternion as turning X, Y, Z axes; drag to orbit the view; read by `types/pose3d.rs`), Struct
   (`builtin/struct_view.rs`: any other struct or struct array as its fields, the way the tree shows them; last in
   `TYPES`), Mechanism2d (`builtin/mechanism.rs`: WPILib's `Mechanism2d` table, its ligaments drawn on its
-  canvas; read by `types/mechanism.rs`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
+  canvas, zoomed to what the mechanism has used (`fit`); read by `types/mechanism.rs`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
   from `show`, and `Place::locked` says whether their input covers the whole card; `show_body` is
   the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
   draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing
