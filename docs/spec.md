@@ -628,7 +628,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    `ChassisSpeeds` (2027: `ChassisVelocities`) or a `Translation2d`, robot-relative: an arrow for the
    velocity and a curved arrow round the robot for its spin, requested speeds dashed against measured,
    turned by a heading topic, as the swerve view; the robot drawing is `widgets/shared/robot_view.rs`;
-   the sim layout shows robot-2027's `/Drive/MeasuredSpeeds` against `/Drive/CommandedSpeeds`), and a swerve view (**done**, `builtin/swerve.rs`, read by `types/swerve.rs`; Elastic's
+   the measured and requested numbers are written below the robot when the card has room; the sim layout
+   shows robot-2027's `/Drive/MeasuredSpeeds` against `/Drive/CommandedSpeeds`, and its scripted
+   `/DashTest/` pair, whose measured speeds lag and fall short, since the keyboard joystick can't spin
+   the sim drivetrain), and a swerve view (**done**, `builtin/swerve.rs`, read by `types/swerve.rs`; Elastic's
    `SwerveDrive` name and table (`Front Left Angle`, `... Velocity`, `Robot Angle`), or a
    `SwerveModuleState[]` (2027: `SwerveModuleVelocity[]`) in FL, FR, BL, BR order: each wheel turned
    the way it points with an arrow for its speed, the requested states (`setpoint_topic`) dashed

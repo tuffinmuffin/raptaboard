@@ -173,7 +173,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   cameras and an intake (on `IntakeDeployed`, reaching `IntakeExtensionIn` inches) attached to the robot. Below them, two Gyros: one on `OrbitHeading` (a Rotation2d) and one on the `Gyro` table (degrees,
   clockwise), which should read the same, and two swerve views: `ModuleStates` (spinning) and robot-2027's
   drivetrain, `/Drive/MeasuredStates` against `/Drive/SetpointStates`, turned by `/Drive/Pose`. Beside the red-side Field, a Chassis Speeds on `/Drive/MeasuredSpeeds` against
-  `/Drive/CommandedSpeeds`. Its Alerts tab shows robot-2027's alerts (its
+  `/Drive/CommandedSpeeds` (the keyboard joystick can't spin the sim drivetrain: rotation is Xbox axis 4
+  and it has three axes), and one on robot-2027's scripted `/DashTest/CommandedSpeeds` against
+  `MeasuredSpeeds`, which lag 0.3 s and reach 90% of the speed and 80% of the spin. Its Alerts tab shows robot-2027's alerts (its
   test topics add a warning, an info, and an error on for 3 s every 10 s). "Writing in a list" holds the toggles and a slider as List
   Layout children.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.

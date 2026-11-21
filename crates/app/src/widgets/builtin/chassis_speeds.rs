@@ -10,11 +10,12 @@
 //! measured ones, turns with a heading topic (`heading_topic`), and scales
 //! its arrow to `max_speed`; `max_spin` scales the spin. Dropping speeds
 //! from the tree on the widget sets the requested ones; a rotation or pose
-//! sets the heading.
+//! sets the heading. The measured and requested numbers are written below
+//! the robot in their colors when the card has room.
 
 use std::f32::consts::PI;
 
-use eframe::egui::{self, Rect, Sense, Stroke};
+use eframe::egui::{self, Color32, Rect, Sense, Stroke};
 use nt4::Value;
 use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
@@ -41,6 +42,12 @@ const DEFAULT_MAX_SPIN: f64 = 360.0;
 /// (degrees per second), no spin arrow.
 const STILL_MPS: f64 = 0.02;
 const STILL_DPS: f64 = 1.0;
+
+/// Size of the numbers, points.
+const TEXT_SIZE: f32 = 11.0;
+/// The smallest body that shows the numbers, points: about a 2 by 2 card.
+const MIN_TEXT_WIDTH: f32 = 200.0;
+const MIN_TEXT_HEIGHT: f32 = 160.0;
 
 /// The Chassis Speeds widget.
 pub struct ChassisSpeeds;
@@ -148,6 +155,34 @@ fn motion_text(m: &Motion) -> String {
     text
 }
 
+/// A motion in a few characters, for the card: `1.50 fwd  -0.50 left m/s  29°/s`.
+fn short_text(m: &Motion) -> String {
+    let mut text = format!("{} fwd  {} left m/s", rounded(m.vx, 2), rounded(m.vy, 2));
+    if let Some(omega) = m.omega {
+        text += &format!("  {}°/s", rounded(omega.to_degrees(), 0));
+    }
+    text
+}
+
+/// Draw `text` centered in `row`, at [`TEXT_SIZE`] or smaller if it
+/// doesn't fit across.
+fn draw_line(painter: &egui::Painter, row: Rect, text: &str, color: Color32) {
+    let galley = painter.layout_no_wrap(text.to_owned(), egui::FontId::monospace(TEXT_SIZE), color);
+    let width = galley.size().x;
+    let size = if width > row.width() && width > 0.0 {
+        (TEXT_SIZE * row.width() / width).max(6.0)
+    } else {
+        TEXT_SIZE
+    };
+    painter.text(
+        row.center(),
+        egui::Align2::CENTER_CENTER,
+        text,
+        egui::FontId::monospace(size),
+        color,
+    );
+}
+
 /// The widget's summary, for screen readers and tests.
 fn summary(title: &str, shown: &Shown) -> String {
     let Some(m) = &shown.measured else {
@@ -171,7 +206,34 @@ impl ChassisSpeeds {
         let now = shown(widget, live);
         let max_speed = props::number(p, MAX_SPEED, DEFAULT_MAX_SPEED).max(0.1);
         let max_spin = props::number(p, MAX_SPIN, DEFAULT_MAX_SPIN).max(1.0);
-        draw(&painter, &visuals, rect, &now, max_speed, max_spin);
+        // The numbers below the robot, when there's room: measured in its
+        // color, requested in its.
+        let lines: Vec<(String, Color32)> = [
+            now.measured
+                .map(|m| (format!("measured  {}", short_text(&m)), MEASURED)),
+            now.requested
+                .map(|m| (format!("requested  {}", short_text(&m)), REQUESTED)),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let room = rect.width() >= MIN_TEXT_WIDTH && rect.height() >= MIN_TEXT_HEIGHT;
+        let robot_rect = if room && !lines.is_empty() {
+            let line_height = TEXT_SIZE + 4.0;
+            let (robot_rect, text_rect) =
+                rect.split_top_bottom_at_y(rect.max.y - line_height * lines.len() as f32);
+            for (i, (line, color)) in lines.iter().enumerate() {
+                let row = Rect::from_min_size(
+                    text_rect.min + egui::vec2(0.0, i as f32 * line_height),
+                    egui::vec2(text_rect.width(), line_height),
+                );
+                draw_line(&painter, row, line, *color);
+            }
+            robot_rect
+        } else {
+            rect
+        };
+        draw(&painter, &visuals, robot_rect, &now, max_speed, max_spin);
         if now.measured.is_none() {
             card::draw_message(&painter, &visuals, rect, "no speeds");
         }
@@ -355,6 +417,18 @@ mod tests {
             heading: None,
         };
         assert_eq!(summary("S", &none), "S: no speeds");
+    }
+
+    #[test]
+    fn the_card_line_is_short() {
+        let m = Motion {
+            vx: 1.5,
+            vy: -0.5,
+            omega: Some(0.5),
+        };
+        assert_eq!(short_text(&m), "1.50 fwd  -0.50 left m/s  29°/s");
+        let v = Motion { omega: None, ..m };
+        assert_eq!(short_text(&v), "1.50 fwd  -0.50 left m/s");
     }
 
     #[test]
