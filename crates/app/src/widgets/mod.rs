@@ -371,6 +371,8 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::swerve::SwerveDrive,
     &builtin::chassis_speeds::ChassisSpeeds,
     &builtin::pose3d::Pose3dView,
+    // Last: any struct no widget above is made for.
+    &builtin::struct_view::StructView,
 ];
 
 /// The widget type saved as `type_name` (including Elastic's other names
@@ -395,9 +397,9 @@ pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
 /// type string: a Boolean Box for booleans, a Text Display for numbers,
 /// strings and arrays of them, a Field for a Pose2d or Pose3d, a Gyro
 /// for a Rotation2d, a 3D Pose for a Rotation3d, a SwerveDrive for swerve
-/// module states, Chassis Speeds for a ChassisSpeeds. `None` for
-/// types with no widget yet, such as other structs; those can't be
-/// dragged.
+/// module states, Chassis Speeds for a ChassisSpeeds, and a Struct for
+/// any other struct. `None` for types with no widget (raw bytes, schemas);
+/// those can't be dragged.
 ///
 /// ```
 /// use raptaboard::widgets::type_for_topic;
@@ -408,7 +410,8 @@ pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
 /// assert_eq!(type_for_topic("struct:Rotation3d"), Some("3D Pose"));
 /// assert_eq!(type_for_topic("struct:SwerveModuleState[]"), Some("SwerveDrive"));
 /// assert_eq!(type_for_topic("struct:ChassisSpeeds"), Some("Chassis Speeds"));
-/// assert_eq!(type_for_topic("struct:ArmState"), None);
+/// assert_eq!(type_for_topic("struct:ArmState"), Some("Struct"));
+/// assert_eq!(type_for_topic("raw"), None);
 /// ```
 pub fn type_for_topic(nt_type: &str) -> Option<&'static str> {
     TYPES
@@ -453,7 +456,7 @@ pub fn type_for_table(table_type: &str) -> Option<&'static str> {
 /// assert_eq!(w.widget_type, "Boolean Box");
 /// assert_eq!(w.topic(), Some("/Drive/Health/allModulesHealthy"));
 /// assert_eq!(w.period(), Some(0.06));
-/// assert!(for_topic("/Arm/state", "struct:ArmState", None, at).is_none());
+/// assert!(for_topic("/Arm/bytes", "raw", None, at).is_none());
 /// ```
 pub fn for_topic(
     name: &str,
