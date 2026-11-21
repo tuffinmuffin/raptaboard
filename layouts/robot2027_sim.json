@@ -1118,7 +1118,9 @@
               "period": 0.02,
               "data_type": "struct:SwerveModuleState[]",
               "setpoint_topic": "/Drive/SetpointStates",
-              "heading_topic": "/Drive/Pose"
+              "heading_topic": "/Drive/Pose",
+              "speeds_topic": "/Drive/MeasuredSpeeds",
+              "speeds_setpoint_topic": "/Drive/CommandedSpeeds"
             }
           },
           {

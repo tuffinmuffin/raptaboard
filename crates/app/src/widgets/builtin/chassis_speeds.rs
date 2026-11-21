@@ -13,9 +13,7 @@
 //! sets the heading. The measured and requested numbers are written below
 //! the robot in their colors when the card has room.
 
-use std::f32::consts::PI;
-
-use eframe::egui::{self, Color32, Rect, Sense, Stroke};
+use eframe::egui::{self, Color32, Rect, Sense};
 use nt4::Value;
 use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
@@ -24,7 +22,7 @@ use super::swerve::{HEADING_TOPIC, MAX_SPEED, SETPOINT_TOPIC};
 use crate::tree::DraggedTopic;
 use crate::types::angle;
 use crate::types::motion::{self, Motion};
-use crate::widgets::shared::robot_view::{MEASURED, REQUESTED, RobotView, arrow, spin_arrow};
+use crate::widgets::shared::robot_view::{MEASURED, REQUESTED, RobotView, motion_arrows};
 use crate::widgets::shared::{card, props};
 use crate::widgets::{Live, Server, ValueInfo, WidgetType};
 
@@ -37,11 +35,7 @@ const KEYS: [&str; 4] = [SETPOINT_TOPIC, HEADING_TOPIC, MAX_SPEED, MAX_SPIN];
 const DEFAULT_MAX_SPEED: f64 = 4.5;
 /// A three-quarter turn's spin when `max_spin` isn't set, degrees per
 /// second (a full turn a second).
-const DEFAULT_MAX_SPIN: f64 = 360.0;
-/// Slower than this (m/s), no velocity arrow; slower spin than this
-/// (degrees per second), no spin arrow.
-const STILL_MPS: f64 = 0.02;
-const STILL_DPS: f64 = 1.0;
+pub(crate) const DEFAULT_MAX_SPIN: f64 = 360.0;
 
 /// Size of the numbers, points.
 const TEXT_SIZE: f32 = 11.0;
@@ -102,34 +96,29 @@ fn draw(
     let robot = RobotView::fit(rect, 0.36, shown.heading);
     robot.draw_frame(painter, visuals);
     let reach = rect.width().min(rect.height()) * 0.42;
-    let draw_one = |m: &Motion, color, dashed: bool, ring: f32| {
-        let width = if dashed { 2.0 } else { 3.0 };
-        let stroke = Stroke::new(width, color);
-        if m.speed() >= STILL_MPS {
-            let length = (m.speed() / max_speed).min(1.2) as f32 * reach;
-            let way = m.vy.atan2(m.vx) as f32;
-            arrow(
-                painter,
-                robot.center,
-                robot.dir(way),
-                length,
-                stroke,
-                dashed,
-            );
-        }
-        if let Some(omega) = m.omega
-            && omega.to_degrees().abs() >= STILL_DPS
-        {
-            let sweep = (omega.to_degrees() / max_spin * 1.5 * f64::from(PI))
-                .clamp(-1.75 * f64::from(PI), 1.75 * f64::from(PI)) as f32;
-            spin_arrow(painter, &robot, robot.half * ring, sweep, stroke, dashed);
-        }
-    };
     if let Some(m) = &shown.requested {
-        draw_one(m, REQUESTED, true, 1.85);
+        motion_arrows(
+            painter,
+            &robot,
+            m,
+            true,
+            reach,
+            robot.half * 1.85,
+            max_speed,
+            max_spin,
+        );
     }
     if let Some(m) = &shown.measured {
-        draw_one(m, MEASURED, false, 1.6);
+        motion_arrows(
+            painter,
+            &robot,
+            m,
+            false,
+            reach,
+            robot.half * 1.6,
+            max_speed,
+            max_spin,
+        );
     }
 }
 
@@ -143,7 +132,7 @@ fn rounded(n: f64, places: usize) -> String {
 }
 
 /// A motion for the summary: `forward 1.00 m/s, left 0.50 m/s, spin 30°/s`.
-fn motion_text(m: &Motion) -> String {
+pub(crate) fn motion_text(m: &Motion) -> String {
     let mut text = format!(
         "forward {} m/s, left {} m/s",
         rounded(m.vx, 2),

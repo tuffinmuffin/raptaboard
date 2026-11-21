@@ -110,7 +110,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   robot-relative), each from a topic; `attachments.rs` cameras' views and parts fixed to the robot; `target.rs` click to publish a target,
   through `Effect::PublishStruct` and `NtConnection::publish_struct`), Gyro (`builtin/gyro.rs`: a Rotation2d or Rotation3d struct topic, a number of
   degrees or a WPILib `Gyro` table, read by `types/angle.rs`), SwerveDrive (`builtin/swerve.rs`: a `SwerveModuleState[]` with
-  requested states and a heading from other topics, or Elastic's `SwerveDrive` table, read by `types/swerve.rs`), Chassis Speeds (`builtin/chassis_speeds.rs`: a
+  requested states, the whole robot's `ChassisSpeeds` (measured and requested) and a heading from other topics, or Elastic's `SwerveDrive` table, read by `types/swerve.rs`), Chassis Speeds (`builtin/chassis_speeds.rs`: a
   `ChassisSpeeds` or `Translation2d` as velocity and spin arrows, with requested speeds and a heading, read by `types/motion.rs`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
   from `show`, and `Place::locked` says whether their input covers the whole card; `show_body` is
   the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
@@ -172,7 +172,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   field positions) and `SeenFuel` (the balls ahead, robot-relative: each ring should land on a ball), with Robot-2026's two
   cameras and an intake (on `IntakeDeployed`, reaching `IntakeExtensionIn` inches) attached to the robot. Below them, two Gyros: one on `OrbitHeading` (a Rotation2d) and one on the `Gyro` table (degrees,
   clockwise), which should read the same, and two swerve views: `ModuleStates` (spinning) and robot-2027's
-  drivetrain, `/Drive/MeasuredStates` against `/Drive/SetpointStates`, turned by `/Drive/Pose`. Beside the red-side Field, a Chassis Speeds on `/Drive/MeasuredSpeeds` against
+  drivetrain, `/Drive/MeasuredStates` against `/Drive/SetpointStates` with `/Drive/MeasuredSpeeds` against
+  `/Drive/CommandedSpeeds`, turned by `/Drive/Pose`. Beside the red-side Field, a Chassis Speeds on `/Drive/MeasuredSpeeds` against
   `/Drive/CommandedSpeeds` (the keyboard joystick can't spin the sim drivetrain: rotation is Xbox axis 4
   and it has three axes), and one on robot-2027's scripted `/DashTest/CommandedSpeeds` against
   `MeasuredSpeeds`, which lag 0.3 s and reach 90% of the speed and 80% of the spin. Its Alerts tab shows robot-2027's alerts (its

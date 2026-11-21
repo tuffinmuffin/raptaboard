@@ -32,7 +32,7 @@ const CARD: LayoutRect = LayoutRect {
 };
 
 #[test]
-fn module_states_show_with_the_requested_ones_and_the_heading() {
+fn module_states_show_with_the_requested_ones_the_robots_motion_and_the_heading() {
     let robot = Robot::start();
     let requested = robot._server.publish_generic(
         "/Drive/requested",
@@ -57,11 +57,27 @@ fn module_states_show_with_the_requested_ones_and_the_heading() {
     swerve
         .properties
         .insert("heading_topic".into(), json!("/Drive/pose"));
+    // The whole robot's motion: the test server's speeds (1.5 m/s forward,
+    // 0.5 right, 0.5 rad/s), and requested speeds.
+    let commanded = robot._server.publish_generic(
+        "/Drive/commanded",
+        "struct:ChassisSpeeds".parse().unwrap(),
+        nt4::Properties::new(),
+    );
+    commanded.set(doubles(&[2.0, 0.0, 0.0])).unwrap();
+    swerve
+        .properties
+        .insert("speeds_topic".into(), json!("/Drive/speeds"));
+    swerve
+        .properties
+        .insert("speeds_setpoint_topic".into(), json!("/Drive/commanded"));
     let mut harness = swerve_harness(&robot, swerve);
     labelled_soon(
         &mut harness,
         "Swerve: FL 3.00 m/s at 6°, FR 4.00 m/s at 11°; \
-         requested FL 3.50 m/s at 0°, FR -1.00 m/s at 11°; heading 43°",
+         requested FL 3.50 m/s at 0°, FR -1.00 m/s at 11°; \
+         robot forward 1.50 m/s, left -0.50 m/s, spin 29°/s; \
+         robot requested forward 2.00 m/s, left 0.00 m/s, spin 0°/s; heading 43°",
     );
 }
 

@@ -8,6 +8,8 @@ use std::f32::consts::PI;
 
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
 
+use crate::types::motion::Motion;
+
 /// Measured values' color (Material blue 500).
 pub const MEASURED: Color32 = Color32::from_rgb(0x21, 0x96, 0xF3);
 /// Requested values' color (Material orange 500).
@@ -127,19 +129,21 @@ pub fn arrow(
 }
 
 /// A curved arrow round `robot` at `radius` points from its center, for
-/// spin: from the robot's front, `sweep` radians round (counterclockwise
-/// when positive), dashed for a requested value.
+/// spin: from `from` (radians counterclockwise from the robot's front),
+/// `sweep` radians round (counterclockwise when positive), dashed for a
+/// requested value.
 pub fn spin_arrow(
     painter: &egui::Painter,
     robot: &RobotView,
     radius: f32,
+    from: f32,
     sweep: f32,
     stroke: Stroke,
     dashed: bool,
 ) {
     let steps = ((sweep.abs() / 0.08).ceil() as usize).max(2);
     let points: Vec<Pos2> = (0..=steps)
-        .map(|i| robot.center + robot.dir(sweep * i as f32 / steps as f32) * radius)
+        .map(|i| robot.center + robot.dir(from + sweep * i as f32 / steps as f32) * radius)
         .collect();
     if dashed {
         painter.extend(egui::Shape::dashed_line(&points, stroke, 5.0, 3.0));
@@ -147,8 +151,70 @@ pub fn spin_arrow(
         painter.add(egui::Shape::line(points.clone(), stroke));
     }
     // The head points along the circle, the way it turns.
-    let along = robot.dir(sweep + sweep.signum() * PI / 2.0);
+    let along = robot.dir(from + sweep + sweep.signum() * PI / 2.0);
     head(painter, points[steps], along, 8.0, stroke);
+}
+
+/// Slower than this (m/s), a motion draws no velocity arrow.
+const STILL_MPS: f64 = 0.02;
+/// Slower spin than this (degrees per second), no spin arrow.
+const STILL_DPS: f64 = 1.0;
+
+/// Draw a robot's motion `m` on `robot`: an arrow from its center for its
+/// velocity (`reach` points long at `max_speed` m/s) and an arc round it,
+/// `arc` points from the center, for its spin (three-quarters of a turn at
+/// `max_spin` degrees per second), centered behind the way it's going.
+/// Requested motion draws dashed in
+/// [`REQUESTED`], measured solid in [`MEASURED`].
+#[allow(clippy::too_many_arguments)]
+pub fn motion_arrows(
+    painter: &egui::Painter,
+    robot: &RobotView,
+    m: &Motion,
+    requested: bool,
+    reach: f32,
+    arc: f32,
+    max_speed: f64,
+    max_spin: f64,
+) {
+    let (color, width) = if requested {
+        (REQUESTED, 2.0)
+    } else {
+        (MEASURED, 3.0)
+    };
+    let stroke = Stroke::new(width, color);
+    let moving = m.speed() >= STILL_MPS;
+    let way = m.vy.atan2(m.vx) as f32;
+    if moving {
+        let length = (m.speed() / max_speed.max(0.1)).min(1.2) as f32 * reach;
+        arrow(
+            painter,
+            robot.center,
+            robot.dir(way),
+            length,
+            stroke,
+            requested,
+        );
+    }
+    if let Some(omega) = m.omega
+        && omega.to_degrees().abs() >= STILL_DPS
+    {
+        let most = 1.75 * f64::from(PI);
+        let sweep = (omega.to_degrees() / max_spin.max(1.0) * 1.5 * f64::from(PI))
+            .clamp(-most, most) as f32;
+        // Centered behind the way it's going, so it stays clear of the
+        // velocity arrow; from the front when it only spins.
+        let middle = if moving { way + PI } else { sweep / 2.0 };
+        spin_arrow(
+            painter,
+            robot,
+            arc,
+            middle - sweep / 2.0,
+            sweep,
+            stroke,
+            requested,
+        );
+    }
 }
 
 #[cfg(test)]
