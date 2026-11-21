@@ -469,6 +469,22 @@ fn right_click_row(harness: &mut Harness, label: &str, nth: usize) {
     );
 }
 
+/// Add the `nth` tree row labelled `label` as a `type_name` widget, from
+/// its right-click menu's "Add as" (the menu's button, not a widget on the
+/// grid with that title).
+fn add_as(harness: &mut Harness, label: &str, nth: usize, type_name: &str) {
+    use egui_kittest::kittest::NodeT;
+    right_click_row(harness, label, nth);
+    harness.get_by_label("Add as").hover();
+    settle(harness);
+    harness
+        .query_all_by_label(type_name)
+        .find(|n| n.accesskit_node().role() == egui::accesskit::Role::Button)
+        .unwrap_or_else(|| panic!("no \"{type_name}\" in the Add as menu"))
+        .click();
+    settle(harness);
+}
+
 /// Click at `pos` with `button`, holding `modifiers`.
 fn click_at(harness: &mut Harness, pos: Pos2, button: egui::PointerButton, modifiers: Modifiers) {
     harness.hover_at(pos);

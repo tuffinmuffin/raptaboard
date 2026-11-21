@@ -237,8 +237,10 @@ impl WidgetType for ChassisSpeeds {
         &["Chassis Speeds"]
     }
 
-    fn accepts(&self, nt_type: &str) -> bool {
-        motion::is_motion_type(nt_type) && !nt_type.contains("Translation2d")
+    /// Not a default: speeds dragged from the tree make a Struct; "Add as"
+    /// in the tree's menu makes Chassis Speeds.
+    fn accepts(&self, _: &str) -> bool {
+        false
     }
 
     fn shows(&self, nt_type: &str) -> bool {
@@ -457,8 +459,8 @@ mod tests {
             ChassisSpeeds.extra_topics(&w.properties, Server::default()),
             ["/Drive/Measured", "/Drive/Commanded", "/Drive/Pose"]
         );
-        assert!(ChassisSpeeds.accepts("struct:ChassisVelocities"));
-        assert!(!ChassisSpeeds.accepts("struct:Translation2d"));
+        assert!(ChassisSpeeds.shows("struct:ChassisVelocities"));
+        assert!(!ChassisSpeeds.accepts("struct:ChassisSpeeds"));
         assert!(ChassisSpeeds.shows("struct:Translation2d"));
     }
 }

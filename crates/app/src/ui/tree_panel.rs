@@ -140,8 +140,15 @@ impl DashboardApp {
 
     /// Make widgets for `topics` on the open tab, one cell each, where `to`
     /// says: free spots nearest the tab's top left, the end of a list, or a
-    /// new list. The status line says what happened.
-    pub(super) fn add_topics(&mut self, topics: &[crate::tree::DraggedTopic], to: AddTo) {
+    /// new list; as the type `as_type` ("Add as") if given, set up as the
+    /// settings dialog sets up a type picked there, else each topic's
+    /// default. The status line says what happened.
+    pub(super) fn add_topics(
+        &mut self,
+        topics: &[crate::tree::DraggedTopic],
+        to: AddTo,
+        as_type: Option<&str>,
+    ) {
         let cell = f64::from(self.layout.grid_size());
         let one = LayoutRect {
             x: 0.0,
@@ -149,9 +156,23 @@ impl DashboardApp {
             width: cell,
             height: cell,
         };
+        let all_topics = self.topic_list();
         let made: Vec<WidgetContainer> = topics
             .iter()
-            .filter_map(|t| widgets::for_topic(&t.name, &t.ty, t.field.as_ref(), one))
+            .filter_map(|t| {
+                let Some(as_type) = as_type else {
+                    return widgets::for_topic(&t.name, &t.ty, t.field.as_ref(), one);
+                };
+                let mut w = widgets::for_topic_as(&t.name, &t.ty, t.field.as_ref(), one, as_type)?;
+                let (nt_type, field) = self.value_facts(&w);
+                let value = widgets::ValueInfo {
+                    nt_type: nt_type.as_deref().or(Some(t.ty.as_str())),
+                    field: field.as_ref(),
+                    topics: &all_topics,
+                };
+                widgets::find(as_type)?.chosen(&mut w.properties, value);
+                Some(w)
+            })
             .collect();
         let wanted = made.len();
         let room = self.grid.room;

@@ -319,14 +319,15 @@ impl WidgetType for Pose3dView {
         &["3D Pose"]
     }
 
-    /// A Pose3d makes a Field (earlier in the list); the rest make this.
-    fn accepts(&self, nt_type: &str) -> bool {
-        pose3d::is_pose3_type(nt_type)
+    /// Not a default: a struct dragged from the tree makes a Struct; "Add
+    /// as" in the tree's menu makes a 3D Pose.
+    fn accepts(&self, _: &str) -> bool {
+        false
     }
 
     /// A Pose2d too, flat on the floor.
     fn shows(&self, nt_type: &str) -> bool {
-        self.accepts(nt_type) || nt_type == "struct:Pose2d"
+        pose3d::is_pose3_type(nt_type) || nt_type == "struct:Pose2d"
     }
 
     fn show(
@@ -412,6 +413,7 @@ mod tests {
         };
         assert_eq!(summary("R", Some(&turn)), "R: roll 0°, pitch 0°, yaw 45°");
         assert_eq!(summary("N", None), "N: no pose");
-        assert!(Pose3dView.accepts("struct:Rotation3d") && Pose3dView.accepts("struct:Quaternion"));
+        assert!(Pose3dView.shows("struct:Rotation3d") && Pose3dView.shows("struct:Quaternion"));
+        assert!(!Pose3dView.accepts("struct:Rotation3d"));
     }
 }

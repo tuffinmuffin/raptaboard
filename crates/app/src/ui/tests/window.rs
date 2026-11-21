@@ -170,16 +170,16 @@ fn topics_from_the_tree_menu_go_to_the_grid_a_list_or_a_new_list() {
     let grid = |app: &DashboardApp| app.layout.tabs[0].grid_layout.clone();
     let (widgets, lists) = (grid(&app).containers.len(), grid(&app).layouts.len());
 
-    app.add_topics(&picked, AddTo::Grid);
+    app.add_topics(&picked, AddTo::Grid, None);
     frame(&ctx, &mut app, vec![]);
     assert_eq!(grid(&app).containers.len(), widgets + 2);
 
     let children = grid(&app).layouts[0].children.len();
-    app.add_topics(&picked, AddTo::List(0));
+    app.add_topics(&picked, AddTo::List(0), None);
     frame(&ctx, &mut app, vec![]);
     assert_eq!(grid(&app).layouts[0].children.len(), children + 2);
 
-    app.add_topics(&picked, AddTo::NewList);
+    app.add_topics(&picked, AddTo::NewList, None);
     frame(&ctx, &mut app, vec![]);
     assert_eq!(grid(&app).layouts.len(), lists + 1);
     assert_eq!(grid(&app).layouts[lists].children.len(), 2);

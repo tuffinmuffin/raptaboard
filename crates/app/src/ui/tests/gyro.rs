@@ -77,7 +77,7 @@ fn a_number_and_a_gyro_table_show_their_degrees() {
 }
 
 #[test]
-fn a_rotation2d_drags_from_the_tree_as_a_gyro() {
+fn a_rotation2d_drags_as_a_struct_and_adds_as_a_gyro() {
     let robot = Robot::start();
     let _heading = heading_topic(&robot, 1.0);
     let mut harness = harness_for(&robot);
@@ -91,6 +91,12 @@ fn a_rotation2d_drags_from_the_tree_as_a_gyro() {
         Pos2::new(1700.0, 1150.0),
     );
     assert_eq!(widgets(&harness).len(), before + 1);
+    let made = widgets(&harness).pop().unwrap();
+    // A whole struct drags out as a Struct (decided with the user
+    // 2026-11-21); "Add as" makes the Gyro.
+    assert_eq!(made.widget_type, "Struct");
+    add_as(&mut harness, "heading  Rotation2d", 0, "Gyro");
+    assert_eq!(widgets(&harness).len(), before + 2);
     let made = widgets(&harness).pop().unwrap();
     assert_eq!(made.widget_type, "Gyro");
     assert_eq!(made.topic(), Some("/Drive/heading"));

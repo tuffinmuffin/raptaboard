@@ -396,21 +396,19 @@ pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
 
 /// The widget type name to make for a topic dropped on the grid, by its NT
 /// type string: a Boolean Box for booleans, a Text Display for numbers,
-/// strings and arrays of them, a Field for a Pose2d or Pose3d, a Gyro
-/// for a Rotation2d, a 3D Pose for a Rotation3d, a SwerveDrive for swerve
-/// module states, Chassis Speeds for a ChassisSpeeds, and a Struct for
-/// any other struct. `None` for types with no widget (raw bytes, schemas);
-/// those can't be dragged.
+/// strings and arrays of them, a Struct for any whole struct (decided with
+/// the user 2026-11-21: the Field, Gyro, 3D Pose, swerve view and Chassis
+/// Speeds are picked from the tree's "Add as" menu, [`types_showing`]).
+/// `None` for types with no widget (raw bytes, schemas); those can't be
+/// dragged.
 ///
 /// ```
 /// use raptaboard::widgets::type_for_topic;
 /// assert_eq!(type_for_topic("boolean"), Some("Boolean Box"));
 /// assert_eq!(type_for_topic("double"), Some("Text Display"));
-/// assert_eq!(type_for_topic("struct:Pose2d"), Some("Field"));
-/// assert_eq!(type_for_topic("struct:Rotation2d"), Some("Gyro"));
-/// assert_eq!(type_for_topic("struct:Rotation3d"), Some("3D Pose"));
-/// assert_eq!(type_for_topic("struct:SwerveModuleState[]"), Some("SwerveDrive"));
-/// assert_eq!(type_for_topic("struct:ChassisSpeeds"), Some("Chassis Speeds"));
+/// // Every whole struct makes a Struct; "Add as" offers the rest.
+/// assert_eq!(type_for_topic("struct:Pose2d"), Some("Struct"));
+/// assert_eq!(type_for_topic("struct:SwerveModuleState[]"), Some("Struct"));
 /// assert_eq!(type_for_topic("struct:ArmState"), Some("Struct"));
 /// assert_eq!(type_for_topic("raw"), None);
 /// ```
@@ -466,16 +464,39 @@ pub fn for_topic(
     field: Option<&StructMeta>,
     rect: LayoutRect,
 ) -> Option<WidgetContainer> {
-    // A table (`nt_type` is its `.type`) is saved with no data type, as
-    // Elastic saves one.
-    let (widget_type, table) = match type_for_topic(nt_type) {
-        Some(ty) => (ty, false),
-        None => (type_for_table(nt_type)?, true),
-    };
+    let widget_type = type_for_topic(nt_type).or_else(|| type_for_table(nt_type))?;
+    for_topic_as(name, nt_type, field, rect, widget_type)
+}
+
+/// Like [`for_topic`], as the widget type `widget_type` (one of
+/// [`types_showing`]'s), with that type's update period. `None` if there's
+/// no such type.
+///
+/// ```
+/// use raptaboard::widgets::for_topic_as;
+/// use raptaboard_layout::Rect;
+/// let at = Rect { x: 0.0, y: 0.0, width: 128.0, height: 128.0 };
+/// let w = for_topic_as("/Drive/pose", "struct:Pose2d", None, at, "Field").unwrap();
+/// assert_eq!(w.widget_type, "Field");
+/// assert_eq!(w.properties["data_type"], "struct:Pose2d");
+/// let g = for_topic_as("/Arm/angle", "double", None, at, "Graph").unwrap();
+/// assert!(g.period().unwrap() < 0.06, "a graph's own period");
+/// ```
+pub fn for_topic_as(
+    name: &str,
+    nt_type: &str,
+    field: Option<&StructMeta>,
+    rect: LayoutRect,
+    widget_type: &str,
+) -> Option<WidgetContainer> {
+    let ty = find(widget_type)?;
+    // A table (`nt_type` is its `.type`, which no type shows as a value) is
+    // saved with no data type, as Elastic saves one.
+    let table = !TYPES.iter().any(|t| t.shows(nt_type)) && ty.table_types().contains(&nt_type);
     let title = source_title(name, field);
     let mut properties = Map::new();
     properties.insert("topic".into(), name.into());
-    properties.insert(props::PERIOD.into(), props::DEFAULT_PERIOD_S.into());
+    properties.insert(props::PERIOD.into(), ty.default_period().into());
     if !table {
         properties.insert(props::DATA_TYPE.into(), nt_type.into());
     }
@@ -485,10 +506,32 @@ pub fn for_topic(
     Some(WidgetContainer {
         title,
         rect,
-        widget_type: widget_type.to_owned(),
+        widget_type: ty.names()[0].to_owned(),
         properties,
         extra: Map::new(),
     })
+}
+
+/// The widget types that can show a topic of NT type `nt_type` (or a table
+/// whose `.type` it is), the one it makes by default first: what the
+/// tree's "Add as" menu offers.
+///
+/// ```
+/// use raptaboard::widgets::types_showing;
+/// let pose = types_showing("struct:Pose2d");
+/// assert_eq!(pose[0], "Struct");
+/// assert!(pose.contains(&"Field") && pose.contains(&"3D Pose"));
+/// assert_eq!(types_showing("String Chooser")[0], "Dropdown Chooser");
+/// assert!(types_showing("raw").is_empty());
+/// ```
+pub fn types_showing(nt_type: &str) -> Vec<&'static str> {
+    let default = type_for_topic(nt_type).or_else(|| type_for_table(nt_type));
+    let others = TYPES
+        .iter()
+        .filter(|t| t.shows(nt_type) || t.table_types().contains(&nt_type))
+        .map(|t| t.names()[0])
+        .filter(|name| Some(*name) != default);
+    default.into_iter().chain(others).collect()
 }
 
 /// The title a widget gets from what it shows: the last part of the topic

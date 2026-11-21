@@ -99,7 +99,7 @@ fn a_translation2d_shows_as_a_velocity_with_no_spin() {
 }
 
 #[test]
-fn speeds_drag_from_the_tree_as_chassis_speeds() {
+fn speeds_drag_as_a_struct_and_add_as_chassis_speeds() {
     let robot = Robot::start();
     let mut harness = harness_for(&robot);
     open(&mut harness, "Drive  (");
@@ -112,6 +112,12 @@ fn speeds_drag_from_the_tree_as_chassis_speeds() {
         Pos2::new(1700.0, 1150.0),
     );
     assert_eq!(widgets(&harness).len(), before + 1);
+    let made = widgets(&harness).pop().unwrap();
+    // A whole struct drags out as a Struct (decided with the user
+    // 2026-11-21); "Add as" makes the Chassis Speeds.
+    assert_eq!(made.widget_type, "Struct");
+    add_as(&mut harness, "speeds  ChassisSpeeds", 0, "Chassis Speeds");
+    assert_eq!(widgets(&harness).len(), before + 2);
     let made = widgets(&harness).pop().unwrap();
     assert_eq!(made.widget_type, "Chassis Speeds");
     assert_eq!(made.topic(), Some("/Drive/speeds"));

@@ -308,7 +308,14 @@ impl WidgetType for SwerveDrive {
         &["SwerveDrive"]
     }
 
-    fn accepts(&self, nt_type: &str) -> bool {
+    /// Not a default for a topic: module states dragged from the tree make
+    /// a Struct; "Add as" in the tree's menu makes a swerve view. (Elastic's
+    /// table still makes one.)
+    fn accepts(&self, _: &str) -> bool {
+        false
+    }
+
+    fn shows(&self, nt_type: &str) -> bool {
         swerve::is_module_array(nt_type)
     }
 

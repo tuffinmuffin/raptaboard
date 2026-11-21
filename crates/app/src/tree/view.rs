@@ -75,6 +75,28 @@ fn selectable_row(
             if ui.button(label).clicked() {
                 sel.add = group.clone();
             }
+            // Any widget type that can show all of them (a Pose2d as a
+            // Field or a 3D Pose, a number as a Graph), the default first.
+            let choices: Vec<&'static str> = group.first().map_or_else(Vec::new, |first| {
+                widgets::types_showing(&first.ty)
+                    .into_iter()
+                    .filter(|name| {
+                        group
+                            .iter()
+                            .all(|t| widgets::types_showing(&t.ty).contains(name))
+                    })
+                    .collect()
+            });
+            if choices.len() > 1 {
+                ui.menu_button("Add as", |ui| {
+                    for name in choices {
+                        if ui.button(name).clicked() {
+                            sel.add = group.clone();
+                            sel.add_as = Some(name);
+                        }
+                    }
+                });
+            }
             let lists = sel.lists.clone();
             ui.menu_button("Add to list", |ui| {
                 if ui

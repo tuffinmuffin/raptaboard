@@ -625,7 +625,8 @@ impl DashboardApp {
         // free spots nearest the top left of the open tab.
         let add = std::mem::take(&mut self.tree.selection.add);
         if !add.is_empty() && !self.locked {
-            self.add_topics(&add, self.tree.selection.add_to);
+            let (to, as_type) = (self.tree.selection.add_to, self.tree.selection.add_as);
+            self.add_topics(&add, to, as_type);
         }
         self.record_traces(&topics);
         let now = Instant::now();

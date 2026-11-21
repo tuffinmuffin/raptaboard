@@ -83,6 +83,9 @@ pub struct TreeSelection {
     pub add: Vec<DraggedTopic>,
     /// Where [`TreeSelection::add`] goes.
     pub add_to: AddTo,
+    /// The widget type "Add as" picked for [`TreeSelection::add`], if not
+    /// the one each topic makes by default.
+    pub add_as: Option<&'static str>,
     /// Names of the open tab's List Layouts, for the "Add to list" menu.
     /// The window sets these before drawing the tree.
     pub lists: Vec<String>,
@@ -215,6 +218,7 @@ impl TreeSelection {
         self.drawing.clear();
         self.add.clear();
         self.add_to = AddTo::Grid;
+        self.add_as = None;
     }
 
     /// Call after drawing the tree each frame.

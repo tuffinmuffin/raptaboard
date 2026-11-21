@@ -87,7 +87,7 @@ fn a_field2d_table_places_the_robot_from_its_robot_array() {
 }
 
 #[test]
-fn a_pose2d_drags_from_the_tree_as_a_field_and_still_opens() {
+fn a_pose2d_drags_as_a_struct_adds_as_a_field_and_still_opens() {
     let robot = Robot::start();
     let mut harness = harness_for(&robot);
     // Clicking the struct's row still opens it into its fields.
@@ -97,6 +97,12 @@ fn a_pose2d_drags_from_the_tree_as_a_field_and_still_opens() {
     let before = widgets(&harness).len();
     drag_row(&mut harness, "pose  Pose2d", 0, Pos2::new(1700.0, 1150.0));
     assert_eq!(widgets(&harness).len(), before + 1);
+    let made = widgets(&harness).pop().unwrap();
+    // A whole struct drags out as a Struct (decided with the user
+    // 2026-11-21); "Add as" makes the Field.
+    assert_eq!(made.widget_type, "Struct");
+    add_as(&mut harness, "pose  Pose2d", 0, "Field");
+    assert_eq!(widgets(&harness).len(), before + 2);
     let made = widgets(&harness).pop().unwrap();
     assert_eq!(made.widget_type, "Field");
     assert_eq!(made.topic(), Some("/Drive/pose"));

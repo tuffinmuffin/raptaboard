@@ -200,3 +200,29 @@ fn the_right_click_menu_adds_the_selection_and_locking_stops_it() {
     drag_row(&mut harness, "y", 0, Pos2::new(1500.0, 1150.0));
     assert_eq!(count(&harness), before);
 }
+
+#[test]
+fn add_as_makes_any_type_that_shows_the_topic_and_sets_it_up() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    open(&mut harness, "Test  (");
+    let widgets = |h: &Harness| h.state().layout.tabs[0].grid_layout.containers.clone();
+    let before = widgets(&harness).len();
+    // A string topic as an Enum Dropdown: set up as the settings dialog
+    // sets up a type picked there, its names found in /Test/modeOptions.
+    add_as(&mut harness, "mode", 0, "Enum Dropdown");
+    assert_eq!(widgets(&harness).len(), before + 1);
+    let made = widgets(&harness).pop().unwrap();
+    assert_eq!(made.widget_type, "Enum Dropdown");
+    assert_eq!(made.topic(), Some("/Test/mode"));
+    assert_eq!(made.properties["enum_source"], "topic");
+    assert_eq!(made.properties["options_topic"], "/Test/modeOptions");
+    // A number as a Graph, with a graph's own update period.
+    add_as(&mut harness, "number", 0, "Graph");
+    let made = widgets(&harness).pop().unwrap();
+    assert_eq!(made.widget_type, "Graph");
+    assert_eq!(
+        made.period(),
+        crate::widgets::find("Graph").map(|g| g.default_period())
+    );
+}

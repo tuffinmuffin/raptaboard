@@ -95,7 +95,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   the server's `/.schema/` topics (`nt4::proto::structs::StructDatabase` + `DynamicStruct`);
   `types::format_number`; more custom data structures go here), `alert_history.rs` the alert history (every
   group from connect, count-based; its panel and top-bar button are `ui/alert_history_panel.rs`), `tree/` the read-only NT tree (`mod.rs` building it, `selection.rs` row picking in
-  `TreeSelection` and the drag payload `DraggedTopics`, `view.rs` drawing, `format.rs` short value text;
+  `TreeSelection` and the drag payload `DraggedTopics`, `view.rs` drawing and the right-click menu (Add to grid, Add as ▸
+  any type that shows the row via `widgets::types_showing`, Add to list), `format.rs` short value text;
   values only for topics in open folders, via `NtConnection::watch_values`),
   `widgets/` the grid widgets,
   one file per type implementing `widgets::WidgetType` and listed in `widgets::TYPES`; `ui/` only talks to
@@ -114,7 +115,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `ChassisSpeeds` or `Translation2d` as velocity and spin arrows, with requested speeds and a heading, read by `types/motion.rs`), 3D Pose (`builtin/pose3d.rs`: a Pose3d, Transform3d,
   Rotation3d or Quaternion as turning X, Y, Z axes; drag to orbit the view; read by `types/pose3d.rs`), Struct
   (`builtin/struct_view.rs`: any other struct or struct array as its fields, the way the tree shows them; last in
-  `TYPES`), Mechanism2d (`builtin/mechanism.rs`: WPILib's `Mechanism2d` table, its ligaments drawn on its
+  `TYPES`; every whole struct dragged from the tree makes one, the Field, Gyro, 3D Pose, swerve view and Chassis
+  Speeds come from "Add as"), Mechanism2d (`builtin/mechanism.rs`: WPILib's `Mechanism2d` table, its ligaments drawn on its
   canvas, zoomed to what the mechanism has used (`fit`); read by `types/mechanism.rs`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`); writing widgets return the value to send
   from `show`, and `Place::locked` says whether their input covers the whole card; `show_body` is
   the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
