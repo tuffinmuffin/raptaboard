@@ -113,6 +113,8 @@ struct Running {
     // Topics this dashboard has written, each published once with the
     // type it was published with, and kept until the client restarts.
     publishers: HashMap<String, (NtType, GenericPublisher)>,
+    // Plays the robot state sounds as values arrive; ends with the client.
+    _state_sounds: crate::state_sounds::Task,
 }
 
 /// Why a value couldn't be written, said so the user knows what to do.
@@ -223,6 +225,8 @@ pub struct NtConnection {
     // Dropped after `running`, so the client stops inside a live runtime.
     running: Option<Running>,
     runtime: tokio::runtime::Runtime,
+    // What the robot state sound task plays, kept across clients.
+    state_sounds: crate::state_sounds::Shared,
 }
 
 impl NtConnection {
@@ -236,6 +240,7 @@ impl NtConnection {
         Ok(NtConnection {
             running: None,
             runtime,
+            state_sounds: Default::default(),
         })
     }
 
@@ -282,6 +287,8 @@ impl NtConnection {
             // Every value as it arrives; taken from before any subscription
             // can deliver one.
             let events = client.events();
+            let state_sounds =
+                crate::state_sounds::spawn(client.clone(), self.state_sounds.clone());
             self.running = Some(Running {
                 host: host.to_owned(),
                 port,
@@ -296,7 +303,30 @@ impl NtConnection {
                 traced_values: Watch::default(),
                 traced: HashSet::new(),
                 publishers: HashMap::new(),
+                _state_sounds: state_sounds,
             });
+        }
+    }
+
+    /// What the robot state sounds play, and on which player: the first
+    /// FMSInfo widget's [`Plan`](crate::state_sounds::Plan), or `None` for
+    /// no sounds. Cheap to call every frame. The sounds play on the
+    /// NetworkTables thread as values arrive, so they don't wait for the
+    /// window to draw; the last plan given stays in use meanwhile.
+    pub fn set_state_sounds(
+        &mut self,
+        plan: Option<(crate::state_sounds::Plan, crate::sound::SoundPlayer)>,
+    ) {
+        let Ok(mut shared) = self.state_sounds.lock() else {
+            return;
+        };
+        let same = match (&*shared, &plan) {
+            (None, None) => true,
+            (Some((a, pa)), Some((b, pb))) => a == b && pa.same_as(pb),
+            _ => false,
+        };
+        if !same {
+            *shared = plan;
         }
     }
 

@@ -12,7 +12,8 @@ SystemCore or the sim) and shows a live tree of every topic, WPILib structs incl
 onto the grid to make a widget. Widgets: Text Display, Boolean Box, Number Bar, Voltage View,
 Radial Gauge, Battery, Graph, Match Time, Single and Multi Color View, Toggle Switch and Button,
 Number Slider, Dropdown and Split Button Chooser, Enum Dropdown and Toggle, Field, Gyro, Swerve,
-Chassis Speeds, 3D Pose, Mechanism2d, Struct and Alerts (with an alert history); other Elastic
+Chassis Speeds, 3D Pose, Mechanism2d, Struct, Alerts (with an alert history) and FMSInfo (the
+robot's state and the match, with a sound for each change of state); other Elastic
 types show as placeholders for now. Plugins come next.
 
 ## Install
@@ -102,6 +103,10 @@ using Claude Code; it has the same rules.
 
 ## License
 
-MIT, see `LICENSE`. The app icon (`media/icon/`) and the built-in images (`images/`) are CC0. The
-built-in 2026 field image is WPILib's (`fields/LICENSE-WPILib.md`). Release packages include the
-licenses of the crates built into the program (`THIRD-PARTY-LICENSES.html`).
+MIT, see `LICENSE`. The app icon (`media/icon/`) and our own built-in images (`images/`) are CC0.
+raptaboard includes sounds, images and fields from others (credits in `media/audio/README.md`,
+`images/README.md` and `fields/README.md`; the built-in 2026 field image is WPILib's,
+`fields/LICENSE-WPILib.md`) and is built from open-source Rust crates (`licenses/`). The app lists
+them all under ⚙ Settings, "About and licenses", and release packages include the crates' license
+texts (`THIRD-PARTY-LICENSES.txt`). After changing dependencies, run
+`python3 scripts/crate_licenses.py`.

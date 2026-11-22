@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Autonomous: the robot thinking, a brain in a thought bubble. raptaboard, CC0 (see README.md). -->
+  <ellipse cx="44" cy="15" rx="18" ry="13" fill="#FFFFFF" stroke="#90A4AE" stroke-width="2"/>
+  <circle cx="27" cy="31" r="3" fill="#FFFFFF" stroke="#90A4AE" stroke-width="1.5"/>
+  <circle cx="22" cy="36" r="2" fill="#FFFFFF" stroke="#90A4AE" stroke-width="1.5"/>
+  <path d="M34 19 Q32 10 38 9 Q40 5 45 7 Q50 5 52 9 Q57 10 55 16 Q57 21 51 22 Q48 25 44 22 Q40 25 37 22 Q33 23 34 19 Z" fill="#F48FB1" stroke="#C2185B" stroke-width="1.5"/>
+  <path d="M44.5 8 V22 M39 13 Q42 14 41 17 M50 12 Q47 14 48 17" fill="none" stroke="#C2185B" stroke-width="1.3" stroke-linecap="round"/>
+  <line x1="14" y1="34" x2="14" y2="38" stroke="#607D8B" stroke-width="2"/>
+  <circle cx="14" cy="33" r="2.2" fill="#FFB300"/>
+  <rect x="4" y="38" width="20" height="13" rx="4" fill="#90A4AE"/>
+  <circle cx="10" cy="44.5" r="2.3" fill="#263238"/>
+  <circle cx="18" cy="44.5" r="2.3" fill="#263238"/>
+  <rect x="2" y="52" width="24" height="11" rx="4" fill="#78909C"/>
+</svg>

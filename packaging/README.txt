@@ -7,7 +7,8 @@ layouts, shows NetworkTables values as widgets, and saves layouts back.
   Project, help and newer versions: https://github.com/tuffinmuffin/raptaboard
   What's new:                        CHANGELOG.md
   License:                           LICENSE.txt (MIT); third-party licenses
-                                     in THIRD-PARTY-LICENSES.html
+                                     in THIRD-PARTY-LICENSES.txt, and in the
+                                     app: Settings (gear), About and licenses
 
 Starting it
 -----------

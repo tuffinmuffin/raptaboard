@@ -10,6 +10,7 @@ pub mod chooser;
 pub mod color_view;
 pub mod enums;
 pub mod field;
+pub mod fms_info;
 pub mod graph;
 pub mod gyro;
 pub mod match_time;

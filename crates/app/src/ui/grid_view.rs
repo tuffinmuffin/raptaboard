@@ -59,11 +59,15 @@ pub(super) fn draw_item(
 /// grid pixels into screen points and back.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct GridView {
-    /// The grid's area on screen, in points.
+    /// The whole grid's area, in screen points, scrolled: its top left is
+    /// the grid's origin, and it can reach past what's on screen.
     pub area: Rect,
+    /// The part of the grid on screen, in screen points.
+    pub visible: Rect,
     /// Grid cell size, in grid pixels.
     pub cell: f64,
-    /// The visible grid's width and height, in grid pixels.
+    /// How far right and down the grid shows, in grid pixels: drags and
+    /// new widgets stay within it.
     pub room: (f64, f64),
 }
 
@@ -126,12 +130,95 @@ impl DashboardApp {
     /// move widgets and their bottom-right corner to resize them. Drops snap
     /// to the grid and are refused if they would cover another widget.
     pub(super) fn grid(&mut self, ui: &mut egui::Ui, values: &HashMap<&str, &Value>, now: Instant) {
-        let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click());
+        let tab = self.current_tab;
+        let shown = ui.available_size();
+        let mut offset = self.grid.scroll.get(&tab).copied().unwrap_or_default();
+        // Dragging near an edge scrolls that way, and the grid grows a cell
+        // past what shows, so a widget can be dragged beyond the screen.
+        let dragging = !self.locked
+            && (self.grid.drag.is_some()
+                || self.grid.child_drag.is_some()
+                || egui::DragAndDrop::has_any_payload(ui.ctx()));
+        let push = if dragging {
+            edge_push(self.grid.visible, ui.ctx().pointer_hover_pos())
+        } else {
+            Vec2::ZERO
+        };
+        let dt = ui.ctx().input(|i| i.stable_dt).min(0.05);
+        if push != Vec2::ZERO {
+            offset = (offset + push * dt * EDGE_SCROLL_SPEED).max(Vec2::ZERO);
+            ui.ctx().request_repaint();
+        }
+        let cell = self.layout.grid_size() as f32;
+        // What showed last frame (the bars take some of `shown`).
+        let seen = if self.grid.visible.is_positive() {
+            self.grid.visible.size()
+        } else {
+            shown
+        };
+        // At least what shows (not counting the bars, or the grid would
+        // always be a bar's width wider and scroll a little), and as far as
+        // the widgets reach.
+        let mut content = seen.max(self.tab().map_or(Vec2::ZERO, |t| extent(&t.grid_layout)));
+        if dragging {
+            content = content.max(offset + seen + Vec2::splat(cell));
+        }
+        let mut scroll = egui::ScrollArea::both()
+            .id_salt(("grid", tab))
+            .auto_shrink([false, false]);
+        scroll = if self.locked {
+            // Locked for driving: the grid stays where it is, so a stray
+            // swipe can't move it, and there are no bars to grab.
+            scroll
+                .scroll_source(egui::scroll_area::ScrollSource::NONE)
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+        } else {
+            // Dragging moves widgets; only the bars and the wheel scroll.
+            scroll.scroll_source(egui::scroll_area::ScrollSource {
+                scroll_bar: true,
+                mouse_wheel: true,
+                ..egui::scroll_area::ScrollSource::NONE
+            })
+        };
+        if push != Vec2::ZERO {
+            scroll = scroll.scroll_offset(offset);
+        }
+        let out = ui
+            .scope(|ui| {
+                // Solid bars, so a grid that runs off screen shows it.
+                ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
+                scroll.show(ui, |ui| self.grid_content(ui, values, now, content))
+            })
+            .inner;
+        let now = out.state.clamped_offset();
+        // A widget being moved or resized keeps up with the grid scrolling
+        // under it (its drag counts pointer moves on screen).
+        if let Some(drag) = &mut self.grid.drag {
+            drag.moved += now - self.grid.scroll.get(&tab).copied().unwrap_or_default();
+        }
+        self.grid.scroll.insert(tab, now);
+        self.grid.visible = out.inner_rect;
+    }
+
+    /// The grid itself, `content` points big, inside its scroll area.
+    fn grid_content(
+        &mut self,
+        ui: &mut egui::Ui,
+        values: &HashMap<&str, &Value>,
+        now: Instant,
+        content: Vec2,
+    ) {
+        let (response, painter) = ui.allocate_painter(content, Sense::click());
         let area = response.rect;
+        let visible = ui.clip_rect().intersect(area);
         let view = GridView {
             area,
+            visible,
             cell: f64::from(self.layout.grid_size()),
-            room: (f64::from(area.width()), f64::from(area.height())),
+            room: (
+                f64::from(visible.max.x - area.min.x),
+                f64::from(visible.max.y - area.min.y),
+            ),
         };
         self.grid.area = area;
         let mut requests = Requests::default();
@@ -158,28 +245,7 @@ impl DashboardApp {
         }
         self.sampler = sampler.into_inner();
         for effect in effects.into_inner() {
-            match effect {
-                widgets::Effect::Tone(tone) => {
-                    if self.alert_sound {
-                        self.sound.play_tone(tone);
-                    }
-                }
-                widgets::Effect::Write { topic, value, ty } => {
-                    if let Err(why) = self.nt.write_or_publish(&topic, value, ty) {
-                        self.status = why.to_string();
-                    }
-                }
-                widgets::Effect::PublishStruct {
-                    topic,
-                    struct_name,
-                    bytes,
-                    schemas,
-                } => {
-                    if let Err(why) = self.nt.publish_struct(&topic, struct_name, bytes, schemas) {
-                        self.status = why.to_string();
-                    }
-                }
-            }
+            self.apply_effect(effect);
         }
         self.tree_drop(ui, &painter, view, &mut requests);
         // Any click on a widget finds it in the tree, locked or not, and
@@ -195,7 +261,7 @@ impl DashboardApp {
                         .or(ui.input(|i| i.pointer.interact_pos()))
                 })
                 .flatten()
-            && area.contains(pos)
+            && visible.contains(pos)
             && ui.ctx().layer_id_at(pos) == Some(ui.layer_id())
         {
             requests.find_quietly = self.widget_under(view, pos);
@@ -704,21 +770,60 @@ impl DashboardApp {
     }
 }
 
+/// How close to the grid's edge (points) a drag starts it scrolling.
+const EDGE: f32 = 40.0;
+/// How fast a drag at the very edge scrolls, points per second.
+const EDGE_SCROLL_SPEED: f32 = 900.0;
+
+/// Which way, and how hard (0 to 1 each way), a drag at `pointer` pushes
+/// the grid `visible` on screen to scroll: toward an edge it's within
+/// [`EDGE`] of, harder the closer.
+fn edge_push(visible: Rect, pointer: Option<Pos2>) -> Vec2 {
+    let Some(p) = pointer else {
+        return Vec2::ZERO;
+    };
+    if !visible.is_positive() || !visible.expand(EDGE).contains(p) {
+        return Vec2::ZERO;
+    }
+    let toward = |near_min: f32, near_max: f32| {
+        if near_max < EDGE {
+            1.0 - near_max.max(0.0) / EDGE
+        } else if near_min < EDGE {
+            -(1.0 - near_min.max(0.0) / EDGE)
+        } else {
+            0.0
+        }
+    };
+    Vec2::new(
+        toward(p.x - visible.min.x, visible.max.x - p.x),
+        toward(p.y - visible.min.y, visible.max.y - p.y),
+    )
+}
+
+/// How far right and down `grid`'s widgets and lists reach, in points.
+fn extent(grid: &raptaboard_layout::GridLayout) -> Vec2 {
+    grid::items(grid).iter().fold(Vec2::ZERO, |most, (_, r)| {
+        most.max(Vec2::new((r.x + r.width) as f32, (r.y + r.height) as f32))
+    })
+}
+
 /// The grid lines, one every cell across and down the grid's area.
 fn draw_lines(painter: &egui::Painter, visuals: &egui::Visuals, view: GridView) {
     let line = Stroke::new(
         GRID_LINE_WIDTH,
         visuals.weak_text_color().gamma_multiply(GRID_LINE_STRENGTH),
     );
-    let (area, step) = (view.area, view.cell as f32);
-    let mut x = 0.0;
-    while x <= area.width() {
-        painter.vline(area.min.x + x, area.y_range(), line);
+    // Only over the part on screen, lined up with the grid's origin.
+    let (area, shown, step) = (view.area, view.visible, view.cell as f32);
+    let first = |from: f32, origin: f32| origin + ((from - origin) / step).floor().max(0.0) * step;
+    let mut x = first(shown.min.x, area.min.x);
+    while x <= shown.max.x.min(area.max.x) {
+        painter.vline(x, shown.y_range(), line);
         x += step;
     }
-    let mut y = 0.0;
-    while y <= area.height() {
-        painter.hline(area.x_range(), area.min.y + y, line);
+    let mut y = first(shown.min.y, area.min.y);
+    while y <= shown.max.y.min(area.max.y) {
+        painter.hline(shown.x_range(), y, line);
         y += step;
     }
 }
@@ -727,6 +832,43 @@ fn draw_lines(painter: &egui::Painter, visuals: &egui::Visuals, view: GridView) 
 mod tests {
     // Tests written by Claude.
     use super::*;
+
+    #[test]
+    fn a_drag_near_an_edge_pushes_that_way_harder_closer() {
+        let shown = Rect::from_min_size(Pos2::new(100.0, 50.0), Vec2::new(400.0, 300.0));
+        let push = |x: f32, y: f32| edge_push(shown, Some(Pos2::new(x, y)));
+        assert_eq!(push(300.0, 200.0), Vec2::ZERO, "the middle");
+        assert!(push(495.0, 200.0).x > 0.8 && push(495.0, 200.0).y == 0.0);
+        assert!(push(480.0, 200.0).x < push(495.0, 200.0).x, "harder closer");
+        assert!(push(105.0, 200.0).x < -0.8, "left");
+        assert!(push(300.0, 345.0).y > 0.8, "bottom");
+        let corner = push(495.0, 55.0);
+        assert!(
+            corner.x > 0.8 && corner.y < -0.8,
+            "a corner pushes both ways"
+        );
+        // Past the edge (the pointer left the grid) it pushes fully.
+        assert_eq!(push(520.0, 200.0).x, 1.0);
+        // Far away, or no pointer: nothing.
+        assert_eq!(push(900.0, 200.0), Vec2::ZERO);
+        assert_eq!(edge_push(shown, None), Vec2::ZERO);
+    }
+
+    #[test]
+    fn the_extent_is_how_far_widgets_and_lists_reach() {
+        let mut grid = raptaboard_layout::GridLayout::default();
+        assert_eq!(extent(&grid), Vec2::ZERO);
+        let mut w: WidgetContainer = serde_json::from_value(serde_json::json!({
+            "title": "A", "x": 3200, "y": 128, "width": 256, "height": 128,
+            "type": "Text Display", "properties": {}
+        }))
+        .unwrap();
+        grid.containers.push(w.clone());
+        w.rect.x = 0.0;
+        w.rect.y = 2400.0;
+        grid.containers.push(w);
+        assert_eq!(extent(&grid), Vec2::new(3456.0, 2528.0));
+    }
     use crate::cli::StartupOptions;
     use eframe::egui::{Event, PointerButton, RawInput};
     use raptaboard_layout::ElasticLayout;

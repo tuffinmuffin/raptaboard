@@ -309,6 +309,15 @@ pub trait WidgetType: Sync {
         Vec::new()
     }
 
+    /// The robot state sounds this widget plays, if it plays them: the
+    /// first widget in the layout (tab order, then top to bottom and left to
+    /// right) that has a plan plays it, whichever tab is open, from the
+    /// NetworkTables thread ([`crate::state_sounds`]). Others only show.
+    /// `None` by default.
+    fn state_sounds(&self, _widget: &WidgetContainer) -> Option<crate::state_sounds::Plan> {
+        None
+    }
+
     /// The mark this widget puts on its tab, open or not, from the server's
     /// `values`: the most urgent alert it shows. None by default.
     fn tab_mark(
@@ -382,6 +391,7 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::enums::EnumDropdown,
     &builtin::enums::EnumToggle,
     &builtin::alerts::AlertsWidget,
+    &builtin::fms_info::FmsInfo,
     &builtin::graph::Graph,
     &builtin::field::FieldWidget,
     &builtin::gyro::Gyro,

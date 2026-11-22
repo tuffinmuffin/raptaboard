@@ -11,9 +11,10 @@ given (--target aarch64-apple-darwin --target x86_64-apple-darwin). Linux: a
 .tar.gz with install.sh. Each also gets a -debug archive holding the debug
 info (keep it to decode crash reports).
 
-Needs cargo-about (cargo install cargo-about --version 0.9.3 --locked
---features cli) for THIRD-PARTY-LICENSES.html. Run from anywhere; paths are
-from the repo's top folder. Only Python's standard library is used.
+The crates' license texts come from licenses/THIRD_PARTY_LICENSES.txt (made by
+scripts/crate_licenses.py, the same list the About window shows). Run from
+anywhere; paths are from the repo's top folder. Only Python's standard
+library is used.
 """
 
 from __future__ import annotations
@@ -88,12 +89,9 @@ def add_docs(into: Path, ver: str) -> None:
     shutil.copy(ROOT / "LICENSE", into / "LICENSE.txt")
     # The built-in 2026 field image is WPILib's; its license asks for this.
     shutil.copy(ROOT / "fields" / "LICENSE-WPILib.md", into / "LICENSE-WPILib.txt")
-    run(
-        "cargo", "about", "generate",
-        "-c", PACKAGING / "about.toml",
-        "-m", ROOT / "crates" / "app" / "Cargo.toml",
-        "-o", into / "THIRD-PARTY-LICENSES.html",
-        PACKAGING / "about.hbs",
+    # Every crate built in, with its license text (also in the About window).
+    shutil.copy(
+        ROOT / "licenses" / "THIRD_PARTY_LICENSES.txt", into / "THIRD-PARTY-LICENSES.txt"
     )
 
 
@@ -186,8 +184,12 @@ def package_macos(ver: str, out: Path, targets: list[str | None]) -> None:
     # the program at all; Gatekeeper still asks on the first open.
     run("codesign", "--force", "--deep", "--sign", "-", stage / "raptaboard.app")
     add_docs(stage, ver)
-    # ditto keeps the app bundle's permissions and attributes in the zip.
-    run("ditto", "-c", "-k", "--keepParent", stage, out / f"{name}.zip")
+    # ditto keeps the app bundle's permissions in the zip; no resource forks
+    # or extended attributes, which would show as ._ files elsewhere.
+    run(
+        "ditto", "-c", "-k", "--norsrc", "--noextattr", "--keepParent",
+        stage, out / f"{name}.zip",
+    )
     debug_each(targets, out / f"{name}-debug.zip")
 
 

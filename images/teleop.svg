@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Teleop: a game controller. raptaboard, CC0 (see README.md). -->
+  <path d="M18 18 H46 Q56 18 59 30 L62 44 Q63 52 56 53 Q51 54 47 46 L44 41 H20 L17 46 Q13 54 8 53 Q1 52 2 44 L5 30 Q8 18 18 18 Z" fill="#37474F"/>
+  <rect x="12" y="27" width="11" height="3.6" rx="1" fill="#CFD8DC"/>
+  <rect x="15.7" y="23.3" width="3.6" height="11" rx="1" fill="#CFD8DC"/>
+  <circle cx="24" cy="38" r="4.2" fill="#263238" stroke="#90A4AE" stroke-width="1.5"/>
+  <circle cx="40" cy="38" r="4.2" fill="#263238" stroke="#90A4AE" stroke-width="1.5"/>
+  <circle cx="47" cy="23.5" r="2.6" fill="#FDD835"/>
+  <circle cx="47" cy="32.5" r="2.6" fill="#43A047"/>
+  <circle cx="42.5" cy="28" r="2.6" fill="#1E88E5"/>
+  <circle cx="51.5" cy="28" r="2.6" fill="#E53935"/>
+  <circle cx="32" cy="25" r="3" fill="#B0BEC5"/>
+</svg>

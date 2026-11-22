@@ -1,4 +1,4 @@
-//! The settings bar (connection, lock, file) and the tab bar.
+//! The settings bar (connection status, lock, the gear, file) and the tab bar.
 
 use std::collections::HashMap;
 
@@ -78,61 +78,13 @@ impl DashboardApp {
             if ui.button(label).on_hover_text(hint).clicked() {
                 self.alert_sound = !self.alert_sound;
             }
+            // The gear before the alert history button, whose width changes
+            // as alerts come and go, so the gear stays put.
+            self.gear_button(ui);
             self.alert_history_button(ui);
             ui.separator();
-            ui.label("Team");
-            // 0 is "no team yet", shown blank.
-            ui.add(
-                egui::DragValue::new(&mut self.address.team)
-                    .range(0..=99999)
-                    .custom_formatter(|n, _| {
-                        if n == 0.0 {
-                            String::new()
-                        } else {
-                            n.to_string()
-                        }
-                    })
-                    .custom_parser(|text| {
-                        let text = text.trim();
-                        if text.is_empty() {
-                            Some(0.0)
-                        } else {
-                            text.parse().ok()
-                        }
-                    })
-                    .min_decimals(0)
-                    .max_decimals(0),
-            )
-            .on_hover_text("Your FRC team number, for finding the robot at 10.TE.AM.2");
-            // Named for screen readers; on screen the choices say what it is.
-            egui::ComboBox::from_id_salt("address_mode")
-                .selected_text(self.address.mode.label())
-                .show_ui(ui, |ui| {
-                    for mode in AddressMode::ALL {
-                        ui.selectable_value(&mut self.address.mode, mode, mode.label());
-                    }
-                })
-                .response
-                .widget_info(|| {
-                    egui::WidgetInfo::labeled(
-                        egui::accesskit::Role::ComboBox,
-                        true,
-                        "Robot address",
-                    )
-                });
-            if self.address.mode == AddressMode::Custom {
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.address.custom)
-                        .hint_text("Host name or IP address"),
-                )
-                .widget_info(|| {
-                    egui::WidgetInfo::labeled(
-                        egui::accesskit::Role::TextInput,
-                        true,
-                        "Server address",
-                    )
-                });
-            }
+            // The address is set in the Settings window; the connection
+            // follows it every frame, whether that window is open or not.
             let host = resolve(self.address.mode, self.address.team, &self.address.custom);
             self.nt.set_target(host.as_deref(), self.address.port);
             ui.separator();

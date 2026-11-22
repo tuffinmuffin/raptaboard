@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use eframe::egui;
 use nt4::{Topic, Value};
 
 use crate::traces::SeriesKey;
@@ -36,7 +37,71 @@ fn drawn(tab: &raptaboard_layout::Tab) -> impl Iterator<Item = &WidgetContainer>
         .filter(|w| widgets::find(&w.widget_type).is_some())
 }
 
+/// The widgets of `tab` in layout order: on the grid top to bottom, then
+/// left to right, with each List Layout's children in its place, in list
+/// order.
+fn in_order(tab: &raptaboard_layout::Tab) -> Vec<&WidgetContainer> {
+    let grid = &tab.grid_layout;
+    let mut placed: Vec<((f64, f64), Vec<&WidgetContainer>)> = grid
+        .containers
+        .iter()
+        .map(|w| ((w.rect.y, w.rect.x), vec![w]))
+        .chain(grid.layouts.iter().map(|l| {
+            let shown = l.children.iter().filter(|w| !list_layout::is_hidden(w));
+            ((l.rect.y, l.rect.x), shown.collect())
+        }))
+        .collect();
+    placed.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    placed.into_iter().flat_map(|(_, ws)| ws).collect()
+}
+
 impl DashboardApp {
+    /// Hand the robot state sounds to the NetworkTables thread, which
+    /// plays them as values arrive: the first widget in the layout with a
+    /// sound plan's, or none while sounds are off. Also play a sound a
+    /// settings dialog's ▶ asked for.
+    pub(super) fn update_state_sounds(&mut self, ctx: &egui::Context) {
+        if let Some((clip, volume)) = crate::state_sounds::take_preview(ctx) {
+            self.sound.play_event(clip, volume);
+        }
+        let plan = self
+            .layout
+            .tabs
+            .iter()
+            .flat_map(in_order)
+            .find_map(|w| widgets::find(&w.widget_type)?.state_sounds(w))
+            .filter(|_| self.alert_sound)
+            .map(|plan| (plan, self.sound.player()));
+        self.nt.set_state_sounds(plan);
+    }
+
+    /// Do what a widget asked: play a sound (if sounds are on), or send a
+    /// value (a failure goes in the status line).
+    pub(super) fn apply_effect(&mut self, effect: widgets::Effect) {
+        match effect {
+            widgets::Effect::Tone(tone) => {
+                if self.alert_sound {
+                    self.sound.play_tone(tone);
+                }
+            }
+            widgets::Effect::Write { topic, value, ty } => {
+                if let Err(why) = self.nt.write_or_publish(&topic, value, ty) {
+                    self.status = why.to_string();
+                }
+            }
+            widgets::Effect::PublishStruct {
+                topic,
+                struct_name,
+                bytes,
+                schemas,
+            } => {
+                if let Err(why) = self.nt.publish_struct(&topic, struct_name, bytes, schemas) {
+                    self.status = why.to_string();
+                }
+            }
+        }
+    }
+
     /// The topics the widgets on the open tab are bound to, grouped by how
     /// often they want updates (each widget's `period`, in seconds), with
     /// what each needs besides (`extra_topics`), from the server's `topics`.

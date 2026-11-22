@@ -26,12 +26,18 @@ pub const EXTENSIONS: [&str; 4] = ["png", "jpg", "jpeg", "svg"];
 
 /// The icons built into raptaboard, by file name: drawn for it and
 /// dedicated to the public domain (CC0; see the repo's `images/README.md`).
-pub const BUILT_IN: [(&str, &[u8]); 5] = [
+pub const BUILT_IN: [(&str, &[u8]); 10] = [
     ("armed.svg", include_bytes!("../../../images/armed.svg")),
+    ("auto.svg", include_bytes!("../../../images/auto.svg")),
     (
         "checkmark.svg",
         include_bytes!("../../../images/checkmark.svg"),
     ),
+    (
+        "disabled.svg",
+        include_bytes!("../../../images/disabled.svg"),
+    ),
+    ("estop.svg", include_bytes!("../../../images/estop.svg")),
     ("motor.svg", include_bytes!("../../../images/motor.svg")),
     (
         "motor-off.svg",
@@ -41,6 +47,8 @@ pub const BUILT_IN: [(&str, &[u8]); 5] = [
         "motor-on.svg",
         include_bytes!("../../../images/motor-on.svg"),
     ),
+    ("teleop.svg", include_bytes!("../../../images/teleop.svg")),
+    ("test.svg", include_bytes!("../../../images/test.svg")),
 ];
 
 /// The widest an image is made into a texture, pixels (shown on a card,
@@ -377,12 +385,17 @@ mod tests {
             [
                 "arm.jpeg",
                 "armed.svg",
+                "auto.svg",
                 "checkmark.svg",
+                "disabled.svg",
                 "Down.JPG",
+                "estop.svg",
                 "motor-off.svg",
                 "motor-on.svg",
                 "motor.svg",
-                "ready.png"
+                "ready.png",
+                "teleop.svg",
+                "test.svg"
             ]
         );
         assert_eq!(
@@ -406,10 +419,15 @@ mod tests {
             available(&none),
             [
                 "armed.svg",
+                "auto.svg",
                 "checkmark.svg",
+                "disabled.svg",
+                "estop.svg",
                 "motor-off.svg",
                 "motor-on.svg",
-                "motor.svg"
+                "motor.svg",
+                "teleop.svg",
+                "test.svg"
             ]
         );
         for (name, _) in BUILT_IN {
