@@ -429,10 +429,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      today's partial text match, which stays the default), if more robot code turns up whose
      alerts need it. Not needed yet: the one noisy alert (robot-2027's Frame Timing) is fixed at
      the source and its numbers are already folded into one event.
-   - Drag tabs to reorder them: unlocked, drag a tab along the tab bar, with a marker where it
-     will land, and drop it to move it (one step for undo, like Move left and Move right in the
-     tab's right-click menu, which stay). Tabs can only be reordered from that menu now, and
-     dragging is what people try first.
+   - Drag tabs to reorder them (**done**: `TabAction::Move`, `tabs::drop_place`): unlocked, drag a
+     tab along the tab bar, with a marker where it will land, and drop it to move it (one step for
+     undo, like Move left and Move right in the tab's right-click menu, which stay).
    - Sound clips on robot state changes: play a sound file when the robot is disabled (the first
      one: the "I'm disabled" quote from The IT Crowd), and optionally on enable, the start of auto
      and teleop, and e-stop. The state comes from WPILib's `/FMSInfo/FMSControlData` bits (check
@@ -677,6 +676,14 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    bytes (`types::structs::nested_struct`), and widgets that read their topic's newest value use
    `Live::newest`, which gives the part for a `struct_meta` widget.
    Milestone 4 plugins may also match a struct type (a `struct = "ArmState"` rule).
+   First release (decided with the user 2026-11-21): after milestone 3, a polish phase ending in
+   release 0.1.0, "basics done". In it: drag tabs to reorder (done), a bigger worst-alert sign, a
+   Battery widget, Boolean Box text and images, color by value, autoscale for bars and gauges,
+   min/max/average on number widgets and graphs, graph history review, widget type choices that
+   fit, and copy settings within a list. Then the release: version 0.1.0, a changelog, a tag, and a
+   CI workflow building Windows, macOS and Linux binaries for a GitHub Release. After it: the Group
+   widget, X/Y and polar graphs, sound clips, partial overlap, reflow while dragging, the text style
+   dialog, regex alert filters, and plugins.
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, units, MJPEG
    cameras (Mechanism2d was done in milestone 3).
