@@ -525,6 +525,19 @@
               "period": 0.033,
               "data_type": "int"
             }
+          },
+          {
+            "title": "Battery (sags under load)",
+            "x": 640.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Battery",
+            "properties": {
+              "topic": "/DashTest/BatteryVoltage",
+              "period": 0.06,
+              "data_type": "double"
+            }
           }
         ]
       }

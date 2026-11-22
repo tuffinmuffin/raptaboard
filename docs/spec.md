@@ -150,7 +150,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `show_text` | `builtin/alerts.rs` | Alerts | list the alerts' text by the circle | true |
 | `text_position` | `builtin/alerts.rs` | Alerts | `auto` (beside a wide widget, below a tall one), `right`, `below` | `auto` |
 | `min_level` | `builtin/alerts.rs` | Alerts | least urgent shown: `info`, `warning`, `error` | `info` |
-| `pulse`, `pulse_seconds` | `builtin/alerts.rs` | Alerts | pulse when a new error arrives, for how long (s) | true, 5 |
+| `pulse`, `pulse_seconds` | `builtin/alerts.rs` | Alerts | pulse when a new error arrives, for how long (s), stopping sooner once no error is active | true, 5 |
 | `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp`, or a built-in clip: `disabled 1`, `disabled 2`, `fire 1`, `fire 2` | false, `beep` |
 | `field` | `builtin/field/mod.rs` | Field | the field shown: an id from the fields folders (`2026-rebuilt-welded`) or a field JSON's path; not set uses Elastic's `field_game` (by game name), else 2026 REBUILT (welded) | not set |
 | `origin` | `builtin/field/mod.rs` | Field | where the poses' (0, 0) is: `center` (WPILib 2027) or `blue_corner` (before 2027) | `center` |
@@ -197,6 +197,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `true_icon`, `false_icon` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | `None`, `Checkmark`, `X` or `Exclamation Point`, drawn on the state's color in black or white | `None` |
 | `true_image`, `false_image` | `builtin/boolean_box.rs` | Boolean Box | an image's file name in the images folders, in place of an icon, drawn on the state's color (for a plain background, set the color to black or white) | none |
 | `text_backing`, `true_text_color`, `false_text_color` | `builtin/boolean_box.rs` | Boolean Box | a see-through box behind the text; the text's color per state | off; automatic |
+| `warn_below`, `low_below` | `builtin/battery.rs` | Battery | volts below which it's yellow, red; `min_value`/`max_value` (Elastic's keys) are empty and full | 12, 11.5; 11 to 13 |
 | `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
 | `series` | `builtin/graph.rs` | Graph | the lines after the main one: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
 | `show_legend` | `builtin/graph.rs` | Graph | show the legend | when there's more than one line |
@@ -420,22 +421,22 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      and when the robot reconnects). Taken from every value received, as graphs record them
      (`traces.rs`), not from the widget's sampled period, so short peaks count. Bars and gauges
      could also mark the min and max on their scale.
-   - Widget type choices that fit: the settings dialog's Widget list should offer only the types
-     that can show what the widget is bound to. A table (a chooser) isn't a topic, so it has no NT
-     type and every type is listed now: offer the chooser widgets (and the enum widgets on a
-     chooser) for a chooser table, and only number, text and so on for a topic of that type.
-   - Alerts: the most urgent active sign in the circle grows larger (an error's ✕ while there are
-     errors, else the ! while there are warnings), the other two shrinking to make room, so the
-     worst one reads at a glance from across the driver station; back to equal sizes when nothing
-     above info is active.
+   - Widget type choices that fit (**done**): the settings dialog's Widget list offers only the types
+     that can show what the widget is bound to (`widgets::types_showing`, as the tree's "Add as"): for
+     a table its `.type` is the value type (`DashboardApp::value_type`), so a chooser offers the
+     choosers and the enum widgets (which now list the chooser `.type` in `table_types`), and a
+     number topic offers number widgets, not choosers. Unknown (not connected): every type.
+   - Alerts (**done**, `sign_places` in `builtin/alerts.rs`): the most urgent active sign in the circle
+     grows large in the middle (an error's ✕ while there are errors, else the ! while there are
+     warnings), the other two shrinking along the bottom, so the worst one reads at a glance from
+     across the driver station; back to equal sizes when nothing above info is active.
    - Alert history "Not recorded" entries as regular expressions too (a per-entry choice beside
      today's partial text match, which stays the default), if more robot code turns up whose
      alerts need it. Not needed yet: the one noisy alert (robot-2027's Frame Timing) is fixed at
      the source and its numbers are already folded into one event.
-   - Drag tabs to reorder them: unlocked, drag a tab along the tab bar, with a marker where it
-     will land, and drop it to move it (one step for undo, like Move left and Move right in the
-     tab's right-click menu, which stay). Tabs can only be reordered from that menu now, and
-     dragging is what people try first.
+   - Drag tabs to reorder them (**done**: `TabAction::Move`, `tabs::drop_place`): unlocked, drag a
+     tab along the tab bar, with a marker where it will land, and drop it to move it (one step for
+     undo, like Move left and Move right in the tab's right-click menu, which stay).
    - Sound clips on robot state changes: play a sound file when the robot is disabled (the first
      one: the "I'm disabled" quote from The IT Crowd), and optionally on enable, the start of auto
      and teleop, and e-stop. The state comes from WPILib's `/FMSInfo/FMSControlData` bits (check
@@ -452,8 +453,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      from two topics, two struct fields (Pose2d x/y, Translation2d), or a dropped struct with a
      known pair. Angle units for polar (degrees or radians, zero direction, clockwise or not).
      Shares Graph's recording (`traces.rs`), pause and measuring.
-   - Battery widget: a battery icon filled by charge (voltage between a low and high setting),
-     colored by level, for battery voltage instead of Voltage View.
+   - Battery widget (**done**, `builtin/battery.rs`): a battery icon filled by charge (the voltage
+     between `min_value` and `max_value`, 11 to 13 V), green, yellow below `warn_below` (12 V) and red
+     below `low_below` (11.5 V), with the volts and charge on a see-through backing; on its side on a
+     wide card, upright on a tall one. A number's "Add as" or Widget list choice (a number still makes
+     a Text Display). The sim layout's More widgets tab shows robot-2027's scripted `BatteryVoltage`.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      **Done**: Elastic's `true_icon`/`false_icon` set (Checkmark, X, Exclamation Point, any for either
      state in raptaboard), drawn on the state's color in black or white (Elastic draws them alone in the color; decided
@@ -574,7 +578,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    LOW and Glass still reads these lists). The widget is a circle with a red ✕, yellow ! and blue i
    (painted, not glyphs), each lit with a count while that level has alerts, the ring in the most
    urgent color; optionally the text beside or below. One group, or all groups. A new error (not
-   warnings) pulses it for N seconds and can play a tone (`sound.rs` `Tone`, generated, a few to
+   warnings) pulses it for N seconds (or until no error is active, if sooner) and can play a tone (`sound.rs` `Tone`, generated, a few to
    pick; widgets ask through `Live::effects`). When the connection drops, or the topics go before
    it does, the last alerts stay, greyed. A tab with an Alerts widget showing an error or a warning
    gets that sign after its name, open or not (alert topics of other tabs' Alerts widgets are
@@ -696,6 +700,14 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    bytes (`types::structs::nested_struct`), and widgets that read their topic's newest value use
    `Live::newest`, which gives the part for a `struct_meta` widget.
    Milestone 4 plugins may also match a struct type (a `struct = "ArmState"` rule).
+   First release (decided with the user 2026-11-21): after milestone 3, a polish phase ending in
+   release 0.1.0, "basics done". In it: drag tabs to reorder (done), a bigger worst-alert sign, a
+   Battery widget, Boolean Box text and images, color by value, autoscale for bars and gauges,
+   min/max/average on number widgets and graphs, graph history review, widget type choices that
+   fit, and copy settings within a list. Then the release: version 0.1.0, a changelog, a tag, and a
+   CI workflow building Windows, macOS and Linux binaries for a GitHub Release. After it: the Group
+   widget, X/Y and polar graphs, sound clips, partial overlap, reflow while dragging, the text style
+   dialog, regex alert filters, and plugins.
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, units, MJPEG
    cameras (Mechanism2d was done in milestone 3).
