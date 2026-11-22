@@ -381,6 +381,7 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::number_bar::NumberBar,
     &builtin::number_slider::NumberSlider,
     &builtin::number_bar::VoltageView,
+    &builtin::battery::Battery,
     &builtin::radial_gauge::RadialGauge,
     &builtin::match_time::MatchTime,
     &builtin::color_view::SingleColorView,

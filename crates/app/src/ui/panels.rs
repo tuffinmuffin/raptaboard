@@ -258,6 +258,10 @@ impl DashboardApp {
             .collect();
         let alert_marks = self.tab_marks(values);
         ui.horizontal(|ui| {
+            // Each tab's place, and a tab being dragged along the bar (and
+            // whether it was let go this frame), for moving it.
+            let mut rects: Vec<egui::Rect> = Vec::with_capacity(count);
+            let mut dragging: Option<(usize, bool)> = None;
             for (i, name) in names.iter().enumerate() {
                 if let Some((renaming, text, focused)) = &mut self.renaming
                     && *renaming == i
@@ -270,6 +274,7 @@ impl DashboardApp {
                         edit.request_focus();
                         *focused = true;
                     }
+                    rects.push(edit.rect);
                     if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
                         self.renaming = None;
                     } else if edit.lost_focus() {
@@ -299,6 +304,7 @@ impl DashboardApp {
                 let tab = ui
                     .selectable_label(self.current_tab == i, egui::RichText::new(text))
                     .on_hover_text(hint);
+                rects.push(tab.rect);
                 if let Some(level) = alert {
                     alert_sign::draw_badge(ui.painter(), level, tab.rect, 4.0);
                 }
@@ -307,6 +313,11 @@ impl DashboardApp {
                 }
                 if self.locked {
                     continue;
+                }
+                // Unlocked, a tab drags along the bar to move it.
+                let tab = tab.interact(egui::Sense::drag());
+                if tab.dragged() || tab.drag_stopped() {
+                    dragging = Some((i, tab.drag_stopped()));
                 }
                 if tab.double_clicked() {
                     self.renaming = Some((i, name.clone(), false));
@@ -337,6 +348,33 @@ impl DashboardApp {
                         action = Some(TabAction::Close(i));
                     }
                 });
+            }
+            if let Some((from, released)) = dragging
+                && let Some(x) = ui.input(|i| i.pointer.latest_pos()).map(|p| p.x)
+            {
+                let centers: Vec<f32> = rects.iter().map(|r| r.center().x).collect();
+                let (to, gap) = tabs::drop_place(&centers, from, x);
+                if released {
+                    if to != from {
+                        action = Some(TabAction::Move { from, to });
+                    }
+                } else {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                    // A marker in the gap it will land in.
+                    if to != from
+                        && let Some(edge) = match gap {
+                            0 => rects.first().map(|r| r.left() - 2.0),
+                            g => rects.get(g - 1).map(|r| r.right() + 2.0),
+                        }
+                    {
+                        let y = rects[from].y_range();
+                        ui.painter().vline(
+                            edge,
+                            y,
+                            egui::Stroke::new(3.0, ui.visuals().selection.stroke.color),
+                        );
+                    }
+                }
             }
             if !self.locked && ui.small_button("+").on_hover_text("New tab").clicked() {
                 action = Some(TabAction::New);

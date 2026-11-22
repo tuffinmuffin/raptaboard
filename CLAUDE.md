@@ -102,7 +102,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   one file per type implementing `widgets::WidgetType` and listed in `widgets::TYPES`; `ui/` only talks to
   the trait and never names a widget type (hooks: `extra_topics` with the server's tables, `background_topics`,
   `tab_mark`, `traced` for recorded series, `takes_topics`/`add_topics` for topics dropped on a widget) (Text Display,
-  Boolean Box, Large Text Display (a Text Display with `fit_text` on, unlisted: `WidgetType::listed`), Number Bar, Voltage View, Radial Gauge, Match Time, Single and
+  Boolean Box, Large Text Display (a Text Display with `fit_text` on, unlisted: `WidgetType::listed`), Number Bar, Voltage View, Radial Gauge, Match Time, Battery (`builtin/battery.rs`), Single and
   Multi Color View, Graph (`egui_plot`; widgets needing a full `Ui` override `WidgetType::show`),
   Toggle Switch and Toggle Button (`builtin/toggle.rs`), Number Slider (`builtin/number_slider.rs`), Dropdown and Split Button Chooser (`builtin/chooser.rs`: bound to a SendableChooser table, `table_types`, `sends_to` and `Frame::others`), Enum Dropdown and Enum Toggle (`builtin/enums.rs`: string or int topics, names from a list, a string[] topic or a chooser, guessed by `WidgetType::chosen`), Field (`builtin/field/`: a Pose2d/Pose3d (or array) struct topic or a `Field2d` table on a field from `fields.rs`,
   WPILib `fields` JSONs from the repo's `fields/` folder (2026 built in) or one picked with a file dialog;
@@ -135,7 +135,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   widget is a new file in `builtin/` (listed in `builtin/mod.rs`) plus one line in `TYPES`, `layout_file.rs` opening and saving layout files (atomic
   writes, Ctrl+O/S/Shift+S; a file that's missing or isn't a layout, at startup or from Open, gets a dialog,
   `LayoutFile::load_problem`, offering Open, a new layout saved at that path (missing only), or Close), `grid.rs` the snap-grid rules
-  (snapping, overlap) and `tabs.rs` tab actions and their shortcuts, `edit.rs` undo/redo (`History`, which
+  (snapping, overlap) and `tabs.rs` tab actions (moving one by dragging it along the tab bar: `TabAction::Move`, `drop_place`) and their shortcuts, `edit.rs` undo/redo (`History`, which
   notices any layout change once a frame) and the widget editing shortcuts; the drag handling is in
   `ui/drag.rs` and `ui/grid_view.rs`. A widget draws from `widgets::Live`: its value (`Live::newest` for its topic's newest, the part for a
   widget bound to part of a struct), the frame's shared
