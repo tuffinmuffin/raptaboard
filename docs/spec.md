@@ -471,6 +471,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        plus a widget volume. Saved in the widget's properties, so they travel with the layout.
        Defaults: disabled plays "disabled 1", autonomous plays "auto ghosts", teleop plays "go go
        go", test plays "danger danger", the rest off.
+     - More rows (added 2026-11-22), all off by default: match timing from `/FMSInfo` and the
+       match time (end of auto, endgame at a set time left, 30 s by default, and a 10 s
+       countdown; the field already sounds these, so they're for practice or a quiet venue), and
+       DS lost or FMS lost while the robot is still connected (a different problem from the robot
+       lost). Later ideas, not planned: FMS attached, brownout or low battery.
      - Plays only on a change seen while connected: never for the state at connect, after a
        reconnect, or when a layout opens. A new event cuts off a clip still playing. The bell button
        in the settings bar mutes these too.
