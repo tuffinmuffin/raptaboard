@@ -159,3 +159,89 @@ fn clicking_a_chooser_finds_its_table_in_the_tree() {
         harness.state().status
     );
 }
+
+/// Open widget `index`'s settings and its Widget list, and say which of
+/// `names` the list offers (a name already on screen, a widget's title,
+/// counts only if the list adds another).
+fn offered(harness: &mut Harness, index: usize, names: &[&str]) -> Vec<String> {
+    let original = harness.state().layout.tabs[0].grid_layout.containers[index].clone();
+    harness.state_mut().editing = Some(Editing::Widget {
+        tab: 0,
+        index,
+        original,
+    });
+    settle(harness);
+    let before: Vec<usize> = names
+        .iter()
+        .map(|n| harness.query_all_by_label(n).count())
+        .collect();
+    let list = harness
+        .get_by_label("How the value is shown. Settings for other types are kept.")
+        .rect();
+    click_at(
+        harness,
+        list.center(),
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    let found = names
+        .iter()
+        .zip(before)
+        .filter(|(n, b)| harness.query_all_by_label(n).count() > *b)
+        .map(|(n, _)| (*n).to_owned())
+        .collect();
+    harness.key_press(Key::Escape);
+    settle(harness);
+    found
+}
+
+#[test]
+fn the_widget_list_offers_only_types_that_fit() {
+    let robot = Robot::start();
+    let mut harness = chooser_harness(&robot);
+    harness.state_mut().locked = false;
+    settle(&mut harness);
+    let names = [
+        "Dropdown Chooser",
+        "Split Button Chooser",
+        "Enum Dropdown",
+        "Enum Toggle",
+        "Graph",
+        "Text Display",
+        "Field",
+    ];
+    // A chooser's table: the choosers and the enum widgets, nothing for
+    // single values.
+    assert_eq!(
+        offered(&mut harness, 1, &names),
+        [
+            "Dropdown Chooser",
+            "Split Button Chooser",
+            "Enum Dropdown",
+            "Enum Toggle"
+        ]
+    );
+    // A number: numbers' widgets, no choosers.
+    harness.state_mut().layout.tabs[0]
+        .grid_layout
+        .containers
+        .push(widget(
+            "Text Display",
+            "/Test/number",
+            "double",
+            LayoutRect {
+                x: 1024.0,
+                y: 0.0,
+                width: 256.0,
+                height: 128.0,
+            },
+        ));
+    settle(&mut harness);
+    let number = offered(&mut harness, 2, &names);
+    assert!(number.contains(&"Graph".to_owned()), "{number:?}");
+    assert!(
+        !number.contains(&"Dropdown Chooser".to_owned()),
+        "{number:?}"
+    );
+    assert!(!number.contains(&"Field".to_owned()), "{number:?}");
+}
