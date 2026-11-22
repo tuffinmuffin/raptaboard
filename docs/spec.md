@@ -468,7 +468,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      in a green or red border, a Boolean Box's true and false images) and `armed.svg` (a target
      reticle), drawn for raptaboard and dedicated CC0, in the repo's `images/`
      with a README saying so and where any outside image's credit goes; a folder's file of the same
-     name takes their place. The sim layout's Widgets tab has a Boolean Box on robot-2027's
+     name takes their place. The settings choose a state's picture from one list (the user's ask,
+     2026-11-21): (none), the built-in group (Elastic's drawn icons, then the built-in images), a
+     line, then the images in the folders, with Import… beside it; an icon is saved as Elastic's
+     `true_icon`/`false_icon`, an image as `true_image`/`false_image`, and picking one clears the
+     other. The sim layout's Widgets tab has a Boolean Box on robot-2027's
      `IntakeDeployed` with `motor-on.svg` and `motor-off.svg`. Later: embedding images in the layout.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
    **Started**: the read-only single-topic widgets: Large Text Display, Number Bar, Voltage View,

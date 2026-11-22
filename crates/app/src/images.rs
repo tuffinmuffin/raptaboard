@@ -153,6 +153,25 @@ pub fn available(folders: &[PathBuf]) -> Vec<String> {
     names
 }
 
+/// The images offered, in two groups: the built-in ones (less any a
+/// folder's file of the same name replaces), and the files in `folders`,
+/// each in name order.
+pub fn built_in_and_external(folders: &[PathBuf]) -> (Vec<String>, Vec<String>) {
+    let built: Vec<&str> = BUILT_IN.iter().map(|(n, _)| *n).collect();
+    let all = available(folders);
+    let external: Vec<String> = all
+        .iter()
+        .filter(|n| matches!(find(n, folders), Some(Source::File(_))))
+        .cloned()
+        .collect();
+    let built_in = built
+        .into_iter()
+        .filter(|n| !external.iter().any(|e| e == n))
+        .map(str::to_owned)
+        .collect();
+    (built_in, external)
+}
+
 /// The image named `name`: a file in the first of `folders` that has it,
 /// else a built-in one.
 pub fn find(name: &str, folders: &[PathBuf]) -> Option<Source> {
@@ -415,6 +434,23 @@ mod tests {
             find("motor.svg", std::slice::from_ref(&dir)),
             Some(Source::File(dir.join("motor.svg")))
         );
+    }
+
+    #[test]
+    fn the_list_splits_built_in_from_external_images() {
+        let none: [PathBuf; 0] = [];
+        let (built, external) = built_in_and_external(&none);
+        assert_eq!(built.len(), BUILT_IN.len());
+        assert!(external.is_empty());
+        // A folder's own image, and one replacing a built-in: both are
+        // external, and the built-in one leaves its group.
+        let dir = temp("split");
+        std::fs::write(dir.join("mine.png"), png(2, 2, [1, 2, 3])).unwrap();
+        std::fs::write(dir.join("motor.svg"), BUILT_IN[0].1).unwrap();
+        let (built, external) = built_in_and_external(std::slice::from_ref(&dir));
+        assert_eq!(external, ["mine.png", "motor.svg"]);
+        assert!(!built.contains(&"motor.svg".to_owned()));
+        assert!(built.contains(&"armed.svg".to_owned()));
     }
 
     #[test]

@@ -267,30 +267,99 @@ fn draw_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
     }
 }
 
-/// A settings row choosing an image for `key` from the images folders, or
-/// importing one (copied into `~/.raptaboard/images/`).
-fn image_row(ui: &mut egui::Ui, props: &mut Map<String, Json>, label: &str, key: &str) {
+/// What a Boolean Box shows for one state, besides its color: nothing, one
+/// of Elastic's drawn icons, or an image (built in or from the images
+/// folders).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Picture {
+    None,
+    Icon(Icon),
+    Image(String),
+}
+
+impl Picture {
+    /// Its name in the list.
+    fn label(&self) -> String {
+        match self {
+            Picture::None => "(none)".to_owned(),
+            Picture::Icon(i) => i.key().to_owned(),
+            Picture::Image(name) => name.clone(),
+        }
+    }
+}
+
+/// The picture `p` sets with `icon_key` and `image_key` (an image wins, as
+/// drawn).
+fn picture_of(p: &Map<String, Json>, icon_key: &str, image_key: &str) -> Picture {
+    let image = props::text(p, image_key, "").trim();
+    if !image.is_empty() {
+        return Picture::Image(image.to_owned());
+    }
+    Icon::from_key(props::text(p, icon_key, "")).map_or(Picture::None, Picture::Icon)
+}
+
+/// Save `picture` with `icon_key` and `image_key`: an icon as Elastic's
+/// `true_icon`/`false_icon` (so Elastic shows it too), an image by name;
+/// picking one clears the other.
+fn set_picture(p: &mut Map<String, Json>, icon_key: &str, image_key: &str, picture: &Picture) {
+    let (icon, image) = match picture {
+        Picture::None => (None, None),
+        Picture::Icon(i) => (Some(i.key().into()), None),
+        Picture::Image(name) => (None, Some(name.clone().into())),
+    };
+    set_property(p, icon_key, icon);
+    set_property(p, image_key, image);
+}
+
+/// A settings row choosing what a state shows: (none); built in (Elastic's
+/// drawn icons and the built-in images); a line; the images in the images
+/// folders. Import… copies a picked image into `~/.raptaboard/images/` and
+/// picks it.
+fn picture_row(
+    ui: &mut egui::Ui,
+    props: &mut Map<String, Json>,
+    label: &str,
+    icon_key: &str,
+    image_key: &str,
+) {
     // Where a failed import's message is kept, to show under the row.
-    let id = ui.scope_id().with(("image import", key));
+    let id = ui.scope_id().with(("image import", image_key));
     ui.label(label);
     ui.horizontal(|ui| {
-        let current = props::text(props, key, "").to_owned();
+        let current = picture_of(props, icon_key, image_key);
         let mut picked = current.clone();
-        let found = images::available(&images::default_folders());
-        egui::ComboBox::from_id_salt(key)
-            .selected_text(if picked.is_empty() { "(none)" } else { picked.as_str() })
-            .width(160.0)
+        let (built_in, external) = images::built_in_and_external(&images::default_folders());
+        egui::ComboBox::from_id_salt(image_key)
+            .selected_text(picked.label())
+            .width(170.0)
+            // Tall enough for the built-in pictures and a few of the team's.
+            .height(420.0)
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut picked, String::new(), "(none)");
-                for name in &found {
-                    ui.selectable_value(&mut picked, name.clone(), name);
+                ui.selectable_value(&mut picked, Picture::None, "(none)");
+                ui.weak("Built in");
+                for icon in Icon::ALL {
+                    ui.selectable_value(&mut picked, Picture::Icon(icon), icon.key());
+                }
+                for name in &built_in {
+                    ui.selectable_value(&mut picked, Picture::Image(name.clone()), name);
+                }
+                ui.separator();
+                if external.is_empty() {
+                    ui.weak("No images of your own yet: Import… adds one");
+                }
+                for name in &external {
+                    ui.selectable_value(&mut picked, Picture::Image(name.clone()), name);
                 }
             })
             .response
-            .on_hover_text("Images in the images folders: images/ where raptaboard starts, beside the program, and ~/.raptaboard/images/");
+            .on_hover_text(
+                "Built in: Elastic's icons (drawn in the state's color) and raptaboard's \
+                 images. Below the line: images in the images folders (images/ where \
+                 raptaboard starts, beside the program, and ~/.raptaboard/images/).",
+            );
         if ui
             .button("Import…")
-            .on_hover_text("Pick a PNG or JPEG; it's copied into ~/.raptaboard/images/")
+            .on_hover_text("Pick a PNG, JPEG or SVG; it's copied into ~/.raptaboard/images/")
             .clicked()
             && let Some(from) = rfd::FileDialog::new()
                 .add_filter("Image", &images::EXTENSIONS)
@@ -298,16 +367,14 @@ fn image_row(ui: &mut egui::Ui, props: &mut Map<String, Json>, label: &str, key:
             && let Some(into) = images::import_folder()
         {
             match images::import(&from, &into) {
-                Ok(name) => picked = name,
+                Ok(name) => picked = Picture::Image(name),
                 Err(why) => {
-                    ui.ctx().data_mut(|d| {
-                        d.insert_temp(id, why)
-                    });
+                    ui.ctx().data_mut(|d| d.insert_temp(id, why));
                 }
             }
         }
         if picked != current {
-            set_property(props, key, (!picked.is_empty()).then(|| picked.into()));
+            set_picture(props, icon_key, image_key, &picked);
         }
     });
     ui.end_row();
@@ -380,34 +447,8 @@ impl WidgetType for BooleanBox {
     fn settings(&self, ui: &mut egui::Ui, props: &mut Map<String, Json>, _value: ValueInfo<'_>) {
         props::color_row(ui, props, "When true", TRUE_COLOR, DEFAULT_TRUE_COLOR);
         props::color_row(ui, props, "When false", FALSE_COLOR, DEFAULT_FALSE_COLOR);
-        for (label, key) in [
-            ("Icon when true", TRUE_ICON),
-            ("Icon when false", FALSE_ICON),
-        ] {
-            let mut choices = vec!["None"];
-            choices.extend(Icon::ALL.iter().map(|i| i.key()));
-            let current = Icon::from_key(props::text(props, key, "")).map_or("None", Icon::key);
-            ui.label(label);
-            let mut picked = current;
-            egui::ComboBox::from_id_salt(key)
-                .selected_text(picked)
-                .show_ui(ui, |ui| {
-                    for c in &choices {
-                        ui.selectable_value(&mut picked, *c, *c);
-                    }
-                });
-            if picked != current {
-                // Elastic saves "None" too; not set means the same here.
-                set_property(props, key, (picked != "None").then(|| picked.into()));
-            }
-            ui.end_row();
-        }
-        for (label, key) in [
-            ("Image when true", TRUE_IMAGE),
-            ("Image when false", FALSE_IMAGE),
-        ] {
-            image_row(ui, props, label, key);
-        }
+        picture_row(ui, props, "Picture when true", TRUE_ICON, TRUE_IMAGE);
+        picture_row(ui, props, "Picture when false", FALSE_ICON, FALSE_IMAGE);
         props::flag_row(
             ui,
             props,
@@ -561,6 +602,48 @@ mod tests {
         // An unknown name is no icon.
         let odd = props(serde_json::json!({"true_icon": "Smiley"}));
         assert_eq!(look(&odd, value(true).as_ref()).unwrap().icon, None);
+    }
+
+    #[test]
+    fn one_list_picks_an_icon_or_an_image_and_clears_the_other() {
+        let mut p = props(serde_json::json!({"true_icon": "Checkmark"}));
+        assert_eq!(
+            picture_of(&p, TRUE_ICON, TRUE_IMAGE),
+            Picture::Icon(Icon::Checkmark)
+        );
+        // An image replaces the icon.
+        set_picture(
+            &mut p,
+            TRUE_ICON,
+            TRUE_IMAGE,
+            &Picture::Image("motor-on.svg".into()),
+        );
+        assert_eq!(p.get(TRUE_ICON), None);
+        assert_eq!(p[TRUE_IMAGE], "motor-on.svg");
+        assert_eq!(
+            picture_of(&p, TRUE_ICON, TRUE_IMAGE),
+            Picture::Image("motor-on.svg".into())
+        );
+        // An icon replaces the image, saved as Elastic saves it.
+        set_picture(
+            &mut p,
+            TRUE_ICON,
+            TRUE_IMAGE,
+            &Picture::Icon(Icon::ExclamationPoint),
+        );
+        assert_eq!(p[TRUE_ICON], "Exclamation Point");
+        assert_eq!(p.get(TRUE_IMAGE), None);
+        // None clears both; the false state's keys are left alone.
+        p.insert(FALSE_ICON.into(), "X".into());
+        set_picture(&mut p, TRUE_ICON, TRUE_IMAGE, &Picture::None);
+        assert!(!p.contains_key(TRUE_ICON) && !p.contains_key(TRUE_IMAGE));
+        assert_eq!(p[FALSE_ICON], "X");
+        // A layout with both set (by hand): the image, as drawn.
+        let both = props(serde_json::json!({"true_icon": "X", "true_image": "a.png"}));
+        assert_eq!(
+            picture_of(&both, TRUE_ICON, TRUE_IMAGE),
+            Picture::Image("a.png".into())
+        );
     }
 
     #[test]
