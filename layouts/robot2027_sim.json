@@ -364,11 +364,12 @@
             "y": 0.0,
             "width": 256.0,
             "height": 128.0,
-            "type": "Large Text Display",
+            "type": "Text Display",
             "properties": {
               "topic": "/DashTest/Sine",
               "period": 0.06,
-              "data_type": "double"
+              "data_type": "double",
+              "fit_text": true
             }
           },
           {

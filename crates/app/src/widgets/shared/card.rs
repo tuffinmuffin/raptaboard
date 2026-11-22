@@ -127,7 +127,7 @@ pub fn draw(
 }
 
 /// Draw `text` as large as fits in `rect`, centered, in `color`. For
-/// widgets whose whole body is one value (Large Text Display, Match Time).
+/// widgets whose whole body is one value (a Text Display with Fit text, Match Time).
 pub fn draw_fitted(painter: &egui::Painter, rect: Rect, text: &str, color: egui::Color32) {
     // Measure at a known size, then scale to fit both ways.
     const MEASURE: f32 = 100.0;

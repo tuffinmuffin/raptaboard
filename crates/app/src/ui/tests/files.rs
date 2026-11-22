@@ -1,4 +1,5 @@
-//! Opening layout files that are missing or aren't layouts.
+//! Opening layout files that are missing, aren't layouts, or have old
+//! widget types.
 
 // Tests written by Claude.
 
@@ -63,5 +64,51 @@ fn a_file_that_isnt_a_layout_says_why_in_a_dialog() {
     settle(&mut harness);
     assert!(harness.query_by_label("Couldn't open the layout").is_none());
     assert_eq!(harness.state().file.path, None);
+    std::fs::remove_dir_all(path.parent().unwrap()).ok();
+}
+
+#[test]
+fn a_large_text_display_opens_and_saves_as_a_fitted_text_display() {
+    let path = scratch_path("large-text", "layout.json");
+    // One on the grid, one in a list with "Fit text" set off, and a plain
+    // Text Display that stays as it is.
+    let large = |title: &str, extra: &str| {
+        format!(
+            r#"{{"title": "{title}", "x": 0, "y": 0, "width": 256, "height": 128,
+            "type": "Large Text Display", "properties": {{"topic": "/V"{extra}}}}}"#
+        )
+    };
+    let json = format!(
+        r#"{{"version": 1.0, "grid_size": 128, "tabs": [{{"name": "A", "grid_layout": {{
+        "containers": [{}, {{"title": "Plain", "x": 256, "y": 0, "width": 256,
+            "height": 128, "type": "Text Display", "properties": {{"topic": "/V"}}}}],
+        "layouts": [{{"title": "List", "x": 0, "y": 256, "width": 256, "height": 256,
+            "type": "List Layout", "properties": {{}}, "children": [{}]}}]}}}}]}}"#,
+        large("Grid", r#", "decimal_places": 1"#),
+        large("Child", r#", "fit_text": false"#),
+    );
+    std::fs::write(&path, json).unwrap();
+    let mut harness = harness_opening(&path);
+    let app = harness.state();
+    let by_title = |title: &str| app.layout.widgets().find(|w| w.title == title).unwrap();
+    let grid = by_title("Grid");
+    assert_eq!(grid.widget_type, "Text Display");
+    assert_eq!(grid.properties["fit_text"], true);
+    assert_eq!(grid.properties["decimal_places"], 1, "other settings kept");
+    let child = by_title("Child");
+    assert_eq!(child.widget_type, "Text Display");
+    assert_eq!(child.properties["fit_text"], false, "a set Fit text stays");
+    assert!(!by_title("Plain").properties.contains_key("fit_text"));
+    // Not a problem fixed or an unsaved change: just how it reads.
+    assert!(app.file.fixes.is_empty(), "{:?}", app.file.fixes);
+    assert!(!app.unsaved());
+    // Saving writes the new type.
+    harness
+        .state_mut()
+        .run_file_action(crate::layout_file::FileAction::Save);
+    settle(&mut harness);
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(!saved.contains("Large Text Display"), "{saved}");
+    assert!(saved.contains("\"fit_text\": true"), "{saved}");
     std::fs::remove_dir_all(path.parent().unwrap()).ok();
 }

@@ -234,8 +234,11 @@ impl DashboardApp {
             plural(layout.tabs.len(), "tab"),
             plural(layout.widgets().count(), "widget")
         );
-        self.file.saved = layout.clone();
+        // Old widget types become today's as the file is read, so they
+        // aren't shown as fixes or unsaved changes; the next save writes them.
         let mut layout = layout;
+        crate::widgets::upgrade(&mut layout);
+        self.file.saved = layout.clone();
         self.file.fixes = layout.sanitize();
         self.layout = layout;
         self.file.path = Some(path);

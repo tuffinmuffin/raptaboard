@@ -280,7 +280,6 @@ mod tests {
             ("Boolean Box", false, false),
             ("Graph", false, false),
             ("Field", false, false),
-            ("Large Text Display", false, false),
             ("Number Bar", false, false),
             ("Voltage View", false, false),
             ("Radial Gauge", false, false),
@@ -293,6 +292,17 @@ mod tests {
             draw(&mut w, None, is_enum);
             assert_eq!(w, before, "{ty}");
         }
+    }
+
+    #[test]
+    fn fit_text_hides_the_text_size() {
+        let has = |labels: &[String], row: &str| labels.iter().any(|l| l == row);
+        // A Text Display: a text size until its text is fitted.
+        let mut text = widget("Text Display", false);
+        let labels = draw(&mut text, Some("double"), false);
+        assert!(has(&labels, "Fit text") && has(&labels, "Text size"));
+        text.properties.insert("fit_text".into(), true.into());
+        assert!(!has(&draw(&mut text, Some("double"), false), "Text size"));
     }
 
     #[test]

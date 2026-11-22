@@ -12,7 +12,6 @@ pub mod enums;
 pub mod field;
 pub mod graph;
 pub mod gyro;
-pub mod large_text_display;
 pub mod match_time;
 pub mod mechanism;
 pub mod number_bar;
