@@ -493,7 +493,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        countdown; the field already sounds these, so they're for practice or a quiet venue), and
        DS lost or FMS lost while the robot is still connected (a different problem from the robot
        lost; **done**). Exceptions to off (asked for 2026-11-22): FMS lost plays "fms down" and robot lost
-       (the NT server gone) plays "lost comms", two text-to-speech clips (first made with Flite, replaced the same day with ones from Free TTS Online, whose terms are to be confirmed before the release). Later ideas, not planned: FMS attached, brownout or low battery.
+       (the NT server gone) plays "lost comms", two text-to-speech clips (first made with Flite, replaced the same day with ones from Free TTS Online). Later ideas, not planned: FMS attached, brownout or low battery.
      - Plays only on a change seen while connected: never for the state at connect, after a
        reconnect, or when a layout opens. A new event cuts off a clip still playing. The bell button
        in the settings bar mutes these too.
@@ -507,6 +507,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        deleted_user_44129's "Ghosts In The Machine.wav", both CC BY 3.0) and "go go go" (added 2026-11-22: theuncertainman's "Go Go
        Go - (Version 2) Northern British Soldier" from Freesound, CC BY 4.0). Every clip's
        source and license is in `media/audio/README.md` and `credits.rs`. More clips later.
+       The clips that aren't clearly ours to ship (the IT Crowd's, the fire clips, Free TTS
+       Online's) stay in the releases, 0.1.0 included (decided with the user 2026-11-22):
+       non-commercial, educational use by Team 3200 is low risk, and any clip is removed at once
+       if its owner asks. Revisit when teams outside Raptacon use raptaboard.
    - Later, after 0.1.0 (asked for by the user 2026-11-22), from the same robot state:
      - Window border by state: a colored border around the whole window, red while disabled, and
        flashing red for a few seconds right after the robot is disabled, so the state shows at a

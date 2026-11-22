@@ -90,7 +90,7 @@ pub const MEDIA: &[MediaCredit] = &[
         source: "made for raptaboard with Free TTS Online (text to speech), 2026-11-22",
         license: "Free TTS Online's terms for the audio it makes",
         link: None,
-        note: "Terms to be confirmed before raptaboard is handed out widely.",
+        note: "Kept for non-commercial, educational use; removed if the owner asks.",
     },
     MediaCredit {
         kind: "Sound",
@@ -100,7 +100,7 @@ pub const MEDIA: &[MediaCredit] = &[
                  channel, https://www.youtube.com/@TheITCrowdChannel",
         license: "not ours",
         link: Some("https://www.youtube.com/@TheITCrowdChannel"),
-        note: "A short quote kept for team, non-commercial use.",
+        note: "A short quote kept for non-commercial, educational use; removed if the owner asks.",
     },
     MediaCredit {
         kind: "Sound",
