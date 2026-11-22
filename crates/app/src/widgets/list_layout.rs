@@ -16,7 +16,7 @@ use serde_json::{Map, Value as Json};
 
 use super::find;
 use super::shared::card;
-use super::shared::props::set_property;
+use super::shared::props::{self, set_property};
 
 /// The `type` Elastic saves List Layouts as.
 pub const TYPE_NAME: &str = "List Layout";
@@ -653,6 +653,88 @@ pub fn move_child(list: &mut LayoutContainer, from: usize, to: usize) {
     }
 }
 
+/// Settings never copied between children: what a child shows (and the
+/// topics and data its settings name), and whether it's hidden.
+const NOT_COPIED: [&str; 8] = [
+    "series",
+    "layers",
+    "attachments",
+    "enum_values",
+    "enum_source",
+    "struct_meta",
+    props::DATA_TYPE,
+    HIDDEN,
+];
+
+/// Whether `key` is a display setting [`copy_settings`] copies: one of its
+/// type's own setting keys (or the update period), not naming a topic or
+/// what it shows.
+fn copied(key: &str) -> bool {
+    key != "topic" && !key.ends_with("_topic") && !NOT_COPIED.contains(&key)
+}
+
+/// Give every other child of `list` of the same widget type as child
+/// `from` its display settings, so they match it: every display setting
+/// either has (Elastic's too, such as a Boolean Box's colors, and the
+/// update period) set to the source's value, or removed where the source
+/// has none (it uses the default). Never what a child shows (its topic, `data_type`, struct field,
+/// or settings naming other topics, graph lines, field layers, enum names),
+/// its title, or whether it's hidden. Returns how many children changed.
+///
+/// ```
+/// use raptaboard::widgets::list_layout::copy_settings;
+/// use raptaboard_layout::{LayoutContainer, WidgetContainer};
+/// let child = |topic: &str, places: Option<i64>| -> WidgetContainer {
+///     let mut p = serde_json::json!({"topic": topic, "period": 0.06});
+///     if let Some(n) = places { p["decimal_places"] = n.into(); }
+///     serde_json::from_value(serde_json::json!({"title": topic, "x": 0.0, "y": 0.0,
+///         "width": 128.0, "height": 64.0, "type": "Text Display", "properties": p})).unwrap()
+/// };
+/// let mut list: LayoutContainer = serde_json::from_value(serde_json::json!({
+///     "title": "L", "x": 0.0, "y": 0.0, "width": 256.0, "height": 256.0,
+///     "type": "List Layout"})).unwrap();
+/// list.children = vec![child("/a", Some(1)), child("/b", None), child("/c", Some(3))];
+/// assert_eq!(copy_settings(&mut list, 0), 2);
+/// assert!(list.children.iter().all(|c| c.properties["decimal_places"] == 1));
+/// assert_eq!(list.children[1].topic(), Some("/b"));
+/// ```
+pub fn copy_settings(list: &mut LayoutContainer, from: usize) -> usize {
+    let Some(source) = list.children.get(from).cloned() else {
+        return 0;
+    };
+    if crate::widgets::find(&source.widget_type).is_none() {
+        return 0;
+    }
+    let mut changed = 0;
+    for (i, child) in list.children.iter_mut().enumerate() {
+        if i == from || child.widget_type != source.widget_type {
+            continue;
+        }
+        // Every display setting either has (Elastic's too, such as a
+        // Boolean Box's colors): the source's value, or taken off where the
+        // source has none, so the child ends up the same as the source.
+        let keys: Vec<String> = source
+            .properties
+            .keys()
+            .chain(child.properties.keys())
+            .filter(|k| copied(k))
+            .cloned()
+            .collect();
+        let before = child.properties.clone();
+        for key in &keys {
+            set_property(
+                &mut child.properties,
+                key,
+                source.properties.get(key).cloned(),
+            );
+        }
+        if child.properties != before {
+            changed += 1;
+        }
+    }
+    changed
+}
+
 /// What the list settings dialog asks the window to do next.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListAction {
@@ -662,7 +744,8 @@ pub enum ListAction {
 
 /// Draw the settings for `list` and apply changes at once: its title, the
 /// label position, and its children in order, each with a Shown checkbox
-/// and buttons to move it up or down, edit it, or delete it. Edit… is
+/// and buttons to move it up or down, edit it, copy its settings to the
+/// others of its type ([`copy_settings`]), or delete it. Edit… is
 /// returned as [`ListAction::EditChild`] for the window to carry out.
 pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAction> {
     let mut action = None;
@@ -761,6 +844,25 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
                     if ui.button("Edit…").clicked() {
                         action = Some(ListAction::EditChild(i));
                     }
+                    let same = list
+                        .children
+                        .iter()
+                        .filter(|c| c.widget_type == child.widget_type)
+                        .count()
+                        - 1;
+                    if ui
+                        .add_enabled(same > 0, egui::Button::new("Copy to same type"))
+                        .on_hover_text(format!(
+                            "Give the other {same} {} in this list its display settings \
+                             (colors, text, number format, period...); never what they \
+                             show or their titles.",
+                            child.widget_type
+                        ))
+                        .on_disabled_hover_text("No other child of this type")
+                        .clicked()
+                    {
+                        change = Some((i, Change::CopyFrom));
+                    }
                     if ui
                         .button("Delete")
                         .on_hover_text(
@@ -780,6 +882,9 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
         Some((i, Change::Delete)) => {
             list.children.remove(i);
         }
+        Some((i, Change::CopyFrom)) => {
+            copy_settings(list, i);
+        }
         Some((i, Change::Show(shown))) => {
             set_property(
                 &mut list.children[i].properties,
@@ -797,12 +902,86 @@ enum Change {
     Move(usize),
     Show(bool),
     Delete,
+    CopyFrom,
 }
 
 #[cfg(test)]
 mod tests {
     // Tests written by Claude.
     use super::*;
+
+    #[test]
+    fn copying_settings_never_copies_what_a_child_shows() {
+        let child = |ty: &str, props: serde_json::Value| -> WidgetContainer {
+            serde_json::from_value(serde_json::json!({
+                "title": "t", "x": 0.0, "y": 0.0, "width": 128.0, "height": 64.0,
+                "type": ty, "properties": props}))
+            .unwrap()
+        };
+        let mut l = list(
+            vec![
+                child(
+                    "Enum Dropdown",
+                    serde_json::json!({
+                    "topic": "/a", "data_type": "string", "period": 0.02,
+                    "font_size": 20.0, "enum_source": "list", "enum_values": ["X"],
+                    "options_topic": "/a/options", "hidden": true}),
+                ),
+                child(
+                    "Enum Dropdown",
+                    serde_json::json!({
+                    "topic": "/b", "data_type": "int", "period": 0.06,
+                    "enum_source": "topic", "options_topic": "/b/names"}),
+                ),
+                child(
+                    "Text Display",
+                    serde_json::json!({"topic": "/c", "period": 0.06}),
+                ),
+            ],
+            None,
+        );
+        assert_eq!(copy_settings(&mut l, 0), 1, "only the other Enum Dropdown");
+        let b = &l.children[1].properties;
+        assert_eq!(b["font_size"], 20.0);
+        assert_eq!(b["period"], 0.02);
+        // What it shows, and where its names come from, stay its own.
+        assert_eq!(b["topic"], "/b");
+        assert_eq!(b["data_type"], "int");
+        assert_eq!(b["enum_source"], "topic");
+        assert_eq!(b["options_topic"], "/b/names");
+        assert!(!b.contains_key("enum_values") && !b.contains_key("hidden"));
+        // Another type is left alone.
+        assert_eq!(l.children[2].properties["period"], 0.06);
+        // Elastic's keys too: a Boolean Box's colors, which aren't among
+        // its type's own setting keys (Elastic writes them in every one).
+        let mut boxes = list(
+            vec![
+                child(
+                    "Boolean Box",
+                    serde_json::json!({
+                    "topic": "/x", "true_color": 4294967295u32, "false_color": 4294198070u32}),
+                ),
+                child(
+                    "Boolean Box",
+                    serde_json::json!({
+                    "topic": "/y", "true_color": 4283215696u32, "false_color": 4294198070u32}),
+                ),
+            ],
+            None,
+        );
+        assert_eq!(copy_settings(&mut boxes, 0), 1);
+        assert_eq!(boxes.children[1].properties["true_color"], 4294967295u32);
+        assert_eq!(boxes.children[1].properties["topic"], "/y");
+        // From a child with no color of its own (the default): the others
+        // go back to the default too.
+        boxes.children[0].properties.remove("true_color");
+        assert_eq!(copy_settings(&mut boxes, 0), 1);
+        assert!(!boxes.children[1].properties.contains_key("true_color"));
+        // A setting the source doesn't have is taken off the others.
+        l.children[0].properties.remove("font_size");
+        copy_settings(&mut l, 0);
+        assert!(!l.children[1].properties.contains_key("font_size"));
+    }
 
     fn child(title: &str, height: f64) -> WidgetContainer {
         serde_json::from_value(serde_json::json!({
