@@ -480,7 +480,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      - Built-in clips (`media/audio/`): "disabled 1" and "disabled 2" (the IT Crowd's "I'm
        disabled"), "fire 1", "fire 2", "danger danger" (added 2026-11-22: xpoki's
        "danger_normal_lp.wav" from Freesound, CC BY 4.0, played twice) and "auto ghosts" (added
-       2026-11-22: dal_kas's Freesound sound 124570; its license still to be checked) and "go go go" (added 2026-11-22: theuncertainman's "Go Go
+       2026-11-22: dal_kas's "MustphaMondeRemixes (3).aif" from Freesound, a remix of
+       deleted_user_44129's "Ghosts In The Machine.wav", both CC BY 3.0) and "go go go" (added 2026-11-22: theuncertainman's "Go Go
        Go - (Version 2) Northern British Soldier" from Freesound, CC BY 4.0). Every clip's
        source and license is in `media/audio/README.md` and `credits.rs`. More clips later.
    - Connection settings behind a gear (**done**, `ui/settings_window.rs`; asked for by the user

@@ -66,11 +66,12 @@ pub const MEDIA: &[MediaCredit] = &[
         kind: "Sound",
         files: &["auto-ghosts.mp3"],
         what: "\"Auto Ghosts\", for auto starting",
-        source: "\"mustphamonderemixes-3\" by dal_kas, Freesound, \
-                 https://freesound.org/s/124570/",
-        license: "to be confirmed",
-        link: Some("https://freesound.org/s/124570/"),
-        note: "Converted to MP3. Check the license on its Freesound page and credit it here.",
+        source: "\"MustphaMondeRemixes (3).aif\" by dal_kas, Freesound, \
+                 https://freesound.org/s/124570/, a remix of \"Ghosts In The Machine.wav\" \
+                 by deleted_user_44129, https://freesound.org/s/124470/",
+        license: "CC BY 3.0",
+        link: Some("https://creativecommons.org/licenses/by/3.0/"),
+        note: "Converted to MP3.",
     },
     MediaCredit {
         kind: "Sound",
