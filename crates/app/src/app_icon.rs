@@ -1,8 +1,9 @@
 //! raptaboard's own icon: the window's, and the files the release packages
 //! use (a Windows `.ico`, PNGs for the macOS `.icns` and Linux).
 //!
-//! It's drawn from one SVG, `media/icon/raptaboard.svg` (CC0, made for
-//! raptaboard). The window draws it when the program starts; the files in
+//! It's drawn from one SVG, `media/icon/raptaboard.svg`: Raptacon's raptor
+//! mark (from Raptacon's brand kit) in Raptacon Green inside a rust-red
+//! gear. The window draws it when the program starts; the files in
 //! `media/icon/` are made from it with
 //! `cargo run -p raptaboard --example make_icons`.
 
@@ -99,19 +100,18 @@ mod tests {
     }
 
     #[test]
-    fn the_icon_is_a_rounded_tile_with_see_through_corners() {
-        let size = 64;
+    fn the_icon_is_a_gear_around_a_dark_disc_with_see_through_corners() {
+        let size = 256;
         let pixels = rgba(size);
-        // (3, 3) is inside the tile's square (it starts 2 px in) but outside
-        // its rounded corner.
-        assert_eq!(pixel(&pixels, size, 3, 3)[3], 0, "corner see-through");
-        assert_eq!(
-            pixel(&pixels, size, 4, 32)[3],
-            255,
-            "tile solid at the edge"
-        );
-        // The tile's navy shows between the gauge and the bars.
-        assert_eq!(pixel(&pixels, size, 16, 44), [0x14, 0x32, 0x4F, 255]);
+        let rust = [0xB7, 0x41, 0x0E, 255];
+        assert_eq!(pixel(&pixels, size, 2, 2)[3], 0, "corner see-through");
+        // Between two teeth on the left (the gap at 180 degrees) is see-through;
+        // the top tooth is the gear's rust red.
+        assert_eq!(pixel(&pixels, size, 12, 128)[3], 0, "between teeth");
+        assert_eq!(pixel(&pixels, size, 128, 10), rust, "top tooth");
+        assert_eq!(pixel(&pixels, size, 128, 30), rust, "gear rim");
+        // The dark disc below the raptor.
+        assert_eq!(pixel(&pixels, size, 128, 205), [0x0F, 0x17, 0x20, 255]);
     }
 
     #[test]

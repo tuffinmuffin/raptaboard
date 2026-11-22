@@ -54,7 +54,7 @@ no admin, `%LOCALAPPDATA%\Programs\raptaboard`); macOS a zipped universal `rapta
 signed only); Linux a `.tar.gz` with `install.sh` (per-user, `~/.local`). Each has README.txt (the user's
 first steps), CHANGELOG.md, the licenses and `THIRD-PARTY-LICENSES.txt` (copied from `licenses/THIRD_PARTY_LICENSES.txt`, the
 About window's list), plus a `-debug` archive. Nothing is code-signed yet (decided 2026-11-22). The icon is
-`media/icon/raptaboard.svg` (CC0); `cargo run -p raptaboard --example make_icons` remakes the `.ico`,
+`media/icon/raptaboard.svg` (Raptacon's raptor mark from its brand kit in a rust-red gear); `cargo run -p raptaboard --example make_icons` remakes the `.ico`,
 `.icns` and `.png`, and `build.rs` puts the `.ico` into the Windows program. To release: bump
 `version` in the workspace `Cargo.toml`, add its `## x.y.z` section to `CHANGELOG.md` (short: what's
 in it, not every PR), merge, then push a tag `vx.y.z` on `main`; `.github/workflows/release.yml` builds

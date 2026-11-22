@@ -803,7 +803,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    `.github/workflows/release.yml`): every install is per-user (no admin): Windows both a portable
    zip and an Inno Setup installer, macOS a universal `.app` in a zip, Linux a `.tar.gz` with
    `install.sh` into `~/.local`; not code-signed yet (the README and release notes say how to get
-   past the first-start warning); our own CC0 app icon (`media/icon/`); the crates' license texts
+   past the first-start warning); an app icon of Raptacon's raptor mark (its brand kit) in a rust-red gear (`media/icon/`, 2026-11-22); the crates' license texts
    from `licenses/THIRD_PARTY_LICENSES.txt` (the About window's list); the changelog's first entry
    is a short summary of 0.1.0, not the history of the phase. After it: the window border by robot
    state and the e-stop pop-up, the Group widget, X/Y and polar graphs, partial overlap, reflow
