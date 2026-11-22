@@ -3,12 +3,11 @@
 //!
 //! Settings: `true_color` and `false_color`, and `true_icon` and
 //! `false_icon` (Elastic's: `None`, `Checkmark`, `X` or `Exclamation
-//! Point`; an icon set for the current state is drawn in that state's color
-//! instead of filling the box, as Elastic draws it); and raptaboard's
-//! `true_image` and `false_image` (an image from the images folders,
-//! [`crate::images`], in place of an icon), `icon_on_color` (fill the box
-//! and draw the icon or image on it; on unless set for an image, off for an
-//! icon), `show_text`,
+//! Point`, drawn on the state's color in black or white, whichever reads);
+//! and raptaboard's `true_image` and `false_image` (an image from the
+//! images folders, [`crate::images`], in place of an icon, drawn on the
+//! state's color: for a plain background, set the color to black or
+//! white), `show_text`,
 //! `true_text`, `false_text`, `font_size`, `text_backing` (a see-through
 //! box behind the text, so it reads over any color) and `true_text_color`
 //! and `false_text_color` (automatic black or white if not set). raptaboard
@@ -43,9 +42,6 @@ pub const FALSE_ICON: &str = "false_icon";
 pub const TRUE_IMAGE: &str = "true_image";
 /// The image shown when false (raptaboard).
 pub const FALSE_IMAGE: &str = "false_image";
-/// Fill the box and draw the icon (or image) on it, instead of it alone
-/// (raptaboard).
-pub const ICON_ON_COLOR: &str = "icon_on_color";
 /// A see-through box behind the text (raptaboard).
 pub const TEXT_BACKING: &str = "text_backing";
 /// The text's color when true (raptaboard); automatic if not set.
@@ -95,8 +91,8 @@ impl Icon {
 /// Everything a Boolean Box draws for one value.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Look {
-    /// The box's color, if it's filled (not when an icon is drawn alone).
-    pub fill: Option<Color32>,
+    /// The box's color.
+    pub fill: Color32,
     /// The icon and its color.
     pub icon: Option<(Icon, Color32)>,
     /// The image's file name (in the images folders), drawn in place of an
@@ -165,9 +161,9 @@ pub fn fill(
 /// use raptaboard::widgets::builtin::boolean_box::{look, Icon, DEFAULT_FALSE_COLOR};
 /// let p = serde_json::json!({"false_icon": "X"});
 /// let l = look(p.as_object().unwrap(), Some(&Value::Boolean(false))).unwrap();
-/// // As Elastic draws it: the icon in the state's color, no fill.
-/// assert_eq!(l.fill, None);
-/// assert_eq!(l.icon, Some((Icon::X, DEFAULT_FALSE_COLOR)));
+/// // On the state's color, in white (or black, whichever reads).
+/// assert_eq!(l.fill, DEFAULT_FALSE_COLOR);
+/// assert_eq!(l.icon, Some((Icon::X, eframe::egui::Color32::WHITE)));
 /// ```
 pub fn look(p: &Map<String, Json>, value: Option<&Value>) -> Result<Look, &'static str> {
     let (color, text) = fill(p, value)?;
@@ -182,30 +178,19 @@ pub fn look(p: &Map<String, Json>, value: Option<&Value>) -> Result<Look, &'stat
         .filter(|n| !n.is_empty())
         .map(str::to_owned);
     let icon = Icon::from_key(props::text(p, icon_key, "")).filter(|_| image.is_none());
-    // An image is drawn on the state's color unless set otherwise (it
-    // isn't tinted, so alone it would show none); an icon alone, in the
-    // color, as Elastic draws it.
-    let on_color = props::flag(p, ICON_ON_COLOR, image.is_some());
-    // An icon alone (Elastic's way) sits on the card, so it's drawn in the
-    // state's color; on a filled box it's black or white, whichever reads.
-    let fill = ((icon.is_none() && image.is_none()) || on_color).then_some(color);
-    let ground = fill.unwrap_or(Color32::TRANSPARENT);
-    let auto = if fill.is_some() {
-        props::text_color_on(color)
-    } else {
-        color
-    };
-    let icon = icon.map(|i| (i, if fill.is_some() { auto } else { color }));
+    // The box is always filled with the state's color (for a picture on
+    // a plain background, set the color to black or white); an icon is
+    // drawn on it in black or white, whichever reads, an image as it is.
+    let auto = props::text_color_on(color);
+    let icon = icon.map(|i| (i, auto));
     let backing = props::flag(p, TEXT_BACKING, false);
     let text_color = props::color_property(p, text_color_key).unwrap_or(if backing {
         Color32::WHITE
-    } else if ground == Color32::TRANSPARENT {
-        color
     } else {
         auto
     });
     Ok(Look {
-        fill,
+        fill: color,
         icon,
         image,
         text: text.map(|t| (t, text_color)),
@@ -411,9 +396,11 @@ impl WidgetType for BooleanBox {
             Ok(look) => look,
             Err(why) => return card::draw_message(painter, visuals, rect, why),
         };
-        if let Some(color) = look.fill {
-            painter.rect_filled(rect, CornerRadius::same(card::BODY_CORNER_RADIUS), color);
-        }
+        painter.rect_filled(
+            rect,
+            CornerRadius::same(card::BODY_CORNER_RADIUS),
+            look.fill,
+        );
         // With text too, the icon (or image) takes the top two thirds.
         let pictured = look.icon.is_some() || look.image.is_some();
         let (icon_rect, text_at) = match (pictured, &look.text) {
@@ -453,21 +440,6 @@ impl WidgetType for BooleanBox {
         props::color_row(ui, props, "When false", FALSE_COLOR, DEFAULT_FALSE_COLOR);
         picture_row(ui, props, "Picture when true", TRUE_ICON, TRUE_IMAGE);
         picture_row(ui, props, "Picture when false", FALSE_ICON, FALSE_IMAGE);
-        // On by default with an image (which isn't tinted), off with an
-        // icon (as Elastic draws it).
-        let has_image = [TRUE_IMAGE, FALSE_IMAGE]
-            .iter()
-            .any(|k| !props::text(props, k, "").trim().is_empty());
-        props::flag_row(
-            ui,
-            props,
-            "Icon or image on the color",
-            "Fill the box and draw the icon or image on it. Off: it alone (an icon in the \
-             state's color, as Elastic). On unless set for an image, off for an icon.",
-            ICON_ON_COLOR,
-            has_image,
-        );
-
         ui.label("Text");
         let mut shown = show_text(props);
         if ui
@@ -549,7 +521,6 @@ impl WidgetType for BooleanBox {
             FALSE_ICON,
             TRUE_IMAGE,
             FALSE_IMAGE,
-            ICON_ON_COLOR,
             TEXT_BACKING,
             TRUE_TEXT_COLOR,
             FALSE_TEXT_COLOR,
@@ -584,30 +555,26 @@ mod tests {
     }
 
     #[test]
-    fn icons_draw_as_elastic_draws_them_or_on_the_color() {
+    fn icons_draw_on_the_states_color_in_black_or_white() {
         let value = |b| Some(Value::Boolean(b));
-        // Elastic's: the icon alone, in the state's color, only for its
-        // state.
+        // Elastic's icon keys, only for their state; the box is always
+        // filled, the icon black or white on it.
         let elastic = props(serde_json::json!({"true_icon": "Checkmark", "false_icon": "None"}));
         let t = look(&elastic, value(true).as_ref()).unwrap();
-        assert_eq!(t.fill, None);
-        assert_eq!(t.icon, Some((Icon::Checkmark, DEFAULT_TRUE_COLOR)));
-        let f = look(&elastic, value(false).as_ref()).unwrap();
-        assert_eq!(f.fill, Some(DEFAULT_FALSE_COLOR));
-        assert_eq!(f.icon, None);
-        // raptaboard's: on the color, in black or white, and any icon for
-        // either state.
-        let on =
-            props(serde_json::json!({"true_icon": "exclamation point", "icon_on_color": true}));
-        let t = look(&on, value(true).as_ref()).unwrap();
-        assert_eq!(t.fill, Some(DEFAULT_TRUE_COLOR));
+        assert_eq!(t.fill, DEFAULT_TRUE_COLOR);
         assert_eq!(
             t.icon,
-            Some((
-                Icon::ExclamationPoint,
-                props::text_color_on(DEFAULT_TRUE_COLOR)
-            ))
+            Some((Icon::Checkmark, props::text_color_on(DEFAULT_TRUE_COLOR)))
         );
+        let f = look(&elastic, value(false).as_ref()).unwrap();
+        assert_eq!(f.fill, DEFAULT_FALSE_COLOR);
+        assert_eq!(f.icon, None);
+        // Any icon for either state, any case; on a yellow box, in black.
+        let yellow = props(
+            serde_json::json!({"true_icon": "exclamation point", "true_color": 0xFFFFEB3Bu32}),
+        );
+        let t = look(&yellow, value(true).as_ref()).unwrap();
+        assert_eq!(t.icon, Some((Icon::ExclamationPoint, Color32::BLACK)));
         // An unknown name is no icon.
         let odd = props(serde_json::json!({"true_icon": "Smiley"}));
         assert_eq!(look(&odd, value(true).as_ref()).unwrap().icon, None);
@@ -664,18 +631,14 @@ mod tests {
         let t = look(&p, value(true).as_ref()).unwrap();
         assert_eq!(t.image.as_deref(), Some("intake-down.png"));
         assert_eq!(t.icon, None, "the image, not the icon");
-        assert_eq!(
-            t.fill,
-            Some(DEFAULT_TRUE_COLOR),
-            "an image on the color unless set otherwise: it isn't tinted"
-        );
+        assert_eq!(t.fill, DEFAULT_TRUE_COLOR, "on the state's color");
         // The other state keeps its icon.
         let f = look(&p, value(false).as_ref()).unwrap();
         assert_eq!(f.image, None);
-        assert_eq!(f.icon, Some((Icon::X, DEFAULT_FALSE_COLOR)));
-        // Set off: alone on the card.
-        let alone = props(serde_json::json!({"true_image": "a.png", "icon_on_color": false}));
-        assert_eq!(look(&alone, value(true).as_ref()).unwrap().fill, None);
+        assert_eq!(
+            f.icon,
+            Some((Icon::X, props::text_color_on(DEFAULT_FALSE_COLOR)))
+        );
         // A blank name is no image.
         let blank = props(serde_json::json!({"true_image": "  "}));
         assert_eq!(look(&blank, value(true).as_ref()).unwrap().image, None);

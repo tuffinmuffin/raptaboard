@@ -194,8 +194,8 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `speeds_topic`, `speeds_setpoint_topic` | `builtin/swerve.rs` | SwerveDrive | the whole robot's measured and requested motion, `ChassisSpeeds` topics, drawn from the robot's center as Chassis Speeds draws them | none |
 | `max_spin` | `builtin/chassis_speeds.rs` | Chassis Speeds, SwerveDrive | the spin drawn as a three-quarter turn, degrees per second | 360 |
 | `fit` | `builtin/mechanism.rs` | Mechanism2d | what the view fits: `mechanism` (the part of the canvas it has used, plus a margin, growing only; a double-click starts it over) or `canvas` (all of `dims`) | `mechanism` |
-| `true_icon`, `false_icon` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | `None`, `Checkmark`, `X` or `Exclamation Point`, drawn alone in the state's color | `None` |
-| `true_image`, `false_image`, `icon_on_color` | `builtin/boolean_box.rs` | Boolean Box | an image's file name in the images folders, in place of an icon; draw the icon or image on the filled box (an image isn't tinted, so it's on the color unless set off) | none; on for an image, off for an icon |
+| `true_icon`, `false_icon` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | `None`, `Checkmark`, `X` or `Exclamation Point`, drawn on the state's color in black or white | `None` |
+| `true_image`, `false_image` | `builtin/boolean_box.rs` | Boolean Box | an image's file name in the images folders, in place of an icon, drawn on the state's color (for a plain background, set the color to black or white) | none |
 | `text_backing`, `true_text_color`, `false_text_color` | `builtin/boolean_box.rs` | Boolean Box | a see-through box behind the text; the text's color per state | off; automatic |
 | `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
 | `series` | `builtin/graph.rs` | Graph | the lines after the main one: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
@@ -456,8 +456,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      colored by level, for battery voltage instead of Voltage View.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      **Done**: Elastic's `true_icon`/`false_icon` set (Checkmark, X, Exclamation Point, any for either
-     state in raptaboard), drawn alone in the state's color as Elastic does, or on the filled box with
-     `icon_on_color`; and the team's own images (decided with the user 2026-11-21), `true_image` /
+     state in raptaboard), drawn on the state's color in black or white (Elastic draws them alone in the color; decided
+     with the user 2026-11-21 that the box is always filled, so there's no option to explain: a plain
+     background is the color set to black or white); and the team's own images (decided with the user 2026-11-21), `true_image` /
      `false_image`, chosen from a list of the images in the images folders (`images.rs`: `images/`
      where raptaboard starts, beside the program, and `~/.raptaboard/images/`, as fields are found),
      with an Import… button that copies a picked PNG, JPEG or SVG into `~/.raptaboard/images/` (a
