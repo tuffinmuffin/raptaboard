@@ -489,6 +489,13 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        deleted_user_44129's "Ghosts In The Machine.wav", both CC BY 3.0) and "go go go" (added 2026-11-22: theuncertainman's "Go Go
        Go - (Version 2) Northern British Soldier" from Freesound, CC BY 4.0). Every clip's
        source and license is in `media/audio/README.md` and `credits.rs`. More clips later.
+   - Later, after 0.1.0 (asked for by the user 2026-11-22), from the same robot state:
+     - Window border by state: a colored border around the whole window, red while disabled, and
+       flashing red for a few seconds right after the robot is disabled, so the state shows at a
+       glance from any tab. Colors per state set in the Settings window; off by default.
+     - E-stop pop-up: a large modal over the whole window when the robot enters e-stop, saying so
+       plainly. It clears on a click anywhere or when the robot reconnects (an e-stopped robot
+       stays e-stopped until it reboots).
    - Connection settings behind a gear (**done**, `ui/settings_window.rs`; asked for by the user
      2026-11-22): a ⚙ button in the settings bar opens a Settings window with the team number,
      address mode, custom address and port, and sound on or off (later: volume). The bar keeps the
@@ -761,8 +768,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    min/max/average on number widgets and graphs, graph history review, widget type choices that
    fit, copy settings within a list, and (added 2026-11-22) the connection settings behind a gear and
    the Robot State widget with its sounds. Then the release: version 0.1.0, a changelog, a tag, and a
-   CI workflow building Windows, macOS and Linux binaries for a GitHub Release. After it: the Group
-   widget, X/Y and polar graphs, partial overlap, reflow while dragging, the text style
+   CI workflow building Windows, macOS and Linux binaries for a GitHub Release. After it: the window border by robot state and the
+   e-stop pop-up, the Group widget, X/Y and polar graphs, partial overlap, reflow while dragging, the text style
    dialog, regex alert filters, and plugins.
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, units, MJPEG
