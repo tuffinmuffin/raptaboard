@@ -501,13 +501,13 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        tabs never silences it (`WidgetType::state_sounds`). With two FMSInfo widgets, only the first
        (tab order, then position) plays. Each sound row has ▶ to hear it.
      - Built-in clips (`media/audio/`): "disabled 1" and "disabled 2" (the IT Crowd's "I'm
-       disabled"), "fire 1", "fire 2", "danger danger" (added 2026-11-22: xpoki's
+       disabled"), "fire 1", "fire 2" (the IT Crowd's "Fire!", S1E2), "danger danger" (added 2026-11-22: xpoki's
        "danger_normal_lp.wav" from Freesound, CC BY 4.0, played twice) and "auto ghosts" (added
        2026-11-22: dal_kas's "MustphaMondeRemixes (3).aif" from Freesound, a remix of
        deleted_user_44129's "Ghosts In The Machine.wav", both CC BY 3.0) and "go go go" (added 2026-11-22: theuncertainman's "Go Go
        Go - (Version 2) Northern British Soldier" from Freesound, CC BY 4.0). Every clip's
        source and license is in `media/audio/README.md` and `credits.rs`. More clips later.
-       The clips that aren't clearly ours to ship (the IT Crowd's, the fire clips, Free TTS
+       The clips that aren't clearly ours to ship (the IT Crowd's "disabled" and "fire", Free TTS
        Online's) stay in the releases, 0.1.0 included (decided with the user 2026-11-22):
        non-commercial, educational use by Team 3200 is low risk, and any clip is removed at once
        if its owner asks. Revisit when teams outside Raptacon use raptaboard.

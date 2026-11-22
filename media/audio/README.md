@@ -12,11 +12,11 @@ so keep the two in step (a test checks every clip here has a credit there).
 | `go-go-go.mp3` | "go go go" | [Go Go Go - (Version 2) Northern British Soldier](https://freesound.org/s/402643/) by theuncertainman on Freesound, converted to MP3 (128 kb/s mono) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Credit: "Go Go Go - (Version 2) Northern British Soldier" by theuncertainman, https://freesound.org/s/402643/, converted to MP3 |
 | `fms-down.mp3`, `lost-comms.mp3` | "fms down", "lost comms" | Made for raptaboard on 2026-11-22 with Free TTS Online (text to speech): "FMS lost" and "comms lost" (MP3 48 kb/s mono, about 2 s each). They replaced the first Flite versions | Free TTS Online's terms for the audio it makes. Kept for now (see below) |
 | `disabled1.mp3`, `disabled2.mp3` | "disabled 1", "disabled 2" | "I'm disabled", a line from the TV series *The IT Crowd*, from [The IT Crowd's YouTube channel](https://www.youtube.com/@TheITCrowdChannel) | Not ours: a short quote kept for non-commercial, educational use (see below) |
-| `fire1.mp3`, `fire2.mp3` | "fire 1", "fire 2" | Not recorded yet | Unknown: find the source and license, or replace them |
+| `fire1.mp3`, `fire2.mp3` | "fire 1", "fire 2" | From *The IT Crowd*, Series 1, Episode 2: "Fire!", on [The IT Crowd's YouTube channel](https://www.youtube.com/watch?v=1EBfxjSFAxQ) | Not ours: kept for non-commercial, educational use (see below) |
 
 ## Clips that aren't ours
 
-The IT Crowd clips, the fire clips and the Free TTS Online clips stay in raptaboard's releases for
+The IT Crowd clips ("disabled" and "fire") and the Free TTS Online clips stay in raptaboard's releases for
 now (decided with the user 2026-11-19 and 2026-11-22): it's non-commercial, educational use by
 Team 3200, which is low risk, and a clip is removed at once if its owner asks (a DMCA request).
 If teams outside Raptacon start using raptaboard, look at these again and replace any that aren't

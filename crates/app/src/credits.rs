@@ -105,11 +105,12 @@ pub const MEDIA: &[MediaCredit] = &[
     MediaCredit {
         kind: "Sound",
         files: &["fire1.mp3", "fire2.mp3"],
-        what: "\"fire\" alarms",
-        source: "not recorded yet",
-        license: "unknown",
-        link: None,
-        note: "Source to be found, or the clips replaced.",
+        what: "\"Fire!\"",
+        source: "from The IT Crowd, Series 1, Episode 2: \"Fire!\", on The IT Crowd's \
+                 YouTube channel, https://www.youtube.com/watch?v=1EBfxjSFAxQ",
+        license: "not ours",
+        link: Some("https://www.youtube.com/watch?v=1EBfxjSFAxQ"),
+        note: "Kept for non-commercial, educational use; removed if the owner asks.",
     },
     MediaCredit {
         kind: "Image",
