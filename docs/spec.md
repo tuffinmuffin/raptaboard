@@ -417,10 +417,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      and when the robot reconnects). Taken from every value received, as graphs record them
      (`traces.rs`), not from the widget's sampled period, so short peaks count. Bars and gauges
      could also mark the min and max on their scale.
-   - Widget type choices that fit: the settings dialog's Widget list should offer only the types
-     that can show what the widget is bound to. A table (a chooser) isn't a topic, so it has no NT
-     type and every type is listed now: offer the chooser widgets (and the enum widgets on a
-     chooser) for a chooser table, and only number, text and so on for a topic of that type.
+   - Widget type choices that fit (**done**): the settings dialog's Widget list offers only the types
+     that can show what the widget is bound to (`widgets::types_showing`, as the tree's "Add as"): for
+     a table its `.type` is the value type (`DashboardApp::value_type`), so a chooser offers the
+     choosers and the enum widgets (which now list the chooser `.type` in `table_types`), and a
+     number topic offers number widgets, not choosers. Unknown (not connected): every type.
    - Alerts (**done**, `sign_places` in `builtin/alerts.rs`): the most urgent active sign in the circle
      grows large in the middle (an error's ✕ while there are errors, else the ! while there are
      warnings), the other two shrinking along the bottom, so the worst one reads at a glance from
