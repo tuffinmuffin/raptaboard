@@ -3,6 +3,7 @@
 //! [`TYPES`](super::TYPES).
 
 pub mod alerts;
+pub mod battery;
 pub mod boolean_box;
 pub mod chassis_speeds;
 pub mod chooser;

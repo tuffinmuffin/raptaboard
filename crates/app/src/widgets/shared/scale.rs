@@ -38,7 +38,10 @@ pub const THICKNESS: &str = "thickness";
 pub const MAX_THICKNESS: f64 = 200.0;
 
 /// Every setting key in this file.
-pub const KEYS: [&str; 10] = [
+pub const KEYS: [&str; 13] = [
+    super::value_colors::COLOR_BY,
+    super::value_colors::COLOR_BELOW,
+    super::value_colors::COLOR_ABOVE,
     THICKNESS,
     SHOW_VALUE,
     FILL_COLOR,
@@ -91,7 +94,11 @@ pub fn fill_color(
     default: Color32,
 ) -> Color32 {
     if !props::flag(props, GRADIENT, false) {
-        return props::color_property(props, FILL_COLOR).unwrap_or(default);
+        // Color by value's thresholds (or gradient between two numbers),
+        // else the solid color.
+        return super::value_colors::color_for(props, value)
+            .or_else(|| props::color_property(props, FILL_COLOR))
+            .unwrap_or(default);
     }
     let low = props::color_property(props, LOW_COLOR).unwrap_or(DEFAULT_LOW);
     let high = props::color_property(props, HIGH_COLOR).unwrap_or(DEFAULT_HIGH);
@@ -248,7 +255,10 @@ pub fn rows(
     }
     ui.end_row();
     if !gradient {
-        props::color_row(ui, p, "Color", FILL_COLOR, default);
+        super::value_colors::rows(ui, p);
+        if !super::value_colors::enabled(p) {
+            props::color_row(ui, p, "Color", FILL_COLOR, default);
+        }
         return;
     }
     props::color_row(ui, p, "Low color", LOW_COLOR, DEFAULT_LOW);
@@ -290,6 +300,45 @@ pub fn rows(
 mod tests {
     // Tests written by Claude.
     use super::*;
+
+    #[test]
+    fn a_bars_fill_uses_color_by_value_unless_its_own_gradient_is_on() {
+        let p = |j: serde_json::Value| j.as_object().unwrap().clone();
+        let thresholds = p(serde_json::json!({"color_by": "thresholds"}));
+        assert_eq!(
+            fill_color(&thresholds, 5.0, 0.0, 100.0, Color32::BLUE),
+            DEFAULT_LOW
+        );
+        assert_eq!(
+            fill_color(&thresholds, 50.0, 0.0, 100.0, Color32::BLUE),
+            DEFAULT_HIGH
+        );
+        // The scale's own gradient (over its min to max) wins.
+        let both = p(serde_json::json!({"color_by": "thresholds", "gradient": true}));
+        assert_eq!(
+            fill_color(&both, 100.0, 0.0, 100.0, Color32::BLUE),
+            DEFAULT_HIGH
+        );
+        assert_eq!(
+            fill_color(&both, 0.0, 0.0, 100.0, Color32::BLUE),
+            DEFAULT_LOW
+        );
+        assert_eq!(
+            fill_color(&both, 15.0, 0.0, 100.0, Color32::BLUE),
+            fill_color(
+                &p(serde_json::json!({"gradient": true})),
+                15.0,
+                0.0,
+                100.0,
+                Color32::BLUE
+            )
+        );
+        // Off: the solid color.
+        assert_eq!(
+            fill_color(&serde_json::Map::new(), 5.0, 0.0, 100.0, Color32::BLUE),
+            Color32::BLUE
+        );
+    }
 
     fn props(json: Json) -> Map<String, Json> {
         json.as_object().unwrap().clone()

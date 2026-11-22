@@ -93,7 +93,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   states and where their names come from, with `guess`; `types/field.rs` a field's size, image bounds and AprilTags, and poses in WPILib 2027's frame;
   `types/structs.rs` struct values decoded with (and `nested_struct`, a struct inside one, as its own type and bytes)
   the server's `/.schema/` topics (`nt4::proto::structs::StructDatabase` + `DynamicStruct`);
-  `types::format_number`; more custom data structures go here), `alert_history.rs` the alert history (every
+  `types::format_number`; more custom data structures go here), `images.rs` images widgets show (a Boolean Box's), found in `images/` folders as fields are
+  and imported into `~/.raptaboard/images/`, with a texture cache; `alert_history.rs` the alert history (every
   group from connect, count-based; its panel and top-bar button are `ui/alert_history_panel.rs`), `tree/` the read-only NT tree (`mod.rs` building it, `selection.rs` row picking in
   `TreeSelection` and the drag payload `DraggedTopics`, `view.rs` drawing and the right-click menu (Add to grid, Add as ▸
   any type that shows the row via `widgets::types_showing`, Add to list), `format.rs` short value text;
@@ -102,7 +103,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   one file per type implementing `widgets::WidgetType` and listed in `widgets::TYPES`; `ui/` only talks to
   the trait and never names a widget type (hooks: `extra_topics` with the server's tables, `background_topics`,
   `tab_mark`, `traced` for recorded series, `takes_topics`/`add_topics` for topics dropped on a widget) (Text Display,
-  Boolean Box, Large Text Display, Number Bar, Voltage View, Radial Gauge, Match Time, Single and
+  Boolean Box, Large Text Display, Number Bar, Voltage View, Radial Gauge, Match Time, Battery (`builtin/battery.rs`), Single and
   Multi Color View, Graph (`egui_plot`; widgets needing a full `Ui` override `WidgetType::show`),
   Toggle Switch and Toggle Button (`builtin/toggle.rs`), Number Slider (`builtin/number_slider.rs`), Dropdown and Split Button Chooser (`builtin/chooser.rs`: bound to a SendableChooser table, `table_types`, `sends_to` and `Frame::others`), Enum Dropdown and Enum Toggle (`builtin/enums.rs`: string or int topics, names from a list, a string[] topic or a chooser, guessed by `WidgetType::chosen`), Field (`builtin/field/`: a Pose2d/Pose3d (or array) struct topic or a `Field2d` table on a field from `fields.rs`,
   WPILib `fields` JSONs from the repo's `fields/` folder (2026 built in) or one picked with a file dialog;
@@ -128,14 +129,14 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   move back to the mouse for the next frame so egui gives the tap to the widget tapped; tests replay it
   with `tap_burst`, mouse on another widget), `format.rs` (number and
   enum text, `EnumDisplay`), `alert_sign.rs` (alert level colors and signs, for the widget, tab marks
-  and history), `props.rs` (period, font size, colors, a topic picker), `robot_view.rs` (a robot from above with
+  and history), `props.rs` (period, font size, colors, a topic picker), `value_colors.rs` (color by value: thresholds or a gradient), `robot_view.rs` (a robot from above with
   speed and spin arrows, for the swerve view and Chassis Speeds) and `settings.rs` (the settings dialog's shared
   rows; the dialog window is in `ui/dialogs.rs`); setting keys are constants in the file that owns them,
   listed in `docs/spec.md` under "raptaboard widget settings" (keep that table in step); adding a
   widget is a new file in `builtin/` (listed in `builtin/mod.rs`) plus one line in `TYPES`, `layout_file.rs` opening and saving layout files (atomic
   writes, Ctrl+O/S/Shift+S; a file that's missing or isn't a layout, at startup or from Open, gets a dialog,
   `LayoutFile::load_problem`, offering Open, a new layout saved at that path (missing only), or Close), `grid.rs` the snap-grid rules
-  (snapping, overlap) and `tabs.rs` tab actions and their shortcuts, `edit.rs` undo/redo (`History`, which
+  (snapping, overlap) and `tabs.rs` tab actions (moving one by dragging it along the tab bar: `TabAction::Move`, `drop_place`) and their shortcuts, `edit.rs` undo/redo (`History`, which
   notices any layout change once a frame) and the widget editing shortcuts; the drag handling is in
   `ui/drag.rs` and `ui/grid_view.rs`. A widget draws from `widgets::Live`: its value (`Live::newest` for its topic's newest, the part for a
   widget bound to part of a struct), the frame's shared

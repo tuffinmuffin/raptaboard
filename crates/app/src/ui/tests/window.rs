@@ -314,3 +314,63 @@ fn a_touchscreen_tap_finds_the_widget_tapped_not_the_one_under_the_mouse() {
     tap_burst(&mut harness, at, away);
     assert_eq!(picked(&harness), [topic_of(&harness, tapped)]);
 }
+
+#[test]
+fn a_tab_drags_along_the_tab_bar_to_move_it() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    let names = |h: &Harness| -> Vec<String> {
+        h.state()
+            .layout
+            .tabs
+            .iter()
+            .map(|t| t.name.clone())
+            .collect()
+    };
+    for name in ["Second", "Third"] {
+        harness.state_mut().layout.tabs.push(Tab::new(name));
+    }
+    harness.state_mut().locked = false;
+    settle(&mut harness);
+    let before = names(&harness);
+    let first = before[0].clone();
+    // Drag the first tab to just past the last one's middle.
+    let tab_at = |h: &Harness, name: &str| h.get_by_label(name).rect();
+    let from = tab_at(&harness, &first).center();
+    let last = tab_at(&harness, "Third");
+    let to = egui::pos2(last.center().x + 4.0, last.center().y);
+    let drag = |harness: &mut Harness, from: Pos2, to: Pos2| {
+        harness.hover_at(from);
+        harness.step();
+        harness.drag_at(from);
+        harness.step();
+        for step in 1..=10 {
+            harness.hover_at(from + (to - from) * (step as f32 / 10.0));
+            harness.step();
+        }
+        harness.drop_at(to);
+        settle(harness);
+    };
+    drag(&mut harness, from, to);
+    let mut moved = before.clone();
+    let t = moved.remove(0);
+    moved.push(t);
+    assert_eq!(names(&harness), moved, "the first tab went last");
+    let last = harness.state().layout.tabs.len() - 1;
+    assert_eq!(harness.state().current_tab, last, "and it's open");
+    // One undo puts it back.
+    harness.get_by_label("Undo").click();
+    settle(&mut harness);
+    assert_eq!(names(&harness), before);
+    // Locked, a drag moves nothing.
+    harness.state_mut().locked = true;
+    settle(&mut harness);
+    let from = tab_at(&harness, &first).center();
+    let last = tab_at(&harness, "Third");
+    drag(
+        &mut harness,
+        from,
+        egui::pos2(last.center().x + 4.0, last.center().y),
+    );
+    assert_eq!(names(&harness), before);
+}

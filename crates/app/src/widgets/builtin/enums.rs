@@ -361,6 +361,10 @@ impl WidgetType for EnumDropdown {
     fn chosen(&self, p: &mut Map<String, Json>, value: ValueInfo<'_>) {
         apply_guess(p, value.topics);
     }
+    /// A chooser's table too (its options as the states).
+    fn table_types(&self) -> &'static [&'static str] {
+        &[crate::types::chooser::CHOOSER_TYPE]
+    }
     fn extra_topics(&self, p: &Map<String, Json>, _: Server<'_>) -> Vec<String> {
         enum_topics(p)
     }
@@ -557,6 +561,10 @@ impl WidgetType for EnumToggle {
     }
     fn chosen(&self, p: &mut Map<String, Json>, value: ValueInfo<'_>) {
         apply_guess(p, value.topics);
+    }
+    /// A chooser's table too (its options as the states).
+    fn table_types(&self) -> &'static [&'static str] {
+        &[crate::types::chooser::CHOOSER_TYPE]
     }
     fn extra_topics(&self, p: &Map<String, Json>, _: Server<'_>) -> Vec<String> {
         enum_topics(p)

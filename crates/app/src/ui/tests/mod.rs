@@ -4,6 +4,7 @@
 // Tests written by Claude.
 
 mod alerts;
+mod battery;
 mod chassis;
 mod choosers;
 mod clips;

@@ -4,13 +4,15 @@
 //! The circle has a red ✕ (errors), a yellow ! (warnings) and a blue i
 //! (infos); each sign lights while there's an alert of its level, with a
 //! count when there's more than one, and the circle's ring takes the color
-//! of the most urgent. With `show_text` (on unless set) the alerts' text is
+//! of the most urgent. While an error or warning is active, the most urgent
+//! sign grows large in the middle and the other two shrink below it. With `show_text` (on unless set) the alerts' text is
 //! listed beside the circle or below it (`text_position`): errors first,
 //! each level newest first. Small, it's a status light; big, a list.
 //!
 //! Bound to one alert group's table (`topic`, `.type` `"Alerts"`), or with
 //! `all_groups` to every group on the server. When a new error arrives the
-//! widget pulses for `pulse_seconds` (`pulse`, on unless set), and can play
+//! widget pulses for `pulse_seconds`, or until no error is active if that's
+//! sooner (`pulse`, on unless set), and can play
 //! a tone (`sound`, off unless set; `tone` picks which; the bell button
 //! mutes it). Warnings and infos don't ask for attention. While the
 //! connection is down it keeps showing the last alerts it saw, greyed, so
@@ -134,14 +136,8 @@ fn draw_circle(
         .find(|l| counts[*l as usize] > 0)
         .map_or(off, lit);
     painter.circle_stroke(c, r, Stroke::new((r * 0.08).clamp(1.5, 4.0), ring));
-    // ✕ top left, ! top right, i at the bottom.
-    let size = r * 0.42;
-    let places = [
-        (Level::Error, c + egui::vec2(-r * 0.4, -r * 0.25)),
-        (Level::Warning, c + egui::vec2(r * 0.4, -r * 0.25)),
-        (Level::Info, c + egui::vec2(0.0, r * 0.45)),
-    ];
-    for (level, at) in places {
+    for (level, (dx, dy), size) in sign_places(counts) {
+        let (at, size) = (c + egui::vec2(dx, dy) * r, size * r);
         let color = lit(level);
         draw_sign(painter, level, at, size, color);
         let n = counts[level as usize];
@@ -155,6 +151,35 @@ fn draw_circle(
             );
         }
     }
+}
+
+/// Where each sign goes in a circle of radius 1 (center at 0, y down), and
+/// its size, for alert `counts`: the three the same (✕ top left, ! top
+/// right, i at the bottom) unless an error or warning is active; then the
+/// most urgent one grows large in the middle, so it reads at a glance from
+/// across the driver station, and the other two shrink along the bottom,
+/// the more urgent on the left.
+fn sign_places(counts: [usize; 3]) -> [(Level, (f32, f32), f32); 3] {
+    let worst = [Level::Error, Level::Warning]
+        .into_iter()
+        .find(|l| counts[*l as usize] > 0);
+    let Some(worst) = worst else {
+        return [
+            (Level::Error, (-0.4, -0.25), 0.42),
+            (Level::Warning, (0.4, -0.25), 0.42),
+            (Level::Info, (0.0, 0.45), 0.42),
+        ];
+    };
+    let mut others = Level::ALL.into_iter().filter(|l| *l != worst);
+    let (left, right) = (
+        others.next().unwrap_or(Level::Info),
+        others.next().unwrap_or(Level::Info),
+    );
+    [
+        (worst, (0.0, -0.15), 0.72),
+        (left, (-0.5, 0.5), 0.26),
+        (right, (0.5, 0.5), 0.26),
+    ]
 }
 
 /// Where the circle and the text go in `rect`: the circle's area and the
@@ -261,6 +286,13 @@ fn draw_list(
     }
 }
 
+/// Whether a pulse started to end at `until` still runs at `now` with
+/// `errors` active: until its time is up, or the errors are gone, whichever
+/// comes first (a 3 s error doesn't flash for 5).
+fn pulsing(now: f64, until: f64, errors: usize) -> bool {
+    errors > 0 && now < until
+}
+
 /// The Alerts widget (Elastic's `"Alerts"`).
 pub struct AlertsWidget;
 
@@ -298,6 +330,11 @@ impl AlertsWidget {
         let lowest = min_level(p);
         let shown: Vec<ActiveAlert> = shown.into_iter().filter(|a| a.level <= lowest).collect();
         let counts = alerts::counts(&shown);
+        // The pulse stops once the errors that started it are gone, not
+        // only when its time is up.
+        if !pulsing(now, memory.pulse_until, counts[Level::Error as usize]) {
+            memory.pulse_until = 0.0;
+        }
         let pulse = if now < memory.pulse_until {
             ui.ctx().request_repaint();
             (0.5 - 0.5 * (now * PULSE_RATE * std::f64::consts::TAU).cos()) as f32
@@ -482,6 +519,40 @@ impl WidgetType for AlertsWidget {
 mod tests {
     // Tests written by Claude.
     use super::*;
+
+    #[test]
+    fn the_pulse_stops_when_the_errors_are_gone() {
+        // Started at 10 s for 5 s.
+        assert!(pulsing(12.0, 15.0, 1));
+        assert!(!pulsing(16.0, 15.0, 1), "time's up");
+        assert!(!pulsing(12.0, 15.0, 0), "the error went away first");
+    }
+
+    #[test]
+    fn the_most_urgent_active_sign_grows_and_the_others_shrink() {
+        let size = |counts, level| {
+            sign_places(counts)
+                .into_iter()
+                .find(|(l, _, _)| *l == level)
+                .map(|(_, _, s)| s)
+                .unwrap()
+        };
+        // Nothing above info: all the same.
+        for counts in [[0, 0, 0], [0, 0, 3]] {
+            let sizes: Vec<f32> = sign_places(counts).iter().map(|p| p.2).collect();
+            assert!(sizes.iter().all(|s| *s == sizes[0]), "{counts:?}");
+        }
+        // An error, even with warnings: the ✕ is the big one.
+        assert!(size([1, 2, 0], Level::Error) > 2.0 * size([1, 2, 0], Level::Warning));
+        // Only warnings: the !.
+        assert!(size([0, 1, 1], Level::Warning) > 2.0 * size([0, 1, 1], Level::Error));
+        // Every sign stays inside the circle.
+        for counts in [[0, 0, 0], [1, 0, 0], [0, 1, 0]] {
+            for (_, (x, y), s) in sign_places(counts) {
+                assert!(x.hypot(y) + s / 2.0 < 1.0, "{counts:?}");
+            }
+        }
+    }
 
     #[test]
     fn text_goes_beside_a_wide_widget_and_below_a_tall_one() {

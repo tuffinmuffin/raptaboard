@@ -2,7 +2,7 @@
 //! ([`entry`]), values as
 //! text with their number and enum settings ([`format`](mod@format)), the settings many
 //! widgets have ([`props`]), a robot seen from above with speed and spin arrows ([`robot_view`]), where a tap really was ([`pointer`](mod@pointer)), and the settings dialog's shared rows
-//! ([`settings`]).
+//! ([`settings`]), and color by value ([`value_colors`]).
 
 pub mod alert_sign;
 pub mod card;
@@ -13,3 +13,4 @@ pub mod props;
 pub mod robot_view;
 pub mod scale;
 pub mod settings;
+pub mod value_colors;
