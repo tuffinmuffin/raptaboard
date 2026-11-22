@@ -93,7 +93,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   states and where their names come from, with `guess`; `types/field.rs` a field's size, image bounds and AprilTags, and poses in WPILib 2027's frame;
   `types/structs.rs` struct values decoded with (and `nested_struct`, a struct inside one, as its own type and bytes)
   the server's `/.schema/` topics (`nt4::proto::structs::StructDatabase` + `DynamicStruct`);
-  `types::format_number`; more custom data structures go here), `alert_history.rs` the alert history (every
+  `types::format_number`; more custom data structures go here), `images.rs` images widgets show (a Boolean Box's), found in `images/` folders as fields are
+  and imported into `~/.raptaboard/images/`, with a texture cache; `alert_history.rs` the alert history (every
   group from connect, count-based; its panel and top-bar button are `ui/alert_history_panel.rs`), `tree/` the read-only NT tree (`mod.rs` building it, `selection.rs` row picking in
   `TreeSelection` and the drag payload `DraggedTopics`, `view.rs` drawing and the right-click menu (Add to grid, Add as ▸
   any type that shows the row via `widgets::types_showing`, Add to list), `format.rs` short value text;
