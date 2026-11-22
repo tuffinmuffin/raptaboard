@@ -25,6 +25,14 @@ pub enum TabAction {
     MoveLeft,
     /// Swap the open tab with the one on its right.
     MoveRight,
+    /// Move tab `from` so it's at `to` (counting after it's taken out), and
+    /// show it: a tab dragged along the tab bar.
+    Move {
+        /// The tab moved.
+        from: usize,
+        /// Where it ends up.
+        to: usize,
+    },
     /// Add an empty tab after the open one and show it.
     New,
     /// Close tab `i`. The last tab can't be closed.
@@ -81,6 +89,13 @@ pub fn apply(layout: &mut ElasticLayout, current: usize, action: TabAction) -> u
             current + 1
         }
         TabAction::MoveLeft | TabAction::MoveRight => current,
+        TabAction::Move { from, to } if from < count => {
+            let tab = layout.tabs.remove(from);
+            let to = to.min(count - 1);
+            layout.tabs.insert(to, tab);
+            to
+        }
+        TabAction::Move { .. } => current,
         TabAction::New => {
             let name = layout.unused_tab_name(NEW_TAB_NAME);
             layout.tabs.insert(current + 1, Tab::new(name));
@@ -106,6 +121,34 @@ pub fn apply(layout: &mut ElasticLayout, current: usize, action: TabAction) -> u
             current
         }
     }
+}
+
+/// Where a tab dragged from `from` lands, given the tab bar's tabs'
+/// horizontal centers (`centers`, in order) and the pointer's `x`: before
+/// the first tab whose center is right of the pointer, not counting the
+/// dragged one. Returns `(to, slot)`: `to` for [`TabAction::Move`] (the
+/// tab's index once moved), and `slot`, the gap it lands in (0 is before
+/// the first tab), for the marker.
+///
+/// ```
+/// use raptaboard::tabs::drop_place;
+/// let centers = [10.0, 30.0, 50.0, 70.0];
+/// // Tab 0 dragged to just right of tab 2's center: after tab 2.
+/// assert_eq!(drop_place(&centers, 0, 55.0), (2, 3));
+/// // Tab 3 dragged to the far left: first.
+/// assert_eq!(drop_place(&centers, 3, 0.0), (0, 0));
+/// // Not past a neighbour's center: where it was.
+/// assert_eq!(drop_place(&centers, 1, 35.0), (1, 2));
+/// ```
+pub fn drop_place(centers: &[f32], from: usize, x: f32) -> (usize, usize) {
+    let slot = centers
+        .iter()
+        .enumerate()
+        .filter(|&(i, c)| i != from && *c < x)
+        .count();
+    // The slot counts the gap after the dragged tab's own place too.
+    let gap = if slot >= from { slot + 1 } else { slot };
+    (slot, gap)
 }
 
 /// The number keys for [`shortcut`]: Ctrl+1 shows the first tab.
@@ -179,7 +222,7 @@ pub fn tab_hint(ctx: &egui::Context, i: usize, locked: bool) -> String {
         arrows(Key::ArrowRight)
     ));
     if !locked {
-        lines.push("Double-click to rename, right-click for more".to_owned());
+        lines.push("Drag to move, double-click to rename, right-click for more".to_owned());
     }
     lines.join("\n")
 }
@@ -220,6 +263,20 @@ mod tests {
         assert_eq!(names(&l), ["B", "A", "C"]);
         assert_eq!(apply(&mut l, 0, TabAction::MoveRight), 1);
         assert_eq!(names(&l), ["A", "B", "C"]);
+    }
+
+    #[test]
+    fn dragging_a_tab_moves_it_and_opens_it() {
+        let mut l = layout(&["A", "B", "C", "D"]);
+        assert_eq!(apply(&mut l, 0, TabAction::Move { from: 0, to: 2 }), 2);
+        assert_eq!(names(&l), ["B", "C", "A", "D"]);
+        assert_eq!(apply(&mut l, 2, TabAction::Move { from: 3, to: 0 }), 0);
+        assert_eq!(names(&l), ["D", "B", "C", "A"]);
+        // Past the end goes last; a tab that isn't there does nothing.
+        assert_eq!(apply(&mut l, 0, TabAction::Move { from: 0, to: 9 }), 3);
+        assert_eq!(names(&l), ["B", "C", "A", "D"]);
+        assert_eq!(apply(&mut l, 1, TabAction::Move { from: 7, to: 0 }), 1);
+        assert!(TabAction::Move { from: 0, to: 1 }.edits_layout());
     }
 
     #[test]

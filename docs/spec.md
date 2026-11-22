@@ -150,7 +150,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `show_text` | `builtin/alerts.rs` | Alerts | list the alerts' text by the circle | true |
 | `text_position` | `builtin/alerts.rs` | Alerts | `auto` (beside a wide widget, below a tall one), `right`, `below` | `auto` |
 | `min_level` | `builtin/alerts.rs` | Alerts | least urgent shown: `info`, `warning`, `error` | `info` |
-| `pulse`, `pulse_seconds` | `builtin/alerts.rs` | Alerts | pulse when a new error arrives, for how long (s) | true, 5 |
+| `pulse`, `pulse_seconds` | `builtin/alerts.rs` | Alerts | pulse when a new error arrives, for how long (s), stopping sooner once no error is active | true, 5 |
 | `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp`, or a built-in clip: `disabled 1`, `disabled 2`, `fire 1`, `fire 2` | false, `beep` |
 | `field` | `builtin/field/mod.rs` | Field | the field shown: an id from the fields folders (`2026-rebuilt-welded`) or a field JSON's path; not set uses Elastic's `field_game` (by game name), else 2026 REBUILT (welded) | not set |
 | `origin` | `builtin/field/mod.rs` | Field | where the poses' (0, 0) is: `center` (WPILib 2027) or `blue_corner` (before 2027) | `center` |
@@ -422,18 +422,17 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      a table its `.type` is the value type (`DashboardApp::value_type`), so a chooser offers the
      choosers and the enum widgets (which now list the chooser `.type` in `table_types`), and a
      number topic offers number widgets, not choosers. Unknown (not connected): every type.
-   - Alerts: the most urgent active sign in the circle grows larger (an error's ✕ while there are
-     errors, else the ! while there are warnings), the other two shrinking to make room, so the
-     worst one reads at a glance from across the driver station; back to equal sizes when nothing
-     above info is active.
+   - Alerts (**done**, `sign_places` in `builtin/alerts.rs`): the most urgent active sign in the circle
+     grows large in the middle (an error's ✕ while there are errors, else the ! while there are
+     warnings), the other two shrinking along the bottom, so the worst one reads at a glance from
+     across the driver station; back to equal sizes when nothing above info is active.
    - Alert history "Not recorded" entries as regular expressions too (a per-entry choice beside
      today's partial text match, which stays the default), if more robot code turns up whose
      alerts need it. Not needed yet: the one noisy alert (robot-2027's Frame Timing) is fixed at
      the source and its numbers are already folded into one event.
-   - Drag tabs to reorder them: unlocked, drag a tab along the tab bar, with a marker where it
-     will land, and drop it to move it (one step for undo, like Move left and Move right in the
-     tab's right-click menu, which stay). Tabs can only be reordered from that menu now, and
-     dragging is what people try first.
+   - Drag tabs to reorder them (**done**: `TabAction::Move`, `tabs::drop_place`): unlocked, drag a
+     tab along the tab bar, with a marker where it will land, and drop it to move it (one step for
+     undo, like Move left and Move right in the tab's right-click menu, which stay).
    - Sound clips on robot state changes: play a sound file when the robot is disabled (the first
      one: the "I'm disabled" quote from The IT Crowd), and optionally on enable, the start of auto
      and teleop, and e-stop. The state comes from WPILib's `/FMSInfo/FMSControlData` bits (check
@@ -556,7 +555,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    LOW and Glass still reads these lists). The widget is a circle with a red ✕, yellow ! and blue i
    (painted, not glyphs), each lit with a count while that level has alerts, the ring in the most
    urgent color; optionally the text beside or below. One group, or all groups. A new error (not
-   warnings) pulses it for N seconds and can play a tone (`sound.rs` `Tone`, generated, a few to
+   warnings) pulses it for N seconds (or until no error is active, if sooner) and can play a tone (`sound.rs` `Tone`, generated, a few to
    pick; widgets ask through `Live::effects`). When the connection drops, or the topics go before
    it does, the last alerts stay, greyed. A tab with an Alerts widget showing an error or a warning
    gets that sign after its name, open or not (alert topics of other tabs' Alerts widgets are
@@ -678,6 +677,14 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    bytes (`types::structs::nested_struct`), and widgets that read their topic's newest value use
    `Live::newest`, which gives the part for a `struct_meta` widget.
    Milestone 4 plugins may also match a struct type (a `struct = "ArmState"` rule).
+   First release (decided with the user 2026-11-21): after milestone 3, a polish phase ending in
+   release 0.1.0, "basics done". In it: drag tabs to reorder (done), a bigger worst-alert sign, a
+   Battery widget, Boolean Box text and images, color by value, autoscale for bars and gauges,
+   min/max/average on number widgets and graphs, graph history review, widget type choices that
+   fit, and copy settings within a list. Then the release: version 0.1.0, a changelog, a tag, and a
+   CI workflow building Windows, macOS and Linux binaries for a GitHub Release. After it: the Group
+   widget, X/Y and polar graphs, sound clips, partial overlap, reflow while dragging, the text style
+   dialog, regex alert filters, and plugins.
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, units, MJPEG
    cameras (Mechanism2d was done in milestone 3).
