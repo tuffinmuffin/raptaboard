@@ -346,8 +346,8 @@
               "data_type": "boolean",
               "true_image": "motor-on.svg",
               "false_image": "motor-off.svg",
-              "true_color": 4280361249,
-              "false_color": 4280361249
+              "true_color": 0,
+              "false_color": 0
             }
           }
         ]

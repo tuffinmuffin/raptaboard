@@ -154,18 +154,23 @@ pub fn fill(
 }
 
 /// Everything a Boolean Box draws for `value`, from its settings `p`, or
-/// why there's nothing (as [`fill`]).
+/// why there's nothing (as [`fill`]). `theme_ink` is the theme's text
+/// color, for icons and text on a cleared (see-through) color.
 ///
 /// ```
 /// use nt4::Value;
 /// use raptaboard::widgets::builtin::boolean_box::{look, Icon, DEFAULT_FALSE_COLOR};
 /// let p = serde_json::json!({"false_icon": "X"});
-/// let l = look(p.as_object().unwrap(), Some(&Value::Boolean(false))).unwrap();
+/// let l = look(p.as_object().unwrap(), Some(&Value::Boolean(false)), eframe::egui::Color32::GRAY).unwrap();
 /// // On the state's color, in white (or black, whichever reads).
 /// assert_eq!(l.fill, DEFAULT_FALSE_COLOR);
 /// assert_eq!(l.icon, Some((Icon::X, eframe::egui::Color32::WHITE)));
 /// ```
-pub fn look(p: &Map<String, Json>, value: Option<&Value>) -> Result<Look, &'static str> {
+pub fn look(
+    p: &Map<String, Json>,
+    value: Option<&Value>,
+    theme_ink: Color32,
+) -> Result<Look, &'static str> {
     let (color, text) = fill(p, value)?;
     let on = matches!(value, Some(Value::Boolean(true)));
     let (icon_key, text_color_key, image_key) = if on {
@@ -181,7 +186,13 @@ pub fn look(p: &Map<String, Json>, value: Option<&Value>) -> Result<Look, &'stat
     // The box is always filled with the state's color (for a picture on
     // a plain background, set the color to black or white); an icon is
     // drawn on it in black or white, whichever reads, an image as it is.
-    let auto = props::text_color_on(color);
+    // A cleared color (see-through) shows the card, so the theme's text
+    // color reads on it.
+    let auto = if color.a() == 0 {
+        theme_ink
+    } else {
+        props::text_color_on(color)
+    };
     let icon = icon.map(|i| (i, auto));
     let backing = props::flag(p, TEXT_BACKING, false);
     let text_color = props::color_property(p, text_color_key).unwrap_or(if backing {
@@ -392,7 +403,7 @@ impl WidgetType for BooleanBox {
         props: &Map<String, Json>,
         value: Option<&Value>,
     ) {
-        let look = match look(props, value) {
+        let look = match look(props, value, visuals.text_color()) {
             Ok(look) => look,
             Err(why) => return card::draw_message(painter, visuals, rect, why),
         };
@@ -436,8 +447,8 @@ impl WidgetType for BooleanBox {
     }
 
     fn settings(&self, ui: &mut egui::Ui, props: &mut Map<String, Json>, _value: ValueInfo<'_>) {
-        props::color_row(ui, props, "When true", TRUE_COLOR, DEFAULT_TRUE_COLOR);
-        props::color_row(ui, props, "When false", FALSE_COLOR, DEFAULT_FALSE_COLOR);
+        props::color_row_clearable(ui, props, "When true", TRUE_COLOR, DEFAULT_TRUE_COLOR);
+        props::color_row_clearable(ui, props, "When false", FALSE_COLOR, DEFAULT_FALSE_COLOR);
         picture_row(ui, props, "Picture when true", TRUE_ICON, TRUE_IMAGE);
         picture_row(ui, props, "Picture when false", FALSE_ICON, FALSE_IMAGE);
         ui.label("Text");
@@ -560,24 +571,29 @@ mod tests {
         // Elastic's icon keys, only for their state; the box is always
         // filled, the icon black or white on it.
         let elastic = props(serde_json::json!({"true_icon": "Checkmark", "false_icon": "None"}));
-        let t = look(&elastic, value(true).as_ref()).unwrap();
+        let t = look(&elastic, value(true).as_ref(), Color32::GRAY).unwrap();
         assert_eq!(t.fill, DEFAULT_TRUE_COLOR);
         assert_eq!(
             t.icon,
             Some((Icon::Checkmark, props::text_color_on(DEFAULT_TRUE_COLOR)))
         );
-        let f = look(&elastic, value(false).as_ref()).unwrap();
+        let f = look(&elastic, value(false).as_ref(), Color32::GRAY).unwrap();
         assert_eq!(f.fill, DEFAULT_FALSE_COLOR);
         assert_eq!(f.icon, None);
         // Any icon for either state, any case; on a yellow box, in black.
         let yellow = props(
             serde_json::json!({"true_icon": "exclamation point", "true_color": 0xFFFFEB3Bu32}),
         );
-        let t = look(&yellow, value(true).as_ref()).unwrap();
+        let t = look(&yellow, value(true).as_ref(), Color32::GRAY).unwrap();
         assert_eq!(t.icon, Some((Icon::ExclamationPoint, Color32::BLACK)));
         // An unknown name is no icon.
         let odd = props(serde_json::json!({"true_icon": "Smiley"}));
-        assert_eq!(look(&odd, value(true).as_ref()).unwrap().icon, None);
+        assert_eq!(
+            look(&odd, value(true).as_ref(), Color32::GRAY)
+                .unwrap()
+                .icon,
+            None
+        );
     }
 
     #[test]
@@ -628,12 +644,12 @@ mod tests {
         let p = props(serde_json::json!({
             "true_icon": "Checkmark", "true_image": "intake-down.png", "false_icon": "X"
         }));
-        let t = look(&p, value(true).as_ref()).unwrap();
+        let t = look(&p, value(true).as_ref(), Color32::GRAY).unwrap();
         assert_eq!(t.image.as_deref(), Some("intake-down.png"));
         assert_eq!(t.icon, None, "the image, not the icon");
         assert_eq!(t.fill, DEFAULT_TRUE_COLOR, "on the state's color");
         // The other state keeps its icon.
-        let f = look(&p, value(false).as_ref()).unwrap();
+        let f = look(&p, value(false).as_ref(), Color32::GRAY).unwrap();
         assert_eq!(f.image, None);
         assert_eq!(
             f.icon,
@@ -641,14 +657,34 @@ mod tests {
         );
         // A blank name is no image.
         let blank = props(serde_json::json!({"true_image": "  "}));
-        assert_eq!(look(&blank, value(true).as_ref()).unwrap().image, None);
+        assert_eq!(
+            look(&blank, value(true).as_ref(), Color32::GRAY)
+                .unwrap()
+                .image,
+            None
+        );
+    }
+
+    #[test]
+    fn a_cleared_color_shows_the_card_and_draws_in_the_themes_ink() {
+        let value = Some(Value::Boolean(true));
+        let cleared = props(serde_json::json!({
+            "true_color": 0u32, "true_icon": "Checkmark", "show_text": true, "true_text": "Ready"
+        }));
+        let l = look(&cleared, value.as_ref(), Color32::LIGHT_GRAY).unwrap();
+        assert_eq!(l.fill.a(), 0, "see-through");
+        assert_eq!(l.icon, Some((Icon::Checkmark, Color32::LIGHT_GRAY)));
+        assert_eq!(l.text.unwrap().1, Color32::LIGHT_GRAY);
+        // In light mode, the light theme's (dark) ink.
+        let l = look(&cleared, value.as_ref(), Color32::DARK_GRAY).unwrap();
+        assert_eq!(l.icon, Some((Icon::Checkmark, Color32::DARK_GRAY)));
     }
 
     #[test]
     fn text_gets_a_backing_and_its_own_color() {
         let value = Some(Value::Boolean(false));
         let plain = props(serde_json::json!({"show_text": true, "false_text": "Jammed"}));
-        let l = look(&plain, value.as_ref()).unwrap();
+        let l = look(&plain, value.as_ref(), Color32::GRAY).unwrap();
         assert_eq!(
             l.text,
             Some(("Jammed".into(), props::text_color_on(DEFAULT_FALSE_COLOR)))
@@ -660,7 +696,11 @@ mod tests {
             "show_text": true, "false_text": "Jammed", "false_color": 0xFFFFEB3Bu32
         }));
         assert_eq!(
-            look(&yellow_box, value.as_ref()).unwrap().text.unwrap().1,
+            look(&yellow_box, value.as_ref(), Color32::GRAY)
+                .unwrap()
+                .text
+                .unwrap()
+                .1,
             Color32::BLACK
         );
         let backed = props(serde_json::json!({
@@ -668,14 +708,22 @@ mod tests {
             "text_backing": true
         }));
         assert_eq!(
-            look(&backed, value.as_ref()).unwrap().text.unwrap().1,
+            look(&backed, value.as_ref(), Color32::GRAY)
+                .unwrap()
+                .text
+                .unwrap()
+                .1,
             Color32::WHITE
         );
         let yellow = props(serde_json::json!({
             "show_text": true, "false_text": "Jammed", "false_text_color": 0xFFFFEB3Bu32
         }));
         assert_eq!(
-            look(&yellow, value.as_ref()).unwrap().text.unwrap().1,
+            look(&yellow, value.as_ref(), Color32::GRAY)
+                .unwrap()
+                .text
+                .unwrap()
+                .1,
             Color32::from_rgb(0xFF, 0xEB, 0x3B)
         );
     }

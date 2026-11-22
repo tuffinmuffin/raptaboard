@@ -139,7 +139,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `int_format` | `shared/format.rs` | Text Display (int, enum numbers) | `decimal`, `hex` (`0x1A`), `binary` (`0b11010`) | `decimal` |
 | `int_digits` | `shared/format.rs` | Text Display (int, enum numbers) | at least this many digits, zero-padded, 1–64 | no padding |
 | `enum_display` | `shared/format.rs` | Text Display (enum struct field) | `name`, `number`, `both` | `name` |
-| `true_color`, `false_color` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | ARGB number | green, red |
+| `true_color`, `false_color` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | ARGB number; the settings' Clear makes it see-through (0), so the card shows and icons and text use the theme's text color | green, red |
 | `show_text` | `builtin/boolean_box.rs` | Boolean Box | write the text below over the color | false |
 | `true_text`, `false_text` | `builtin/boolean_box.rs` | Boolean Box | text when true / false; empty for none | none |
 | `label_position` (Elastic) | `list_layout.rs` | List Layout | `TOP`, `LEFT`, `RIGHT`, `BOTTOM`, `HIDDEN` (any case read) | `TOP`; always written |
@@ -457,8 +457,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      **Done**: Elastic's `true_icon`/`false_icon` set (Checkmark, X, Exclamation Point, any for either
      state in raptaboard), drawn on the state's color in black or white (Elastic draws them alone in the color; decided
-     with the user 2026-11-21 that the box is always filled, so there's no option to explain: a plain
-     background is the color set to black or white); and the team's own images (decided with the user 2026-11-21), `true_image` /
+     with the user 2026-11-21 that the box is always filled, so there's no option to explain: for a
+     plain background, the color rows' Clear makes the color see-through, and icons and text then
+     use the theme's text color, dark or light); and the team's own images (decided with the user 2026-11-21), `true_image` /
      `false_image`, chosen from a list of the images in the images folders (`images.rs`: `images/`
      where raptaboard starts, beside the program, and `~/.raptaboard/images/`, as fields are found),
      with an Import… button that copies a picked PNG, JPEG or SVG into `~/.raptaboard/images/` (a

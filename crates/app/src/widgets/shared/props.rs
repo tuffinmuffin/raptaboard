@@ -345,6 +345,44 @@ pub fn color_row(
     ui.end_row();
 }
 
+/// Like [`color_row`], with a Clear button too: the color made fully
+/// see-through (alpha 0, an ARGB of 0 as Elastic saves it), so the card's
+/// own background shows, dark or light.
+pub fn color_row_clearable(
+    ui: &mut egui::Ui,
+    props: &mut Map<String, Json>,
+    label: &str,
+    key: &str,
+    default: Color32,
+) {
+    ui.label(label);
+    ui.horizontal(|ui| {
+        let mut color = color_property(props, key).unwrap_or(default);
+        let picked = egui::color_picker::color_edit_button_srgba(
+            ui,
+            &mut color,
+            egui::color_picker::Alpha::Opaque,
+        )
+        .changed();
+        if picked {
+            set_property(props, key, Some(color_json(color)));
+        }
+        let custom = color_property(props, key).is_some_and(|c| c != default);
+        if ui.add_enabled(custom, egui::Button::new("Reset")).clicked() {
+            set_property(props, key, None);
+        }
+        let clear = color_property(props, key).is_some_and(|c| c.a() == 0);
+        if ui
+            .add_enabled(!clear, egui::Button::new("Clear"))
+            .on_hover_text("No color: the card's own background shows")
+            .clicked()
+        {
+            set_property(props, key, Some(color_json(Color32::TRANSPARENT)));
+        }
+    });
+    ui.end_row();
+}
+
 /// Black or white, whichever is easier to read on `background`.
 ///
 /// ```
