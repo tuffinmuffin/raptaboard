@@ -158,28 +158,7 @@ impl DashboardApp {
         }
         self.sampler = sampler.into_inner();
         for effect in effects.into_inner() {
-            match effect {
-                widgets::Effect::Tone(tone) => {
-                    if self.alert_sound {
-                        self.sound.play_tone(tone);
-                    }
-                }
-                widgets::Effect::Write { topic, value, ty } => {
-                    if let Err(why) = self.nt.write_or_publish(&topic, value, ty) {
-                        self.status = why.to_string();
-                    }
-                }
-                widgets::Effect::PublishStruct {
-                    topic,
-                    struct_name,
-                    bytes,
-                    schemas,
-                } => {
-                    if let Err(why) = self.nt.publish_struct(&topic, struct_name, bytes, schemas) {
-                        self.status = why.to_string();
-                    }
-                }
-            }
+            self.apply_effect(effect);
         }
         self.tree_drop(ui, &painter, view, &mut requests);
         // Any click on a widget finds it in the tree, locked or not, and

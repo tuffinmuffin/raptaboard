@@ -613,6 +613,8 @@ impl DashboardApp {
             self.file.title = title;
         }
         self.record_alert_history(&values);
+        // Robot State's sounds, whichever tab is open.
+        self.watch_widgets(&ctx, &values);
         // A hidden tree costs nothing: it isn't built and asks for no values.
         let tree_topics = if self.tree.shown {
             egui::Panel::left("nt_tree")

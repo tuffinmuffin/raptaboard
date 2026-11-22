@@ -453,16 +453,20 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Drag tabs to reorder them (**done**: `TabAction::Move`, `tabs::drop_place`): unlocked, drag a
      tab along the tab bar, with a marker where it will land, and drop it to move it (one step for
      undo, like Move left and Move right in the tab's right-click menu, which stay).
-   - Robot State widget with sounds (first release, asked for by the user 2026-11-22; replaces the
-     earlier "sound clips on robot state changes" item). Decided: a new special-purpose widget, not an
-     extension of an existing one, because no existing widget reads the robot's mode, and the sounds
-     belong with the thing that shows the state. `.type` `RobotState` (raptaboard only); it binds the
-     `/FMSInfo` table and is offered by the tree's "Add as" on that table (Elastic's DSInfo stays
-     separate).
-     - Reads the state from WPILib 2027's `/FMSInfo/ControlWord` struct (`enabled`, `robotMode`,
-       `eStop`, `fmsAttached`, `dsAttached`, as Elastic 2027.0.0-alpha10's DSInfo reads it), falling
-       back to 2026's `/FMSInfo/FMSControlData` bits (enabled 0x01, auto 0x02, test 0x04, e-stop 0x08,
-       FMS 0x10, DS 0x20). Check both against the 2027 release before shipping.
+   - Robot State widget with sounds (**done** except the match-timing rows below:
+     `builtin/robot_state.rs`, read by `types/robot_state.rs`; first release, asked for by the user
+     2026-11-22; replaces the earlier "sound clips on robot state changes" item). Decided: a new
+     special-purpose widget, not an extension of an existing one, because no existing widget reads
+     the robot's mode, and the sounds belong with the thing that shows the state. Saved as type
+     `Robot State` (raptaboard only); it binds the Driver Station's table, and dragging that table
+     from the tree makes one (`table_types`).
+     - Reads the state (checked against WPILib's source 2026-11-22): 2027 publishes it in
+       `/DriverStation` (`.type` `DriverStation`, not `/FMSInfo`) as a `ControlWord` struct, 64 bits
+       little-endian: `opModeHash:56`, `robotMode:2` (unknown 0, autonomous 1, teleoperated 2,
+       utility 3, shown as Test), then `enabled`, `eStop`, `fmsAttached`, `dsAttached` (bits 58-61);
+       raptaboard reads the bits, as WPILib's Glass does. 2026 publishes `/FMSInfo` (`.type`
+       `FMSInfo`) with an integer `FMSControlData` (enabled 0x01, auto 0x02, test 0x04, e-stop
+       0x08, FMS 0x10, DS 0x20). Either table works; the widget reads `ControlWord` first.
      - Shows one large state: Disabled, Autonomous, Teleop, Test, E-Stop, or No robot (not connected
        or no DS), each with its own color (E-Stop red and blinking, Test striped orange), plus small
        DS and FMS marks.
@@ -471,18 +475,20 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        plus a widget volume. Saved in the widget's properties, so they travel with the layout.
        Defaults: disabled plays "disabled 1", autonomous plays "auto ghosts", teleop plays "go go
        go", test plays "danger danger", the rest off.
-     - More rows (added 2026-11-22), all off by default: match timing from `/FMSInfo` and the
+     - More rows (added 2026-11-22), all off by default: match timing (**not done yet**: it needs
+       the match time, which WPILib doesn't publish in this table) from the table and the
        match time (end of auto, endgame at a set time left, 30 s by default, and a 10 s
        countdown; the field already sounds these, so they're for practice or a quiet venue), and
        DS lost or FMS lost while the robot is still connected (a different problem from the robot
-       lost). Exceptions to off (asked for 2026-11-22): FMS lost plays "fms down" and robot lost
+       lost; **done**). Exceptions to off (asked for 2026-11-22): FMS lost plays "fms down" and robot lost
        (the NT server gone) plays "lost comms", two text-to-speech clips made with Flite. Later ideas, not planned: FMS attached, brownout or low battery.
      - Plays only on a change seen while connected: never for the state at connect, after a
        reconnect, or when a layout opens. A new event cuts off a clip still playing. The bell button
        in the settings bar mutes these too.
      - Plays while the widget is anywhere in the open layout, not only on the shown tab, so switching
-       tabs never silences it. With two Robot State widgets, only the first (tab order, then
-       position) plays.
+       tabs never silences it (`WidgetType::watch`, run each frame for the first widget of each type,
+       with `background_topics` always subscribed). With two Robot State widgets, only the first (tab
+       order, then position) plays. Each sound row has ▶ to hear it.
      - Built-in clips (`media/audio/`): "disabled 1" and "disabled 2" (the IT Crowd's "I'm
        disabled"), "fire 1", "fire 2", "danger danger" (added 2026-11-22: xpoki's
        "danger_normal_lp.wav" from Freesound, CC BY 4.0, played twice) and "auto ghosts" (added

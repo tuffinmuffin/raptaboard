@@ -1007,6 +1007,18 @@
               "period": 0.06,
               "min_level": "error"
             }
+          },
+          {
+            "title": "Robot state (sounds)",
+            "x": 0.0,
+            "y": 256.0,
+            "width": 384.0,
+            "height": 256.0,
+            "type": "Robot State",
+            "properties": {
+              "topic": "/FMSInfo",
+              "period": 0.06
+            }
           }
         ]
       }

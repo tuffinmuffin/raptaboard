@@ -3,11 +3,16 @@
 //! ([`Tone`]): a few generated ones, and short sound clips built into the
 //! program from `media/audio/` (MP3, decoded when played).
 //!
+//! A Robot State widget's sounds ([`Sound::play_event`]) are a channel of
+//! their own: a built-in [`Tone`] or a sound file the team picks (MP3 or
+//! WAV), at the widget's volume, and a new one stops one still playing.
+//!
 //! The tone plays on a thread of its own, which opens the computer's audio
 //! output the first time it's needed. A computer with no audio output (or
 //! one that fails to open) just stays quiet: the red border and the
 //! message in the status line still say what went wrong.
 
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Sender};
 use std::time::Duration;
 
@@ -116,6 +121,25 @@ impl Tone {
         }
     }
 }
+/// A sound for a Robot State event: a built-in tone or clip, or a sound
+/// file the team picked.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Clip {
+    /// One of raptaboard's own.
+    Tone(Tone),
+    /// An MP3 or WAV file on this computer. One that's missing or doesn't
+    /// decode plays nothing.
+    File(PathBuf),
+}
+
+/// What the sound thread is asked to play.
+enum Request {
+    /// A tone on its own (alerts, failed sends): mixed with whatever plays.
+    Tone(Tone),
+    /// A Robot State sound at `volume` (0 to 1), stopping the last one.
+    Event { clip: Clip, volume: f32 },
+}
+
 /// How loud the alert is, from 0 to 1: noticeable, not startling.
 const VOLUME: f32 = 0.25;
 /// How loud the clips are: recordings, so less quiet than a pure tone.
@@ -132,12 +156,14 @@ const CLIP_VOLUME: f32 = 0.8;
 /// ```
 #[derive(Debug)]
 pub struct Sound {
-    /// Sends the tone to play to the sound thread; `None` when silent.
-    sound: Option<Sender<Tone>>,
+    /// Sends what to play to the sound thread; `None` when silent.
+    sound: Option<Sender<Request>>,
     /// How many times the alert was asked for.
     played: u32,
     /// Every tone asked for, in order (for tests).
     tones: Vec<Tone>,
+    /// Every Robot State sound asked for, with its volume (for tests).
+    events: Vec<(Clip, f32)>,
 }
 
 impl Default for Sound {
@@ -150,14 +176,16 @@ impl Default for Sound {
 impl Sound {
     /// An alert that plays through the computer's speakers.
     pub fn new() -> Sound {
-        let (send, receive) = mpsc::channel::<Tone>();
+        let (send, receive) = mpsc::channel::<Request>();
         let started = std::thread::Builder::new()
             .name("raptaboard-sound".into())
             .spawn(move || {
                 // Opened on the first alert, and kept open after that.
                 let mut sink = None;
                 let mut failed = false;
-                while let Ok(tone) = receive.recv() {
+                // Robot State sounds play here, so a new one can stop it.
+                let mut event_player: Option<rodio::Player> = None;
+                while let Ok(request) = receive.recv() {
                     if sink.is_none() && !failed {
                         match rodio::DeviceSinkBuilder::open_default_sink() {
                             Ok(mut s) => {
@@ -167,14 +195,26 @@ impl Sound {
                             Err(_) => failed = true,
                         }
                     }
-                    if let Some(sink) = &sink
-                        && let Some(bytes) = tone.clip()
-                    {
+                    let Some(sink) = &sink else { continue };
+                    let tone = match request {
+                        Request::Tone(tone) => tone,
+                        Request::Event { clip, volume } => {
+                            if let Some(old) = event_player.take() {
+                                old.stop();
+                            }
+                            let player = rodio::Player::connect_new(sink.mixer());
+                            player.set_volume(volume.clamp(0.0, 1.0));
+                            append_clip(&player, &clip);
+                            event_player = Some(player);
+                            continue;
+                        }
+                    };
+                    if let Some(bytes) = tone.clip() {
                         // A clip that doesn't decode just stays quiet.
                         if let Ok(clip) = rodio::Decoder::new(std::io::Cursor::new(bytes)) {
                             sink.mixer().add(clip.amplify(CLIP_VOLUME));
                         }
-                    } else if let Some(sink) = &sink {
+                    } else {
                         let mut start = Duration::ZERO;
                         for &(freq, secs) in tone.notes() {
                             let length = Duration::from_secs_f32(secs);
@@ -195,6 +235,7 @@ impl Sound {
             sound: started.ok().map(|_| send),
             played: 0,
             tones: Vec::new(),
+            events: Vec::new(),
         }
     }
 
@@ -204,6 +245,7 @@ impl Sound {
             sound: None,
             played: 0,
             tones: Vec::new(),
+            events: Vec::new(),
         }
     }
 
@@ -218,8 +260,22 @@ impl Sound {
         self.tones.push(tone);
         if let Some(sound) = &self.sound {
             // The thread only ends if it panicked; then stay quiet.
-            let _ = sound.send(tone);
+            let _ = sound.send(Request::Tone(tone));
         }
+    }
+
+    /// Play a Robot State sound at `volume` (0 to 1), stopping the last one
+    /// if it's still playing (if not silent). Never blocks.
+    pub fn play_event(&mut self, clip: Clip, volume: f32) {
+        self.events.push((clip.clone(), volume));
+        if let Some(sound) = &self.sound {
+            let _ = sound.send(Request::Event { clip, volume });
+        }
+    }
+
+    /// Every Robot State sound played so far, with its volume, in order.
+    pub fn events(&self) -> &[(Clip, f32)] {
+        &self.events
     }
 
     /// Every tone played so far, in order.
@@ -230,6 +286,38 @@ impl Sound {
     /// How many times [`play`](Self::play) was called.
     pub fn played(&self) -> u32 {
         self.played
+    }
+}
+
+/// Queue `clip` on `player`, at full volume (the player sets the volume).
+fn append_clip(player: &rodio::Player, clip: &Clip) {
+    match clip {
+        Clip::File(path) => {
+            if let Ok(file) = std::fs::File::open(path)
+                && let Ok(decoded) = rodio::Decoder::try_from(file)
+            {
+                player.append(decoded);
+            }
+        }
+        Clip::Tone(tone) => {
+            if let Some(bytes) = tone.clip() {
+                if let Ok(decoded) = rodio::Decoder::new(std::io::Cursor::new(bytes)) {
+                    player.append(decoded);
+                }
+                return;
+            }
+            // Generated notes, one after another (a rest is a silent note),
+            // as soft as an alert's beside the clips.
+            for &(freq, secs) in tone.notes() {
+                let length = Duration::from_secs_f32(secs);
+                let loud = if freq > 0.0 { VOLUME } else { 0.0 };
+                player.append(
+                    SineWave::new(freq.max(1.0))
+                        .take_duration(length)
+                        .amplify(loud),
+                );
+            }
+        }
     }
 }
 

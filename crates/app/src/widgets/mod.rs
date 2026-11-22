@@ -130,6 +130,14 @@ pub struct Place {
 pub enum Effect {
     /// Play a tone (unless sounds are turned off with the bell button).
     Tone(crate::sound::Tone),
+    /// Play a Robot State sound at `volume` (0 to 1), stopping the last
+    /// one (unless sounds are turned off).
+    Event {
+        /// What to play.
+        clip: crate::sound::Clip,
+        /// How loud, 0 to 1.
+        volume: f32,
+    },
     /// Write `value` to `topic`, a topic besides the widget's own (a
     /// Field's target set), publishing it as `ty` if nobody has.
     Write {
@@ -309,6 +317,24 @@ pub trait WidgetType: Sync {
         Vec::new()
     }
 
+    /// Called every frame for the first widget of this type in the layout
+    /// (tab order, then top to bottom and left to right), whichever tab is
+    /// open, with the server's newest `values` (its
+    /// [`background_topics`](Self::background_topics) are always asked for)
+    /// and whether the server is `connected`. What it returns is done, like
+    /// [`Frame::effects`]; it can keep what it needs between frames in
+    /// `ctx`'s memory. Robot State plays its sounds from here, so they
+    /// sound from any tab. Nothing by default.
+    fn watch(
+        &self,
+        _ctx: &egui::Context,
+        _widget: &WidgetContainer,
+        _values: &HashMap<&str, &Value>,
+        _connected: bool,
+    ) -> Vec<Effect> {
+        Vec::new()
+    }
+
     /// The mark this widget puts on its tab, open or not, from the server's
     /// `values`: the most urgent alert it shows. None by default.
     fn tab_mark(
@@ -382,6 +408,7 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::enums::EnumDropdown,
     &builtin::enums::EnumToggle,
     &builtin::alerts::AlertsWidget,
+    &builtin::robot_state::RobotStateWidget,
     &builtin::graph::Graph,
     &builtin::field::FieldWidget,
     &builtin::gyro::Gyro,

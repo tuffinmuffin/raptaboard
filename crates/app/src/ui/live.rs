@@ -3,8 +3,10 @@
 
 use std::collections::HashMap;
 
+use eframe::egui;
 use nt4::{Topic, Value};
 
+use crate::nt::ConnectionStatus;
 use crate::traces::SeriesKey;
 use crate::types::structs;
 use crate::widgets::shared::{format, props};
@@ -36,7 +38,85 @@ fn drawn(tab: &raptaboard_layout::Tab) -> impl Iterator<Item = &WidgetContainer>
         .filter(|w| widgets::find(&w.widget_type).is_some())
 }
 
+/// The widgets of `tab` in the order [`WidgetType::watch`] goes through
+/// them: on the grid top to bottom, then left to right, with each List
+/// Layout's children in its place, in list order.
+///
+/// [`WidgetType::watch`]: crate::widgets::WidgetType::watch
+fn in_order(tab: &raptaboard_layout::Tab) -> Vec<&WidgetContainer> {
+    let grid = &tab.grid_layout;
+    let mut placed: Vec<((f64, f64), Vec<&WidgetContainer>)> = grid
+        .containers
+        .iter()
+        .map(|w| ((w.rect.y, w.rect.x), vec![w]))
+        .chain(grid.layouts.iter().map(|l| {
+            let shown = l.children.iter().filter(|w| !list_layout::is_hidden(w));
+            ((l.rect.y, l.rect.x), shown.collect())
+        }))
+        .collect();
+    placed.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    placed.into_iter().flat_map(|(_, ws)| ws).collect()
+}
+
 impl DashboardApp {
+    /// Run [`WidgetType::watch`] for the first widget of each type in the
+    /// layout, on any tab, and do what they ask (Robot State's sounds).
+    ///
+    /// [`WidgetType::watch`]: crate::widgets::WidgetType::watch
+    pub(super) fn watch_widgets(&mut self, ctx: &egui::Context, values: &HashMap<&str, &Value>) {
+        let connected = matches!(self.nt.status(), ConnectionStatus::Connected { .. });
+        let mut seen: Vec<&str> = Vec::new();
+        let mut effects = Vec::new();
+        for tab in &self.layout.tabs {
+            for w in in_order(tab) {
+                let Some(ty) = widgets::find(&w.widget_type) else {
+                    continue;
+                };
+                let name = ty.names()[0];
+                if seen.contains(&name) {
+                    continue;
+                }
+                seen.push(name);
+                effects.extend(ty.watch(ctx, w, values, connected));
+            }
+        }
+        for effect in effects {
+            self.apply_effect(effect);
+        }
+    }
+
+    /// Do what a widget asked: play a sound (if sounds are on), or send a
+    /// value (a failure goes in the status line).
+    pub(super) fn apply_effect(&mut self, effect: widgets::Effect) {
+        match effect {
+            widgets::Effect::Tone(tone) => {
+                if self.alert_sound {
+                    self.sound.play_tone(tone);
+                }
+            }
+            widgets::Effect::Event { clip, volume } => {
+                if self.alert_sound {
+                    self.sound.play_event(clip, volume);
+                }
+            }
+            widgets::Effect::Write { topic, value, ty } => {
+                if let Err(why) = self.nt.write_or_publish(&topic, value, ty) {
+                    self.status = why.to_string();
+                }
+            }
+            widgets::Effect::PublishStruct {
+                topic,
+                struct_name,
+                bytes,
+                schemas,
+            } => {
+                if let Err(why) = self.nt.publish_struct(&topic, struct_name, bytes, schemas) {
+                    self.status = why.to_string();
+                }
+            }
+        }
+    }
+
     /// The topics the widgets on the open tab are bound to, grouped by how
     /// often they want updates (each widget's `period`, in seconds), with
     /// what each needs besides (`extra_topics`), from the server's `topics`.

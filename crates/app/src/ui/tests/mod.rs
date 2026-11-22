@@ -14,6 +14,7 @@ mod files;
 mod gyro;
 mod mechanism;
 mod pose3d;
+mod robot_state;
 mod sliders;
 mod struct_view;
 mod swerve;
