@@ -2,7 +2,9 @@
 //! `editable` on, takes a typed value too.
 //!
 //! Settings: the number and enum settings in [`format`](mod@crate::widgets::shared::format),
-//! `font_size`, and `editable` (raptaboard's, off unless set). An editable
+//! `font_size` or `fit_text` (as large as fits the card; a Large Text
+//! Display is a Text Display with this on), color by value, and `editable`
+//! (raptaboard's, off unless set). An editable
 //! Text Display has a blue dot in its corner; a click on it (locked, the
 //! whole card; unlocked, the body, since the title bar moves it) opens a
 //! box with the value selected, and Enter sends what's typed, in the
@@ -20,6 +22,99 @@ use crate::widgets::{Live, ValueInfo, WidgetType};
 
 /// Values can be typed in (raptaboard's; off unless set).
 pub const EDITABLE: &str = props::EDITABLE;
+/// The text as large as fits the card, instead of `font_size`
+/// (raptaboard's; off unless set, on for a Large Text Display).
+pub const FIT_TEXT: &str = "fit_text";
+
+/// Whether `p`'s text is fitted to the card: `fit_text`, or `by_default`
+/// if not set (a Large Text Display's text is).
+pub fn fits(p: &Map<String, Json>, by_default: bool) -> bool {
+    props::flag(p, FIT_TEXT, by_default)
+}
+
+/// Draw `value`'s text in `rect`: on its color-by-value background if
+/// that's on, as large as fits if [`fits`] (`fit_default` when
+/// `fit_text` isn't set), else at `font_size`; or why there's no text.
+pub fn draw_text(
+    painter: &egui::Painter,
+    visuals: &egui::Visuals,
+    rect: Rect,
+    p: &Map<String, Json>,
+    value: Option<&Value>,
+    fit_default: bool,
+) {
+    match text(p, value) {
+        Ok(text) => {
+            let ink = value_colors::paint_background(painter, rect, p, value)
+                .unwrap_or(visuals.text_color());
+            if fits(p, fit_default) {
+                card::draw_fitted(painter, rect, &text, ink);
+            } else {
+                painter.text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    text,
+                    egui::FontId::monospace(props::font_size(p)),
+                    ink,
+                );
+            }
+        }
+        Err(why) => card::draw_message(painter, visuals, rect, why),
+    }
+}
+
+/// The settings rows of a Text Display (and a Large Text Display, whose
+/// text fits the card unless set otherwise: `fit_default`).
+pub fn settings_rows(
+    ui: &mut egui::Ui,
+    p: &mut Map<String, Json>,
+    value: ValueInfo<'_>,
+    fit_default: bool,
+) {
+    format::rows(ui, p, value);
+    props::flag_row(
+        ui,
+        p,
+        "Fit text",
+        "The text as large as fits the card",
+        FIT_TEXT,
+        fit_default,
+    );
+    if !fits(p, fit_default) {
+        props::text_size_row(ui, p);
+    }
+    if value
+        .nt_type
+        .is_none_or(|t| matches!(t, "double" | "float" | "int"))
+    {
+        value_colors::rows(ui, p);
+    }
+    props::editable_row(
+        ui,
+        p,
+        false,
+        "Click the value to type a new one and press Enter to send it \
+         (Escape cancels). A blue dot in the corner shows it's editable. \
+         Not for arrays or struct fields.",
+    );
+}
+
+/// A Text Display's (and Large Text Display's) setting keys.
+pub const KEYS: [&str; 13] = [
+    EDITABLE,
+    FIT_TEXT,
+    format::DECIMAL_PLACES,
+    format::INT_FORMAT,
+    format::INT_DIGITS,
+    format::ENUM_DISPLAY,
+    props::FONT_SIZE,
+    value_colors::COLOR_BY,
+    value_colors::COLOR_BELOW,
+    value_colors::COLOR_ABOVE,
+    crate::widgets::shared::scale::LOW_COLOR,
+    crate::widgets::shared::scale::MID_COLOR,
+    crate::widgets::shared::scale::HIGH_COLOR,
+];
 
 /// The Text Display widget (Elastic's `"Text Display"`, also saved as
 /// `"Text View"`).
@@ -104,14 +199,16 @@ pub fn accepts_text(text: &str, value: Option<&Value>) -> bool {
 
 /// A Text Display with a [`Ui`](egui::Ui): `area` takes the click that
 /// opens the typing box, `body` is where the value is, `dot_in` the corner
-/// the editable dot goes in. The value to send, if one was typed.
-fn show_text(
+/// the editable dot goes in, `fit_default` whether its text fits the card
+/// when `fit_text` isn't set. The value to send, if one was typed.
+pub fn show_text(
     ui: &mut egui::Ui,
     area: Rect,
     body: Rect,
     dot_in: Rect,
     widget: &WidgetContainer,
     live: &Live<'_>,
+    fit_default: bool,
 ) -> Option<Value> {
     let p = &widget.properties;
     let editable = can_edit(widget, live.value);
@@ -120,7 +217,7 @@ fn show_text(
     {
         let painter = ui.painter().with_clip_rect(body.intersect(ui.clip_rect()));
         if !editing {
-            TextDisplay.draw_body(&painter, ui.visuals(), body, p, live.value);
+            draw_text(&painter, ui.visuals(), body, p, live.value, fit_default);
         }
     }
     if !editable {
@@ -137,7 +234,12 @@ fn show_text(
     if !entry::is_open(ui, id) {
         return None;
     }
-    let size = props::font_size(p);
+    // Typing in fitted text: big, but no bigger than the largest size.
+    let size = if fits(p, fit_default) {
+        (body.height() * 0.5).clamp(props::MIN_FONT_SIZE, props::MAX_FONT_SIZE)
+    } else {
+        props::font_size(p)
+    };
     let rect = Rect::from_center_size(
         body.center(),
         egui::vec2(
@@ -194,6 +296,7 @@ impl WidgetType for TextDisplay {
             title,
             widget,
             live,
+            false,
         )
     }
 
@@ -205,7 +308,7 @@ impl WidgetType for TextDisplay {
         live: &Live<'_>,
     ) -> Option<Value> {
         let area = live.place.input.unwrap_or(rect);
-        show_text(ui, area, rect, rect, widget, live)
+        show_text(ui, area, rect, rect, widget, live, false)
     }
 
     fn draw_body(
@@ -216,56 +319,14 @@ impl WidgetType for TextDisplay {
         props: &Map<String, Json>,
         value: Option<&Value>,
     ) {
-        match text(props, value) {
-            Ok(text) => {
-                let ink = value_colors::paint_background(painter, rect, props, value)
-                    .unwrap_or(visuals.text_color());
-                painter.text(
-                    rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    text,
-                    egui::FontId::monospace(props::font_size(props)),
-                    ink,
-                );
-            }
-            Err(why) => card::draw_message(painter, visuals, rect, why),
-        }
+        draw_text(painter, visuals, rect, props, value, false);
     }
 
     fn settings(&self, ui: &mut egui::Ui, props: &mut Map<String, Json>, value: ValueInfo<'_>) {
-        format::rows(ui, props, value);
-        props::text_size_row(ui, props);
-        if value
-            .nt_type
-            .is_none_or(|t| matches!(t, "double" | "float" | "int"))
-        {
-            value_colors::rows(ui, props);
-        }
-        props::editable_row(
-            ui,
-            props,
-            false,
-            "Click the value to type a new one and press Enter to send it \
-             (Escape cancels). A blue dot in the corner shows it's editable. \
-             Not for arrays or struct fields.",
-        );
+        settings_rows(ui, props, value, false);
     }
 
     fn setting_keys(&self) -> &'static [&'static str] {
-        const KEYS: [&str; 12] = [
-            EDITABLE,
-            format::DECIMAL_PLACES,
-            format::INT_FORMAT,
-            format::INT_DIGITS,
-            format::ENUM_DISPLAY,
-            props::FONT_SIZE,
-            value_colors::COLOR_BY,
-            value_colors::COLOR_BELOW,
-            value_colors::COLOR_ABOVE,
-            crate::widgets::shared::scale::LOW_COLOR,
-            crate::widgets::shared::scale::MID_COLOR,
-            crate::widgets::shared::scale::HIGH_COLOR,
-        ];
         &KEYS
     }
 }

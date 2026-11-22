@@ -197,6 +197,14 @@ pub trait WidgetType: Sync {
     /// this widget (the default widget for that type).
     fn accepts(&self, nt_type: &str) -> bool;
 
+    /// Whether this type is offered as a choice (the settings dialog's
+    /// Widget list, the tree's "Add as"). Yes by default; a type kept only
+    /// so layouts that have it still open (Large Text Display, now a Text
+    /// Display with "Fit text") says no.
+    fn listed(&self) -> bool {
+        true
+    }
+
     /// Whether this widget can show a value of NT type `nt_type`, for the
     /// settings dialog's choice of widget type. Every type it [`accepts`]
     /// by default, and maybe more.
@@ -545,6 +553,7 @@ pub fn types_showing(nt_type: &str) -> Vec<&'static str> {
     let default = type_for_topic(nt_type).or_else(|| type_for_table(nt_type));
     let others = TYPES
         .iter()
+        .filter(|t| t.listed())
         .filter(|t| t.shows(nt_type) || t.table_types().contains(&nt_type))
         .map(|t| t.names()[0])
         .filter(|name| Some(*name) != default);

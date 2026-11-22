@@ -59,7 +59,10 @@ Ctrl+Shift+K sim.
 
 "Show As" options: boolean (Boolean Box, Toggle Switch, Toggle Button); number (Number Bar, Number
 Slider, Voltage View, Radial Gauge, Graph, Match Time); string (Single Color View), string[] (Multi
-Color View); every viewable type also gets Text Display and Large Text Display.
+Color View); every viewable type also gets Text Display and Large Text Display. In raptaboard, Large
+Text Display is a Text Display with "Fit text" on (decided with the user 2026-11-21: one text widget,
+with all its settings): layouts that have one open and save as they were, and it isn't offered as a
+type of its own (`WidgetType::listed`).
 
 ### Widget catalog (parity checklist)
 
@@ -69,7 +72,7 @@ Color View); every viewable type also gets Text Display and Large Text Display.
 | Toggle Switch | Toggle Switch | boolean | yes |
 | Toggle Button | Toggle Button | boolean | yes |
 | Text Display | Text Display / Text View | number, string, arrays | yes |
-| Large Text Display | Large Text Display | number, string | no |
+| Large Text Display | Large Text Display | number, string | yes (as Text Display) |
 | Number Bar | Number Bar | number | no |
 | Number Slider | Number Slider | number | yes |
 | Voltage View | Voltage View | number | no |
@@ -195,6 +198,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `max_spin` | `builtin/chassis_speeds.rs` | Chassis Speeds, SwerveDrive | the spin drawn as a three-quarter turn, degrees per second | 360 |
 | `fit` | `builtin/mechanism.rs` | Mechanism2d | what the view fits: `mechanism` (the part of the canvas it has used, plus a margin, growing only; a double-click starts it over) or `canvas` (all of `dims`) | `mechanism` |
 | `color_by`, `color_below`, `color_above` | `shared/value_colors.rs` | Text Display, Large Text Display, Number Bar, Voltage View, Radial Gauge | color by value: `thresholds` or `gradient` between the two numbers, with `low_color`/`mid_color`/`high_color` | off; 10, 20 |
+| `fit_text` | `builtin/text_display.rs` | Text Display, Large Text Display | the text as large as fits the card, instead of `font_size` | off; on for a Large Text Display |
 | `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
 | `series` | `builtin/graph.rs` | Graph | the lines after the main one: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
 | `show_legend` | `builtin/graph.rs` | Graph | show the legend | when there's more than one line |

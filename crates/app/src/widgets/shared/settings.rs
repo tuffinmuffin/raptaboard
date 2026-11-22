@@ -131,7 +131,10 @@ pub fn show(
                         ui.selectable_value(&mut picked, current.clone(), &current);
                     }
                     for t in TYPES {
-                        if nt_type.is_none_or(|nt| t.shows(nt)) {
+                        // Unlisted types (Large Text Display) only for a
+                        // widget that is one, so it can stay one.
+                        let offered = t.listed() || t.names().contains(&current.as_str());
+                        if offered && nt_type.is_none_or(|nt| t.shows(nt)) {
                             let name = t.names()[0];
                             ui.selectable_value(&mut picked, name.to_owned(), name);
                         }
@@ -292,6 +295,27 @@ mod tests {
             draw(&mut w, None, is_enum);
             assert_eq!(w, before, "{ty}");
         }
+    }
+
+    #[test]
+    fn fit_text_hides_the_text_size_and_large_text_is_a_fitted_text_display() {
+        let has = |labels: &[String], row: &str| labels.iter().any(|l| l == row);
+        // A Text Display: a text size until its text is fitted.
+        let mut text = widget("Text Display", false);
+        let labels = draw(&mut text, Some("double"), false);
+        assert!(has(&labels, "Fit text") && has(&labels, "Text size"));
+        text.properties.insert("fit_text".into(), true.into());
+        assert!(!has(&draw(&mut text, Some("double"), false), "Text size"));
+        // A Large Text Display: fitted unless set otherwise, with a Text
+        // Display's settings, and still offered as its own type (so it
+        // stays one) while no other widget is offered it.
+        let mut large = widget("Large Text Display", false);
+        let labels = draw(&mut large, Some("double"), false);
+        assert!(!has(&labels, "Text size"), "{labels:?}");
+        assert!(has(&labels, "Fit text") && has(&labels, "Color by value"));
+        assert!(has(&labels, "Large Text Display"));
+        assert!(!crate::widgets::types_showing("double").contains(&"Large Text Display"));
+        assert!(crate::widgets::types_showing("double").contains(&"Text Display"));
     }
 
     #[test]
