@@ -1,0 +1,25 @@
+# Sound clips
+
+Short clips built into raptaboard (`crates/app/src/sound.rs`, `Tone`), offered as alert and robot
+state sounds. Each needs a line here saying where it came from and its license; the About window
+(⚙ Settings, then "About and licenses") shows the same credits from `crates/app/src/credits.rs`,
+so keep the two in step (a test checks every clip here has a credit there).
+
+| File | Offered as | Source | License and credit |
+| --- | --- | --- | --- |
+| `danger.mp3` | "danger danger" | [danger_normal_lp.wav](https://freesound.org/s/436708/) by xpoki on Freesound (pack "Female Voice SciFi"), played twice and converted to MP3 (128 kb/s mono) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Credit: "danger_normal_lp.wav" by Sarah-Christin Freytag (xpoki), https://freesound.org/s/436708/, looped twice and converted to MP3 |
+| `auto-ghosts.mp3` | "auto ghosts" | [mustphamonderemixes-3](https://freesound.org/s/124570/) by dal_kas on Freesound, converted to MP3 (192 kb/s stereo) | To be confirmed: check the license on its Freesound page and add the credit it asks for |
+| `disabled1.mp3`, `disabled2.mp3` | "disabled 1", "disabled 2" | "I'm disabled", a line from the TV series *The IT Crowd* | Not ours: a short quote kept for team (non-commercial) use, decided 2026-11-19. Remove before raptaboard is handed out more widely |
+| `fire1.mp3`, `fire2.mp3` | "fire 1", "fire 2" | Not recorded yet | Unknown: find the source and license, or replace them |
+
+## Adding a clip
+
+Keep clips short (a few seconds) and MP3. Use only sounds that are ours to ship: our own
+recordings, public domain (CC0), or a license that allows redistribution, with any credit it asks
+for (CC BY) here and in `credits.rs`. Converting the clip from a WAV:
+
+```sh
+ffmpeg -i clip.wav -map_metadata -1 -c:a libmp3lame -b:a 128k -ac 1 clip.mp3
+# Played twice in one file (what danger.mp3 is):
+ffmpeg -stream_loop 1 -i clip.wav -map_metadata -1 -c:a libmp3lame -b:a 128k -ac 1 clip.mp3
+```

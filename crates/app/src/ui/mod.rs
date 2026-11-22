@@ -6,6 +6,7 @@ mod drag;
 mod grid_view;
 mod live;
 mod panels;
+mod settings_window;
 mod state;
 mod style;
 mod taps;
@@ -117,6 +118,8 @@ pub struct DashboardApp {
     sends: Sends,
     /// Pointer events held back after a touchscreen tap (see [`taps`]).
     taps: taps::TapHold,
+    /// The ⚙ Settings and About windows.
+    gear: settings_window::GearWindows,
 }
 
 impl DashboardApp {
@@ -165,6 +168,7 @@ impl DashboardApp {
             },
             sends: Sends::default(),
             taps: taps::TapHold::default(),
+            gear: Default::default(),
         };
         if let Some(path) = options.layout_path {
             let path = PathBuf::from(path);
@@ -598,6 +602,7 @@ impl DashboardApp {
         self.unsaved_dialog(&ctx);
         self.load_problem_dialog(&ctx);
         self.widget_dialog(&ctx);
+        self.gear_windows(&ctx);
         let title = format!(
             "{}{} - raptaboard",
             layout_file::display_name(self.file.path.as_deref()),

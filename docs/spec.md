@@ -156,7 +156,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `text_position` | `builtin/alerts.rs` | Alerts | `auto` (beside a wide widget, below a tall one), `right`, `below` | `auto` |
 | `min_level` | `builtin/alerts.rs` | Alerts | least urgent shown: `info`, `warning`, `error` | `info` |
 | `pulse`, `pulse_seconds` | `builtin/alerts.rs` | Alerts | pulse when a new error arrives, for how long (s), stopping sooner once no error is active | true, 5 |
-| `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp`, or a built-in clip: `disabled 1`, `disabled 2`, `fire 1`, `fire 2` | false, `beep` |
+| `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp`, or a built-in clip: `disabled 1`, `disabled 2`, `fire 1`, `fire 2`, `danger danger`, `auto ghosts` | false, `beep` |
 | `field` | `builtin/field/mod.rs` | Field | the field shown: an id from the fields folders (`2026-rebuilt-welded`) or a field JSON's path; not set uses Elastic's `field_game` (by game name), else 2026 REBUILT (welded) | not set |
 | `origin` | `builtin/field/mod.rs` | Field | where the poses' (0, 0) is: `center` (WPILib 2027) or `blue_corner` (before 2027) | `center` |
 | `robot_length`, `robot_width` (Elastic) | `builtin/field/mod.rs` | Field | the robot's size, meters | 0.85, 0.85 |
@@ -469,7 +469,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      - Sounds: one row per event (disabled, autonomous, teleop, test, e-stop, and robot connected and
        lost), each Off, a built-in clip, or a file the team picks (MP3 or WAV, played with `rodio`),
        plus a widget volume. Saved in the widget's properties, so they travel with the layout.
-       Defaults: disabled plays "disabled 1", test plays "danger danger", the rest off.
+       Defaults: disabled plays "disabled 1", autonomous plays "auto ghosts", test plays "danger
+       danger", the rest off.
      - Plays only on a change seen while connected: never for the state at connect, after a
        reconnect, or when a layout opens. A new event cuts off a clip still playing. The bell button
        in the settings bar mutes these too.
@@ -477,13 +478,22 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        tabs never silences it. With two Robot State widgets, only the first (tab order, then
        position) plays.
      - Built-in clips (`media/audio/`): "disabled 1" and "disabled 2" (the IT Crowd's "I'm
-       disabled"), "fire 1", "fire 2", and a new "danger danger" in a robot voice. Its source is
-       open: record our own or make it with a text-to-speech tool plus a robot effect; it must be
-       ours to ship. More clips later.
-   - Connection settings behind a gear (first release, asked for by the user 2026-11-22): a ⚙ button
-     in the settings bar opens a settings window with the team number, address mode, custom address
-     and port (and later options such as sound volume). The bar keeps the raptaboard name, the
-     connection status, Tree, Lock, the bell, undo and redo, so it stays short on a DS laptop.
+       disabled"), "fire 1", "fire 2", "danger danger" (added 2026-11-22: xpoki's
+       "danger_normal_lp.wav" from Freesound, CC BY 4.0, played twice) and "auto ghosts" (added
+       2026-11-22: dal_kas's Freesound sound 124570; its license still to be checked). Every clip's
+       source and license is in `media/audio/README.md` and `credits.rs`. More clips later.
+   - Connection settings behind a gear (**done**, `ui/settings_window.rs`; asked for by the user
+     2026-11-22): a ⚙ button in the settings bar opens a Settings window with the team number,
+     address mode, custom address and port, and sound on or off (later: volume). The bar keeps the
+     raptaboard name, the connection status, Tree, Lock, the bell, the alert history, undo and redo,
+     so it stays short on a DS laptop.
+   - About and licenses (**done**, asked for 2026-11-22): a button in the Settings window opens a
+     window with pages for raptaboard (version, repository, MIT license), the built-in sounds,
+     images and fields (each one's source, license and credit, from `credits.rs`; CC BY credits
+     here meet the license's attribution), the Rust crates (all of them from `Cargo.lock` with their
+     licenses and a filter, from `licenses/rust-crates.tsv`) and their full license texts
+     (`licenses/THIRD_PARTY_LICENSES.txt`, with copy). `scripts/crate_licenses.py` makes both
+     files; a test fails when they don't match `Cargo.lock`.
    - X/Y and polar graphs (`egui_plot`): pair two values recorded at the same time (x with y, or
      angle with distance) and plot one against the other, for a joystick's position, an arm
      joint's path or a turret's aim. Modes: a trail that fades out over a set time (time decay),

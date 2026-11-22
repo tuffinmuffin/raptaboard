@@ -82,7 +82,11 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `~/.raptaboard/settings.toml`, made on the first run, then defaults; changes saved to the local file
   if there is one, else the home file, by `settings::Tracker`; `ui/` only says what the current
   values are),
-  `nt.rs` the live connection (`NtConnection`: a 1-thread tokio runtime that owns the `nt4::Client`
+  `credits.rs` licenses and credits (no egui: raptaboard's license, `MEDIA` for every built-in clip, image and
+  field, and the crate list and license texts from `licenses/`, made by `scripts/crate_licenses.py`; rerun it after
+  dependency changes, a test checks it against `Cargo.lock`; a new built-in clip or image needs a `MEDIA` entry,
+  a test checks that too), `ui/settings_window.rs` the ⚙ Settings window (connection, sound) and the About and
+  licenses window, `nt.rs` the live connection (`NtConnection`: a 1-thread tokio runtime that owns the `nt4::Client`
   and restarts it when the address changes; the UI only makes non-blocking calls; `write` sends a
   widget's value to an announced topic in that topic's type, or returns a `WriteError` saying why
   not), `sound.rs` the sounds (`Sound`: a failed write's tone, and the Alerts widget's `Tone`s; its own
