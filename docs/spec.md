@@ -156,7 +156,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `text_position` | `builtin/alerts.rs` | Alerts | `auto` (beside a wide widget, below a tall one), `right`, `below` | `auto` |
 | `min_level` | `builtin/alerts.rs` | Alerts | least urgent shown: `info`, `warning`, `error` | `info` |
 | `pulse`, `pulse_seconds` | `builtin/alerts.rs` | Alerts | pulse when a new error arrives, for how long (s), stopping sooner once no error is active | true, 5 |
-| `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp`, or a built-in clip: `disabled 1`, `disabled 2`, `fire 1`, `fire 2`, `danger danger`, `auto ghosts` | false, `beep` |
+| `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp`, or a built-in clip: `disabled 1`, `disabled 2`, `fire 1`, `fire 2`, `danger danger`, `auto ghosts`, `go go go` | false, `beep` |
 | `field` | `builtin/field/mod.rs` | Field | the field shown: an id from the fields folders (`2026-rebuilt-welded`) or a field JSON's path; not set uses Elastic's `field_game` (by game name), else 2026 REBUILT (welded) | not set |
 | `origin` | `builtin/field/mod.rs` | Field | where the poses' (0, 0) is: `center` (WPILib 2027) or `blue_corner` (before 2027) | `center` |
 | `robot_length`, `robot_width` (Elastic) | `builtin/field/mod.rs` | Field | the robot's size, meters | 0.85, 0.85 |
@@ -469,8 +469,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      - Sounds: one row per event (disabled, autonomous, teleop, test, e-stop, and robot connected and
        lost), each Off, a built-in clip, or a file the team picks (MP3 or WAV, played with `rodio`),
        plus a widget volume. Saved in the widget's properties, so they travel with the layout.
-       Defaults: disabled plays "disabled 1", autonomous plays "auto ghosts", test plays "danger
-       danger", the rest off.
+       Defaults: disabled plays "disabled 1", autonomous plays "auto ghosts", teleop plays "go go
+       go", test plays "danger danger", the rest off.
      - Plays only on a change seen while connected: never for the state at connect, after a
        reconnect, or when a layout opens. A new event cuts off a clip still playing. The bell button
        in the settings bar mutes these too.
@@ -480,7 +480,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      - Built-in clips (`media/audio/`): "disabled 1" and "disabled 2" (the IT Crowd's "I'm
        disabled"), "fire 1", "fire 2", "danger danger" (added 2026-11-22: xpoki's
        "danger_normal_lp.wav" from Freesound, CC BY 4.0, played twice) and "auto ghosts" (added
-       2026-11-22: dal_kas's Freesound sound 124570; its license still to be checked). Every clip's
+       2026-11-22: dal_kas's Freesound sound 124570; its license still to be checked) and "go go go" (added 2026-11-22: theuncertainman's "Go Go
+       Go - (Version 2) Northern British Soldier" from Freesound, CC BY 4.0). Every clip's
        source and license is in `media/audio/README.md` and `credits.rs`. More clips later.
    - Connection settings behind a gear (**done**, `ui/settings_window.rs`; asked for by the user
      2026-11-22): a ⚙ button in the settings bar opens a Settings window with the team number,

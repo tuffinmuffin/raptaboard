@@ -74,6 +74,16 @@ pub const MEDIA: &[MediaCredit] = &[
     },
     MediaCredit {
         kind: "Sound",
+        files: &["go-go-go.mp3"],
+        what: "\"go go go\", for teleop starting",
+        source: "\"Go Go Go - (Version 2) Northern British Soldier\" by theuncertainman, \
+                 Freesound, https://freesound.org/s/402643/",
+        license: "CC BY 4.0",
+        link: Some("https://creativecommons.org/licenses/by/4.0/"),
+        note: "Converted to MP3.",
+    },
+    MediaCredit {
+        kind: "Sound",
         files: &["disabled1.mp3", "disabled2.mp3"],
         what: "\"I'm disabled\"",
         source: "a line from the TV series The IT Crowd",

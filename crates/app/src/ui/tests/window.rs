@@ -403,7 +403,7 @@ fn the_gear_opens_connection_settings_and_the_licenses() {
     );
     labelled_soon(&mut harness, "Sounds, images, fields");
     for (page, shows) in [
-        ("Sounds, images, fields", "CC BY 4.0"),
+        ("Sounds, images, fields", "Sarah-Christin Freytag"),
         ("Rust crates", "Rust crates. Their licenses:"),
         ("License texts", "Copy all"),
     ] {

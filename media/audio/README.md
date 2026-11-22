@@ -9,6 +9,7 @@ so keep the two in step (a test checks every clip here has a credit there).
 | --- | --- | --- | --- |
 | `danger.mp3` | "danger danger" | [danger_normal_lp.wav](https://freesound.org/s/436708/) by xpoki on Freesound (pack "Female Voice SciFi"), played twice and converted to MP3 (128 kb/s mono) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Credit: "danger_normal_lp.wav" by Sarah-Christin Freytag (xpoki), https://freesound.org/s/436708/, looped twice and converted to MP3 |
 | `auto-ghosts.mp3` | "auto ghosts" | [mustphamonderemixes-3](https://freesound.org/s/124570/) by dal_kas on Freesound, converted to MP3 (192 kb/s stereo) | To be confirmed: check the license on its Freesound page and add the credit it asks for |
+| `go-go-go.mp3` | "go go go" | [Go Go Go - (Version 2) Northern British Soldier](https://freesound.org/s/402643/) by theuncertainman on Freesound, converted to MP3 (128 kb/s mono) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Credit: "Go Go Go - (Version 2) Northern British Soldier" by theuncertainman, https://freesound.org/s/402643/, converted to MP3 |
 | `disabled1.mp3`, `disabled2.mp3` | "disabled 1", "disabled 2" | "I'm disabled", a line from the TV series *The IT Crowd* | Not ours: a short quote kept for team (non-commercial) use, decided 2026-11-19. Remove before raptaboard is handed out more widely |
 | `fire1.mp3`, `fire2.mp3` | "fire 1", "fire 2" | Not recorded yet | Unknown: find the source and license, or replace them |
 
