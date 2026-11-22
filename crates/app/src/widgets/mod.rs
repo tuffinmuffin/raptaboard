@@ -197,14 +197,6 @@ pub trait WidgetType: Sync {
     /// this widget (the default widget for that type).
     fn accepts(&self, nt_type: &str) -> bool;
 
-    /// Whether this type is offered as a choice (the settings dialog's
-    /// Widget list, the tree's "Add as"). Yes by default; a type kept only
-    /// so layouts that have it still open (Large Text Display, now a Text
-    /// Display with "Fit text") says no.
-    fn listed(&self) -> bool {
-        true
-    }
-
     /// Whether this widget can show a value of NT type `nt_type`, for the
     /// settings dialog's choice of widget type. Every type it [`accepts`]
     /// by default, and maybe more.
@@ -377,7 +369,6 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::toggle::ToggleSwitch,
     &builtin::toggle::ToggleButton,
     &builtin::text_display::TextDisplay,
-    &builtin::large_text_display::LargeTextDisplay,
     &builtin::number_bar::NumberBar,
     &builtin::number_slider::NumberSlider,
     &builtin::number_bar::VoltageView,
@@ -418,6 +409,44 @@ pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
         .iter()
         .copied()
         .find(|t| t.names().contains(&type_name))
+}
+
+/// Bring the widgets in a layout just opened up to date. Elastic's Large
+/// Text Display is a Text Display with "Fit text" on in raptaboard, so
+/// each one (on the grid or in a list) becomes that, keeping its other
+/// settings, and saving the layout writes it as a Text Display. A "Fit
+/// text" already set (on or off) stays. Returns how many changed.
+///
+/// ```
+/// use raptaboard::widgets::upgrade;
+/// let json = r#"{"version": 1.0, "grid_size": 128, "tabs": [{"name": "A",
+///     "grid_layout": {"layouts": [], "containers": [{"title": "Volts",
+///     "x": 0, "y": 0, "width": 256, "height": 128,
+///     "type": "Large Text Display", "properties": {"topic": "/V"}}]}}]}"#;
+/// let mut layout = raptaboard_layout::ElasticLayout::from_json(json).unwrap();
+/// assert_eq!(upgrade(&mut layout), 1);
+/// let widget = layout.widgets().next().unwrap();
+/// assert_eq!(widget.widget_type, "Text Display");
+/// assert_eq!(widget.properties["fit_text"], true);
+/// ```
+pub fn upgrade(layout: &mut raptaboard_layout::ElasticLayout) -> usize {
+    use builtin::text_display::{FIT_TEXT, LARGE_TEXT_DISPLAY};
+    let mut changed = 0;
+    for tab in &mut layout.tabs {
+        let grid = &mut tab.grid_layout;
+        let in_lists = grid.layouts.iter_mut().flat_map(|l| l.children.iter_mut());
+        for widget in grid.containers.iter_mut().chain(in_lists) {
+            if widget.widget_type == LARGE_TEXT_DISPLAY {
+                widget.widget_type = "Text Display".to_owned();
+                widget
+                    .properties
+                    .entry(FIT_TEXT)
+                    .or_insert(Json::Bool(true));
+                changed += 1;
+            }
+        }
+    }
+    changed
 }
 
 /// The widget type name to make for a topic dropped on the grid, by its NT
@@ -554,7 +583,6 @@ pub fn types_showing(nt_type: &str) -> Vec<&'static str> {
     let default = type_for_topic(nt_type).or_else(|| type_for_table(nt_type));
     let others = TYPES
         .iter()
-        .filter(|t| t.listed())
         .filter(|t| t.shows(nt_type) || t.table_types().contains(&nt_type))
         .map(|t| t.names()[0])
         .filter(|name| Some(*name) != default);

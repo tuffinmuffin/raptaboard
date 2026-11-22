@@ -132,14 +132,7 @@ pub fn show(
                     }
                     let fits = nt_type.map(crate::widgets::types_showing);
                     for t in TYPES {
-                        // Unlisted types (Large Text Display) only for a
-                        // widget that is one, so it can stay one.
-                        let offered = if t.listed() {
-                            fits.as_ref().is_none_or(|f| f.contains(&t.names()[0]))
-                        } else {
-                            t.names().contains(&current.as_str())
-                        };
-                        if offered {
+                        if fits.as_ref().is_none_or(|f| f.contains(&t.names()[0])) {
                             let name = t.names()[0];
                             ui.selectable_value(&mut picked, name.to_owned(), name);
                         }
@@ -287,7 +280,6 @@ mod tests {
             ("Boolean Box", false, false),
             ("Graph", false, false),
             ("Field", false, false),
-            ("Large Text Display", false, false),
             ("Number Bar", false, false),
             ("Voltage View", false, false),
             ("Radial Gauge", false, false),
@@ -303,7 +295,7 @@ mod tests {
     }
 
     #[test]
-    fn fit_text_hides_the_text_size_and_large_text_is_a_fitted_text_display() {
+    fn fit_text_hides_the_text_size() {
         let has = |labels: &[String], row: &str| labels.iter().any(|l| l == row);
         // A Text Display: a text size until its text is fitted.
         let mut text = widget("Text Display", false);
@@ -311,16 +303,6 @@ mod tests {
         assert!(has(&labels, "Fit text") && has(&labels, "Text size"));
         text.properties.insert("fit_text".into(), true.into());
         assert!(!has(&draw(&mut text, Some("double"), false), "Text size"));
-        // A Large Text Display: fitted unless set otherwise, with a Text
-        // Display's settings, and still offered as its own type (so it
-        // stays one) while no other widget is offered it.
-        let mut large = widget("Large Text Display", false);
-        let labels = draw(&mut large, Some("double"), false);
-        assert!(!has(&labels, "Text size"), "{labels:?}");
-        assert!(has(&labels, "Fit text") && has(&labels, "Color by value"));
-        assert!(has(&labels, "Large Text Display"));
-        assert!(!crate::widgets::types_showing("double").contains(&"Large Text Display"));
-        assert!(crate::widgets::types_showing("double").contains(&"Text Display"));
     }
 
     #[test]

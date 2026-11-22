@@ -2,8 +2,8 @@
 //! `editable` on, takes a typed value too.
 //!
 //! Settings: the number and enum settings in [`format`](mod@crate::widgets::shared::format),
-//! `font_size` or `fit_text` (as large as fits the card; a Large Text
-//! Display is a Text Display with this on), color by value, and `editable`
+//! `font_size` or `fit_text` (as large as fits the card; Elastic's Large
+//! Text Display opens as a Text Display with this on), color by value, and `editable`
 //! (raptaboard's, off unless set). An editable
 //! Text Display has a blue dot in its corner; a click on it (locked, the
 //! whole card; unlocked, the body, since the title bar moves it) opens a
@@ -23,31 +23,33 @@ use crate::widgets::{Live, ValueInfo, WidgetType};
 /// Values can be typed in (raptaboard's; off unless set).
 pub const EDITABLE: &str = props::EDITABLE;
 /// The text as large as fits the card, instead of `font_size`
-/// (raptaboard's; off unless set, on for a Large Text Display).
+/// (raptaboard's; off unless set, on for an opened Large Text Display).
 pub const FIT_TEXT: &str = "fit_text";
 
-/// Whether `p`'s text is fitted to the card: `fit_text`, or `by_default`
-/// if not set (a Large Text Display's text is).
-pub fn fits(p: &Map<String, Json>, by_default: bool) -> bool {
-    props::flag(p, FIT_TEXT, by_default)
+/// Elastic's widget for text as large as fits. raptaboard opens one as a
+/// Text Display with [`FIT_TEXT`] on ([`crate::widgets::upgrade`]).
+pub const LARGE_TEXT_DISPLAY: &str = "Large Text Display";
+
+/// Whether `p`'s text is fitted to the card (`fit_text`, off if not set).
+pub fn fits(p: &Map<String, Json>) -> bool {
+    props::flag(p, FIT_TEXT, false)
 }
 
 /// Draw `value`'s text in `rect`: on its color-by-value background if
-/// that's on, as large as fits if [`fits`] (`fit_default` when
-/// `fit_text` isn't set), else at `font_size`; or why there's no text.
-pub fn draw_text(
+/// that's on, as large as fits if [`fits`], else at `font_size`; or why
+/// there's no text.
+fn draw_text(
     painter: &egui::Painter,
     visuals: &egui::Visuals,
     rect: Rect,
     p: &Map<String, Json>,
     value: Option<&Value>,
-    fit_default: bool,
 ) {
     match text(p, value) {
         Ok(text) => {
             let ink = value_colors::paint_background(painter, rect, p, value)
                 .unwrap_or(visuals.text_color());
-            if fits(p, fit_default) {
+            if fits(p) {
                 card::draw_fitted(painter, rect, &text, ink);
             } else {
                 painter.text(
@@ -63,14 +65,8 @@ pub fn draw_text(
     }
 }
 
-/// The settings rows of a Text Display (and a Large Text Display, whose
-/// text fits the card unless set otherwise: `fit_default`).
-pub fn settings_rows(
-    ui: &mut egui::Ui,
-    p: &mut Map<String, Json>,
-    value: ValueInfo<'_>,
-    fit_default: bool,
-) {
+/// The settings rows of a Text Display.
+fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<'_>) {
     format::rows(ui, p, value);
     props::flag_row(
         ui,
@@ -78,9 +74,9 @@ pub fn settings_rows(
         "Fit text",
         "The text as large as fits the card",
         FIT_TEXT,
-        fit_default,
+        false,
     );
-    if !fits(p, fit_default) {
+    if !fits(p) {
         props::text_size_row(ui, p);
     }
     if value
@@ -99,7 +95,7 @@ pub fn settings_rows(
     );
 }
 
-/// A Text Display's (and Large Text Display's) setting keys.
+/// A Text Display's setting keys.
 pub const KEYS: [&str; 13] = [
     EDITABLE,
     FIT_TEXT,
@@ -199,16 +195,14 @@ pub fn accepts_text(text: &str, value: Option<&Value>) -> bool {
 
 /// A Text Display with a [`Ui`](egui::Ui): `area` takes the click that
 /// opens the typing box, `body` is where the value is, `dot_in` the corner
-/// the editable dot goes in, `fit_default` whether its text fits the card
-/// when `fit_text` isn't set. The value to send, if one was typed.
-pub fn show_text(
+/// the editable dot goes in. The value to send, if one was typed.
+fn show_text(
     ui: &mut egui::Ui,
     area: Rect,
     body: Rect,
     dot_in: Rect,
     widget: &WidgetContainer,
     live: &Live<'_>,
-    fit_default: bool,
 ) -> Option<Value> {
     let p = &widget.properties;
     let editable = can_edit(widget, live.value);
@@ -217,7 +211,7 @@ pub fn show_text(
     {
         let painter = ui.painter().with_clip_rect(body.intersect(ui.clip_rect()));
         if !editing {
-            draw_text(&painter, ui.visuals(), body, p, live.value, fit_default);
+            draw_text(&painter, ui.visuals(), body, p, live.value);
         }
     }
     if !editable {
@@ -235,7 +229,7 @@ pub fn show_text(
         return None;
     }
     // Typing in fitted text: big, but no bigger than the largest size.
-    let size = if fits(p, fit_default) {
+    let size = if fits(p) {
         (body.height() * 0.5).clamp(props::MIN_FONT_SIZE, props::MAX_FONT_SIZE)
     } else {
         props::font_size(p)
@@ -256,7 +250,7 @@ pub fn show_text(
 
 impl WidgetType for TextDisplay {
     fn names(&self) -> &'static [&'static str] {
-        &["Text Display", "Text View"]
+        &["Text Display", "Text View", LARGE_TEXT_DISPLAY]
     }
 
     fn accepts(&self, nt_type: &str) -> bool {
@@ -296,7 +290,6 @@ impl WidgetType for TextDisplay {
             title,
             widget,
             live,
-            false,
         )
     }
 
@@ -308,7 +301,7 @@ impl WidgetType for TextDisplay {
         live: &Live<'_>,
     ) -> Option<Value> {
         let area = live.place.input.unwrap_or(rect);
-        show_text(ui, area, rect, rect, widget, live, false)
+        show_text(ui, area, rect, rect, widget, live)
     }
 
     fn draw_body(
@@ -319,11 +312,11 @@ impl WidgetType for TextDisplay {
         props: &Map<String, Json>,
         value: Option<&Value>,
     ) {
-        draw_text(painter, visuals, rect, props, value, false);
+        draw_text(painter, visuals, rect, props, value);
     }
 
     fn settings(&self, ui: &mut egui::Ui, props: &mut Map<String, Json>, value: ValueInfo<'_>) {
-        settings_rows(ui, props, value, false);
+        settings_rows(ui, props, value);
     }
 
     fn setting_keys(&self) -> &'static [&'static str] {

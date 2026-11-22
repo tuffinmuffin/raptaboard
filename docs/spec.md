@@ -61,8 +61,10 @@ Ctrl+Shift+K sim.
 Slider, Voltage View, Radial Gauge, Graph, Match Time); string (Single Color View), string[] (Multi
 Color View); every viewable type also gets Text Display and Large Text Display. In raptaboard, Large
 Text Display is a Text Display with "Fit text" on (decided with the user 2026-11-21: one text widget,
-with all its settings): layouts that have one open and save as they were, and it isn't offered as a
-type of its own (`WidgetType::listed`).
+with all its settings; 2026-11-22: no separate type). Opening a layout turns each Large Text Display
+into a Text Display with "Fit text" on (`widgets::upgrade`, before it counts as saved, so it isn't a
+fix or an unsaved change), and saving writes it as a Text Display; Elastic then shows it at a normal
+text size. `Large Text Display` is also a name `find` knows for Text Display.
 
 ### Widget catalog (parity checklist)
 
@@ -72,7 +74,7 @@ type of its own (`WidgetType::listed`).
 | Toggle Switch | Toggle Switch | boolean | yes |
 | Toggle Button | Toggle Button | boolean | yes |
 | Text Display | Text Display / Text View | number, string, arrays | yes |
-| Large Text Display | Large Text Display | number, string | yes (as Text Display) |
+| Large Text Display | Large Text Display | number, string | yes (opens as a Text Display with Fit text) |
 | Number Bar | Number Bar | number | no |
 | Number Slider | Number Slider | number | yes |
 | Voltage View | Voltage View | number | no |
@@ -197,8 +199,8 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `speeds_topic`, `speeds_setpoint_topic` | `builtin/swerve.rs` | SwerveDrive | the whole robot's measured and requested motion, `ChassisSpeeds` topics, drawn from the robot's center as Chassis Speeds draws them | none |
 | `max_spin` | `builtin/chassis_speeds.rs` | Chassis Speeds, SwerveDrive | the spin drawn as a three-quarter turn, degrees per second | 360 |
 | `fit` | `builtin/mechanism.rs` | Mechanism2d | what the view fits: `mechanism` (the part of the canvas it has used, plus a margin, growing only; a double-click starts it over) or `canvas` (all of `dims`) | `mechanism` |
-| `color_by`, `color_below`, `color_above` | `shared/value_colors.rs` | Text Display, Large Text Display, Number Bar, Voltage View, Radial Gauge | color by value: `thresholds` or `gradient` between the two numbers, with `low_color`/`mid_color`/`high_color` | off; 10, 20 |
-| `fit_text` | `builtin/text_display.rs` | Text Display, Large Text Display | the text as large as fits the card, instead of `font_size` | off; on for a Large Text Display |
+| `color_by`, `color_below`, `color_above` | `shared/value_colors.rs` | Text Display, Number Bar, Voltage View, Radial Gauge | color by value: `thresholds` or `gradient` between the two numbers, with `low_color`/`mid_color`/`high_color` | off; 10, 20 |
+| `fit_text` | `builtin/text_display.rs` | Text Display | the text as large as fits the card, instead of `font_size` | off; on for an opened Large Text Display |
 | `true_icon`, `false_icon` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | `None`, `Checkmark`, `X` or `Exclamation Point`, drawn on the state's color in black or white | `None` |
 | `true_image`, `false_image` | `builtin/boolean_box.rs` | Boolean Box | an image's file name in the images folders, in place of an icon, drawn on the state's color (for a plain background, set the color to black or white) | none |
 | `text_backing`, `true_text_color`, `false_text_color` | `builtin/boolean_box.rs` | Boolean Box | a see-through box behind the text; the text's color per state | off; automatic |
@@ -380,7 +382,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Color by value for number widgets (**done**, `shared/value_colors.rs`): `color_by` `thresholds`
      (low color below `color_below`, high above `color_above`, middle between; 10 and 20, red, yellow
      and green if not set) or `gradient` (blended low → middle → high between the same two numbers).
-     Text Display and Large Text Display fill their body with it, the text black or white to read on
+     Text Display fills its body with it, the text black or white to read on
      it; Number Bar, Voltage View and Radial Gauge use it for their fill unless their own gradient (over
      their scale) is on. The colors are the scale's `low_color`, `mid_color`, `high_color`.
    - Text style: a font dialog (from the widget dialog's Text size row) for the value text and the
@@ -429,7 +431,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      paused. Shown with the legend or the readout, in each line's color; reduced points for
      drawing (see history review) must not change them, so they're worked out from the recorded
      samples.
-   - Min, max and average on number widgets (Text Display, Large Text Display, Number Bar, Radial
+   - Min, max and average on number widgets (Text Display, Number Bar, Radial
      Gauge): an option (off by default) to show them next to the value, over a set time window
      (such as the last 10 s) or since the last reset (a Reset in the widget's right-click menu,
      and when the robot reconnects). Taken from every value received, as graphs record them

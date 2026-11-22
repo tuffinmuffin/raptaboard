@@ -209,7 +209,6 @@ fn the_widget_list_offers_only_types_that_fit() {
         "Graph",
         "Text Display",
         "Field",
-        "Large Text Display",
     ];
     // A chooser's table: the choosers and the enum widgets, nothing for
     // single values.
@@ -245,31 +244,4 @@ fn the_widget_list_offers_only_types_that_fit() {
         "{number:?}"
     );
     assert!(!number.contains(&"Field".to_owned()), "{number:?}");
-    // Large Text Display is unlisted: not offered to a Text Display, but
-    // still offered to a widget that already is one, so it can stay one.
-    assert!(
-        !number.contains(&"Large Text Display".to_owned()),
-        "{number:?}"
-    );
-    harness.state_mut().layout.tabs[0]
-        .grid_layout
-        .containers
-        .push(widget(
-            "Large Text Display",
-            "/Test/number",
-            "double",
-            LayoutRect {
-                x: 1024.0,
-                y: 128.0,
-                width: 256.0,
-                height: 128.0,
-            },
-        ));
-    settle(&mut harness);
-    let large = offered(&mut harness, 3, &names);
-    assert!(
-        large.contains(&"Large Text Display".to_owned()),
-        "{large:?}"
-    );
-    assert!(large.contains(&"Text Display".to_owned()), "{large:?}");
 }
