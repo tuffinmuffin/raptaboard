@@ -3,7 +3,7 @@
 //! ([`Tone`]): a few generated ones, and short sound clips built into the
 //! program from `media/audio/` (MP3, decoded when played).
 //!
-//! A Robot State widget's sounds ([`Sound::play_event`]) are a channel of
+//! An FMSInfo widget's robot state sounds ([`Sound::play_event`]) are a channel of
 //! their own: a built-in [`Tone`] or a sound file the team picks (MP3 or
 //! WAV), at the widget's volume, and a new one stops one still playing.
 //!
@@ -14,6 +14,7 @@
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rodio::Source;
@@ -121,7 +122,7 @@ impl Tone {
         }
     }
 }
-/// A sound for a Robot State event: a built-in tone or clip, or a sound
+/// A sound for a robot state event: a built-in tone or clip, or a sound
 /// file the team picked.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Clip {
@@ -133,10 +134,11 @@ pub enum Clip {
 }
 
 /// What the sound thread is asked to play.
+#[derive(Debug)]
 enum Request {
     /// A tone on its own (alerts, failed sends): mixed with whatever plays.
     Tone(Tone),
-    /// A Robot State sound at `volume` (0 to 1), stopping the last one.
+    /// A robot state sound at `volume` (0 to 1), stopping the last one.
     Event { clip: Clip, volume: f32 },
 }
 
@@ -162,8 +164,38 @@ pub struct Sound {
     played: u32,
     /// Every tone asked for, in order (for tests).
     tones: Vec<Tone>,
-    /// Every Robot State sound asked for, with its volume (for tests).
-    events: Vec<(Clip, f32)>,
+    /// Plays robot state sounds; shared with the NetworkTables thread.
+    player: SoundPlayer,
+}
+
+/// Plays robot state sounds from any thread ([`Sound::player`]): the
+/// NetworkTables thread plays them as values arrive, so they don't wait
+/// for the window to draw (a window in the background draws rarely).
+#[derive(Debug, Clone)]
+pub struct SoundPlayer {
+    /// The sound thread's queue; `None` when silent.
+    send: Option<Sender<Request>>,
+    /// Every sound asked for, with its volume (for tests).
+    played: Arc<Mutex<Vec<(Clip, f32)>>>,
+}
+
+impl SoundPlayer {
+    /// Play `clip` at `volume` (0 to 1), stopping the last robot state
+    /// sound if it's still playing. Never blocks.
+    pub fn play_event(&self, clip: Clip, volume: f32) {
+        if let Ok(mut played) = self.played.lock() {
+            played.push((clip.clone(), volume));
+        }
+        if let Some(send) = &self.send {
+            let _ = send.send(Request::Event { clip, volume });
+        }
+    }
+
+    /// Whether this plays through the same sound thread (and records to
+    /// the same list) as `other`.
+    pub fn same_as(&self, other: &SoundPlayer) -> bool {
+        Arc::ptr_eq(&self.played, &other.played)
+    }
 }
 
 impl Default for Sound {
@@ -183,7 +215,7 @@ impl Sound {
                 // Opened on the first alert, and kept open after that.
                 let mut sink = None;
                 let mut failed = false;
-                // Robot State sounds play here, so a new one can stop it.
+                // robot state sounds play here, so a new one can stop it.
                 let mut event_player: Option<rodio::Player> = None;
                 while let Ok(request) = receive.recv() {
                     if sink.is_none() && !failed {
@@ -231,11 +263,15 @@ impl Sound {
                     }
                 }
             });
+        let sound = started.ok().map(|_| send);
         Sound {
-            sound: started.ok().map(|_| send),
+            player: SoundPlayer {
+                send: sound.clone(),
+                played: Arc::default(),
+            },
+            sound,
             played: 0,
             tones: Vec::new(),
-            events: Vec::new(),
         }
     }
 
@@ -245,7 +281,10 @@ impl Sound {
             sound: None,
             played: 0,
             tones: Vec::new(),
-            events: Vec::new(),
+            player: SoundPlayer {
+                send: None,
+                played: Arc::default(),
+            },
         }
     }
 
@@ -264,18 +303,25 @@ impl Sound {
         }
     }
 
-    /// Play a Robot State sound at `volume` (0 to 1), stopping the last one
+    /// Play a robot state sound at `volume` (0 to 1), stopping the last one
     /// if it's still playing (if not silent). Never blocks.
     pub fn play_event(&mut self, clip: Clip, volume: f32) {
-        self.events.push((clip.clone(), volume));
-        if let Some(sound) = &self.sound {
-            let _ = sound.send(Request::Event { clip, volume });
-        }
+        self.player.play_event(clip, volume);
     }
 
-    /// Every Robot State sound played so far, with its volume, in order.
-    pub fn events(&self) -> &[(Clip, f32)] {
-        &self.events
+    /// Every robot state sound played so far (from any thread), with its
+    /// volume, in order.
+    pub fn events(&self) -> Vec<(Clip, f32)> {
+        self.player
+            .played
+            .lock()
+            .map(|p| p.clone())
+            .unwrap_or_default()
+    }
+
+    /// A handle that plays robot state sounds from another thread.
+    pub fn player(&self) -> SoundPlayer {
+        self.player.clone()
     }
 
     /// Every tone played so far, in order.

@@ -123,10 +123,13 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   (`builtin/struct_view.rs`: any other struct or struct array as its fields, the way the tree shows them; last in
   `TYPES`; every whole struct dragged from the tree makes one, the Field, Gyro, 3D Pose, swerve view and Chassis
   Speeds come from "Add as"), Mechanism2d (`builtin/mechanism.rs`: WPILib's `Mechanism2d` table, its ligaments drawn on its
-  canvas, zoomed to what the mechanism has used (`fit`); read by `types/mechanism.rs`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`), Robot State (`builtin/robot_state.rs`: the Driver
-  Station's table, 2027's `/DriverStation` `ControlWord` or 2026's `/FMSInfo` `FMSControlData`, read by `types/robot_state.rs`
-  (`Watch` finds the changes); a sound per event, built in or a file, played from `WidgetType::watch`, which runs each frame
-  for the first widget of each type on any tab, through `Effect::Event` and `Sound::play_event`); writing widgets return the value to send
+  canvas, zoomed to what the mechanism has used (`fit`); read by `types/mechanism.rs`), Alerts (`builtin/alerts.rs`, reading them with `types/alerts.rs`; tones through `Frame::effects`, tab marks through `WidgetType::tab_mark`, and the lists it needs while its tab is closed through `background_topics`), FMSInfo (`builtin/fms_info.rs`: the Driver
+  Station's table, 2027's `/DriverStation` (`ControlWord`) or 2026's `/FMSInfo` (`FMSControlData`), read by
+  `types/robot_state.rs` with the match details: the state large with a built-in icon, the alliance, match, station,
+  replay, event, game data and DS/FMS, each part on or off (`show_*`); a sound per state change, built in or a file,
+  from `WidgetType::state_sounds`: the first FMSInfo's plan goes to `NtConnection::set_state_sounds`, and
+  `state_sounds.rs` plays it on the NT thread as values arrive (`Watch` finds the changes), so it works with the
+  window in the background); writing widgets return the value to send
   from `show`, and `Place::locked` says whether their input covers the whole card; `show_body` is
   the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
   draw as placeholders), widget files in `widgets/builtin/`, `widgets/list_layout.rs` (List Layout drawing
@@ -196,7 +199,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   and it has three axes), and one on robot-2027's scripted `/DashTest/CommandedSpeeds` against
   `MeasuredSpeeds`, which lag 0.3 s and reach 90% of the speed and 80% of the spin. Below the Gyros, a 3D Pose on robot-2027's `TumblePose` (a
   Pose3d that pitches and rolls). Its Alerts tab shows robot-2027's alerts (its
-  test topics add a warning, an info, and an error on for 3 s every 10 s), and a Robot State on `/FMSInfo` (the sim
+  test topics add a warning, an info, and an error on for 3 s every 10 s), and an FMSInfo on `/FMSInfo` (the sim
   runs RobotPy 2026; enabling, disabling or switching modes in the sim's Driver Station plays its sounds). "Writing in a list" holds the toggles and a slider as List
   Layout children.
 - `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.

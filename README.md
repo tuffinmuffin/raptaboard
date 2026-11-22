@@ -13,7 +13,7 @@ grid to make a widget for it. It connects to the robot over NetworkTables (statu
 bar) with a NetworkTables tree of live values, including WPILib structs such as Pose2d. Widgets so far:
 Text Display, Boolean Box, Large Text Display, Number Bar, Voltage View, Radial Gauge, Match Time,
 Single and Multi Color View, Graph, Toggle Switch and Button, Number Slider, Dropdown and Split
-Button Chooser, Enum Dropdown and Toggle, Alerts (with an alert history), Robot State (the robot's mode, with a sound for each change), and Field; other Elastic
+Button Chooser, Enum Dropdown and Toggle, Alerts (with an alert history), FMSInfo (the robot's state and the match, with a sound for each change of state), and Field; other Elastic
 types show as placeholders for now.
 
 ![raptaboard connected to the robot sim, showing Text Display and Boolean Box widgets](docs/images/m1-widgets.png)

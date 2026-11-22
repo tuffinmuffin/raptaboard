@@ -453,13 +453,25 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Drag tabs to reorder them (**done**: `TabAction::Move`, `tabs::drop_place`): unlocked, drag a
      tab along the tab bar, with a marker where it will land, and drop it to move it (one step for
      undo, like Move left and Move right in the tab's right-click menu, which stay).
-   - Robot State widget with sounds (**done** except the match-timing rows below:
-     `builtin/robot_state.rs`, read by `types/robot_state.rs`; first release, asked for by the user
-     2026-11-22; replaces the earlier "sound clips on robot state changes" item). Decided: a new
-     special-purpose widget, not an extension of an existing one, because no existing widget reads
-     the robot's mode, and the sounds belong with the thing that shows the state. Saved as type
-     `Robot State` (raptaboard only); it binds the Driver Station's table, and dragging that table
-     from the tree makes one (`table_types`).
+   - FMSInfo widget with robot state sounds (**done** except the match-timing rows below:
+     `builtin/fms_info.rs`, read by `types/robot_state.rs`, sounds in `state_sounds.rs`; first
+     release, asked for by the user 2026-11-22; replaces the earlier "sound clips on robot state
+     changes" item). First built as a "Robot State" widget, then made general purpose the same day
+     (asked for by the user): Elastic's `FMSInfo` type, so Elastic layouts' FMSInfo widgets open as
+     it. It binds the Driver Station's table, and dragging that table from the tree makes one
+     (`table_types`). Parts, each on or off in the settings (`show_*`): the robot state, large in its
+     color with a built-in icon (CC0, `images/`: a stop sign for E-Stop, a robot with an X for
+     Disabled, the robot thinking of a brain for Autonomous, a game controller for Teleop, a
+     clipboard and pencil for Test; an image of the same name in an images folder replaces it), a
+     red or blue alliance square, the match ("Qualification 12"), station, replay (off by default),
+     event name, game data (off by default; only used one year so far) and the DS and FMS marks.
+     Later: layout options inside the widget.
+     - Sounds play from the NetworkTables thread (`state_sounds.rs`), not from drawing: a window in
+       the background (or covered) gets few or no frames, so sounds checked while drawing were late
+       or missed (seen 2026-11-22). Each frame the app hands the first FMSInfo's sound plan to
+       `NtConnection::set_state_sounds`; a task on the client's runtime subscribes to the state and
+       plays the changes as values arrive, keeping the last plan meanwhile. Only the first FMSInfo
+       in the layout plays; the others only show.
      - Reads the state (checked against WPILib's source 2026-11-22): 2027 publishes it in
        `/DriverStation` (`.type` `DriverStation`, not `/FMSInfo`) as a `ControlWord` struct, 64 bits
        little-endian: `opModeHash:56`, `robotMode:2` (unknown 0, autonomous 1, teleoperated 2,
@@ -486,9 +498,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        reconnect, or when a layout opens. A new event cuts off a clip still playing. The bell button
        in the settings bar mutes these too.
      - Plays while the widget is anywhere in the open layout, not only on the shown tab, so switching
-       tabs never silences it (`WidgetType::watch`, run each frame for the first widget of each type,
-       with `background_topics` always subscribed). With two Robot State widgets, only the first (tab
-       order, then position) plays. Each sound row has ▶ to hear it.
+       tabs never silences it (`WidgetType::state_sounds`). With two FMSInfo widgets, only the first
+       (tab order, then position) plays. Each sound row has ▶ to hear it.
      - Built-in clips (`media/audio/`): "disabled 1" and "disabled 2" (the IT Crowd's "I'm
        disabled"), "fire 1", "fire 2", "danger danger" (added 2026-11-22: xpoki's
        "danger_normal_lp.wav" from Freesound, CC BY 4.0, played twice) and "auto ghosts" (added

@@ -120,13 +120,108 @@ pub fn from_fms_control_data(bits: i64) -> RobotState {
     state(bit(0x01), mode, bit(0x08), bit(0x10), bit(0x20))
 }
 
-/// The topics a widget bound to `table` reads: both years', so either
-/// works.
+/// The topics the robot's state is read from in `table`: both years', so
+/// either works.
 pub fn topics(table: &str) -> Vec<String> {
     vec![
         format!("{table}/{CONTROL_WORD}"),
         format!("{table}/{FMS_CONTROL_DATA}"),
     ]
+}
+
+/// The match details' topics in the table (both years use these names,
+/// except the game data: 2027's `GameData`, 2026's `GameSpecificMessage`).
+const MATCH_TOPICS: [&str; 8] = [
+    "EventName",
+    "MatchType",
+    "MatchNumber",
+    "ReplayNumber",
+    "IsRedAlliance",
+    "StationNumber",
+    "GameData",
+    "GameSpecificMessage",
+];
+
+/// Every topic an FMSInfo widget bound to `table` reads: the state's and
+/// the match details'.
+pub fn all_topics(table: &str) -> Vec<String> {
+    let mut all = topics(table);
+    all.extend(MATCH_TOPICS.iter().map(|t| format!("{table}/{t}")));
+    all
+}
+
+/// The match the Driver Station (or the FMS) says this is.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MatchInfo {
+    /// The event's name (empty off the field).
+    pub event: String,
+    /// The match type: 0 none, 1 practice, 2 qualification, 3 elimination.
+    pub match_type: i64,
+    /// The match number (0 when not in a match).
+    pub number: i64,
+    /// The replay number (0 for the first play of a match).
+    pub replay: i64,
+    /// Red alliance (`Some(true)`), blue (`Some(false)`), or not known.
+    pub red: Option<bool>,
+    /// The driver station position, 1 to 3 (0 when not known).
+    pub station: i64,
+    /// The game-specific message.
+    pub game_data: String,
+}
+
+impl MatchInfo {
+    /// The match as words: "Qualification 12", "Practice 3"; empty with no
+    /// match.
+    ///
+    /// ```
+    /// use raptaboard::types::robot_state::MatchInfo;
+    /// let m = MatchInfo { match_type: 2, number: 12, ..MatchInfo::default() };
+    /// assert_eq!(m.match_text(), "Qualification 12");
+    /// assert_eq!(MatchInfo::default().match_text(), "");
+    /// ```
+    pub fn match_text(&self) -> String {
+        let kind = match self.match_type {
+            1 => "Practice",
+            2 => "Qualification",
+            3 => "Elimination",
+            _ => "Match",
+        };
+        if self.number <= 0 && self.match_type <= 0 {
+            return String::new();
+        }
+        format!("{kind} {}", self.number)
+    }
+}
+
+/// The match details in `table`, from the server's `values` (missing ones
+/// are left at their defaults).
+pub fn read_match(table: &str, values: &HashMap<&str, &Value>) -> MatchInfo {
+    let get = |name: &str| values.get(format!("{table}/{name}").as_str()).copied();
+    let int = |name: &str| match get(name) {
+        Some(Value::Int(n)) => *n,
+        Some(Value::Double(n)) => *n as i64,
+        _ => 0,
+    };
+    let text = |name: &str| match get(name) {
+        Some(Value::String(t)) => t.clone(),
+        _ => String::new(),
+    };
+    let game_data = match text("GameData") {
+        data if !data.is_empty() => data,
+        _ => text("GameSpecificMessage"),
+    };
+    MatchInfo {
+        event: text("EventName"),
+        match_type: int("MatchType"),
+        number: int("MatchNumber"),
+        replay: int("ReplayNumber"),
+        red: match get("IsRedAlliance") {
+            Some(Value::Boolean(red)) => Some(*red),
+            _ => None,
+        },
+        station: int("StationNumber"),
+        game_data,
+    }
 }
 
 /// The state in `table`, from the server's `values` (2027's `ControlWord`,
@@ -319,6 +414,36 @@ mod tests {
         assert_eq!(read("/T", &values).unwrap().mode, Mode::Disabled);
         values.insert("/T/ControlWord", &raw);
         assert_eq!(read("/T", &values).unwrap().mode, Mode::Autonomous);
+    }
+
+    #[test]
+    fn match_details_are_read_with_either_years_game_data() {
+        let (event, kind, number, red, station, old_data) = (
+            Value::String("Dallas".into()),
+            Value::Int(3),
+            Value::Int(7),
+            Value::Boolean(false),
+            Value::Int(2),
+            Value::String("RBL".into()),
+        );
+        let mut values = HashMap::new();
+        values.insert("/F/EventName", &event);
+        values.insert("/F/MatchType", &kind);
+        values.insert("/F/MatchNumber", &number);
+        values.insert("/F/IsRedAlliance", &red);
+        values.insert("/F/StationNumber", &station);
+        values.insert("/F/GameSpecificMessage", &old_data);
+        let m = read_match("/F", &values);
+        assert_eq!(m.event, "Dallas");
+        assert_eq!(m.match_text(), "Elimination 7");
+        assert_eq!((m.red, m.station, m.replay), (Some(false), 2, 0));
+        assert_eq!(m.game_data, "RBL");
+        // 2027's name wins when both are there.
+        let new_data = Value::String("Q".into());
+        values.insert("/F/GameData", &new_data);
+        assert_eq!(read_match("/F", &values).game_data, "Q");
+        // Nothing published: nothing known.
+        assert_eq!(read_match("/G", &values), MatchInfo::default());
     }
 
     #[test]
