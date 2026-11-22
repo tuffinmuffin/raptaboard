@@ -493,7 +493,7 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        countdown; the field already sounds these, so they're for practice or a quiet venue), and
        DS lost or FMS lost while the robot is still connected (a different problem from the robot
        lost; **done**). Exceptions to off (asked for 2026-11-22): FMS lost plays "fms down" and robot lost
-       (the NT server gone) plays "lost comms", two text-to-speech clips made with Flite. Later ideas, not planned: FMS attached, brownout or low battery.
+       (the NT server gone) plays "lost comms", two text-to-speech clips (first made with Flite, replaced the same day with ones from Free TTS Online, whose terms are to be confirmed before the release). Later ideas, not planned: FMS attached, brownout or low battery.
      - Plays only on a change seen while connected: never for the state at connect, after a
        reconnect, or when a layout opens. A new event cuts off a clip still playing. The bell button
        in the settings bar mutes these too.
