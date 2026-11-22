@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""Build raptaboard's release packages for the system this runs on.
+
+    python scripts/package.py                # build, then package into dist/
+    python scripts/package.py --skip-build   # package what's already built
+
+Windows: a portable zip (with its own .raptaboard settings folder) and a
+per-user installer (Inno Setup's iscc must be installed). macOS: a zipped
+raptaboard.app, one program for Apple Silicon and Intel when both targets are
+given (--target aarch64-apple-darwin --target x86_64-apple-darwin). Linux: a
+.tar.gz with install.sh. Each also gets a -debug archive holding the debug
+info (keep it to decode crash reports).
+
+Needs cargo-about (cargo install cargo-about --version 0.9.3 --locked
+--features cli) for THIRD-PARTY-LICENSES.html. Run from anywhere; paths are
+from the repo's top folder. Only Python's standard library is used.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import tarfile
+import tomllib
+import zipfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+PACKAGING = ROOT / "packaging"
+ICONS = ROOT / "media" / "icon"
+
+# A fresh settings file for the Windows zip: raptaboard uses a .raptaboard
+# folder in the folder it starts in before the one in the home folder, and
+# Explorer starts it in its own folder, so the zip's settings stay with it.
+PORTABLE_SETTINGS = """\
+# raptaboard's settings for this folder (the portable zip). raptaboard
+# fills this in as you change settings; delete this .raptaboard folder to
+# use the settings in your home folder instead.
+"""
+
+
+def run(*args: str | Path, cwd: Path = ROOT) -> None:
+    print("+", " ".join(str(a) for a in args), flush=True)
+    subprocess.run([str(a) for a in args], cwd=cwd, check=True)
+
+
+def version() -> str:
+    with open(ROOT / "Cargo.toml", "rb") as f:
+        return tomllib.load(f)["workspace"]["package"]["version"]
+
+
+def system() -> str:
+    if sys.platform == "win32":
+        return "windows"
+    if sys.platform == "darwin":
+        return "macos"
+    return "linux"
+
+
+def build_dir(target: str | None) -> Path:
+    base = ROOT / "target"
+    return (base / target if target else base) / "release"
+
+
+def build(targets: list[str | None]) -> None:
+    for target in targets:
+        extra = ["--target", target] if target else []
+        run("cargo", "build", "--release", "--locked", "-p", "raptaboard", *extra)
+
+
+def fresh(path: Path) -> Path:
+    if path.exists():
+        shutil.rmtree(path)
+    path.mkdir(parents=True)
+    return path
+
+
+def add_docs(into: Path, ver: str) -> None:
+    """The files every package has: the user README (with the version
+    filled in), the changelog and the licenses."""
+    readme = (PACKAGING / "README.txt").read_text(encoding="utf-8")
+    (into / "README.txt").write_text(readme.replace("{VERSION}", ver), encoding="utf-8")
+    shutil.copy(ROOT / "CHANGELOG.md", into / "CHANGELOG.md")
+    shutil.copy(ROOT / "LICENSE", into / "LICENSE.txt")
+    # The built-in 2026 field image is WPILib's; its license asks for this.
+    shutil.copy(ROOT / "fields" / "LICENSE-WPILib.md", into / "LICENSE-WPILib.txt")
+    run(
+        "cargo", "about", "generate",
+        "-c", PACKAGING / "about.toml",
+        "-m", ROOT / "crates" / "app" / "Cargo.toml",
+        "-o", into / "THIRD-PARTY-LICENSES.html",
+        PACKAGING / "about.hbs",
+    )
+
+
+def zip_folder(folder: Path, out: Path) -> None:
+    """Zip `folder` into `out`, with the folder itself at the top."""
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+        for path in sorted(folder.rglob("*")):
+            z.write(path, path.relative_to(folder.parent))
+    print("wrote", out)
+
+
+def debug_archive(files: list[Path], out: Path) -> None:
+    """Zip the debug info files and folders in `files` (missing ones are
+    noted and skipped)."""
+    present = [f for f in files if f.exists()]
+    for f in files:
+        if not f.exists():
+            print("no debug info at", f)
+    if not present:
+        return
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in present:
+            items = sorted(f.rglob("*")) if f.is_dir() else [f]
+            for item in items:
+                z.write(item, item.relative_to(f.parent))
+    print("wrote", out)
+
+
+def find_iscc() -> str | None:
+    found = shutil.which("iscc")
+    if found:
+        return found
+    for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles")):
+        if base:
+            path = Path(base) / "Inno Setup 6" / "ISCC.exe"
+            if path.exists():
+                return str(path)
+    return None
+
+
+def package_windows(ver: str, out: Path, installer: bool) -> None:
+    name = f"raptaboard-{ver}-windows-x64"
+    release = build_dir(None)
+    stage = fresh(out / "stage" / name)
+    shutil.copy(release / "raptaboard.exe", stage)
+    add_docs(stage, ver)
+    # The installer takes the files it lists, so the portable settings
+    # folder only goes in the zip.
+    if installer:
+        iscc = find_iscc()
+        if not iscc:
+            sys.exit("Inno Setup's iscc wasn't found; install Inno Setup 6 or pass --no-installer")
+        run(
+            iscc,
+            f"/DAppVersion={ver}",
+            f"/DSourceDir={stage}",
+            f"/DOutputDir={out}",
+            PACKAGING / "windows" / "raptaboard.iss",
+        )
+    settings = stage / ".raptaboard"
+    settings.mkdir()
+    (settings / "settings.toml").write_text(PORTABLE_SETTINGS, encoding="utf-8")
+    zip_folder(stage, out / f"{name}.zip")
+    debug_archive([release / "raptaboard.pdb"], out / f"{name}-debug.zip")
+
+
+def package_macos(ver: str, out: Path, targets: list[str | None]) -> None:
+    binaries = [build_dir(t) / "raptaboard" for t in targets]
+    if len(binaries) > 1:
+        arch = "universal"
+    else:
+        arch = {"arm64": "arm64", "x86_64": "x64"}.get(platform.machine(), platform.machine())
+        if targets[0]:
+            arch = "arm64" if targets[0].startswith("aarch64") else "x64"
+    name = f"raptaboard-{ver}-macos-{arch}"
+    stage = fresh(out / "stage" / name)
+    app = stage / "raptaboard.app" / "Contents"
+    (app / "MacOS").mkdir(parents=True)
+    (app / "Resources").mkdir()
+    program = app / "MacOS" / "raptaboard"
+    if len(binaries) > 1:
+        run("lipo", "-create", "-output", program, *binaries)
+    else:
+        shutil.copy(binaries[0], program)
+    program.chmod(0o755)
+    plist = (PACKAGING / "macos" / "Info.plist").read_text(encoding="utf-8")
+    (app / "Info.plist").write_text(plist.replace("{VERSION}", ver), encoding="utf-8")
+    shutil.copy(ICONS / "raptaboard.icns", app / "Resources" / "raptaboard.icns")
+    # An ad-hoc signature (no Apple account): Apple Silicon needs one to run
+    # the program at all; Gatekeeper still asks on the first open.
+    run("codesign", "--force", "--deep", "--sign", "-", stage / "raptaboard.app")
+    add_docs(stage, ver)
+    # ditto keeps the app bundle's permissions and attributes in the zip.
+    run("ditto", "-c", "-k", "--keepParent", stage, out / f"{name}.zip")
+    debug_each(targets, out / f"{name}-debug.zip")
+
+
+def debug_each(targets: list[str | None], out: Path) -> None:
+    """The macOS debug info: each target's raptaboard.dSYM, in a folder
+    named for the target when there are two (both have the same name)."""
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for t in targets:
+            dsym = build_dir(t) / "raptaboard.dSYM"
+            if not dsym.exists():
+                print("no debug info at", dsym)
+                continue
+            top = Path(t) if t and len(targets) > 1 else Path()
+            for item in sorted(dsym.rglob("*")):
+                z.write(item, top / item.relative_to(dsym.parent))
+    print("wrote", out)
+
+
+def package_linux(ver: str, out: Path) -> None:
+    name = f"raptaboard-{ver}-linux-x64"
+    release = build_dir(None)
+    stage = fresh(out / "stage" / name)
+    shutil.copy(release / "raptaboard", stage)
+    (stage / "raptaboard").chmod(0o755)
+    shutil.copy(ICONS / "raptaboard.png", stage)
+    shutil.copy(PACKAGING / "linux" / "raptaboard.desktop", stage)
+    shutil.copy(PACKAGING / "linux" / "install.sh", stage)
+    (stage / "install.sh").chmod(0o755)
+    add_docs(stage, ver)
+    tar = out / f"{name}.tar.gz"
+    with tarfile.open(tar, "w:gz") as t:
+        t.add(stage, arcname=name)
+    print("wrote", tar)
+    debug_archive([release / "raptaboard.dwp"], out / f"{name}-debug.zip")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--target", action="append", help="a Rust target to build (macOS: give two for a universal app)")
+    parser.add_argument("--out", type=Path, default=ROOT / "dist", help="where the packages go (default dist/)")
+    parser.add_argument("--skip-build", action="store_true", help="package what's already built")
+    parser.add_argument("--no-installer", action="store_true", help="Windows: the zip only")
+    args = parser.parse_args()
+
+    ver = version()
+    targets: list[str | None] = list(args.target) if args.target else [None]
+    out = args.out.resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    if not args.skip_build:
+        build(targets)
+    which = system()
+    if which == "windows":
+        package_windows(ver, out, not args.no_installer)
+    elif which == "macos":
+        package_macos(ver, out, targets)
+    else:
+        package_linux(ver, out)
+    shutil.rmtree(out / "stage", ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()

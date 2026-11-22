@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- raptaboard's app icon: a gauge and two widgets on a dashboard tile.
+       Drawn for raptaboard, CC0. The .ico, .icns and .png beside it are
+       made from this file: see README.md in this folder. -->
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="#14324F"/>
+  <g fill="none" stroke-width="26">
+    <path d="M44 152 A84 84 0 0 1 83.5 80.8" stroke="#43A047"/>
+    <path d="M88.6 77.8 A84 84 0 0 1 167.4 77.8" stroke="#FDD835"/>
+    <path d="M172.5 80.8 A84 84 0 0 1 212 152" stroke="#E53935"/>
+  </g>
+  <line x1="128" y1="152" x2="176.6" y2="94.1" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="128" cy="152" r="14" fill="#FFFFFF"/>
+  <rect x="44" y="190" width="78" height="26" rx="8" fill="#43A047"/>
+  <rect x="134" y="190" width="78" height="26" rx="8" fill="#90A4AE"/>
+</svg>

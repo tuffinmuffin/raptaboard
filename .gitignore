@@ -6,3 +6,6 @@
 
 # Local raptaboard settings (see crates/app/src/settings.rs)
 .raptaboard/
+
+# Release packages (scripts/package.py)
+/dist

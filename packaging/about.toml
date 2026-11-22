@@ -1,0 +1,31 @@
+# cargo-about: the licenses of the crates built into raptaboard, for
+# THIRD-PARTY-LICENSES.html in each release package (scripts/package.py).
+# A crate under a license not listed here stops the build until it's
+# checked and added.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+    "0BSD",
+    "Unlicense",
+    "CC0-1.0",
+]
+# Only what's in the program: not the tools that build it or run tests.
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+# The systems releases are built for.
+targets = [
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+]

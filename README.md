@@ -5,16 +5,31 @@ An FRC driver dashboard written in Rust, from FRC Team 3200 (Raptacon). It start
 a richer set of widget settings, and **widget plugins**: small WebAssembly modules that load without rebuilding the dashboard and draw
 a NetworkTables table, such as an arm subsystem.
 
-Status: **milestone 3 in progress.** The app opens an Elastic layout and shows its tabs and widgets
-on the grid, where tabs can be added, renamed and reordered and widgets moved and resized (the
-"🔓 Unlocked" button locks them), and layouts are opened and saved with Open…, Save and Save as…
-(Ctrl+O, Ctrl+S, Ctrl+Shift+S; Cmd on macOS). Drag a topic from the NetworkTables tree onto the
-grid to make a widget for it. It connects to the robot over NetworkTables (status and topic count in the settings
-bar) with a NetworkTables tree of live values, including WPILib structs such as Pose2d. Widgets so far:
-Text Display, Boolean Box, Large Text Display, Number Bar, Voltage View, Radial Gauge, Match Time,
-Single and Multi Color View, Graph, Toggle Switch and Button, Number Slider, Dropdown and Split
-Button Chooser, Enum Dropdown and Toggle, Alerts (with an alert history), and Field; other Elastic
-types show as placeholders for now.
+Status: **0.1.0, the first release**: the basics are done (see [CHANGELOG.md](CHANGELOG.md)).
+It opens and saves Elastic layouts, with tabs, a snap grid, List Layouts, undo and a lock for
+driving. It connects to the robot over NetworkTables (by team number, the Driver Station,
+SystemCore or the sim) and shows a live tree of every topic, WPILib structs included; drag a topic
+onto the grid to make a widget. Widgets: Text Display, Boolean Box, Number Bar, Voltage View,
+Radial Gauge, Battery, Graph, Match Time, Single and Multi Color View, Toggle Switch and Button,
+Number Slider, Dropdown and Split Button Chooser, Enum Dropdown and Toggle, Field, Gyro, Swerve,
+Chassis Speeds, 3D Pose, Mechanism2d, Struct and Alerts (with an alert history); other Elastic
+types show as placeholders for now. Plugins come next.
+
+## Install
+
+Download the file for your computer from the
+[latest release](https://github.com/tuffinmuffin/raptaboard/releases/latest):
+
+| System | File |
+| --- | --- |
+| Windows, installed (Start menu, uninstaller; no admin needed) | `raptaboard-<version>-windows-x64-setup.exe` |
+| Windows, portable (unzip and run; settings stay in its folder) | `raptaboard-<version>-windows-x64.zip` |
+| macOS 11+, Apple Silicon and Intel | `raptaboard-<version>-macos-universal.zip` |
+| Linux x64 (`./install.sh` adds it to your menu, for you only) | `raptaboard-<version>-linux-x64.tar.gz` |
+
+The builds aren't signed yet, so the first start asks first. **Windows:** at "Windows protected
+your PC", click "More info", then "Run anyway". **macOS:** right-click raptaboard.app, choose
+Open, then Open again. Each package has a README.txt with first steps.
 
 ![raptaboard connected to the robot sim, showing Text Display and Boolean Box widgets](docs/images/m1-widgets.png)
 
@@ -29,7 +44,7 @@ the app itself, rendered headless against a scripted robot (Robot-2026's cameras
 
 ![The Field widget: a robot orbiting the 2026 field with its cameras' views, other robots, its path, balls and the AprilTags it sees](docs/images/field.gif)
 
-## Quick start
+## Building from source
 
 Install Rust with [rustup](https://rustup.rs) (stable, 1.95 or newer), then:
 
@@ -56,6 +71,8 @@ On Linux you also need the windowing libraries:
 | `wit/dashboard.wit` | The plugin interface: what a WASM widget imports and exports |
 | `plugins/arm` | Example plugin manifest for an arm table tagged `.type = "Arm"` |
 | `docs/spec.md` | The spec: Elastic feature list, requirements, plugin design, milestones |
+| `packaging/`, `scripts/package.py` | Release packages: the Windows installer, macOS app and Linux install script |
+| `media/icon/` | The app icon (`raptaboard.svg`; the other files are made from it) |
 
 NetworkTables comes from the [`nt4`](https://crates.io/crates/nt4) crate: client, typed topics,
 structs, time sync and reconnect.
@@ -85,4 +102,6 @@ using Claude Code; it has the same rules.
 
 ## License
 
-MIT, see `LICENSE`.
+MIT, see `LICENSE`. The app icon (`media/icon/`) and the built-in images (`images/`) are CC0. The
+built-in 2026 field image is WPILib's (`fields/LICENSE-WPILib.md`). Release packages include the
+licenses of the crates built into the program (`THIRD-PARTY-LICENSES.html`).

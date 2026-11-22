@@ -1,0 +1,117 @@
+name: Release
+
+# Builds the release packages (scripts/package.py) on Windows, macOS and
+# Linux. Pushing a tag like v0.1.0 also publishes them as a GitHub Release,
+# with notes from CHANGELOG.md. On a pull request that changes packaging,
+# the packages are built and kept as workflow artifacts (to try them before
+# a release), and nothing is published.
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "packaging/**"
+      - "scripts/package.py"
+      - "scripts/release_notes.py"
+      - "crates/app/build.rs"
+      - "crates/app/windows/**"
+      - "media/icon/**"
+      - "CHANGELOG.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            os: windows-latest
+          - name: macos
+            os: macos-latest
+            # One app for Apple Silicon and Intel.
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+            package_args: --target aarch64-apple-darwin --target x86_64-apple-darwin
+          - name: linux
+            # The oldest supported Ubuntu runner, so the program runs on
+            # systems with an older glibc too.
+            os: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+      - name: Linux GUI libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev
+      - name: cargo-about (third-party licenses)
+        shell: bash
+        run: |
+          if ! cargo about --version 2>/dev/null | grep -q '0.9.3'; then
+            cargo install cargo-about --version 0.9.3 --locked --features cli
+          fi
+      - name: Inno Setup (Windows installer)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
+      - name: Package
+        run: python scripts/package.py ${{ matrix.package_args }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raptaboard-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: The tag matches the version in Cargo.toml
+        run: |
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml','rb'))['workspace']['package']['version'])")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match Cargo.toml's version $version"
+            exit 1
+          fi
+      - name: Notes and checksums
+        run: |
+          python3 scripts/release_notes.py "$GITHUB_REF_NAME" > notes.md
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+          ls -la dist
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "raptaboard ${GITHUB_REF_NAME#v}" \
+            --notes-file notes.md
