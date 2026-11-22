@@ -352,6 +352,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      as the settings dialog sets up a type picked there, with that type's update period), and "Add to
      list ▸" adds them to a new list (sized to fit them; always offered) or to the end of
      one of the tab's lists; dragging a picked row takes them all, onto the grid (around the drop) or into a list.
+   - Right-clicking a list child (unlocked) opens its own menu, Edit… (its settings) and Edit list…:
+     the child sits over the list, so the list's menu never opened there.
    - List Layout editing. Done: lists draw like Elastic's (children compact with no card each:
      a label placed by `label_position` and the child's body, each row its saved height less 48
      and at least 32); Edit… or double-click on a list opens its settings (title, label position and an Inside box that
@@ -374,8 +376,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      `font_color`, `font_bold`, ...; `font_size` exists), with a layout-wide default style later.
    - Copy settings to the rest of a list (**done**, `list_layout::copy_settings`): in the list settings,
      set up one child as wanted, then its "Copy to same type" gives the others of the same widget type
-     its display settings (its type's own setting keys and the period: colors, text, decimal places,
-     number format, font size, color by value), set as it has them and removed where it has none.
+     its display settings (every setting it has, Elastic's too such as a Boolean Box's colors, and the
+     period; its type's own keys it doesn't set are removed), so they match.
      Never what a child shows (topic, `struct_meta`, `data_type`, `*_topic` settings, graph lines,
      field layers and attachments, enum names), its title, or whether it's hidden. Picking which
      children could come later.

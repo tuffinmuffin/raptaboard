@@ -383,3 +383,51 @@ fn a_lists_settings_copy_one_childs_settings_to_the_others_of_its_type() {
         "Cancel undoes it"
     );
 }
+
+#[test]
+fn right_clicking_a_list_child_offers_its_settings_and_the_lists() {
+    let robot = Robot::start();
+    let mut harness = writing_harness(&robot);
+    harness.state_mut().locked = false;
+    settle(&mut harness);
+    // On the child's label, its handle while unlocked (its body is the
+    // toggle's own input).
+    let at = child_label(&harness, 0, 0).center();
+    click_at(
+        &mut harness,
+        at,
+        egui::PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    harness.get_by_label("Edit…").click();
+    settle(&mut harness);
+    assert!(
+        matches!(
+            harness.state().editing,
+            Some(Editing::List {
+                child: Some((0, _)),
+                child_only: true,
+                ..
+            })
+        ),
+        "the child's settings"
+    );
+    harness.key_press(Key::Escape);
+    settle(&mut harness);
+    // And the list's settings from the same menu.
+    click_at(
+        &mut harness,
+        at,
+        egui::PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    harness.get_by_label("Edit list…").click();
+    settle(&mut harness);
+    assert!(
+        matches!(
+            harness.state().editing,
+            Some(Editing::List { child: None, .. })
+        ),
+        "the list's settings"
+    );
+}

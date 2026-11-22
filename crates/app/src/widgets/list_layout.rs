@@ -674,9 +674,9 @@ fn copied(key: &str) -> bool {
 }
 
 /// Give every other child of `list` of the same widget type as child
-/// `from` its display settings: its type's own setting keys and its update
-/// period, set as it has them (and removed where it has none), so they
-/// match. Never what a child shows (its topic, `data_type`, struct field,
+/// `from` its display settings: every setting it has (Elastic's too, such
+/// as a Boolean Box's colors) and its update period, and its type's own
+/// setting keys removed where it has none, so they match. Never what a child shows (its topic, `data_type`, struct field,
 /// or settings naming other topics, graph lines, field layers, enum names),
 /// its title, or whether it's hidden. Returns how many children changed.
 ///
@@ -704,13 +704,21 @@ pub fn copy_settings(list: &mut LayoutContainer, from: usize) -> usize {
     let Some(ty) = crate::widgets::find(&source.widget_type) else {
         return 0;
     };
-    let keys: Vec<&str> = ty
-        .setting_keys()
-        .iter()
-        .copied()
-        .chain([props::PERIOD])
+    // Every display setting the source has (Elastic's too, such as a
+    // Boolean Box's colors, which aren't among its type's own keys since
+    // Elastic writes them in every one), and its type's own keys, so one
+    // the source doesn't set is taken off the others.
+    let mut keys: Vec<String> = source
+        .properties
+        .keys()
         .filter(|k| copied(k))
+        .cloned()
         .collect();
+    for key in ty.setting_keys().iter().chain(&[props::PERIOD]) {
+        if copied(key) && !keys.iter().any(|k| k == key) {
+            keys.push((*key).to_owned());
+        }
+    }
     let mut changed = 0;
     for (i, child) in list.children.iter_mut().enumerate() {
         if i == from || child.widget_type != source.widget_type {
@@ -721,7 +729,7 @@ pub fn copy_settings(list: &mut LayoutContainer, from: usize) -> usize {
             set_property(
                 &mut child.properties,
                 key,
-                source.properties.get(*key).cloned(),
+                source.properties.get(key).cloned(),
             );
         }
         if child.properties != before {
@@ -948,6 +956,26 @@ mod tests {
         assert!(!b.contains_key("enum_values") && !b.contains_key("hidden"));
         // Another type is left alone.
         assert_eq!(l.children[2].properties["period"], 0.06);
+        // Elastic's keys too: a Boolean Box's colors, which aren't among
+        // its type's own setting keys (Elastic writes them in every one).
+        let mut boxes = list(
+            vec![
+                child(
+                    "Boolean Box",
+                    serde_json::json!({
+                    "topic": "/x", "true_color": 4294967295u32, "false_color": 4294198070u32}),
+                ),
+                child(
+                    "Boolean Box",
+                    serde_json::json!({
+                    "topic": "/y", "true_color": 4283215696u32, "false_color": 4294198070u32}),
+                ),
+            ],
+            None,
+        );
+        assert_eq!(copy_settings(&mut boxes, 0), 1);
+        assert_eq!(boxes.children[1].properties["true_color"], 4294967295u32);
+        assert_eq!(boxes.children[1].properties["topic"], "/y");
         // A setting the source doesn't have is taken off the others.
         l.children[0].properties.remove("font_size");
         copy_settings(&mut l, 0);
