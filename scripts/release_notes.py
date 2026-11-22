@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Print the GitHub Release notes for a version: its CHANGELOG.md section
-and which file to download. The release workflow runs it.
+and which file to download. The release workflow runs it. A prerelease
+tag (0.1.0-rc.1) gets its version's section, marked as a test build.
 
     python scripts/release_notes.py 0.1.0
+    python scripts/release_notes.py v0.1.0-rc.1
 """
 
 import sys
@@ -47,8 +49,13 @@ def section(changelog: str, version: str) -> str:
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
-    version = sys.argv[1].removeprefix("v")
+    tag = sys.argv[1].removeprefix("v")
+    # A prerelease (0.1.0-rc.1) uses its version's section (0.1.0).
+    version, _, pre = tag.partition("-")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    if pre:
+        print(f"**Prerelease {tag}**: a test build of {version}, for trying it before the release.")
+        print()
     print(section(changelog, version))
     print()
     print(DOWNLOADS.format(v=version))

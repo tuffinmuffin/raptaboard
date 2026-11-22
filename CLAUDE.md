@@ -58,7 +58,8 @@ About window's list), plus a `-debug` archive. Nothing is code-signed yet (decid
 `.icns` and `.png`, and `build.rs` puts the `.ico` into the Windows program. To release: bump
 `version` in the workspace `Cargo.toml`, add its `## x.y.z` section to `CHANGELOG.md` (short: what's
 in it, not every PR), merge, then push a tag `vx.y.z` on `main`; `.github/workflows/release.yml` builds
-the packages and publishes the GitHub Release (it also builds them, without publishing, on PRs that
+the packages and publishes the GitHub Release (a tag with a suffix, `vx.y.z-rc.1`, publishes a prerelease
+instead, for trying the process; delete it afterwards with `gh release delete vx.y.z-rc.1 --cleanup-tag`) (it also builds them, without publishing, on PRs that
 change packaging).
 
 CI (`.github/workflows/ci.yml`) runs fmt, clippy with `-D warnings` and tests on Linux, Windows and
