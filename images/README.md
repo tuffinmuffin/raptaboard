@@ -1,6 +1,7 @@
 # Images
 
-Images widgets can show (a Boolean Box's image for true or false). raptaboard looks for them in an
+Images widgets can show (a Boolean Box's image for true or false, and the FMSInfo widget's robot
+states). raptaboard looks for them in an
 `images/` folder where it's started, beside the program, and in `~/.raptaboard/images/`, where the
 settings dialog's Import… copies images. PNG, JPEG and SVG.
 
@@ -15,6 +16,11 @@ These are built into raptaboard, so they're always offered even with no images f
 | `motor-on.svg` | the motor in a green border: on, running (a Boolean Box's true image) |
 | `motor-off.svg` | the motor in a red border: off, stopped (its false image) |
 | `armed.svg` | an orange target reticle: armed, ready to fire |
+| `estop.svg` | a stop sign: the FMSInfo widget's E-Stop |
+| `disabled.svg` | a little robot with a red X over it: Disabled |
+| `auto.svg` | the robot thinking, a brain in a thought bubble: Autonomous |
+| `teleop.svg` | a game controller: Teleop |
+| `test.svg` | a clipboard with a pencil writing: Test |
 
 They're examples to show the feature and a starting place for your own. They were drawn by hand
 for raptaboard (Team 3200, Raptacon) and are dedicated to the public

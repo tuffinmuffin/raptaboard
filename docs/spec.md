@@ -396,6 +396,15 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      Never what a child shows (topic, `struct_meta`, `data_type`, `*_topic` settings, graph lines,
      field layers and attachments, enum names), its title, or whether it's hidden. Picking which
      children could come later.
+   - Scrolling the grid (**done**, asked for by the user 2026-11-22, `ui/grid_view.rs`): widgets
+     past the window's edge (a layout made on a bigger screen, or dragged there) were hard to get
+     back. The grid scrolls: it's as big as the window or as far as its widgets reach, with solid
+     scroll bars when anything is off screen, scrolled by the bars or the mouse wheel (not by
+     dragging, which moves widgets). Dragging a widget, a list child or topics from the tree near
+     an edge scrolls that way, faster closer to the edge, and the grid grows a cell at a time
+     ahead of it, so a widget can be dragged past the window. Each tab keeps its own scroll.
+     Locked, the grid doesn't scroll and the bars hide, so a stray swipe while driving can't move
+     the view (asked for by the user 2026-11-22); it stays where it was, and unlocking scrolls again.
    - Reflow while dragging: widgets in the way slide aside (to the nearest free spot) as a widget is
      dragged or resized over them, instead of the drop being refused.
    - Allow partial overlap: a per-widget setting (this widget may partly overlap others, such as a
@@ -453,16 +462,32 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Drag tabs to reorder them (**done**: `TabAction::Move`, `tabs::drop_place`): unlocked, drag a
      tab along the tab bar, with a marker where it will land, and drop it to move it (one step for
      undo, like Move left and Move right in the tab's right-click menu, which stay).
-   - Robot State widget with sounds (first release, asked for by the user 2026-11-22; replaces the
-     earlier "sound clips on robot state changes" item). Decided: a new special-purpose widget, not an
-     extension of an existing one, because no existing widget reads the robot's mode, and the sounds
-     belong with the thing that shows the state. `.type` `RobotState` (raptaboard only); it binds the
-     `/FMSInfo` table and is offered by the tree's "Add as" on that table (Elastic's DSInfo stays
-     separate).
-     - Reads the state from WPILib 2027's `/FMSInfo/ControlWord` struct (`enabled`, `robotMode`,
-       `eStop`, `fmsAttached`, `dsAttached`, as Elastic 2027.0.0-alpha10's DSInfo reads it), falling
-       back to 2026's `/FMSInfo/FMSControlData` bits (enabled 0x01, auto 0x02, test 0x04, e-stop 0x08,
-       FMS 0x10, DS 0x20). Check both against the 2027 release before shipping.
+   - FMSInfo widget with robot state sounds (**done** except the match-timing rows below:
+     `builtin/fms_info.rs`, read by `types/robot_state.rs`, sounds in `state_sounds.rs`; first
+     release, asked for by the user 2026-11-22; replaces the earlier "sound clips on robot state
+     changes" item). First built as a "Robot State" widget, then made general purpose the same day
+     (asked for by the user): Elastic's `FMSInfo` type, so Elastic layouts' FMSInfo widgets open as
+     it. It binds the Driver Station's table, and dragging that table from the tree makes one
+     (`table_types`). Parts, each on or off in the settings (`show_*`): the robot state, large in its
+     color with a built-in icon (CC0, `images/`: a stop sign for E-Stop, a robot with an X for
+     Disabled, the robot thinking of a brain for Autonomous, a game controller for Teleop, a
+     clipboard and pencil for Test; an image of the same name in an images folder replaces it), a
+     red or blue alliance square, the match ("Qualification 12"), station, replay (off by default),
+     event name, game data (off by default; only used one year so far) and the DS and FMS marks.
+     Later: layout options inside the widget.
+     - Sounds play from the NetworkTables thread (`state_sounds.rs`), not from drawing: a window in
+       the background (or covered) gets few or no frames, so sounds checked while drawing were late
+       or missed (seen 2026-11-22). Each frame the app hands the first FMSInfo's sound plan to
+       `NtConnection::set_state_sounds`; a task on the client's runtime subscribes to the state and
+       plays the changes as values arrive, keeping the last plan meanwhile. Only the first FMSInfo
+       in the layout plays; the others only show.
+     - Reads the state (checked against WPILib's source 2026-11-22): 2027 publishes it in
+       `/DriverStation` (`.type` `DriverStation`, not `/FMSInfo`) as a `ControlWord` struct, 64 bits
+       little-endian: `opModeHash:56`, `robotMode:2` (unknown 0, autonomous 1, teleoperated 2,
+       utility 3, shown as Test), then `enabled`, `eStop`, `fmsAttached`, `dsAttached` (bits 58-61);
+       raptaboard reads the bits, as WPILib's Glass does. 2026 publishes `/FMSInfo` (`.type`
+       `FMSInfo`) with an integer `FMSControlData` (enabled 0x01, auto 0x02, test 0x04, e-stop
+       0x08, FMS 0x10, DS 0x20). Either table works; the widget reads `ControlWord` first.
      - Shows one large state: Disabled, Autonomous, Teleop, Test, E-Stop, or No robot (not connected
        or no DS), each with its own color (E-Stop red and blinking, Test striped orange), plus small
        DS and FMS marks.
@@ -471,25 +496,29 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        plus a widget volume. Saved in the widget's properties, so they travel with the layout.
        Defaults: disabled plays "disabled 1", autonomous plays "auto ghosts", teleop plays "go go
        go", test plays "danger danger", the rest off.
-     - More rows (added 2026-11-22), all off by default: match timing from `/FMSInfo` and the
+     - More rows (added 2026-11-22), all off by default: match timing (**not done yet**: it needs
+       the match time, which WPILib doesn't publish in this table) from the table and the
        match time (end of auto, endgame at a set time left, 30 s by default, and a 10 s
        countdown; the field already sounds these, so they're for practice or a quiet venue), and
        DS lost or FMS lost while the robot is still connected (a different problem from the robot
-       lost). Exceptions to off (asked for 2026-11-22): FMS lost plays "fms down" and robot lost
-       (the NT server gone) plays "lost comms", two text-to-speech clips made with Flite. Later ideas, not planned: FMS attached, brownout or low battery.
+       lost; **done**). Exceptions to off (asked for 2026-11-22): FMS lost plays "fms down" and robot lost
+       (the NT server gone) plays "lost comms", two text-to-speech clips (first made with Flite, replaced the same day with ones from Free TTS Online, whose terms let its audio be used for personal and commercial purposes). Later ideas, not planned: FMS attached, brownout or low battery.
      - Plays only on a change seen while connected: never for the state at connect, after a
        reconnect, or when a layout opens. A new event cuts off a clip still playing. The bell button
        in the settings bar mutes these too.
      - Plays while the widget is anywhere in the open layout, not only on the shown tab, so switching
-       tabs never silences it. With two Robot State widgets, only the first (tab order, then
-       position) plays.
+       tabs never silences it (`WidgetType::state_sounds`). With two FMSInfo widgets, only the first
+       (tab order, then position) plays. Each sound row has ▶ to hear it.
      - Built-in clips (`media/audio/`): "disabled 1" and "disabled 2" (the IT Crowd's "I'm
-       disabled"), "fire 1", "fire 2", "danger danger" (added 2026-11-22: xpoki's
+       disabled"), "fire 1", "fire 2" (the IT Crowd's "Fire!", S1E2), "danger danger" (added 2026-11-22: xpoki's
        "danger_normal_lp.wav" from Freesound, CC BY 4.0, played twice) and "auto ghosts" (added
        2026-11-22: dal_kas's "MustphaMondeRemixes (3).aif" from Freesound, a remix of
        deleted_user_44129's "Ghosts In The Machine.wav", both CC BY 3.0) and "go go go" (added 2026-11-22: theuncertainman's "Go Go
        Go - (Version 2) Northern British Soldier" from Freesound, CC BY 4.0). Every clip's
        source and license is in `media/audio/README.md` and `credits.rs`. More clips later.
+       The clips that aren't ours (the IT Crowd's "disabled" and "fire") stay in the releases, 0.1.0 included (decided with the user 2026-11-22):
+       non-commercial, educational use by Team 3200 is low risk, and any clip is removed at once
+       if its owner asks. Revisit when teams outside Raptacon use raptaboard.
    - Later, after 0.1.0 (asked for by the user 2026-11-22), from the same robot state:
      - Window border by state: a colored border around the whole window, red while disabled, and
        flashing red for a few seconds right after the robot is disabled, so the state shows at a

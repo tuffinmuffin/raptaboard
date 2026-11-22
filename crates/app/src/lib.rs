@@ -21,6 +21,7 @@ pub mod nt;
 pub mod sampling;
 pub mod settings;
 pub mod sound;
+pub mod state_sounds;
 pub mod tabs;
 pub mod traces;
 pub mod tree;

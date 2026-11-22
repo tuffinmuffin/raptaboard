@@ -26,6 +26,7 @@ pub mod field;
 pub mod mechanism;
 pub mod motion;
 pub mod pose3d;
+pub mod robot_state;
 pub mod structs;
 pub mod swerve;
 

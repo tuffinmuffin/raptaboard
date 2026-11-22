@@ -1007,6 +1007,18 @@
               "period": 0.06,
               "min_level": "error"
             }
+          },
+          {
+            "title": "FMSInfo (state sounds)",
+            "x": 0.0,
+            "y": 256.0,
+            "width": 384.0,
+            "height": 256.0,
+            "type": "FMSInfo",
+            "properties": {
+              "topic": "/FMSInfo",
+              "period": 0.06
+            }
           }
         ]
       }

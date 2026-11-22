@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Disabled: a little robot with a red X over it. raptaboard, CC0 (see README.md). -->
+  <line x1="32" y1="8" x2="32" y2="14" stroke="#607D8B" stroke-width="2.5"/>
+  <circle cx="32" cy="7" r="3" fill="#FFB300"/>
+  <rect x="19" y="14" width="26" height="18" rx="5" fill="#90A4AE"/>
+  <circle cx="26" cy="23" r="3.2" fill="#263238"/>
+  <circle cx="38" cy="23" r="3.2" fill="#263238"/>
+  <rect x="16" y="34" width="32" height="20" rx="5" fill="#78909C"/>
+  <rect x="25" y="39" width="14" height="6" rx="2" fill="#B0BEC5"/>
+  <rect x="9" y="36" width="6" height="14" rx="3" fill="#90A4AE"/>
+  <rect x="49" y="36" width="6" height="14" rx="3" fill="#90A4AE"/>
+  <rect x="21" y="54" width="7" height="7" rx="2" fill="#607D8B"/>
+  <rect x="36" y="54" width="7" height="7" rx="2" fill="#607D8B"/>
+  <g stroke-linecap="round">
+    <path d="M10 10 L54 54 M54 10 L10 54" stroke="#FFFFFF" stroke-width="10"/>
+    <path d="M10 10 L54 54 M54 10 L10 54" stroke="#E53935" stroke-width="6"/>
+  </g>
+</svg>
