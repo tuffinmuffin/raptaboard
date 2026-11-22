@@ -49,11 +49,11 @@ CloseApplications=yes
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "{#SourceDir}\raptaboard.exe"; DestDir: "{app}"; Flags: ignoreversion
+; Everything scripts/package.py staged (the program, README, changelog and
+; licenses), so a file added there is installed too. The portable zip's
+; .raptaboard settings folder isn't staged until after this runs.
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "README.txt,.raptaboard"; Flags: ignoreversion
 Source: "{#SourceDir}\README.txt"; DestDir: "{app}"; Flags: ignoreversion isreadme
-Source: "{#SourceDir}\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourceDir}\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourceDir}\THIRD-PARTY-LICENSES.html"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\raptaboard"; Filename: "{app}\raptaboard.exe"
