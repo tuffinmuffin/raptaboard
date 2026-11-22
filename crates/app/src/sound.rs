@@ -39,6 +39,10 @@ pub enum Tone {
     AutoGhosts,
     /// The clip `media/audio/go-go-go.mp3`: "go go go", for teleop starting.
     GoGoGo,
+    /// The clip `media/audio/fms-down.mp3`: "FMS down", for losing the field.
+    FmsDown,
+    /// The clip `media/audio/lost-comms.mp3`: "lost comms", for losing the robot.
+    LostComms,
 }
 
 /// The clips built into the program, by the file they came from.
@@ -54,7 +58,7 @@ macro_rules! clip {
 
 impl Tone {
     /// The tones an Alerts widget offers, with their names in the settings.
-    pub const CHOICES: [(Tone, &'static str); 10] = [
+    pub const CHOICES: [(Tone, &'static str); 12] = [
         (Tone::Beep, "beep"),
         (Tone::DoubleBeep, "double beep"),
         (Tone::Chirp, "chirp"),
@@ -65,6 +69,8 @@ impl Tone {
         (Tone::Danger, "danger danger"),
         (Tone::AutoGhosts, "auto ghosts"),
         (Tone::GoGoGo, "go go go"),
+        (Tone::FmsDown, "fms down"),
+        (Tone::LostComms, "lost comms"),
     ];
 
     /// The MP3 a clip plays, if this is a clip.
@@ -77,6 +83,8 @@ impl Tone {
             Tone::Danger => Some(clip!("danger.mp3")),
             Tone::AutoGhosts => Some(clip!("auto-ghosts.mp3")),
             Tone::GoGoGo => Some(clip!("go-go-go.mp3")),
+            Tone::FmsDown => Some(clip!("fms-down.mp3")),
+            Tone::LostComms => Some(clip!("lost-comms.mp3")),
             _ => None,
         }
     }

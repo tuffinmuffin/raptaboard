@@ -85,6 +85,16 @@ pub const MEDIA: &[MediaCredit] = &[
     },
     MediaCredit {
         kind: "Sound",
+        files: &["fms-down.mp3", "lost-comms.mp3"],
+        what: "\"FMS down\" and \"lost comms\", for losing the field or the robot",
+        source: "made for raptaboard with the Flite text-to-speech program (Carnegie Mellon \
+                 University), voice cmu_us_slt",
+        license: "CC0 1.0",
+        link: Some("https://creativecommons.org/publicdomain/zero/1.0/"),
+        note: "Public domain: use them for anything.",
+    },
+    MediaCredit {
+        kind: "Sound",
         files: &["disabled1.mp3", "disabled2.mp3"],
         what: "\"I'm disabled\"",
         source: "a line from the TV series The IT Crowd",

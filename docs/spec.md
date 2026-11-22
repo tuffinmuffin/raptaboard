@@ -156,7 +156,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `text_position` | `builtin/alerts.rs` | Alerts | `auto` (beside a wide widget, below a tall one), `right`, `below` | `auto` |
 | `min_level` | `builtin/alerts.rs` | Alerts | least urgent shown: `info`, `warning`, `error` | `info` |
 | `pulse`, `pulse_seconds` | `builtin/alerts.rs` | Alerts | pulse when a new error arrives, for how long (s), stopping sooner once no error is active | true, 5 |
-| `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp`, or a built-in clip: `disabled 1`, `disabled 2`, `fire 1`, `fire 2`, `danger danger`, `auto ghosts`, `go go go` | false, `beep` |
+| `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp`, or a built-in clip: `disabled 1`, `disabled 2`, `fire 1`, `fire 2`, `danger danger`, `auto ghosts`, `go go go`, `fms down`, `lost comms` | false, `beep` |
 | `field` | `builtin/field/mod.rs` | Field | the field shown: an id from the fields folders (`2026-rebuilt-welded`) or a field JSON's path; not set uses Elastic's `field_game` (by game name), else 2026 REBUILT (welded) | not set |
 | `origin` | `builtin/field/mod.rs` | Field | where the poses' (0, 0) is: `center` (WPILib 2027) or `blue_corner` (before 2027) | `center` |
 | `robot_length`, `robot_width` (Elastic) | `builtin/field/mod.rs` | Field | the robot's size, meters | 0.85, 0.85 |
@@ -475,7 +475,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        match time (end of auto, endgame at a set time left, 30 s by default, and a 10 s
        countdown; the field already sounds these, so they're for practice or a quiet venue), and
        DS lost or FMS lost while the robot is still connected (a different problem from the robot
-       lost). Later ideas, not planned: FMS attached, brownout or low battery.
+       lost). Exceptions to off (asked for 2026-11-22): FMS lost plays "fms down" and robot lost
+       (the NT server gone) plays "lost comms", two text-to-speech clips made with Flite. Later ideas, not planned: FMS attached, brownout or low battery.
      - Plays only on a change seen while connected: never for the state at connect, after a
        reconnect, or when a layout opens. A new event cuts off a clip still playing. The bell button
        in the settings bar mutes these too.
