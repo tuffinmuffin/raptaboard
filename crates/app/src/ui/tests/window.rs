@@ -381,12 +381,13 @@ fn the_gear_opens_connection_settings_and_the_licenses() {
     let mut harness = harness_for(&robot);
     // The address is no longer in the bar, only in the Settings window.
     assert!(harness.query_by_label("Robot address").is_none());
-    let gear = harness.get_by_label("⚙").rect().center();
-    click_at(
-        &mut harness,
-        gear,
-        egui::PointerButton::Primary,
-        Modifiers::NONE,
+    // Clicked through accesskit, so it doesn't depend on where the button
+    // lands (macOS CI missed a pointer click on it).
+    harness.get_by_label("⚙").click();
+    settle(&mut harness);
+    assert!(
+        harness.state().gear.settings,
+        "the gear didn't open Settings"
     );
     labelled_soon(&mut harness, "Robot address");
     assert!(harness.query_by_label("Server address").is_some());
@@ -394,26 +395,15 @@ fn the_gear_opens_connection_settings_and_the_licenses() {
     settle(&mut harness);
     assert!(connected(harness.state()));
     // About and licenses: each page draws, with the credits and crates.
-    let about = harness.get_by_label("About and licenses…").rect().center();
-    click_at(
-        &mut harness,
-        about,
-        egui::PointerButton::Primary,
-        Modifiers::NONE,
-    );
+    harness.get_by_label("About and licenses…").click();
+    settle(&mut harness);
     labelled_soon(&mut harness, "Sounds, images, fields");
     for (page, shows) in [
         ("Sounds, images, fields", "Sarah-Christin Freytag"),
         ("Rust crates", "Rust crates. Their licenses:"),
         ("License texts", "Copy all"),
     ] {
-        let tab = harness.get_by_label(page).rect().center();
-        click_at(
-            &mut harness,
-            tab,
-            egui::PointerButton::Primary,
-            Modifiers::NONE,
-        );
+        harness.get_by_label(page).click();
         settle(&mut harness);
         assert!(
             harness.query_by_label_contains(shows).is_some(),
