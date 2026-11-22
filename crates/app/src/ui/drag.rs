@@ -147,7 +147,7 @@ impl DashboardApp {
     /// The list under screen point `p` as a drop target, with where in it a
     /// drop would go, if there's a list there.
     pub(super) fn list_drop(&self, view: GridView, p: Pos2) -> Option<DropTarget> {
-        if !view.area.contains(p) {
+        if !view.visible.contains(p) {
             return None;
         }
         let tab = self.tab()?;
@@ -263,7 +263,7 @@ impl DashboardApp {
         let size = grid::snap_resize(child.rect, view.cell);
         let corner = p - cd.grab;
         let target = self.list_drop(view, p).or_else(|| {
-            view.area.contains(p).then(|| {
+            view.visible.contains(p).then(|| {
                 let (x, y) = view.to_grid(corner);
                 let rect = grid::snap_move(LayoutRect { x, y, ..size }, view.cell, view.room);
                 DropTarget::Grid {
@@ -306,7 +306,7 @@ impl DashboardApp {
         let Some(p) = ui
             .ctx()
             .pointer_hover_pos()
-            .filter(|p| view.area.contains(*p))
+            .filter(|p| view.visible.contains(*p))
         else {
             return;
         };

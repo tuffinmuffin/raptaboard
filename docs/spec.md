@@ -396,6 +396,13 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      Never what a child shows (topic, `struct_meta`, `data_type`, `*_topic` settings, graph lines,
      field layers and attachments, enum names), its title, or whether it's hidden. Picking which
      children could come later.
+   - Scrolling the grid (**done**, asked for by the user 2026-11-22, `ui/grid_view.rs`): widgets
+     past the window's edge (a layout made on a bigger screen, or dragged there) were hard to get
+     back. The grid scrolls: it's as big as the window or as far as its widgets reach, with solid
+     scroll bars when anything is off screen, scrolled by the bars or the mouse wheel (not by
+     dragging, which moves widgets). Dragging a widget, a list child or topics from the tree near
+     an edge scrolls that way, faster closer to the edge, and the grid grows a cell at a time
+     ahead of it, so a widget can be dragged past the window. Each tab keeps its own scroll.
    - Reflow while dragging: widgets in the way slide aside (to the nearest free spot) as a widget is
      dragged or resized over them, instead of the drop being refused.
    - Allow partial overlap: a per-widget setting (this widget may partly overlap others, such as a

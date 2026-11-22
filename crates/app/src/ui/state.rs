@@ -82,8 +82,14 @@ pub(super) struct GridState {
     /// The visible grid's width and height last frame, in pixels, for
     /// finding room for a duplicate.
     pub room: (f64, f64),
-    /// Where the grid was drawn last frame, in screen points.
+    /// Where the grid was drawn last frame, in screen points: the whole
+    /// grid, scrolled (its top left is the grid's origin), not only what
+    /// shows.
     pub area: egui::Rect,
+    /// The part of the grid on screen last frame, in screen points.
+    pub visible: egui::Rect,
+    /// How far each tab's grid is scrolled (by tab index), in points.
+    pub scroll: std::collections::HashMap<usize, egui::Vec2>,
 }
 
 impl Default for GridState {
@@ -94,6 +100,8 @@ impl Default for GridState {
             menu_at: (0.0, 0.0),
             room: (0.0, 0.0),
             area: egui::Rect::NOTHING,
+            visible: egui::Rect::NOTHING,
+            scroll: std::collections::HashMap::new(),
         }
     }
 }

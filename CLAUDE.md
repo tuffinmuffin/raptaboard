@@ -67,7 +67,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   actions; its state is grouped in `ui/state.rs`: `file` (`LayoutFile`), `address`, `tree` (`TreeView`), `grid`
   (`GridState`: drags, where the grid was), `alerts` (the history and its panel) and `sends` (failed sends),
   beside `layout`, `current_tab`, `locked`, `selected` and `status`; `panels.rs` the settings and tab bars; `tree_panel.rs` the tree panel and adding topics;
-  `grid_view.rs` the grid (a frame's input, drawing, outlines, then `apply`); `drag.rs` drag and drop (the drag
+  `grid_view.rs` the grid (a frame's input, drawing, outlines, then `apply`; inside a `ScrollArea` sized to the
+  widgets, `GridView::area` the whole scrolled grid and `visible` the part on screen, with drags near an edge
+  scrolling it, `edge_push`); `drag.rs` drag and drop (the drag
   types, drop targets, previews and drops); `dialogs.rs` the settings dialogs; `live.rs`
   the topics the tab needs and graph recording; `style.rs` the drawing constants; each file adds
   its own `impl DashboardApp` block; `ui/tests/` runs the whole window headless against an

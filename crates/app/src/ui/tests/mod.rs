@@ -12,6 +12,7 @@ mod enums;
 mod field;
 mod files;
 mod fms_info;
+mod grid_scroll;
 mod gyro;
 mod mechanism;
 mod pose3d;
