@@ -78,8 +78,10 @@ impl DashboardApp {
             if ui.button(label).on_hover_text(hint).clicked() {
                 self.alert_sound = !self.alert_sound;
             }
-            self.alert_history_button(ui);
+            // The gear before the alert history button, whose width changes
+            // as alerts come and go, so the gear stays put.
             self.gear_button(ui);
+            self.alert_history_button(ui);
             ui.separator();
             // The address is set in the Settings window; the connection
             // follows it every frame, whether that window is open or not.
