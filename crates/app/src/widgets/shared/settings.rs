@@ -117,8 +117,8 @@ pub fn show(
             });
             ui.end_row();
 
-            // Which widget shows it: any type that can show this value (all
-            // of them if the value's type isn't known yet).
+            // Which widget shows it: any type that can show this value or
+            // table (all of them if what it is isn't known yet).
             ui.label("Widget");
             let current = ty
                 .map_or(widget.widget_type.as_str(), |t| t.names()[0])
@@ -130,8 +130,9 @@ pub fn show(
                     if ty.is_none() {
                         ui.selectable_value(&mut picked, current.clone(), &current);
                     }
+                    let fits = nt_type.map(crate::widgets::types_showing);
                     for t in TYPES {
-                        if nt_type.is_none_or(|nt| t.shows(nt)) {
+                        if fits.as_ref().is_none_or(|f| f.contains(&t.names()[0])) {
                             let name = t.names()[0];
                             ui.selectable_value(&mut picked, name.to_owned(), name);
                         }
