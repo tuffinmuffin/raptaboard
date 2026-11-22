@@ -403,6 +403,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      dragging, which moves widgets). Dragging a widget, a list child or topics from the tree near
      an edge scrolls that way, faster closer to the edge, and the grid grows a cell at a time
      ahead of it, so a widget can be dragged past the window. Each tab keeps its own scroll.
+     Locked, the grid doesn't scroll and the bars hide, so a stray swipe while driving can't move
+     the view (asked for by the user 2026-11-22); it stays where it was, and unlocking scrolls again.
    - Reflow while dragging: widgets in the way slide aside (to the nearest free spot) as a widget is
      dragged or resized over them, instead of the drop being refused.
    - Allow partial overlap: a per-widget setting (this widget may partly overlap others, such as a

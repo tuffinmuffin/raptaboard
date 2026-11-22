@@ -153,3 +153,26 @@ fn with_everything_on_screen_the_grid_does_not_scroll() {
         .unwrap_or_default();
     assert_eq!(scrolled, egui::Vec2::ZERO);
 }
+
+#[test]
+fn a_locked_grid_does_not_scroll() {
+    let robot = Robot::start();
+    let mut harness = harness_with(&robot, true);
+    harness.state_mut().locked = true;
+    settle(&mut harness);
+    let empty = harness.state().grid.visible.center() + egui::vec2(100.0, 100.0);
+    for _ in 0..5 {
+        wheel(&mut harness, empty, egui::vec2(-500.0, -500.0));
+    }
+    let scrolled = |h: &Harness| h.state().grid.scroll.get(&0).copied().unwrap_or_default();
+    assert_eq!(scrolled(&harness), egui::Vec2::ZERO, "locked");
+    // Unlocked, the same wheel scrolls it.
+    harness.state_mut().locked = false;
+    settle(&mut harness);
+    wheel(&mut harness, empty, egui::vec2(-500.0, -500.0));
+    assert!(
+        scrolled(&harness).y > 0.0,
+        "unlocked: {:?}",
+        scrolled(&harness)
+    );
+}

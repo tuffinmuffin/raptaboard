@@ -165,13 +165,21 @@ impl DashboardApp {
         }
         let mut scroll = egui::ScrollArea::both()
             .id_salt(("grid", tab))
-            .auto_shrink([false, false])
+            .auto_shrink([false, false]);
+        scroll = if self.locked {
+            // Locked for driving: the grid stays where it is, so a stray
+            // swipe can't move it, and there are no bars to grab.
+            scroll
+                .scroll_source(egui::scroll_area::ScrollSource::NONE)
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+        } else {
             // Dragging moves widgets; only the bars and the wheel scroll.
-            .scroll_source(egui::scroll_area::ScrollSource {
+            scroll.scroll_source(egui::scroll_area::ScrollSource {
                 scroll_bar: true,
                 mouse_wheel: true,
                 ..egui::scroll_area::ScrollSource::NONE
-            });
+            })
+        };
         if push != Vec2::ZERO {
             scroll = scroll.scroll_offset(offset);
         }
