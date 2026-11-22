@@ -306,6 +306,24 @@ impl DashboardApp {
                     if child.double_clicked() {
                         requests.edit_child = Some((index, row.index));
                     }
+                    // Its own right-click menu: the child sits over the
+                    // list, so the list's menu can't open here.
+                    child.context_menu(|ui| {
+                        if ui
+                            .button("Edit…")
+                            .on_hover_text("This widget's settings")
+                            .clicked()
+                        {
+                            requests.edit_child = Some((index, row.index));
+                        }
+                        if ui
+                            .button("Edit list…")
+                            .on_hover_text("The list's settings")
+                            .clicked()
+                        {
+                            requests.menu_action = Some((item, EditAction::Edit));
+                        }
+                    });
                     if child.dragged() {
                         ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
                     } else if child.hovered() {

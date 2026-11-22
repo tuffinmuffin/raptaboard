@@ -130,7 +130,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   move back to the mouse for the next frame so egui gives the tap to the widget tapped; tests replay it
   with `tap_burst`, mouse on another widget), `format.rs` (number and
   enum text, `EnumDisplay`), `alert_sign.rs` (alert level colors and signs, for the widget, tab marks
-  and history), `props.rs` (period, font size, colors, a topic picker), `robot_view.rs` (a robot from above with
+  and history), `props.rs` (period, font size, colors, a topic picker), `value_colors.rs` (color by value: thresholds or a gradient), `robot_view.rs` (a robot from above with
   speed and spin arrows, for the swerve view and Chassis Speeds) and `settings.rs` (the settings dialog's shared
   rows; the dialog window is in `ui/dialogs.rs`); setting keys are constants in the file that owns them,
   listed in `docs/spec.md` under "raptaboard widget settings" (keep that table in step); adding a

@@ -194,6 +194,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `speeds_topic`, `speeds_setpoint_topic` | `builtin/swerve.rs` | SwerveDrive | the whole robot's measured and requested motion, `ChassisSpeeds` topics, drawn from the robot's center as Chassis Speeds draws them | none |
 | `max_spin` | `builtin/chassis_speeds.rs` | Chassis Speeds, SwerveDrive | the spin drawn as a three-quarter turn, degrees per second | 360 |
 | `fit` | `builtin/mechanism.rs` | Mechanism2d | what the view fits: `mechanism` (the part of the canvas it has used, plus a margin, growing only; a double-click starts it over) or `canvas` (all of `dims`) | `mechanism` |
+| `color_by`, `color_below`, `color_above` | `shared/value_colors.rs` | Text Display, Large Text Display, Number Bar, Voltage View, Radial Gauge | color by value: `thresholds` or `gradient` between the two numbers, with `low_color`/`mid_color`/`high_color` | off; 10, 20 |
 | `true_icon`, `false_icon` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | `None`, `Checkmark`, `X` or `Exclamation Point`, drawn on the state's color in black or white | `None` |
 | `true_image`, `false_image` | `builtin/boolean_box.rs` | Boolean Box | an image's file name in the images folders, in place of an icon, drawn on the state's color (for a plain background, set the color to black or white) | none |
 | `text_backing`, `true_text_color`, `false_text_color` | `builtin/boolean_box.rs` | Boolean Box | a see-through box behind the text; the text's color per state | off; automatic |
@@ -356,6 +357,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      as the settings dialog sets up a type picked there, with that type's update period), and "Add to
      list ▸" adds them to a new list (sized to fit them; always offered) or to the end of
      one of the tab's lists; dragging a picked row takes them all, onto the grid (around the drop) or into a list.
+   - Right-clicking a list child (unlocked) opens its own menu, Edit… (its settings) and Edit list…:
+     the child sits over the list, so the list's menu never opened there.
    - List Layout editing. Done: lists draw like Elastic's (children compact with no card each:
      a label placed by `label_position` and the child's body, each row its saved height less 48
      and at least 32); Edit… or double-click on a list opens its settings (title, label position and an Inside box that
@@ -370,16 +373,23 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      files keep their own settings), or right-click a
      widget → "Put in a new list" (a list in its place, at least 2 x 2 and a cell taller than the
      widget, holding it).
-   - Color by value for number widgets (ints and floats): a background color chosen by thresholds
-     (below 10 red, 10 to 20 yellow, above green), or a gradient between colors across a range.
-     raptaboard-only settings in the widget dialog.
+   - Color by value for number widgets (**done**, `shared/value_colors.rs`): `color_by` `thresholds`
+     (low color below `color_below`, high above `color_above`, middle between; 10 and 20, red, yellow
+     and green if not set) or `gradient` (blended low → middle → high between the same two numbers).
+     Text Display and Large Text Display fill their body with it, the text black or white to read on
+     it; Number Bar, Voltage View and Radial Gauge use it for their fill unless their own gradient (over
+     their scale) is on. The colors are the scale's `low_color`, `mid_color`, `high_color`.
    - Text style: a font dialog (from the widget dialog's Text size row) for the value text and the
      title: font family, size, color, bold, italic. Saved as raptaboard keys (`font_family`,
      `font_color`, `font_bold`, ...; `font_size` exists), with a layout-wide default style later.
-   - Copy settings to the rest of a list: in the list settings, set up one child as wanted, then
-     "Copy settings to all" (or pick which children) applies its display settings (colors, text,
-     decimal places, number format, font size, period) to the others of the same widget type.
-     Never copies what a child shows (topic, `struct_meta`, `data_type`) or its title.
+   - Copy settings to the rest of a list (**done**, `list_layout::copy_settings`): in the list settings,
+     set up one child as wanted, then its "Copy to same type" gives the others of the same widget type
+     its display settings so they match it exactly: every display setting either has (Elastic's too,
+     such as a Boolean Box's colors, and the period) set to its value, or removed where it has none, so
+     copying from a child on the defaults puts the others back on the defaults.
+     Never what a child shows (topic, `struct_meta`, `data_type`, `*_topic` settings, graph lines,
+     field layers and attachments, enum names), its title, or whether it's hidden. Picking which
+     children could come later.
    - Reflow while dragging: widgets in the way slide aside (to the nearest free spot) as a widget is
      dragged or resized over them, instead of the drop being refused.
    - Allow partial overlap: a per-widget setting (this widget may partly overlap others, such as a

@@ -15,7 +15,7 @@ use nt4::Value;
 use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
 
-use crate::widgets::shared::{card, entry, format, props};
+use crate::widgets::shared::{card, entry, format, props, value_colors};
 use crate::widgets::{Live, ValueInfo, WidgetType};
 
 /// Values can be typed in (raptaboard's; off unless set).
@@ -218,12 +218,14 @@ impl WidgetType for TextDisplay {
     ) {
         match text(props, value) {
             Ok(text) => {
+                let ink = value_colors::paint_background(painter, rect, props, value)
+                    .unwrap_or(visuals.text_color());
                 painter.text(
                     rect.center(),
                     egui::Align2::CENTER_CENTER,
                     text,
                     egui::FontId::monospace(props::font_size(props)),
-                    visuals.text_color(),
+                    ink,
                 );
             }
             Err(why) => card::draw_message(painter, visuals, rect, why),
@@ -233,6 +235,12 @@ impl WidgetType for TextDisplay {
     fn settings(&self, ui: &mut egui::Ui, props: &mut Map<String, Json>, value: ValueInfo<'_>) {
         format::rows(ui, props, value);
         props::text_size_row(ui, props);
+        if value
+            .nt_type
+            .is_none_or(|t| matches!(t, "double" | "float" | "int"))
+        {
+            value_colors::rows(ui, props);
+        }
         props::editable_row(
             ui,
             props,
@@ -244,13 +252,19 @@ impl WidgetType for TextDisplay {
     }
 
     fn setting_keys(&self) -> &'static [&'static str] {
-        const KEYS: [&str; 6] = [
+        const KEYS: [&str; 12] = [
             EDITABLE,
             format::DECIMAL_PLACES,
             format::INT_FORMAT,
             format::INT_DIGITS,
             format::ENUM_DISPLAY,
             props::FONT_SIZE,
+            value_colors::COLOR_BY,
+            value_colors::COLOR_BELOW,
+            value_colors::COLOR_ABOVE,
+            crate::widgets::shared::scale::LOW_COLOR,
+            crate::widgets::shared::scale::MID_COLOR,
+            crate::widgets::shared::scale::HIGH_COLOR,
         ];
         &KEYS
     }
