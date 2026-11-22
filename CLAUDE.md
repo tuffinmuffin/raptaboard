@@ -93,8 +93,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   states and where their names come from, with `guess`; `types/field.rs` a field's size, image bounds and AprilTags, and poses in WPILib 2027's frame;
   `types/structs.rs` struct values decoded with (and `nested_struct`, a struct inside one, as its own type and bytes)
   the server's `/.schema/` topics (`nt4::proto::structs::StructDatabase` + `DynamicStruct`);
-  `types::format_number`; more custom data structures go here), `images.rs` images widgets show (a Boolean Box's), found in `images/` folders as fields are
-  and imported into `~/.raptaboard/images/`, with a texture cache; `alert_history.rs` the alert history (every
+  `types::format_number`; more custom data structures go here), `images.rs` images widgets show (a Boolean Box's: PNG, JPEG, SVG via `resvg`), found in `images/` folders as
+  fields are, imported into `~/.raptaboard/images/`, or built in (`BUILT_IN`: the repo's `images/*.svg`, our own
+  CC0 icons; credits for any outside image go in `images/README.md`), with a texture cache; `alert_history.rs` the alert history (every
   group from connect, count-based; its panel and top-bar button are `ui/alert_history_panel.rs`), `tree/` the read-only NT tree (`mod.rs` building it, `selection.rs` row picking in
   `TreeSelection` and the drag payload `DraggedTopics`, `view.rs` drawing and the right-click menu (Add to grid, Add as ▸
   any type that shows the row via `widgets::types_showing`, Add to list), `format.rs` short value text;
@@ -175,7 +176,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   found by its `.type` at any path.
   Its Enums tab has enum widgets on robot-2027's `/DashTest/IntakeMode` (two-way: the robot steps
   it every 5 s, names in `IntakeModeOptions`) and `/DashTest/ArmLevel` (int, names listed), an
-  Enum Toggle on the Test chooser, and watch-only (not editable) widgets. Its Widgets tab has a Struct on `/DashTest/CyclingMode` (an enum that
+  Enum Toggle on the Test chooser, and watch-only (not editable) widgets. Its Widgets tab has a Boolean Box on `IntakeDeployed` showing the built-in `motor-on.svg` / `motor-off.svg`, a Struct on `/DashTest/CyclingMode` (an enum that
   steps through values, one with no name) and a Mechanism2d on robot-2027's
   `/SmartDashboard/DashTest/Lift` (an elevator rising and falling with an arm swinging on top). Its Field tab has Fields on `OrbitPose` (blue-corner origin, robot-2027 being on RobotPy 2026),
   one with layers for `Fleet`, `OrbitPath`, `SeenTags` (the tags Robot-2026's cameras would see), `Fuel` (balls,

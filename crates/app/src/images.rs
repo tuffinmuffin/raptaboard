@@ -4,10 +4,15 @@
 //! settings dialog are copied. Layouts save an image's file name, so the
 //! same name in another computer's images folder shows the same image.
 //!
-//! PNG and JPEG (what [`fields::decode_image`] reads). Textures are made
-//! once each, on their own thread, and kept while the program runs
-//! ([`texture`]).
+//! A few icons are built in ([`BUILT_IN`], from the repo's `images/`
+//! folder, public domain), so they're always offered; a file of the same
+//! name in a folder takes their place.
+//!
+//! PNG, JPEG ([`fields::decode_image`]) and SVG (drawn with `resvg`).
+//! Textures are made once each, on their own thread, and kept while the
+//! program runs ([`texture`]).
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -17,17 +22,81 @@ use eframe::egui;
 use crate::fields;
 
 /// The file types images can be.
-pub const EXTENSIONS: [&str; 3] = ["png", "jpg", "jpeg"];
+pub const EXTENSIONS: [&str; 4] = ["png", "jpg", "jpeg", "svg"];
+
+/// The icons built into raptaboard, by file name: drawn for it and
+/// dedicated to the public domain (CC0; see the repo's `images/README.md`).
+pub const BUILT_IN: [(&str, &[u8]); 5] = [
+    ("armed.svg", include_bytes!("../../../images/armed.svg")),
+    (
+        "checkmark.svg",
+        include_bytes!("../../../images/checkmark.svg"),
+    ),
+    ("motor.svg", include_bytes!("../../../images/motor.svg")),
+    (
+        "motor-off.svg",
+        include_bytes!("../../../images/motor-off.svg"),
+    ),
+    (
+        "motor-on.svg",
+        include_bytes!("../../../images/motor-on.svg"),
+    ),
+];
 
 /// The widest an image is made into a texture, pixels (shown on a card,
-/// so small is plenty).
-const MAX_TEXTURE_WIDTH: u32 = 512;
+/// so small is plenty); an SVG is drawn this big on its longer side.
+const MAX_TEXTURE_SIZE: u32 = 256;
 
-/// Whether `path` is a file of an image type.
-fn is_image(path: &Path) -> bool {
-    path.extension()
+/// Where an image comes from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Source {
+    /// A file in an images folder.
+    File(PathBuf),
+    /// One of [`BUILT_IN`]: its name and bytes.
+    BuiltIn(&'static str, &'static [u8]),
+}
+
+impl Source {
+    /// Its name for the texture cache.
+    fn key(&self) -> String {
+        match self {
+            Source::File(path) => path.display().to_string(),
+            Source::BuiltIn(name, _) => format!("built in {name}"),
+        }
+    }
+
+    /// Its file name (an SVG is drawn, anything else decoded).
+    fn name(&self) -> String {
+        match self {
+            Source::File(path) => path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default()
+                .to_owned(),
+            Source::BuiltIn(name, _) => (*name).to_owned(),
+        }
+    }
+
+    /// Its bytes (read from the file).
+    fn bytes(&self) -> Option<Cow<'static, [u8]>> {
+        match self {
+            Source::File(path) => std::fs::read(path).ok().map(Cow::Owned),
+            Source::BuiltIn(_, bytes) => Some(Cow::Borrowed(bytes)),
+        }
+    }
+}
+
+/// Whether a file named `name` is an image type.
+fn is_image_name(name: &str) -> bool {
+    Path::new(name)
+        .extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
+/// Whether `name` is an SVG's.
+fn is_svg(name: &str) -> bool {
+    name.to_ascii_lowercase().ends_with(".svg")
 }
 
 /// The folders images are looked for in: `images/` in `start` (the folder
@@ -65,8 +134,8 @@ pub fn import_folder() -> Option<PathBuf> {
     std::env::home_dir().map(|h| h.join(".raptaboard").join("images"))
 }
 
-/// The images in `folders`, by file name, in name order. A name in more
-/// than one folder is listed once (the first folder's is used).
+/// The images in `folders` and the built-in ones, by file name, in name
+/// order, each name once.
 pub fn available(folders: &[PathBuf]) -> Vec<String> {
     let mut names: Vec<String> = folders
         .iter()
@@ -74,22 +143,96 @@ pub fn available(folders: &[PathBuf]) -> Vec<String> {
         .flatten()
         .filter_map(Result::ok)
         .map(|e| e.path())
-        .filter(|p| p.is_file() && is_image(p))
+        .filter(|p| p.is_file())
         .filter_map(|p| p.file_name()?.to_str().map(str::to_owned))
+        .filter(|n| is_image_name(n))
+        .chain(BUILT_IN.iter().map(|(n, _)| (*n).to_owned()))
         .collect();
     names.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()).then(a.cmp(b)));
     names.dedup();
     names
 }
 
-/// The file for the image named `name`: the first of `folders` that has
-/// it.
-pub fn find(name: &str, folders: &[PathBuf]) -> Option<PathBuf> {
+/// The images offered, in two groups: the built-in ones (less any a
+/// folder's file of the same name replaces), and the files in `folders`,
+/// each in name order.
+pub fn built_in_and_external(folders: &[PathBuf]) -> (Vec<String>, Vec<String>) {
+    let built: Vec<&str> = BUILT_IN.iter().map(|(n, _)| *n).collect();
+    let all = available(folders);
+    let external: Vec<String> = all
+        .iter()
+        .filter(|n| matches!(find(n, folders), Some(Source::File(_))))
+        .cloned()
+        .collect();
+    let built_in = built
+        .into_iter()
+        .filter(|n| !external.iter().any(|e| e == n))
+        .map(str::to_owned)
+        .collect();
+    (built_in, external)
+}
+
+/// The image named `name`: a file in the first of `folders` that has it,
+/// else a built-in one.
+pub fn find(name: &str, folders: &[PathBuf]) -> Option<Source> {
     // A bare name only, never a path out of the folders.
     if name.is_empty() || name.contains(['/', '\\']) || name == ".." {
         return None;
     }
-    folders.iter().map(|f| f.join(name)).find(|p| p.is_file())
+    folders
+        .iter()
+        .map(|f| f.join(name))
+        .find(|p| p.is_file())
+        .map(Source::File)
+        .or_else(|| {
+            BUILT_IN
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(n, bytes)| Source::BuiltIn(n, bytes))
+        })
+}
+
+/// An SVG drawn at most `max` pixels on its longer side.
+fn render_svg(bytes: &[u8], max: u32) -> Option<fields::Decoded> {
+    use resvg::{tiny_skia, usvg};
+    let tree = usvg::Tree::from_data(bytes, &usvg::Options::default()).ok()?;
+    let size = tree.size();
+    let scale = max as f32 / size.width().max(size.height());
+    let (w, h) = (
+        ((size.width() * scale).round() as u32).max(1),
+        ((size.height() * scale).round() as u32).max(1),
+    );
+    let mut pixmap = tiny_skia::Pixmap::new(w, h)?;
+    resvg::render(
+        &tree,
+        tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+    // tiny-skia keeps colors premultiplied by alpha; egui wants them not.
+    let pixels = pixmap
+        .pixels()
+        .iter()
+        .flat_map(|p| {
+            let c = p.demultiply();
+            [c.red(), c.green(), c.blue(), c.alpha()]
+        })
+        .collect();
+    Some(fields::Decoded {
+        width: w,
+        height: h,
+        pixels,
+        source_size: (size.width().round() as u32, size.height().round() as u32),
+    })
+}
+
+/// The image in `bytes`, from a file named `name`: drawn if it's an SVG,
+/// else decoded, at most `max` pixels wide (an SVG on its longer side).
+pub fn decode(bytes: &[u8], name: &str, max: u32) -> Option<fields::Decoded> {
+    if is_svg(name) {
+        render_svg(bytes, max)
+    } else {
+        fields::decode_image(bytes, max)
+    }
 }
 
 /// Copy the image at `from` into the folder `into` (made if it isn't
@@ -97,15 +240,19 @@ pub fn find(name: &str, folders: &[PathBuf]) -> Option<PathBuf> {
 /// `-2`, `-3`, ... before the extension if a different image already has
 /// it (the same image already there is used as it is).
 pub fn import(from: &Path, into: &Path) -> Result<String, String> {
-    if !is_image(from) {
+    let file_name = from
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+    if !is_image_name(file_name) {
         return Err(format!(
-            "{} isn't an image raptaboard reads (PNG or JPEG)",
+            "{} isn't an image raptaboard reads (PNG, JPEG or SVG)",
             from.display()
         ));
     }
     let bytes =
         std::fs::read(from).map_err(|e| format!("Couldn't read {}: {e}", from.display()))?;
-    if fields::decode_image(&bytes, 16).is_none() {
+    if decode(&bytes, file_name, 16).is_none() {
         return Err(format!("{} doesn't read as an image", from.display()));
     }
     std::fs::create_dir_all(into).map_err(|e| format!("Couldn't make {}: {e}", into.display()))?;
@@ -142,26 +289,27 @@ enum Slot {
     Failed,
 }
 
-/// The textures made so far, by file path, kept in egui's memory.
+/// The textures made so far, by source, kept in egui's memory.
 #[derive(Clone, Default)]
-struct Cache(Arc<Mutex<HashMap<PathBuf, Slot>>>);
+struct Cache(Arc<Mutex<HashMap<String, Slot>>>);
 
-/// The texture for the image file at `path`: `None` while it's being
+/// The texture for the image from `source`: `None` while it's being
 /// decoded (on its own thread, asking for a repaint when done) or if it
 /// can't be read.
-pub fn texture(ctx: &egui::Context, path: &Path) -> Option<egui::TextureHandle> {
+pub fn texture(ctx: &egui::Context, source: &Source) -> Option<egui::TextureHandle> {
     let cache = ctx.data_mut(|d| {
         d.get_temp_mut_or_default::<Cache>(egui::Id::unique("raptaboard images"))
             .clone()
     });
     let mut slots = cache.0.lock().unwrap_or_else(|e| e.into_inner());
-    let slot = slots.entry(path.to_owned()).or_insert_with(|| {
+    let key = source.key();
+    let slot = slots.entry(key.clone()).or_insert_with(|| {
         let done = Arc::new(Mutex::new(None));
-        let (filled, repaint, file) = (done.clone(), ctx.clone(), path.to_owned());
+        let (filled, repaint, source) = (done.clone(), ctx.clone(), source.clone());
         std::thread::spawn(move || {
-            let decoded = std::fs::read(&file)
-                .ok()
-                .and_then(|b| fields::decode_image(&b, MAX_TEXTURE_WIDTH));
+            let decoded = source
+                .bytes()
+                .and_then(|b| decode(&b, &source.name(), MAX_TEXTURE_SIZE));
             *filled.lock().unwrap_or_else(|e| e.into_inner()) = Some(decoded);
             repaint.request_repaint();
         });
@@ -178,7 +326,7 @@ pub fn texture(ctx: &egui::Context, path: &Path) -> Option<egui::TextureHandle> 
                     &d.pixels,
                 );
                 *slot = Slot::Ready(ctx.load_texture(
-                    format!("image {}", path.display()),
+                    format!("image {key}"),
                     color,
                     egui::TextureOptions::LINEAR,
                 ));
@@ -222,13 +370,95 @@ mod tests {
         std::fs::write(b.join("arm.jpeg"), b"").unwrap();
         std::fs::write(b.join("notes.txt"), b"skip").unwrap();
         let folders = [a.clone(), b.clone()];
-        // Name order, any case; a name in both folders once.
-        assert_eq!(available(&folders), ["arm.jpeg", "Down.JPG", "ready.png"]);
-        assert_eq!(find("ready.png", &folders), Some(a.join("ready.png")));
-        assert_eq!(find("arm.jpeg", &folders), Some(b.join("arm.jpeg")));
+        // Name order, any case; a name in both folders once; the built-in
+        // icons too.
+        assert_eq!(
+            available(&folders),
+            [
+                "arm.jpeg",
+                "armed.svg",
+                "checkmark.svg",
+                "Down.JPG",
+                "motor-off.svg",
+                "motor-on.svg",
+                "motor.svg",
+                "ready.png"
+            ]
+        );
+        assert_eq!(
+            find("ready.png", &folders),
+            Some(Source::File(a.join("ready.png")))
+        );
+        assert_eq!(
+            find("arm.jpeg", &folders),
+            Some(Source::File(b.join("arm.jpeg")))
+        );
         // Never a path out of the folders.
         assert_eq!(find("../notes.txt", &folders), None);
         assert_eq!(find("", &folders), None);
+    }
+
+    #[test]
+    fn the_built_in_icons_draw_and_a_folders_file_takes_their_place() {
+        // With no folders at all, the built-in ones are there.
+        let none: [PathBuf; 0] = [];
+        assert_eq!(
+            available(&none),
+            [
+                "armed.svg",
+                "checkmark.svg",
+                "motor-off.svg",
+                "motor-on.svg",
+                "motor.svg"
+            ]
+        );
+        for (name, _) in BUILT_IN {
+            let Some(Source::BuiltIn(found, bytes)) = find(name, &none) else {
+                panic!("{name} isn't built in");
+            };
+            assert_eq!(found, name);
+            // Drawn square at the texture size, with something visible.
+            let d = decode(bytes, name, MAX_TEXTURE_SIZE).unwrap();
+            assert_eq!(
+                (d.width, d.height),
+                (MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE),
+                "{name}"
+            );
+            let opaque = d.pixels.chunks(4).filter(|p| p[3] == 255).count();
+            assert!(opaque > 1000, "{name} drew only {opaque} pixels");
+            // No background: the corners are see-through, so the card (or
+            // the box's color) shows round the picture.
+            let w = d.width as usize;
+            let h = d.height as usize;
+            for (x, y) in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)] {
+                let alpha = d.pixels[(y * w + x) * 4 + 3];
+                assert_eq!(alpha, 0, "{name} isn't see-through at ({x}, {y})");
+            }
+        }
+        // A file of the same name in a folder is used instead.
+        let dir = temp("override");
+        std::fs::write(dir.join("motor.svg"), BUILT_IN[0].1).unwrap();
+        assert_eq!(
+            find("motor.svg", std::slice::from_ref(&dir)),
+            Some(Source::File(dir.join("motor.svg")))
+        );
+    }
+
+    #[test]
+    fn the_list_splits_built_in_from_external_images() {
+        let none: [PathBuf; 0] = [];
+        let (built, external) = built_in_and_external(&none);
+        assert_eq!(built.len(), BUILT_IN.len());
+        assert!(external.is_empty());
+        // A folder's own image, and one replacing a built-in: both are
+        // external, and the built-in one leaves its group.
+        let dir = temp("split");
+        std::fs::write(dir.join("mine.png"), png(2, 2, [1, 2, 3])).unwrap();
+        std::fs::write(dir.join("motor.svg"), BUILT_IN[0].1).unwrap();
+        let (built, external) = built_in_and_external(std::slice::from_ref(&dir));
+        assert_eq!(external, ["mine.png", "motor.svg"]);
+        assert!(!built.contains(&"motor.svg".to_owned()));
+        assert!(built.contains(&"armed.svg".to_owned()));
     }
 
     #[test]
@@ -243,9 +473,9 @@ mod tests {
         let other = temp("import-other").join("ready.png");
         std::fs::write(&other, png(2, 2, [255, 0, 0])).unwrap();
         assert_eq!(import(&other, &into).unwrap(), "ready-2.png");
-        assert_eq!(
-            available(std::slice::from_ref(&into)),
-            ["ready-2.png", "ready.png"]
+        let names = available(std::slice::from_ref(&into));
+        assert!(
+            names.contains(&"ready.png".to_owned()) && names.contains(&"ready-2.png".to_owned())
         );
         // Not an image.
         let text = src.join("notes.txt");
@@ -254,5 +484,12 @@ mod tests {
         let fake = src.join("fake.png");
         std::fs::write(&fake, b"not a png").unwrap();
         assert!(import(&fake, &into).is_err());
+        // An SVG imports; a broken one doesn't.
+        let svg = src.join("dot.svg");
+        std::fs::write(&svg, br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><circle cx="2" cy="2" r="2"/></svg>"#).unwrap();
+        assert_eq!(import(&svg, &into).unwrap(), "dot.svg");
+        let broken = src.join("broken.svg");
+        std::fs::write(&broken, b"<svg").unwrap();
+        assert!(import(&broken, &into).is_err());
     }
 }
