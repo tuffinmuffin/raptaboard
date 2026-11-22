@@ -374,3 +374,41 @@ fn a_tab_drags_along_the_tab_bar_to_move_it() {
     );
     assert_eq!(names(&harness), before);
 }
+
+#[test]
+fn the_gear_opens_connection_settings_and_the_licenses() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    // The address is no longer in the bar, only in the Settings window.
+    assert!(harness.query_by_label("Robot address").is_none());
+    // Clicked through accesskit, so it doesn't depend on where the button
+    // lands (macOS CI missed a pointer click on it).
+    harness.get_by_label("⚙").click();
+    settle(&mut harness);
+    assert!(
+        harness.state().gear.settings,
+        "the gear didn't open Settings"
+    );
+    labelled_soon(&mut harness, "Robot address");
+    assert!(harness.query_by_label("Server address").is_some());
+    // Still connected while the window is open.
+    settle(&mut harness);
+    assert!(connected(harness.state()));
+    // About and licenses: each page draws, with the credits and crates.
+    harness.get_by_label("About and licenses…").click();
+    settle(&mut harness);
+    labelled_soon(&mut harness, "Sounds, images, fields");
+    for (page, shows) in [
+        ("Sounds, images, fields", "Sarah-Christin Freytag"),
+        ("Rust crates", "Rust crates. Their licenses:"),
+        ("License texts", "Copy all"),
+    ] {
+        harness.get_by_label(page).click();
+        settle(&mut harness);
+        assert!(
+            harness.query_by_label_contains(shows).is_some(),
+            "{page} doesn't show {shows:?}"
+        );
+    }
+    assert!(harness.state().gear.about && harness.state().gear.settings);
+}

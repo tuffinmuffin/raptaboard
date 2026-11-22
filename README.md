@@ -85,4 +85,7 @@ using Claude Code; it has the same rules.
 
 ## License
 
-MIT, see `LICENSE`.
+MIT, see `LICENSE`. raptaboard includes sounds, images and fields from others (credits in
+`media/audio/README.md`, `images/README.md` and `fields/README.md`) and is built from open-source
+Rust crates (`licenses/`). The app lists them all under ⚙ Settings, "About and licenses". After
+changing dependencies, run `python3 scripts/crate_licenses.py`.

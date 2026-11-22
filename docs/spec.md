@@ -156,7 +156,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `text_position` | `builtin/alerts.rs` | Alerts | `auto` (beside a wide widget, below a tall one), `right`, `below` | `auto` |
 | `min_level` | `builtin/alerts.rs` | Alerts | least urgent shown: `info`, `warning`, `error` | `info` |
 | `pulse`, `pulse_seconds` | `builtin/alerts.rs` | Alerts | pulse when a new error arrives, for how long (s), stopping sooner once no error is active | true, 5 |
-| `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp`, or a built-in clip: `disabled 1`, `disabled 2`, `fire 1`, `fire 2` | false, `beep` |
+| `sound`, `tone` | `builtin/alerts.rs` | Alerts | a tone when a new error arrives (at most every 3 s; the bell button mutes it): `beep`, `double beep`, `chirp`, or a built-in clip: `disabled 1`, `disabled 2`, `fire 1`, `fire 2`, `danger danger`, `auto ghosts`, `go go go`, `fms down`, `lost comms` | false, `beep` |
 | `field` | `builtin/field/mod.rs` | Field | the field shown: an id from the fields folders (`2026-rebuilt-welded`) or a field JSON's path; not set uses Elastic's `field_game` (by game name), else 2026 REBUILT (welded) | not set |
 | `origin` | `builtin/field/mod.rs` | Field | where the poses' (0, 0) is: `center` (WPILib 2027) or `blue_corner` (before 2027) | `center` |
 | `robot_length`, `robot_width` (Elastic) | `builtin/field/mod.rs` | Field | the robot's size, meters | 0.85, 0.85 |
@@ -453,15 +453,62 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    - Drag tabs to reorder them (**done**: `TabAction::Move`, `tabs::drop_place`): unlocked, drag a
      tab along the tab bar, with a marker where it will land, and drop it to move it (one step for
      undo, like Move left and Move right in the tab's right-click menu, which stay).
-   - Sound clips on robot state changes: play a sound file when the robot is disabled (the first
-     one: the "I'm disabled" quote from The IT Crowd), and optionally on enable, the start of auto
-     and teleop, and e-stop. The state comes from WPILib's `/FMSInfo/FMSControlData` bits (check
-     the 2027 topics), only on a change, not at connect. A settings entry per event: a file path
-     (MP3 or WAV; `rodio` with its MP3 decoder) and on or off, plus a volume, and the bell
-     button mutes these too. Clips are built into the program from `media/audio/` (decided
-     2026-11-19: short, non-commercial use; removable later): "disabled 1" and "disabled 2" (the
-     IT Crowd's "I'm disabled"), "fire 1" and "fire 2", already offered as Alerts widget tones; a
-     file path setting for the team's own clips can come with this.
+   - Robot State widget with sounds (first release, asked for by the user 2026-11-22; replaces the
+     earlier "sound clips on robot state changes" item). Decided: a new special-purpose widget, not an
+     extension of an existing one, because no existing widget reads the robot's mode, and the sounds
+     belong with the thing that shows the state. `.type` `RobotState` (raptaboard only); it binds the
+     `/FMSInfo` table and is offered by the tree's "Add as" on that table (Elastic's DSInfo stays
+     separate).
+     - Reads the state from WPILib 2027's `/FMSInfo/ControlWord` struct (`enabled`, `robotMode`,
+       `eStop`, `fmsAttached`, `dsAttached`, as Elastic 2027.0.0-alpha10's DSInfo reads it), falling
+       back to 2026's `/FMSInfo/FMSControlData` bits (enabled 0x01, auto 0x02, test 0x04, e-stop 0x08,
+       FMS 0x10, DS 0x20). Check both against the 2027 release before shipping.
+     - Shows one large state: Disabled, Autonomous, Teleop, Test, E-Stop, or No robot (not connected
+       or no DS), each with its own color (E-Stop red and blinking, Test striped orange), plus small
+       DS and FMS marks.
+     - Sounds: one row per event (disabled, autonomous, teleop, test, e-stop, and robot connected and
+       lost), each Off, a built-in clip, or a file the team picks (MP3 or WAV, played with `rodio`),
+       plus a widget volume. Saved in the widget's properties, so they travel with the layout.
+       Defaults: disabled plays "disabled 1", autonomous plays "auto ghosts", teleop plays "go go
+       go", test plays "danger danger", the rest off.
+     - More rows (added 2026-11-22), all off by default: match timing from `/FMSInfo` and the
+       match time (end of auto, endgame at a set time left, 30 s by default, and a 10 s
+       countdown; the field already sounds these, so they're for practice or a quiet venue), and
+       DS lost or FMS lost while the robot is still connected (a different problem from the robot
+       lost). Exceptions to off (asked for 2026-11-22): FMS lost plays "fms down" and robot lost
+       (the NT server gone) plays "lost comms", two text-to-speech clips made with Flite. Later ideas, not planned: FMS attached, brownout or low battery.
+     - Plays only on a change seen while connected: never for the state at connect, after a
+       reconnect, or when a layout opens. A new event cuts off a clip still playing. The bell button
+       in the settings bar mutes these too.
+     - Plays while the widget is anywhere in the open layout, not only on the shown tab, so switching
+       tabs never silences it. With two Robot State widgets, only the first (tab order, then
+       position) plays.
+     - Built-in clips (`media/audio/`): "disabled 1" and "disabled 2" (the IT Crowd's "I'm
+       disabled"), "fire 1", "fire 2", "danger danger" (added 2026-11-22: xpoki's
+       "danger_normal_lp.wav" from Freesound, CC BY 4.0, played twice) and "auto ghosts" (added
+       2026-11-22: dal_kas's "MustphaMondeRemixes (3).aif" from Freesound, a remix of
+       deleted_user_44129's "Ghosts In The Machine.wav", both CC BY 3.0) and "go go go" (added 2026-11-22: theuncertainman's "Go Go
+       Go - (Version 2) Northern British Soldier" from Freesound, CC BY 4.0). Every clip's
+       source and license is in `media/audio/README.md` and `credits.rs`. More clips later.
+   - Later, after 0.1.0 (asked for by the user 2026-11-22), from the same robot state:
+     - Window border by state: a colored border around the whole window, red while disabled, and
+       flashing red for a few seconds right after the robot is disabled, so the state shows at a
+       glance from any tab. Colors per state set in the Settings window; off by default.
+     - E-stop pop-up: a large modal over the whole window when the robot enters e-stop, saying so
+       plainly. It clears on a click anywhere or when the robot reconnects (an e-stopped robot
+       stays e-stopped until it reboots).
+   - Connection settings behind a gear (**done**, `ui/settings_window.rs`; asked for by the user
+     2026-11-22): a ⚙ button in the settings bar opens a Settings window with the team number,
+     address mode, custom address and port, and sound on or off (later: volume). The bar keeps the
+     raptaboard name, the connection status, Tree, Lock, the bell, the alert history, undo and redo,
+     so it stays short on a DS laptop.
+   - About and licenses (**done**, asked for 2026-11-22): a button in the Settings window opens a
+     window with pages for raptaboard (version, repository, MIT license), the built-in sounds,
+     images and fields (each one's source, license and credit, from `credits.rs`; CC BY credits
+     here meet the license's attribution), the Rust crates (all of them from `Cargo.lock` with their
+     licenses and a filter, from `licenses/rust-crates.tsv`) and their full license texts
+     (`licenses/THIRD_PARTY_LICENSES.txt`, with copy). `scripts/crate_licenses.py` makes both
+     files; a test fails when they don't match `Cargo.lock`.
    - X/Y and polar graphs (`egui_plot`): pair two values recorded at the same time (x with y, or
      angle with distance) and plot one against the other, for a joystick's position, an arm
      joint's path or a turret's aim. Modes: a trail that fades out over a set time (time decay),
@@ -720,9 +767,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    release 0.1.0, "basics done". In it: drag tabs to reorder (done), a bigger worst-alert sign, a
    Battery widget, Boolean Box text and images, color by value, autoscale for bars and gauges,
    min/max/average on number widgets and graphs, graph history review, widget type choices that
-   fit, and copy settings within a list. Then the release: version 0.1.0, a changelog, a tag, and a
-   CI workflow building Windows, macOS and Linux binaries for a GitHub Release. After it: the Group
-   widget, X/Y and polar graphs, sound clips, partial overlap, reflow while dragging, the text style
+   fit, copy settings within a list, and (added 2026-11-22) the connection settings behind a gear and
+   the Robot State widget with its sounds. Then the release: version 0.1.0, a changelog, a tag, and a
+   CI workflow building Windows, macOS and Linux binaries for a GitHub Release. After it: the window border by robot state and the
+   e-stop pop-up, the Group widget, X/Y and polar graphs, partial overlap, reflow while dragging, the text style
    dialog, regex alert filters, and plugins.
 4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, units, MJPEG

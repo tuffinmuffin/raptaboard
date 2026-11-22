@@ -10,6 +10,7 @@ pub mod alert_history;
 pub mod binding;
 pub mod cli;
 pub mod connection;
+pub mod credits;
 pub mod edit;
 pub mod fields;
 pub mod grid;
