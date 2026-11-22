@@ -139,7 +139,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `int_format` | `shared/format.rs` | Text Display (int, enum numbers) | `decimal`, `hex` (`0x1A`), `binary` (`0b11010`) | `decimal` |
 | `int_digits` | `shared/format.rs` | Text Display (int, enum numbers) | at least this many digits, zero-padded, 1–64 | no padding |
 | `enum_display` | `shared/format.rs` | Text Display (enum struct field) | `name`, `number`, `both` | `name` |
-| `true_color`, `false_color` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | ARGB number | green, red |
+| `true_color`, `false_color` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | ARGB number; the settings' Clear makes it see-through (0), so the card shows and icons and text use the theme's text color | green, red |
 | `show_text` | `builtin/boolean_box.rs` | Boolean Box | write the text below over the color | false |
 | `true_text`, `false_text` | `builtin/boolean_box.rs` | Boolean Box | text when true / false; empty for none | none |
 | `label_position` (Elastic) | `list_layout.rs` | List Layout | `TOP`, `LEFT`, `RIGHT`, `BOTTOM`, `HIDDEN` (any case read) | `TOP`; always written |
@@ -195,8 +195,8 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `max_spin` | `builtin/chassis_speeds.rs` | Chassis Speeds, SwerveDrive | the spin drawn as a three-quarter turn, degrees per second | 360 |
 | `fit` | `builtin/mechanism.rs` | Mechanism2d | what the view fits: `mechanism` (the part of the canvas it has used, plus a margin, growing only; a double-click starts it over) or `canvas` (all of `dims`) | `mechanism` |
 | `color_by`, `color_below`, `color_above` | `shared/value_colors.rs` | Text Display, Large Text Display, Number Bar, Voltage View, Radial Gauge | color by value: `thresholds` or `gradient` between the two numbers, with `low_color`/`mid_color`/`high_color` | off; 10, 20 |
-| `true_icon`, `false_icon` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | `None`, `Checkmark`, `X` or `Exclamation Point`, drawn alone in the state's color | `None` |
-| `true_image`, `false_image`, `icon_on_color` | `builtin/boolean_box.rs` | Boolean Box | an image's file name in the images folders, in place of an icon; draw the icon or image on the filled box | none; off |
+| `true_icon`, `false_icon` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | `None`, `Checkmark`, `X` or `Exclamation Point`, drawn on the state's color in black or white | `None` |
+| `true_image`, `false_image` | `builtin/boolean_box.rs` | Boolean Box | an image's file name in the images folders, in place of an icon, drawn on the state's color (for a plain background, set the color to black or white) | none |
 | `text_backing`, `true_text_color`, `false_text_color` | `builtin/boolean_box.rs` | Boolean Box | a see-through box behind the text; the text's color per state | off; automatic |
 | `warn_below`, `low_below` | `builtin/battery.rs` | Battery | volts below which it's yellow, red; `min_value`/`max_value` (Elastic's keys) are empty and full | 12, 11.5; 11 to 13 |
 | `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
@@ -470,14 +470,26 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      a Text Display). The sim layout's More widgets tab shows robot-2027's scripted `BatteryVoltage`.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
      **Done**: Elastic's `true_icon`/`false_icon` set (Checkmark, X, Exclamation Point, any for either
-     state in raptaboard), drawn alone in the state's color as Elastic does, or on the filled box with
-     `icon_on_color`; and the team's own images (decided with the user 2026-11-21), `true_image` /
+     state in raptaboard), drawn on the state's color in black or white (Elastic draws them alone in the color; decided
+     with the user 2026-11-21 that the box is always filled, so there's no option to explain: for a
+     plain background, the color rows' Clear makes the color see-through, and icons and text then
+     use the theme's text color, dark or light); and the team's own images (decided with the user 2026-11-21), `true_image` /
      `false_image`, chosen from a list of the images in the images folders (`images.rs`: `images/`
      where raptaboard starts, beside the program, and `~/.raptaboard/images/`, as fields are found),
-     with an Import… button that copies a picked PNG or JPEG into `~/.raptaboard/images/` (a
+     with an Import… button that copies a picked PNG, JPEG or SVG into `~/.raptaboard/images/` (a
      different image with the same name gets `-2`, ...). Layouts save the file name, so another
-     computer needs the same image in its images folder. Later: SVG, and embedding images in the
-     layout.
+     computer needs the same image in its images folder. SVGs are drawn with `resvg` (0.49, no text
+     features; about 0.7 MB). Built in (decided with the user 2026-11-21), examples to show the feature
+     and a starting place: `checkmark.svg`, `motor.svg`, `motor-on.svg` and `motor-off.svg` (the motor
+     in a green or red border, a Boolean Box's true and false images) and `armed.svg` (a target
+     reticle), drawn for raptaboard and dedicated CC0, in the repo's `images/`
+     with a README saying so and where any outside image's credit goes; a folder's file of the same
+     name takes their place. The settings choose a state's picture from one list (the user's ask,
+     2026-11-21): (none), the built-in group (Elastic's drawn icons, then the built-in images), a
+     line, then the images in the folders, with Import… beside it; an icon is saved as Elastic's
+     `true_icon`/`false_icon`, an image as `true_image`/`false_image`, and picking one clears the
+     other. The sim layout's Widgets tab has a Boolean Box on robot-2027's
+     `IntakeDeployed` with `motor-on.svg` and `motor-off.svg`. Later: embedding images in the layout.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
    **Started**: the read-only single-topic widgets: Large Text Display, Number Bar, Voltage View,
    Radial Gauge (also Simple Dial), Match Time, Single Color View, Multi Color View, with Elastic's
