@@ -345,7 +345,8 @@
               "period": 0.06,
               "data_type": "boolean",
               "true_image": "motor-on.svg",
-              "false_image": "motor-off.svg"
+              "false_image": "motor-off.svg",
+              "icon_on_color": false
             }
           }
         ]

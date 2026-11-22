@@ -195,7 +195,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `max_spin` | `builtin/chassis_speeds.rs` | Chassis Speeds, SwerveDrive | the spin drawn as a three-quarter turn, degrees per second | 360 |
 | `fit` | `builtin/mechanism.rs` | Mechanism2d | what the view fits: `mechanism` (the part of the canvas it has used, plus a margin, growing only; a double-click starts it over) or `canvas` (all of `dims`) | `mechanism` |
 | `true_icon`, `false_icon` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | `None`, `Checkmark`, `X` or `Exclamation Point`, drawn alone in the state's color | `None` |
-| `true_image`, `false_image`, `icon_on_color` | `builtin/boolean_box.rs` | Boolean Box | an image's file name in the images folders, in place of an icon; draw the icon or image on the filled box | none; off |
+| `true_image`, `false_image`, `icon_on_color` | `builtin/boolean_box.rs` | Boolean Box | an image's file name in the images folders, in place of an icon; draw the icon or image on the filled box (an image isn't tinted, so it's on the color unless set off) | none; on for an image, off for an icon |
 | `text_backing`, `true_text_color`, `false_text_color` | `builtin/boolean_box.rs` | Boolean Box | a see-through box behind the text; the text's color per state | off; automatic |
 | `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
 | `series` | `builtin/graph.rs` | Graph | the lines after the main one: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
