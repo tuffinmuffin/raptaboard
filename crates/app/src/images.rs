@@ -426,6 +426,14 @@ mod tests {
             );
             let opaque = d.pixels.chunks(4).filter(|p| p[3] == 255).count();
             assert!(opaque > 1000, "{name} drew only {opaque} pixels");
+            // No background: the corners are see-through, so the card (or
+            // the box's color) shows round the picture.
+            let w = d.width as usize;
+            let h = d.height as usize;
+            for (x, y) in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)] {
+                let alpha = d.pixels[(y * w + x) * 4 + 3];
+                assert_eq!(alpha, 0, "{name} isn't see-through at ({x}, {y})");
+            }
         }
         // A file of the same name in a folder is used instead.
         let dir = temp("override");
