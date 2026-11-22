@@ -195,6 +195,9 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `max_spin` | `builtin/chassis_speeds.rs` | Chassis Speeds, SwerveDrive | the spin drawn as a three-quarter turn, degrees per second | 360 |
 | `fit` | `builtin/mechanism.rs` | Mechanism2d | what the view fits: `mechanism` (the part of the canvas it has used, plus a margin, growing only; a double-click starts it over) or `canvas` (all of `dims`) | `mechanism` |
 | `color_by`, `color_below`, `color_above` | `shared/value_colors.rs` | Text Display, Large Text Display, Number Bar, Voltage View, Radial Gauge | color by value: `thresholds` or `gradient` between the two numbers, with `low_color`/`mid_color`/`high_color` | off; 10, 20 |
+| `true_icon`, `false_icon` (Elastic) | `builtin/boolean_box.rs` | Boolean Box | `None`, `Checkmark`, `X` or `Exclamation Point`, drawn alone in the state's color | `None` |
+| `true_image`, `false_image`, `icon_on_color` | `builtin/boolean_box.rs` | Boolean Box | an image's file name in the images folders, in place of an icon; draw the icon or image on the filled box | none; off |
+| `text_backing`, `true_text_color`, `false_text_color` | `builtin/boolean_box.rs` | Boolean Box | a see-through box behind the text; the text's color per state | off; automatic |
 | `warn_below`, `low_below` | `builtin/battery.rs` | Battery | volts below which it's yellow, red; `min_value`/`max_value` (Elastic's keys) are empty and full | 12, 11.5; 11 to 13 |
 | `color`, `line_width` (Elastic) | `builtin/graph.rs` | Graph | the first line's color; line width in points | cyan, 2 |
 | `series` | `builtin/graph.rs` | Graph | the lines after the main one: `[{"topic", "data_type", "struct_meta"?, "color"?, "name"?}]` | none |
@@ -389,9 +392,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      see and grab. A 1x1 on top of a 1x2 is fine (part of the 1x2 still shows); two 1x1s on the same
      cell, or a big widget over a smaller one, are not. Needs a draw order (front/back), and the
      overlap fix when opening a layout must allow the same partial overlaps.
-   - Boolean Box text: an option for a backing behind the true/false text (like inside list
-     labels: a see-through rounded box, so it reads over any color), and a text color per state
-     instead of only the automatic black or white.
+   - Boolean Box text (**done**): `text_backing`, a see-through box behind the text so it reads over
+     any color, and `true_text_color` / `false_text_color` (automatic black or white if not set; white
+     on the backing).
    - Group widget: a card holding its own small grid, so widgets inside can sit side by side and
      be any size (a List Layout only stacks them). Same dragging in and out as lists; saved as a
      raptaboard-only container type (Elastic would show a placeholder). Its settings can reach the
@@ -460,11 +463,15 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      wide card, upright on a tall one. A number's "Add as" or Widget list choice (a number still makes
      a Text Display). The sim layout's More widgets tab shows robot-2027's scripted `BatteryVoltage`.
    - Boolean Box images: show an image for true and for false instead of (or over) the color.
-     A built-in library of standard images (Elastic's `true_icon`/`false_icon` set: Checkmark, X,
-     Exclamation Point, so its layouts keep their icons, plus more), and any PNG/SVG the team
-     picks. Open (decide when built), likely both: embed the image in the layout, scaled down to a
-     small fixed size so the file stays well under its 10 MB limit and is fully portable, and/or
-     keep image files next to the layout or served by the robot.
+     **Done**: Elastic's `true_icon`/`false_icon` set (Checkmark, X, Exclamation Point, any for either
+     state in raptaboard), drawn alone in the state's color as Elastic does, or on the filled box with
+     `icon_on_color`; and the team's own images (decided with the user 2026-11-21), `true_image` /
+     `false_image`, chosen from a list of the images in the images folders (`images.rs`: `images/`
+     where raptaboard starts, beside the program, and `~/.raptaboard/images/`, as fields are found),
+     with an Import… button that copies a picked PNG or JPEG into `~/.raptaboard/images/` (a
+     different image with the same name gets `-2`, ...). Layouts save the file name, so another
+     computer needs the same image in its images folder. Later: SVG, and embedding images in the
+     layout.
 3. Core widgets: the 13 single-topic widgets, Field, Alerts, choosers, generic struct decoding.
    **Started**: the read-only single-topic widgets: Large Text Display, Number Bar, Voltage View,
    Radial Gauge (also Simple Dial), Match Time, Single Color View, Multi Color View, with Elastic's
