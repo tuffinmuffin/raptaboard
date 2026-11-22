@@ -96,9 +96,10 @@ pub const MEDIA: &[MediaCredit] = &[
         kind: "Sound",
         files: &["disabled1.mp3", "disabled2.mp3"],
         what: "\"I'm disabled\"",
-        source: "a line from the TV series The IT Crowd",
+        source: "a line from the TV series The IT Crowd, from The IT Crowd's YouTube \
+                 channel, https://www.youtube.com/@TheITCrowdChannel",
         license: "not ours",
-        link: None,
+        link: Some("https://www.youtube.com/@TheITCrowdChannel"),
         note: "A short quote kept for team, non-commercial use.",
     },
     MediaCredit {
