@@ -88,9 +88,10 @@ pub const MEDIA: &[MediaCredit] = &[
         files: &["fms-down.mp3", "lost-comms.mp3"],
         what: "\"FMS lost\" and \"comms lost\", for losing the field or the robot",
         source: "made for raptaboard with Free TTS Online (text to speech), 2026-11-22",
-        license: "Free TTS Online's terms for the audio it makes",
+        license: "free to use: Free TTS Online says its audio may be used for personal and \
+                  commercial purposes",
         link: None,
-        note: "Kept for non-commercial, educational use; removed if the owner asks.",
+        note: "No other license or restriction.",
     },
     MediaCredit {
         kind: "Sound",
