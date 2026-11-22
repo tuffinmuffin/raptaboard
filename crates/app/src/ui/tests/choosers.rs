@@ -267,6 +267,9 @@ fn the_widget_list_offers_only_types_that_fit() {
         ));
     settle(&mut harness);
     let large = offered(&mut harness, 3, &names);
-    assert!(large.contains(&"Large Text Display".to_owned()), "{large:?}");
+    assert!(
+        large.contains(&"Large Text Display".to_owned()),
+        "{large:?}"
+    );
     assert!(large.contains(&"Text Display".to_owned()), "{large:?}");
 }
