@@ -327,3 +327,107 @@ fn a_touchscreen_tap_on_a_list_child_goes_to_it_not_the_widget_under_the_mouse()
     settle(&mut harness);
     assert_eq!(robot.seen_enabled.get(), Some(false));
 }
+
+#[test]
+fn a_lists_settings_copy_one_childs_settings_to_the_others_of_its_type() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    harness.state_mut().locked = false;
+    // The test layout's list: a Text Display and a Boolean Box; add a
+    // second Text Display, and set the first one up.
+    {
+        let app = harness.state_mut();
+        let list = &mut app.layout.tabs[0].grid_layout.layouts[0];
+        let mut second = list.children[0].clone();
+        second.title = "second".into();
+        second
+            .properties
+            .insert("topic".into(), json!("/Test/number"));
+        list.children.push(second);
+        list.children[0]
+            .properties
+            .insert("decimal_places".into(), json!(3));
+        let original = Box::new(list.clone());
+        app.editing = Some(Editing::List {
+            tab: 0,
+            index: 0,
+            original,
+            child: None,
+            child_only: false,
+        });
+    }
+    settle(&mut harness);
+    // The first child's button (the Boolean Box's is greyed: no other).
+    harness
+        .get_all_by_label("Copy to same type")
+        .next()
+        .unwrap()
+        .click();
+    settle(&mut harness);
+    let list = &harness.state().layout.tabs[0].grid_layout.layouts[0];
+    let second = list.children.last().unwrap();
+    assert_eq!(second.properties["decimal_places"], 3);
+    assert_eq!(second.topic(), Some("/Test/number"), "still its own topic");
+    assert_eq!(second.title, "second");
+    // Cancel (Esc) puts it back, as for any change made in the dialog.
+    harness.key_press(Key::Escape);
+    settle(&mut harness);
+    let list = &harness.state().layout.tabs[0].grid_layout.layouts[0];
+    assert!(
+        !list
+            .children
+            .last()
+            .unwrap()
+            .properties
+            .contains_key("decimal_places"),
+        "Cancel undoes it"
+    );
+}
+
+#[test]
+fn right_clicking_a_list_child_offers_its_settings_and_the_lists() {
+    let robot = Robot::start();
+    let mut harness = writing_harness(&robot);
+    harness.state_mut().locked = false;
+    settle(&mut harness);
+    // On the child's label, its handle while unlocked (its body is the
+    // toggle's own input).
+    let at = child_label(&harness, 0, 0).center();
+    click_at(
+        &mut harness,
+        at,
+        egui::PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    harness.get_by_label("Edit…").click();
+    settle(&mut harness);
+    assert!(
+        matches!(
+            harness.state().editing,
+            Some(Editing::List {
+                child: Some((0, _)),
+                child_only: true,
+                ..
+            })
+        ),
+        "the child's settings"
+    );
+    harness.key_press(Key::Escape);
+    settle(&mut harness);
+    // And the list's settings from the same menu.
+    click_at(
+        &mut harness,
+        at,
+        egui::PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    harness.get_by_label("Edit list…").click();
+    settle(&mut harness);
+    assert!(
+        matches!(
+            harness.state().editing,
+            Some(Editing::List { child: None, .. })
+        ),
+        "the list's settings"
+    );
+}
