@@ -376,8 +376,9 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      `font_color`, `font_bold`, ...; `font_size` exists), with a layout-wide default style later.
    - Copy settings to the rest of a list (**done**, `list_layout::copy_settings`): in the list settings,
      set up one child as wanted, then its "Copy to same type" gives the others of the same widget type
-     its display settings (every setting it has, Elastic's too such as a Boolean Box's colors, and the
-     period; its type's own keys it doesn't set are removed), so they match.
+     its display settings so they match it exactly: every display setting either has (Elastic's too,
+     such as a Boolean Box's colors, and the period) set to its value, or removed where it has none, so
+     copying from a child on the defaults puts the others back on the defaults.
      Never what a child shows (topic, `struct_meta`, `data_type`, `*_topic` settings, graph lines,
      field layers and attachments, enum names), its title, or whether it's hidden. Picking which
      children could come later.

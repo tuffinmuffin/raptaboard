@@ -674,9 +674,10 @@ fn copied(key: &str) -> bool {
 }
 
 /// Give every other child of `list` of the same widget type as child
-/// `from` its display settings: every setting it has (Elastic's too, such
-/// as a Boolean Box's colors) and its update period, and its type's own
-/// setting keys removed where it has none, so they match. Never what a child shows (its topic, `data_type`, struct field,
+/// `from` its display settings, so they match it: every display setting
+/// either has (Elastic's too, such as a Boolean Box's colors, and the
+/// update period) set to the source's value, or removed where the source
+/// has none (it uses the default). Never what a child shows (its topic, `data_type`, struct field,
 /// or settings naming other topics, graph lines, field layers, enum names),
 /// its title, or whether it's hidden. Returns how many children changed.
 ///
@@ -701,29 +702,24 @@ pub fn copy_settings(list: &mut LayoutContainer, from: usize) -> usize {
     let Some(source) = list.children.get(from).cloned() else {
         return 0;
     };
-    let Some(ty) = crate::widgets::find(&source.widget_type) else {
+    if crate::widgets::find(&source.widget_type).is_none() {
         return 0;
-    };
-    // Every display setting the source has (Elastic's too, such as a
-    // Boolean Box's colors, which aren't among its type's own keys since
-    // Elastic writes them in every one), and its type's own keys, so one
-    // the source doesn't set is taken off the others.
-    let mut keys: Vec<String> = source
-        .properties
-        .keys()
-        .filter(|k| copied(k))
-        .cloned()
-        .collect();
-    for key in ty.setting_keys().iter().chain(&[props::PERIOD]) {
-        if copied(key) && !keys.iter().any(|k| k == key) {
-            keys.push((*key).to_owned());
-        }
     }
     let mut changed = 0;
     for (i, child) in list.children.iter_mut().enumerate() {
         if i == from || child.widget_type != source.widget_type {
             continue;
         }
+        // Every display setting either has (Elastic's too, such as a
+        // Boolean Box's colors): the source's value, or taken off where the
+        // source has none, so the child ends up the same as the source.
+        let keys: Vec<String> = source
+            .properties
+            .keys()
+            .chain(child.properties.keys())
+            .filter(|k| copied(k))
+            .cloned()
+            .collect();
         let before = child.properties.clone();
         for key in &keys {
             set_property(
@@ -976,6 +972,11 @@ mod tests {
         assert_eq!(copy_settings(&mut boxes, 0), 1);
         assert_eq!(boxes.children[1].properties["true_color"], 4294967295u32);
         assert_eq!(boxes.children[1].properties["topic"], "/y");
+        // From a child with no color of its own (the default): the others
+        // go back to the default too.
+        boxes.children[0].properties.remove("true_color");
+        assert_eq!(copy_settings(&mut boxes, 0), 1);
+        assert!(!boxes.children[1].properties.contains_key("true_color"));
         // A setting the source doesn't have is taken off the others.
         l.children[0].properties.remove("font_size");
         copy_settings(&mut l, 0);
