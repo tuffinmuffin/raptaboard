@@ -25,6 +25,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      # The Microsoft Store build (no fan clips) builds and keeps its sounds.
+      - run: cargo clippy -p raptaboard --no-default-features --all-targets -- -D warnings
+      - run: "cargo test -p raptaboard --no-default-features --lib -- sound:: credits::"
 
   test:
     strategy:

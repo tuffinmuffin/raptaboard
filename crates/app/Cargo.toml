@@ -26,6 +26,13 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 # SVG images (built-in icons and imported .svg files); no text, so no fonts.
 resvg = { version = "0.49.0", default-features = false }
 
+[features]
+default = ["fan-clips"]
+# The built-in clips that aren't ours to give away (the IT Crowd's "disabled"
+# and "fire", media/audio/README.md): in the GitHub builds, left out of the
+# Microsoft Store build, where generated tones stand in for them.
+fan-clips = []
+
 [lints]
 workspace = true
 

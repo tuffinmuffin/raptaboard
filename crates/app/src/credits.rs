@@ -160,6 +160,27 @@ pub const MEDIA: &[MediaCredit] = &[
     },
 ];
 
+/// The entries of [`MEDIA`] for what this build has: all of them, except
+/// without the `fan-clips` feature (the Microsoft Store build), which
+/// leaves out the clips that aren't ours.
+///
+/// ```
+/// let media = raptaboard::credits::media();
+/// assert!(media.iter().any(|m| m.files.contains(&"danger.mp3")));
+/// ```
+pub fn media() -> Vec<&'static MediaCredit> {
+    MEDIA
+        .iter()
+        .filter(|m| cfg!(feature = "fan-clips") || !is_fan_clip(m))
+        .collect()
+}
+
+/// Whether `m` is one of the fan clips (the IT Crowd's): sounds whose
+/// license is "not ours".
+fn is_fan_clip(m: &MediaCredit) -> bool {
+    m.kind == "Sound" && m.license == "not ours"
+}
+
 /// WPILib's license, which the built-in field comes under.
 pub const WPILIB_LICENSE: &str = include_str!("../../../fields/LICENSE-WPILib.md");
 
@@ -263,6 +284,13 @@ mod tests {
                  run python3 scripts/crate_licenses.py"
             );
         }
+    }
+
+    #[test]
+    fn a_build_lists_the_fan_clips_only_if_it_has_them() {
+        let listed = media().iter().any(|m| m.files.contains(&"disabled1.mp3"));
+        assert_eq!(listed, cfg!(feature = "fan-clips"));
+        assert_eq!(MEDIA.iter().filter(|m| is_fan_clip(m)).count(), 2);
     }
 
     #[test]
