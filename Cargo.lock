@@ -3289,7 +3289,7 @@ checksum = "ca45419789ae5a7899559e9512e58ca889e41f04f1f2445e9f4b290ceccd1d08"
 
 [[package]]
 name = "raptaboard"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "clap",
@@ -3313,7 +3313,7 @@ dependencies = [
 
 [[package]]
 name = "raptaboard-layout"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -3322,7 +3322,7 @@ dependencies = [
 
 [[package]]
 name = "raptaboard-plugin-host"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "glob",
  "serde",
