@@ -8,10 +8,13 @@
 //! wants it for; a series no graph wants any more is forgotten.
 //!
 //! Each series also keeps the lowest and highest values it has had since
-//! it was first recorded or last [reset](Traces::reset_range), for
-//! autoscaled bars and gauges. That range outlives the points: it stays
-//! while the widget's tab is closed (nothing is recorded then), and is
-//! never saved, so each run starts fresh.
+//! it was first recorded or last [reset](Traces::reset), for autoscaled
+//! bars and gauges, and its lowest, highest and average since the last
+//! reset or reconnect ([`Traces::since_reset`]), for number widgets'
+//! min/max/average. Both outlive the points: they stay while the widget's
+//! tab is closed (nothing is recorded then), and are never saved, so each
+//! run starts fresh. [`Traces::window`] gives the same over the last few
+//! seconds, from the points kept.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -45,6 +48,69 @@ pub struct Traces {
     series: HashMap<SeriesKey, Trace>,
     /// (lowest, highest) since first recorded or reset, by series.
     ranges: HashMap<SeriesKey, (f64, f64)>,
+    /// Lowest, highest and average since the last reset or reconnect.
+    since: HashMap<SeriesKey, Stats>,
+    /// Whether the server was connected at the last [`Traces::connected`].
+    was_connected: bool,
+}
+
+/// The lowest, highest and average of a run of values, each value counting
+/// once however long it lasted.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Stats {
+    /// The lowest value.
+    pub min: f64,
+    /// The highest value.
+    pub max: f64,
+    /// The sum of the values, for the average.
+    sum: f64,
+    /// How many values.
+    pub count: usize,
+}
+
+impl Stats {
+    /// The statistics of one value.
+    fn of(value: f64) -> Stats {
+        Stats {
+            min: value,
+            max: value,
+            sum: value,
+            count: 1,
+        }
+    }
+
+    /// Count one more value.
+    fn add(&mut self, value: f64) {
+        self.min = self.min.min(value);
+        self.max = self.max.max(value);
+        self.sum += value;
+        self.count += 1;
+    }
+
+    /// The statistics of `values`, if there are any (not-a-number ones
+    /// skipped).
+    ///
+    /// ```
+    /// use raptaboard::traces::Stats;
+    /// let s = Stats::from_values([1.0, 4.0, 2.5, 4.5]).unwrap();
+    /// assert_eq!((s.min, s.max, s.mean(), s.count), (1.0, 4.5, 3.0, 4));
+    /// assert!(Stats::from_values([]).is_none());
+    /// ```
+    pub fn from_values(values: impl IntoIterator<Item = f64>) -> Option<Stats> {
+        let mut out: Option<Stats> = None;
+        for v in values.into_iter().filter(|v| v.is_finite()) {
+            match &mut out {
+                Some(s) => s.add(v),
+                None => out = Some(Stats::of(v)),
+            }
+        }
+        out
+    }
+
+    /// The average (mean) of the values.
+    pub fn mean(&self) -> f64 {
+        self.sum / self.count as f64
+    }
 }
 
 impl SeriesKey {
@@ -110,7 +176,74 @@ impl Traces {
             let range = self.ranges.entry(key.clone()).or_insert((value, value));
             range.0 = range.0.min(value);
             range.1 = range.1.max(value);
+            match self.since.get_mut(key) {
+                Some(stats) => stats.add(value),
+                None => {
+                    self.since.insert(key.clone(), Stats::of(value));
+                }
+            }
         }
+    }
+
+    /// The lowest, highest and average of every value recorded for `key`
+    /// since it was first recorded, last [reset](Self::reset), or the
+    /// server reconnected ([`connected`](Self::connected)).
+    ///
+    /// ```
+    /// use raptaboard::traces::{SeriesKey, Traces};
+    /// let key = SeriesKey { topic: "/Shooter/rpm".into(), field: None };
+    /// let mut traces = Traces::default();
+    /// traces.want(&key, 0.0);
+    /// for (t, v) in [(1, 3000.0), (2, 3400.0), (3, 3200.0)] {
+    ///     traces.record(&key, t, v);
+    /// }
+    /// let stats = traces.since_reset(&key).unwrap();
+    /// assert_eq!((stats.min, stats.max, stats.mean()), (3000.0, 3400.0, 3200.0));
+    /// ```
+    pub fn since_reset(&self, key: &SeriesKey) -> Option<Stats> {
+        self.since.get(key).copied()
+    }
+
+    /// The lowest, highest and average of `key`'s values over the last
+    /// `seconds` before `now_us`: those recorded in that time, and the one
+    /// before it (the value when the time began). Only as far back as the
+    /// series has been kept ([`want`](Self::want) it for `seconds`).
+    ///
+    /// ```
+    /// use raptaboard::traces::{SeriesKey, Traces};
+    /// let key = SeriesKey { topic: "/Arm/angle".into(), field: None };
+    /// let mut traces = Traces::default();
+    /// traces.want(&key, 10.0);
+    /// for s in 0..20 {
+    ///     traces.record(&key, s * 1_000_000, s as f64);
+    /// }
+    /// // The last 2 s at 19 s: 17 (the value at 17 s), 18 and 19.
+    /// let stats = traces.window(&key, 19_000_000, 2.0).unwrap();
+    /// assert_eq!((stats.min, stats.max, stats.count), (17.0, 19.0, 3));
+    /// ```
+    pub fn window(&self, key: &SeriesKey, now_us: i64, seconds: f64) -> Option<Stats> {
+        let trace = self.series.get(key)?;
+        let oldest = now_us - (seconds * 1e6) as i64;
+        let first = trace.points.partition_point(|&(t, _)| t < oldest);
+        // The value when the window began, if it was set before it.
+        let starts_on_one = trace.points.get(first).is_some_and(|&(t, _)| t == oldest);
+        let from = if starts_on_one {
+            first
+        } else {
+            first.saturating_sub(1)
+        };
+        Stats::from_values(trace.points.range(from..).map(|&(_, v)| v))
+    }
+
+    /// Tell the traces whether the server is connected, once a frame: when
+    /// it connects again after being lost, every series' statistics since
+    /// reset start again (a restarted robot's values are new). Autoscaled
+    /// ranges are kept.
+    pub fn connected(&mut self, connected: bool) {
+        if connected && !self.was_connected {
+            self.since.clear();
+        }
+        self.was_connected = connected;
     }
 
     /// The (lowest, highest) values recorded for `key` since it was first
@@ -125,16 +258,17 @@ impl Traces {
     /// traces.record(&key, 2, -10.0);
     /// traces.record(&key, 3, 5.0);
     /// assert_eq!(traces.range(&key), Some((-10.0, 30.0)));
-    /// traces.reset_range(&key);
+    /// traces.reset(&key);
     /// assert_eq!(traces.range(&key), Some((5.0, 5.0)));
     /// ```
     pub fn range(&self, key: &SeriesKey) -> Option<(f64, f64)> {
         self.ranges.get(key).copied()
     }
 
-    /// Forget the range seen for `key`: it starts again from the newest
-    /// value recorded, if it's still being recorded, or from the next.
-    pub fn reset_range(&mut self, key: &SeriesKey) {
+    /// Forget the range and statistics seen for `key`: they start again
+    /// from the newest value recorded, if it's still being recorded, or
+    /// from the next.
+    pub fn reset(&mut self, key: &SeriesKey) {
         let newest = self
             .series
             .get(key)
@@ -144,9 +278,11 @@ impl Traces {
         match newest {
             Some(v) => {
                 self.ranges.insert(key.clone(), (v, v));
+                self.since.insert(key.clone(), Stats::of(v));
             }
             None => {
                 self.ranges.remove(key);
+                self.since.remove(key);
             }
         }
     }
@@ -251,5 +387,49 @@ mod tests {
         }
         assert_eq!(traces.points(&a).count(), MAX_POINTS);
         assert_eq!(traces.points(&a).next().unwrap().0, 10);
+    }
+
+    #[test]
+    fn statistics_since_reset_start_again_on_reconnect_but_ranges_stay() {
+        let mut traces = Traces::default();
+        let a = key("/a");
+        traces.want(&a, 0.0);
+        traces.connected(true);
+        traces.record(&a, 1, 2.0);
+        traces.record(&a, 2, 8.0);
+        // Lost: nothing changes yet.
+        traces.connected(false);
+        assert_eq!(traces.since_reset(&a).map(|s| s.max), Some(8.0));
+        // Back: the statistics start again, the autoscaled range doesn't.
+        traces.connected(true);
+        assert_eq!(traces.since_reset(&a), None);
+        assert_eq!(traces.range(&a), Some((2.0, 8.0)));
+        traces.record(&a, 3, 5.0);
+        let s = traces.since_reset(&a).unwrap();
+        assert_eq!((s.min, s.max, s.count), (5.0, 5.0, 1));
+        // Staying connected changes nothing.
+        traces.connected(true);
+        assert_eq!(traces.since_reset(&a).map(|s| s.count), Some(1));
+    }
+
+    #[test]
+    fn a_window_starts_with_the_value_held_into_it() {
+        let mut traces = Traces::default();
+        let a = key("/a");
+        traces.want(&a, 10.0);
+        traces.record(&a, 0, 100.0);
+        traces.record(&a, 5_000_000, 1.0);
+        // The last 2 s at 6 s: 1 (set at 5 s), and 100, the value when the
+        // window began (at 4 s).
+        let s = traces.window(&a, 6_000_000, 2.0).unwrap();
+        assert_eq!((s.min, s.max, s.count), (1.0, 100.0, 2));
+        // A window starting exactly on a point starts with it.
+        let s = traces.window(&a, 7_000_000, 2.0).unwrap();
+        assert_eq!((s.min, s.max, s.count), (1.0, 1.0, 1));
+        // Nothing new for a long time: the value held.
+        let s = traces.window(&a, 60_000_000, 2.0).unwrap();
+        assert_eq!((s.min, s.max), (1.0, 1.0));
+        // A series not recorded: nothing.
+        assert!(traces.window(&key("/b"), 6_000_000, 2.0).is_none());
     }
 }

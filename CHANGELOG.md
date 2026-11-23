@@ -7,6 +7,9 @@ What changes in each raptaboard release. Newest first.
 - **Autoscale** for Number Bar, Voltage View and Radial Gauge: the scale follows the lowest and
   highest values seen (short peaks too), optionally keeping the set range, with Reset scale in
   the right-click menu.
+- **Min, max and average** under the value on Text Display, Number Bar, Voltage View and
+  Radial Gauge: over the last few seconds or since a reset (the robot reconnecting, or Reset
+  min/max in the right-click menu), from every value received so short peaks count.
 - Touchscreens tested on Windows (a laptop), without issues.
 
 ## 0.1.0

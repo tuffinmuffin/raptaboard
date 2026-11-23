@@ -156,6 +156,11 @@ impl DashboardApp {
     pub(super) fn record_traces(&mut self, topics: &[Topic]) {
         // Every value received since last frame, for the traced topics.
         let arrived = self.nt.take_traced();
+        // Statistics since reset start again when the server comes back.
+        self.traces.connected(matches!(
+            self.nt.status(),
+            crate::nt::ConnectionStatus::Connected { .. }
+        ));
         let Some(tab) = self.layout.tabs.get(self.current_tab) else {
             return;
         };

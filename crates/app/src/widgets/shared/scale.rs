@@ -14,7 +14,7 @@ use raptaboard_layout::WidgetContainer;
 
 use super::props::{self, set_property};
 use crate::traces::SeriesKey;
-use crate::widgets::Live;
+use crate::widgets::{Live, WidgetType};
 
 /// The fill color when it doesn't change with the value, as ARGB.
 pub const FILL_COLOR: &str = "fill_color";
@@ -343,6 +343,70 @@ pub fn describe(
     );
     ui.interact(rect, ui.scope_id().with("scale"), egui::Sense::hover())
         .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Image, true, &text));
+}
+
+/// Show a bar or gauge (`ty`) on the grid: its card, then its body as
+/// [`show_body`] does.
+pub fn show(
+    ty: &dyn WidgetType,
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    widget: &WidgetContainer,
+    live: &Live<'_>,
+    defaults: (f64, f64),
+) {
+    let body = super::card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
+    show_in(
+        ty,
+        ui,
+        body,
+        body.shrink(super::card::BODY_MARGIN),
+        widget,
+        live,
+        defaults,
+    );
+}
+
+/// Show a bar or gauge's (`ty`'s) body in `rect` (a List Layout child's):
+/// autoscaled if it autoscales ([`with_autoscale`]), the min, max and
+/// average under it if it shows them ([`super::stats`]), and an accessible
+/// label with its scale ([`describe`]).
+pub fn show_body(
+    ty: &dyn WidgetType,
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    widget: &WidgetContainer,
+    live: &Live<'_>,
+    defaults: (f64, f64),
+) {
+    show_in(ty, ui, rect, rect, widget, live, defaults);
+}
+
+/// [`show_body`] drawing in `area`, clipped to `clip`.
+fn show_in(
+    ty: &dyn WidgetType,
+    ui: &mut egui::Ui,
+    clip: egui::Rect,
+    area: egui::Rect,
+    widget: &WidgetContainer,
+    live: &Live<'_>,
+    defaults: (f64, f64),
+) {
+    let scaled = with_autoscale(widget, live, defaults);
+    let shown = scaled.as_ref().unwrap_or(widget);
+    let (top, line) = super::stats::split(area, widget);
+    let clip = match line {
+        Some(line) => clip.with_max_y(line.min.y),
+        None => clip,
+    };
+    {
+        let painter = ui.painter().with_clip_rect(clip.intersect(ui.clip_rect()));
+        ty.draw_body(&painter, ui.visuals(), top, &shown.properties, live.value);
+    }
+    if let Some(line) = line {
+        super::stats::draw(ui, line, widget, live);
+    }
+    describe(ui, area, shown, defaults);
 }
 
 /// The settings dialog rows for autoscale: on or off, and whether the set

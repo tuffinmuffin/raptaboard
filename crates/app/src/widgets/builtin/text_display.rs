@@ -3,7 +3,8 @@
 //!
 //! Settings: the number and enum settings in [`format`](mod@crate::widgets::shared::format),
 //! `font_size` or `fit_text` (as large as fits the card; Elastic's Large
-//! Text Display opens as a Text Display with this on), color by value, and `editable`
+//! Text Display opens as a Text Display with this on), color by value, a
+//! number's min, max and average under it ([`stats`]), and `editable`
 //! (raptaboard's, off unless set). An editable
 //! Text Display has a blue dot in its corner; a click on it (locked, the
 //! whole card; unlocked, the body, since the title bar moves it) opens a
@@ -17,8 +18,9 @@ use nt4::Value;
 use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
 
-use crate::widgets::shared::{card, entry, format, props, value_colors};
-use crate::widgets::{Live, ValueInfo, WidgetType};
+use crate::traces::SeriesKey;
+use crate::widgets::shared::{card, entry, format, props, stats, value_colors};
+use crate::widgets::{Live, Reset, ValueInfo, WidgetType};
 
 /// Values can be typed in (raptaboard's; off unless set).
 pub const EDITABLE: &str = props::EDITABLE;
@@ -84,6 +86,7 @@ fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<
         .is_none_or(|t| matches!(t, "double" | "float" | "int"))
     {
         value_colors::rows(ui, p);
+        stats::rows(ui, p);
     }
     props::editable_row(
         ui,
@@ -96,8 +99,10 @@ fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<
 }
 
 /// A Text Display's setting keys.
-pub const KEYS: [&str; 13] = [
+pub const KEYS: [&str; 15] = [
     EDITABLE,
+    stats::SHOW_STATS,
+    stats::STATS_WINDOW,
     FIT_TEXT,
     format::DECIMAL_PLACES,
     format::INT_FORMAT,
@@ -208,6 +213,11 @@ fn show_text(
     let editable = can_edit(widget, live.value);
     let id = ui.scope_id().with("text_entry");
     let editing = editable && entry::is_open(ui, id);
+    // The min, max and average along the bottom, if shown.
+    let (body, line) = stats::split(body, widget);
+    if let Some(line) = line {
+        stats::draw(ui, line, widget, live);
+    }
     {
         let painter = ui.painter().with_clip_rect(body.intersect(ui.clip_rect()));
         if !editing {
@@ -302,6 +312,14 @@ impl WidgetType for TextDisplay {
     ) -> Option<Value> {
         let area = live.place.input.unwrap_or(rect);
         show_text(ui, area, rect, rect, widget, live)
+    }
+
+    fn traced(&self, widget: &WidgetContainer) -> Vec<(SeriesKey, f64)> {
+        stats::traced(widget)
+    }
+
+    fn resettable(&self, widget: &WidgetContainer) -> Option<Reset> {
+        stats::reset(widget)
     }
 
     fn draw_body(
