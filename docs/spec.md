@@ -835,7 +835,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    identity `Tuffinmuffin.Raptaboard` (`packaging/windows/msix/store.json`), built without the
    `fan-clips` feature (the IT Crowd clips, generated tones in their place), uploaded by hand for
    now (later: `msstore publish` from the Release workflow with an Entra app's secrets), and a
-   one-time download of the fan clips planned for the Store build; otherwise not code-signed yet (the README and release notes say how to get
+   one-time download of the fan clips planned for the Store build (which must update `PRIVACY.md`, the
+   Store listing's privacy policy: no personal data collected); otherwise not code-signed yet (the README and release notes say how to get
    past the first-start warning); an app icon of Raptacon's raptor mark (its brand kit) in a rust-red gear (`media/icon/`, 2026-11-22); the crates' license texts
    from `licenses/THIRD_PARTY_LICENSES.txt` (the About window's list); the changelog's first entry
    is a short summary of 0.1.0, not the history of the phase. After it: the window border by robot
