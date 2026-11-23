@@ -7,5 +7,20 @@
 # Local raptaboard settings (see crates/app/src/settings.rs)
 .raptaboard/
 
-# Release packages (scripts/package.py)
+# Release packages (scripts/package.py): GitHub's and the Microsoft Store's
 /dist
+/dist-store
+
+# Python's caches (scripts/)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Coverage reports (cargo llvm-cov)
+lcov.info
+*.profraw
+
+# Editors and systems
+*.swp
+*~
+Thumbs.db
