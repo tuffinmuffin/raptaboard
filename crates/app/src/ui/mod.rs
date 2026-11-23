@@ -6,6 +6,7 @@ mod drag;
 mod grid_view;
 mod live;
 mod panels;
+pub mod robot_state_view;
 mod settings_window;
 mod state;
 mod style;
@@ -120,6 +121,9 @@ pub struct DashboardApp {
     taps: taps::TapHold,
     /// The ⚙ Settings and About windows.
     gear: settings_window::GearWindows,
+    /// The robot's state for the whole window: the border and the e-stop
+    /// pop-up.
+    robot: robot_state_view::RobotView,
 }
 
 impl DashboardApp {
@@ -169,6 +173,7 @@ impl DashboardApp {
             sends: Sends::default(),
             taps: taps::TapHold::default(),
             gear: Default::default(),
+            robot: robot_state_view::RobotView::default(),
         };
         if let Some(path) = options.layout_path {
             let path = PathBuf::from(path);
@@ -613,6 +618,9 @@ impl DashboardApp {
             self.file.title = title;
         }
         self.record_alert_history(&values);
+        // The robot's state for the border and the e-stop pop-up.
+        self.watch_robot(&topics, &values, Instant::now());
+        self.estop_dialog(&ctx);
         // The robot state sounds, played from the NetworkTables thread.
         self.update_state_sounds(&ctx);
         // A hidden tree costs nothing: it isn't built and asks for no values.
@@ -660,7 +668,9 @@ impl DashboardApp {
             alert_history_panel::ALERT_HISTORY_PERIOD_S,
             self.alert_history_topics(&topics),
         ));
+        wanted.push((robot_state_view::STATE_PERIOD_S, self.robot_topics(&topics)));
         self.nt.watch_widget_values(wanted);
+        self.draw_robot_border(ui.ctx(), Instant::now());
 
         // The client runs on its own thread, so egui doesn't know when values
         // change. Redraw when the next widget is due for a new value, and at

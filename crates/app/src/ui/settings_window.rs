@@ -1,4 +1,5 @@
-//! The ⚙ Settings window (robot connection, sound) and the "About and
+//! The ⚙ Settings window (robot connection, sound, the robot state's
+//! border and e-stop pop-up) and the "About and
 //! licenses" window it opens: raptaboard's version and license, where the
 //! built-in sounds, images and fields came from, and every Rust crate it's
 //! built from with its license (from [`crate::credits`]).
@@ -39,6 +40,10 @@ pub(super) struct GearWindows {
     pub crate_filter: String,
 }
 
+/// How far down the Settings window opens, in points: below the settings
+/// bar and the tab bar.
+const SETTINGS_TOP: f32 = 96.0;
+
 /// The full license texts, a line at a time, for drawing only the lines shown.
 static TEXT_LINES: LazyLock<Vec<&'static str>> =
     LazyLock::new(|| credits::THIRD_PARTY_LICENSES.lines().collect());
@@ -58,8 +63,13 @@ impl DashboardApp {
     /// The Settings and About windows, while open.
     pub(super) fn gear_windows(&mut self, ctx: &egui::Context) {
         let mut open = self.gear.settings;
+        // Top right, below the bars, so it doesn't cover the ⚙ that
+        // closes it or the bar's other buttons.
+        let corner = egui::pos2(ctx.content_rect().max.x - 16.0, SETTINGS_TOP);
         egui::Window::new("Settings")
             .id(egui::Id::unique("settings_window"))
+            .default_pos(corner)
+            .pivot(egui::Align2::RIGHT_TOP)
             .open(&mut open)
             .resizable(false)
             .collapsible(false)
@@ -156,6 +166,18 @@ impl DashboardApp {
             .on_hover_text(
                 "A failed send's tone and the Alerts widget's sounds. The bell in the bar does the same.",
             );
+        ui.separator();
+        ui.strong("Robot state");
+        // Kept in the layout file, so saved with it, but a setting, not an
+        // edit: undo and redo leave it alone.
+        let kept = super::robot_state_view::Look::of(&self.layout);
+        let mut look = kept.clone();
+        super::robot_state_view::settings_rows(ui, &mut look);
+        if look != kept {
+            self.history
+                .set_everywhere(&mut self.layout, |l| look.write_to(l));
+            self.robot.look = look;
+        }
         ui.separator();
         if ui.button("About and licenses…").clicked() {
             self.gear.about = true;

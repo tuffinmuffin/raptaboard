@@ -17,6 +17,7 @@ mod grid_scroll;
 mod gyro;
 mod mechanism;
 mod pose3d;
+mod robot_state_view;
 mod sliders;
 mod stats;
 mod struct_view;

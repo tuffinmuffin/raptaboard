@@ -40,7 +40,7 @@ fn drawn(tab: &raptaboard_layout::Tab) -> impl Iterator<Item = &WidgetContainer>
 /// The widgets of `tab` in layout order: on the grid top to bottom, then
 /// left to right, with each List Layout's children in its place, in list
 /// order.
-fn in_order(tab: &raptaboard_layout::Tab) -> Vec<&WidgetContainer> {
+pub(super) fn in_order(tab: &raptaboard_layout::Tab) -> Vec<&WidgetContainer> {
     let grid = &tab.grid_layout;
     let mut placed: Vec<((f64, f64), Vec<&WidgetContainer>)> = grid
         .containers

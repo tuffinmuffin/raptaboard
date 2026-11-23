@@ -82,6 +82,35 @@ impl History {
         true
     }
 
+    /// Make `change` to `layout` as a setting, not an edit: it's made to
+    /// every version kept too, so undo and redo never change it back (the
+    /// window border's look from ⚙ Settings, kept in the layout file).
+    ///
+    /// ```
+    /// use raptaboard::edit::History;
+    /// let mut layout = raptaboard_layout::ElasticLayout::default();
+    /// let mut history = History::new(&layout);
+    /// layout.tabs.pop();
+    /// history.record(&layout);
+    /// history.set_everywhere(&mut layout, |l| {
+    ///     l.extra.insert("look".into(), 1.into());
+    /// });
+    /// assert!(history.undo(&mut layout)); // the tab comes back...
+    /// assert_eq!(layout.tabs.len(), 2);
+    /// assert!(layout.extra.contains_key("look")); // ...the setting stays
+    /// ```
+    pub fn set_everywhere(
+        &mut self,
+        layout: &mut ElasticLayout,
+        change: impl Fn(&mut ElasticLayout),
+    ) {
+        change(layout);
+        change(&mut self.last);
+        for version in self.undo.iter_mut().chain(self.redo.iter_mut()) {
+            change(version);
+        }
+    }
+
     /// Whether [`History::undo`] would do anything.
     pub fn can_undo(&self) -> bool {
         !self.undo.is_empty()
