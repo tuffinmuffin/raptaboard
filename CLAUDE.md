@@ -128,7 +128,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   Boolean Box (Elastic's Large Text Display opens as a Text Display with `fit_text` on: `widgets::upgrade`), Number Bar, Voltage View, Radial Gauge, Match Time, Battery (`builtin/battery.rs`), Single and
   Multi Color View, Graph (`egui_plot`; widgets needing a full `Ui` override `WidgetType::show`; records
   `history_kept` seconds, and paused, the wheel or a drag moves back through them, `graph::Window`, with lines
-  thinned per pixel column, `graph::thin`),
+  thinned per pixel column, `graph::thin`; `show_stats` gives each line's min, max and average over the time shown or
+  between the cursors, `graph::stats_between`),
   Toggle Switch and Toggle Button (`builtin/toggle.rs`), Number Slider (`builtin/number_slider.rs`), Dropdown and Split Button Chooser (`builtin/chooser.rs`: bound to a SendableChooser table, `table_types`, `sends_to` and `Frame::others`), Enum Dropdown and Enum Toggle (`builtin/enums.rs`: string or int topics, names from a list, a string[] topic or a chooser, guessed by `WidgetType::chosen`), Field (`builtin/field/`: a Pose2d/Pose3d (or array) struct topic or a `Field2d` table on a field from `fields.rs`,
   WPILib `fields` JSONs from the repo's `fields/` folder (2026 built in) or one picked with a file dialog;
   poses read by `types/field.rs` in the 2027 centered frame, `origin` for the old one; `layers.rs` the

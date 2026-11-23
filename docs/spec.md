@@ -214,6 +214,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `show_legend` | `builtin/graph.rs` | Graph | show the legend | when there's more than one line |
 | `show_pause` | `builtin/graph.rs` | Graph | show the pause button (and measuring) | true |
 | `show_hover` | `builtin/graph.rs` | Graph | show values where the pointer is | true |
+| `show_stats` | `builtin/graph.rs` (key from `shared/stats.rs`) | Graph | each line's min, max and average, bottom left in its color: over the time shown, or between the A and B cursors once both are placed; from every value recorded, not the thinned lines | false |
 | `history_kept` | `builtin/graph.rs` | Graph | seconds of values recorded, to look back through while paused (1–600; never less than `time_displayed`) | 60 |
 | `label_inside` | `list_layout.rs` | List Layout | `true`: each label drawn over its value (on a see-through backing) instead of beside it | off |
 | `dividers` | `list_layout.rs` | List Layout | `true`: a thin line under the list's title and below each child | off |
@@ -443,12 +444,11 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      doesn't scroll. Lines are thinned to each pixel column's lowest and highest before drawing
      (`graph::thin`); the cursors and hover read every value. Still to do: the same for X/Y and
      polar graphs, when they exist.
-   - Graph sample statistics: an option (off by default) to show each line's min, max and average
-     over the samples in view: the time window shown, or between the A and B cursors when both
-     are placed (so a measurement gives them for just that stretch), and the frozen window while
-     paused. Shown with the legend or the readout, in each line's color; reduced points for
-     drawing (see history review) must not change them, so they're worked out from the recorded
-     samples.
+   - Graph sample statistics (**done**, after 0.1.0): `show_stats` on a Graph shows each line's min,
+     max and average bottom left, in its color, above the cursor readout: over the time shown (live,
+     or the paused window after looking back), or between the A and B cursors once both are placed
+     ("A→B"). `graph::stats_between` works them out from the recorded points (the full ones while
+     paused), not the thinned ones drawn.
    - Min, max and average on number widgets (**done**, after 0.1.0; Text Display, Number Bar,
      Voltage View, Radial Gauge): `show_stats` and `stats_window` in `shared/stats.rs`, a line under
      the value. From every value received (`traced`), not the widget's sampled value: `Traces`

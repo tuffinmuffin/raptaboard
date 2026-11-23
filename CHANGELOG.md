@@ -13,6 +13,8 @@ What changes in each raptaboard release. Newest first.
 - **Graph history:** graphs keep the last minute (the new "History kept" setting, up to 10
   minutes); paused, drag or use the mouse wheel to look back through it, Ctrl or ⌘ with the
   wheel to zoom, and measure anywhere in it with the cursors.
+- **Graph statistics:** each line's min, max and average over the time shown, or between the
+  measuring cursors.
 - Touchscreens tested on Windows (a laptop), without issues.
 
 ## 0.1.0
