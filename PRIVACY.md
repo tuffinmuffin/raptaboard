@@ -4,7 +4,7 @@ Last updated: November 23, 2026
 
 raptaboard is a driver dashboard for FIRST Robotics Competition robots, made by Team 3200
 (Raptacon). This policy covers the raptaboard app, however you install it: from the Microsoft
-Store or from GitHub.
+Store or from GitHub. raptaboard shows it too, in ⚙ Settings → About and licenses → Privacy.
 
 ## We collect no personal data
 
@@ -19,7 +19,17 @@ finds the robot from the team number and address you set; this may include askin
 Station on the same computer for the robot's address, or looking for the robot on your local
 network.
 
-raptaboard doesn't connect to the internet on its own. Links in its About window open in your web
+raptaboard also downloads **content packs** (extra sounds, and later widget plugins) from the
+internet, but only when you ask: when you open the Content packs window, press "Check for
+packs", or choose packs to download. On its first start, and the first start after an update,
+it reads the list of packs from raptaboard-content on GitHub once, to offer them; nothing is
+downloaded unless you choose it.
+These requests go to GitHub (or to another source you add yourself). Like any download, the
+server sees your IP address and raptaboard's version; nothing else is sent, and we don't receive
+these requests. GitHub handles them under the
+[GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
+
+Otherwise raptaboard doesn't connect to the internet. Links in its About window open in your web
 browser only when you click them.
 
 ## What raptaboard stores on your computer
@@ -29,7 +39,9 @@ raptaboard keeps these files on your computer, and never sends them anywhere:
 - its settings, such as your team number, robot address, window size and the last layout you
   opened, in a `.raptaboard` folder in your home folder;
 - the dashboard layouts you save, wherever you choose to save them;
-- images you add to widgets, copied into the `.raptaboard` folder.
+- images you add to widgets, copied into the `.raptaboard` folder;
+- the content packs you download, in `.raptaboard/content`, and the content sources you add, in
+  its settings.
 
 You can delete any of these at any time. Uninstalling raptaboard doesn't remove them; delete the
 `.raptaboard` folder in your home folder to remove its settings.

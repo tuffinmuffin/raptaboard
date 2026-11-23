@@ -293,6 +293,73 @@ world in `wit/dashboard.wit`).
 Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`, `setpoint_rad`,
 `extension_m`, `at_goal`. The planned Rust source is in the Claude Doc.
 
+## Content packs
+
+Decided with the user 2026-11-23. Extra content (sound packs now, widget plugins and their data
+later, such as the Doom field) comes from **content sources**, downloaded only when the user
+chooses, never needed at an event: packs are installed beforehand and used from disk.
+
+- **The official source** is the GitHub repo `tuffinmuffin/raptaboard-content` (not Google Drive:
+  fixed URLs, versions and review). Each pack is a folder of files and a `pack.toml` (id, name,
+  version, kind `sounds` or `plugin`, `min_app`, summary, one-line license, full credits text,
+  `suggested`, and its sounds). A `vN` tag there publishes a GitHub release with every file and
+  `catalog.json` (each pack with its files' URLs, sizes and SHA-256), signed with Ed25519
+  (`catalog.json.sig`, the `CONTENT_SIGNING_KEY` secret; the public key is `catalog-key.pub`
+  there and `content::OFFICIAL_KEYS` here). raptaboard reads
+  `releases/latest/download/catalog.json` and refuses it unless the signature checks. If the
+  latest release has none (a content release that failed or is still publishing), it lists the
+  releases (GitHub's API) and uses the newest with a catalog, saying so in the Content window;
+  if none works, it says why. Offline, it stops at the first error. Packs
+  that aren't fully open source (the IT Crowd clips) live there too, saying so in their license.
+- **What a pack holds:** sections, mixed as needed, each naming its files: `[[sound]]` (name, file),
+  `[[image]]`, `[[field]]`, `[[plugin]]` and `[[layout]]` (file, optional name), plus `files` for
+  data the sections read (a plugin's WADs). Only sounds are used so far; images (Boolean Box),
+  fields (WPILib field JSONs), plugins (WASM widgets) and layouts (to start a new layout from, or
+  add a tab from; later perhaps tabs a plugin provides) come later, and a `[[data]]` section
+  naming data files for plugins can join with the plugin host. The
+  single `kind` older catalogs had is optional and only a label.
+- **Sound layering** (decided with the user 2026-11-23): a pack's sound may add a new name or use a
+  built-in name to replace it. Each install records `installed_at`; where packs share a name, the
+  newest install wins (`sound::SoundLayers`). A sound setting is `fire 1` (newest pack's, else the
+  built-in one), `pack:<id>/fire 1` (that pack's, else built in) or `builtin:fire 1` (ignore packs);
+  anything not found falls back to the built-in sound of that name, or none (`sound::SoundRef`).
+  Today's settings are plain names. Later, the sound pickers list each name once, then each
+  pack's ("fire 1 (IT Crowd clips)") and the built-in one ("fire 1 (built in)"), and new names
+  from packs.
+- **Other sources** are any catalog URL the user adds in the Content window (`content_sources` in
+  the settings file). They aren't signed; the window says to add only sources you trust. Every
+  file from any source is checked against its catalog's size and checksum.
+- **Installed** in `~/.raptaboard/content/<id>/` with `pack.json` (the catalog entry and its
+  source); an install goes into `<id>.partial` and moves into place only when every file checks.
+  A sounds pack's sound with a built-in name (`fire 1`) plays in place of the built-in tone
+  (`sound::SoundFiles`). `content.rs` (catalog, signature, store, the download thread),
+  `ui/content_window.rs` (the window and the first-run list). Downloads use `ureq` with rustls
+  and the computer's own certificates (school and team networks that add theirs work), with a
+  5 s connect timeout so a network without internet fails fast and quietly.
+- **First run and upgrades:** `content/state.json` keeps `last_version` (the raptaboard that last
+  started), `offer_pending` and `shown` (the packs offered). The first start of a new version (or
+  the very first; a pre-0.3.0 file counts as one) runs `upgrade.rs`'s one-time tasks, which set
+  `offer_pending`: the official catalog is read and the packs not installed are offered, each with
+  its license and credits, suggested ones not offered before ticked; nothing downloads without
+  "Download". After Download the window stays, showing each pack downloading, then installed (with
+  its sounds) or why not, until Done. Answering (Download or Not now) clears `offer_pending`; offline, it stays, and the
+  list is offered at the next start. The same version again reads nothing at start. Not shown
+  while the robot is enabled. `~/.raptaboard` outlives uninstalling, so a reinstall of the same
+  version doesn't ask again.
+- **Content window** (⚙ Settings → Content packs…): each pack with Install, Update or Remove and
+  its credits, and a line saying what the last install or remove did (`content::Outcome`); packs needing a newer raptaboard say so; sources listed, added and removed.
+- **Next:** a background check for updates (every hour by default, configurable; only while the
+  robot is disabled or not connected; quiet on failure) with a one-line notice in the bar that's
+  easy to dismiss (remembering the versions dismissed). Then plugin packs, starting with the
+  Doom field. A repository manager (asked for by the user 2026-11-23; a later improvement, around 0.5 after
+  plugins, since teams aren't expected to use other sources yet): sources saved in
+  `~/.raptaboard/content/sources.json` rather than `settings.toml`, each with a name, on or off,
+  an optional signing key (so a team's own source can be signed), and when it was last checked
+  and how; a Repositories section in the Content window to add, rename, turn off, check and
+  remove them, with each one's packs and errors (the official source first, never removed).
+  After that, managing packs from the command line (asked for by the user
+  2026-11-23): list, install, update and remove without opening the window.
+
 ## Milestones
 
 1. Spike: egui window, NT4.1 client connected to the robot-2027 sim (via the `nt4` crate), NT
@@ -520,16 +587,16 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      - Plays while the widget is anywhere in the open layout, not only on the shown tab, so switching
        tabs never silences it (`WidgetType::state_sounds`). With two FMSInfo widgets, only the first
        (tab order, then position) plays. Each sound row has ▶ to hear it.
-     - Built-in clips (`media/audio/`): "disabled 1" and "disabled 2" (the IT Crowd's "I'm
-       disabled"), "fire 1", "fire 2" (the IT Crowd's "Fire!", S1E2), "danger danger" (added 2026-11-22: xpoki's
+     - Built-in clips (`media/audio/`): "danger danger" (added 2026-11-22: xpoki's
        "danger_normal_lp.wav" from Freesound, CC BY 4.0, played twice) and "auto ghosts" (added
        2026-11-22: dal_kas's "MustphaMondeRemixes (3).aif" from Freesound, a remix of
        deleted_user_44129's "Ghosts In The Machine.wav", both CC BY 3.0) and "go go go" (added 2026-11-22: theuncertainman's "Go Go
        Go - (Version 2) Northern British Soldier" from Freesound, CC BY 4.0). Every clip's
        source and license is in `media/audio/README.md` and `credits.rs`. More clips later.
-       The clips that aren't ours (the IT Crowd's "disabled" and "fire") stay in the releases, 0.1.0 included (decided with the user 2026-11-22):
-       non-commercial, educational use by Team 3200 is low risk, and any clip is removed at once
-       if its owner asks. Revisit when teams outside Raptacon use raptaboard.
+       "disabled 1" and "2" (the IT Crowd's "I'm disabled") and "fire 1" and "2" (its "Fire!",
+       S1E2) aren't ours, so since 2026-11-23 they aren't built in: they're the `fan-clips` content
+       pack (see "Content packs"), suggested on the first run, and generated tones play under those
+       names until it's installed. They were built into 0.1.0 to 0.2.1 (the Store build left them out).
    - Later, after 0.1.0 (asked for by the user 2026-11-22), from the same robot state:
      - Window border by state (**done**, `ui/robot_state_view.rs`): a colored border around the
        whole window, so the state shows at a glance from any tab. Colors per state set in the
@@ -832,11 +899,10 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
    zip and an Inno Setup installer, macOS a universal `.app` in a zip, Linux a `.tar.gz` with
    `install.sh` into `~/.local`; Microsoft Store (2026-11-23): an MSIX the Store signs, free (an
    individual developer account is free since 2025, and the Store signs MSIX packages at no cost),
-   identity `Tuffinmuffin.Raptaboard` (`packaging/windows/msix/store.json`), built without the
-   `fan-clips` feature (the IT Crowd clips, generated tones in their place), uploaded by hand for
-   now (later: `msstore publish` from the Release workflow with an Entra app's secrets), and a
-   one-time download of the fan clips planned for the Store build (which must update `PRIVACY.md`, the
-   Store listing's privacy policy: no personal data collected); otherwise not code-signed yet (the README and release notes say how to get
+   identity `Tuffinmuffin.Raptaboard` (`packaging/windows/msix/store.json`), the same program as
+   the other Windows packages (since the fan clips became a content pack, 2026-11-23), uploaded by
+   hand for now (later: `msstore publish` from the Release workflow with an Entra app's secrets);
+   `PRIVACY.md` is the Store listing's privacy policy (no personal data collected); otherwise not code-signed yet (the README and release notes say how to get
    past the first-start warning); an app icon of Raptacon's raptor mark (its brand kit) in a rust-red gear (`media/icon/`, 2026-11-22); the crates' license texts
    from `licenses/THIRD_PARTY_LICENSES.txt` (the About window's list); the changelog's first entry
    is a short summary of 0.1.0, not the history of the phase. After it: the window border by robot

@@ -21,6 +21,8 @@ pub(super) enum AboutPage {
     Raptaboard,
     /// The built-in sounds, images and fields.
     Media,
+    /// The privacy policy.
+    Privacy,
     /// The Rust crates, with their licenses.
     Crates,
     /// The crates' full license texts.
@@ -179,9 +181,18 @@ impl DashboardApp {
             self.robot.look = look;
         }
         ui.separator();
-        if ui.button("About and licenses…").clicked() {
-            self.gear.about = true;
-        }
+        ui.horizontal(|ui| {
+            if ui
+                .button("Content packs…")
+                .on_hover_text("Download sound packs, such as the IT Crowd clips")
+                .clicked()
+            {
+                self.packs.open = true;
+            }
+            if ui.button("About and licenses…").clicked() {
+                self.gear.about = true;
+            }
+        });
     }
 
     fn about_contents(&mut self, ui: &mut egui::Ui) {
@@ -189,6 +200,7 @@ impl DashboardApp {
             for (page, label) in [
                 (AboutPage::Raptaboard, "raptaboard"),
                 (AboutPage::Media, "Sounds, images, fields"),
+                (AboutPage::Privacy, "Privacy"),
                 (AboutPage::Crates, "Rust crates"),
                 (AboutPage::Texts, "License texts"),
             ] {
@@ -199,6 +211,7 @@ impl DashboardApp {
         match self.gear.page {
             AboutPage::Raptaboard => about_raptaboard(ui),
             AboutPage::Media => about_media(ui),
+            AboutPage::Privacy => about_privacy(ui),
             AboutPage::Crates => about_crates(ui, &mut self.gear.crate_filter),
             AboutPage::Texts => about_texts(ui),
         }
@@ -221,9 +234,39 @@ fn about_raptaboard(ui: &mut egui::Ui) {
     });
 }
 
+fn about_privacy(ui: &mut egui::Ui) {
+    ui.horizontal(|ui| {
+        ui.label("Also online:");
+        ui.hyperlink(credits::PRIVACY_URL);
+    });
+    ui.separator();
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        for block in credits::policy_blocks(credits::PRIVACY) {
+            match block {
+                credits::PolicyBlock::Title(t) => {
+                    ui.heading(t);
+                }
+                credits::PolicyBlock::Heading(h) => {
+                    ui.add_space(6.0);
+                    ui.strong(h);
+                }
+                credits::PolicyBlock::Paragraph(p) => {
+                    ui.label(p);
+                }
+                credits::PolicyBlock::Item(i) => {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("•");
+                        ui.label(i);
+                    });
+                }
+            }
+        }
+    });
+}
+
 fn about_media(ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().show(ui, |ui| {
-        for m in credits::media() {
+        for m in credits::MEDIA {
             ui.group(|ui| {
                 ui.set_width(ui.available_width());
                 ui.strong(format!("{}: {}", m.kind, m.what));

@@ -1,10 +1,11 @@
 //! The tones raptaboard plays: when a widget's value can't be sent to the
 //! robot, and the ones an Alerts widget can play when a new error arrives
 //! ([`Tone`]): a few generated ones, and short sound clips built into the
-//! program from `media/audio/` (MP3, decoded when played). Built without
-//! the `fan-clips` feature (the Microsoft Store build), the clips that
-//! aren't ours ("disabled 1" and "2", "fire 1" and "2") are left out and
-//! generated tones play in their place.
+//! program from `media/audio/` (MP3, decoded when played). "disabled 1"
+//! and "2" and "fire 1" and "2" play the IT Crowd clips once their content
+//! pack is installed (they aren't ours to build in; see [`crate::content`]),
+//! and generated tones until then: any installed pack's sound with a
+//! built-in name plays in its place ([`SoundFiles`]).
 //!
 //! An FMSInfo widget's robot state sounds ([`Sound::play_event`]) are a channel of
 //! their own: a built-in [`Tone`] or a sound file the team picks (MP3 or
@@ -15,9 +16,10 @@
 //! one that fails to open) just stays quiet: the red border and the
 //! message in the status line still say what went wrong.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use rodio::Source;
@@ -34,13 +36,13 @@ pub enum Tone {
     DoubleBeep,
     /// Three notes going up.
     Chirp,
-    /// The clip `media/audio/disabled1.mp3`.
+    /// "I'm disabled" from the fan-clips pack, else a falling tone.
     Disabled1,
-    /// The clip `media/audio/disabled2.mp3`.
+    /// The other "I'm disabled" from the fan-clips pack, else a falling tone.
     Disabled2,
-    /// The clip `media/audio/fire1.mp3`.
+    /// "Fire!" from the fan-clips pack, else an alarm.
     Fire1,
-    /// The clip `media/audio/fire2.mp3`.
+    /// The other "Fire!" from the fan-clips pack, else an alarm.
     Fire2,
     /// The clip `media/audio/danger.mp3`: "danger, danger" in a robot voice.
     Danger,
@@ -85,14 +87,6 @@ impl Tone {
     /// The MP3 a clip plays, if this is a clip.
     pub fn clip(self) -> Option<&'static [u8]> {
         match self {
-            #[cfg(feature = "fan-clips")]
-            Tone::Disabled1 => Some(clip!("disabled1.mp3")),
-            #[cfg(feature = "fan-clips")]
-            Tone::Disabled2 => Some(clip!("disabled2.mp3")),
-            #[cfg(feature = "fan-clips")]
-            Tone::Fire1 => Some(clip!("fire1.mp3")),
-            #[cfg(feature = "fan-clips")]
-            Tone::Fire2 => Some(clip!("fire2.mp3")),
             Tone::Danger => Some(clip!("danger.mp3")),
             Tone::AutoGhosts => Some(clip!("auto-ghosts.mp3")),
             Tone::GoGoGo => Some(clip!("go-go-go.mp3")),
@@ -100,6 +94,20 @@ impl Tone {
             Tone::LostComms => Some(clip!("lost-comms.mp3")),
             _ => None,
         }
+    }
+
+    /// Its name in the settings (one of [`Tone::CHOICES`]); `None` for
+    /// the failed-send tone, which isn't offered.
+    ///
+    /// ```
+    /// use raptaboard::sound::Tone;
+    /// assert_eq!(Tone::Fire1.name(), Some("fire 1"));
+    /// ```
+    pub fn name(self) -> Option<&'static str> {
+        Tone::CHOICES
+            .iter()
+            .find(|(t, _)| *t == self)
+            .map(|(_, n)| *n)
     }
 
     /// The tone saved as `name` (one of [`Tone::CHOICES`]), or a beep.
@@ -124,11 +132,9 @@ impl Tone {
             Tone::Beep => &[(988.0, 0.15)],
             Tone::DoubleBeep => &[(988.0, 0.1), (0.0, 0.07), (988.0, 0.1)],
             Tone::Chirp => &[(659.0, 0.07), (880.0, 0.07), (1319.0, 0.12)],
-            // Without the fan clips: a falling "powering down" for
-            // disabled, a quick two-note alarm for fire.
-            #[cfg(not(feature = "fan-clips"))]
+            // Until the fan-clips pack is installed: a falling "powering
+            // down" for disabled, a quick two-note alarm for fire.
             Tone::Disabled1 | Tone::Disabled2 => &[(784.0, 0.12), (587.0, 0.12), (392.0, 0.28)],
-            #[cfg(not(feature = "fan-clips"))]
             Tone::Fire1 | Tone::Fire2 => &[
                 (1319.0, 0.1),
                 (988.0, 0.1),
@@ -142,6 +148,165 @@ impl Tone {
         }
     }
 }
+
+/// The installed content packs' sounds, shared between [`Sound`] and
+/// [`crate::content::Content`], which fills it.
+pub type SoundFiles = Arc<RwLock<SoundLayers>>;
+
+/// One installed pack's sound under a name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LayeredSound {
+    /// The pack's id.
+    pub pack: String,
+    /// The pack's name, for the sound pickers ("fire 1 (IT Crowd clips)").
+    pub pack_name: String,
+    /// The file it plays.
+    pub path: PathBuf,
+    /// When the pack was installed, in seconds since 1970.
+    pub installed_at: u64,
+}
+
+/// The installed packs' sounds by name: a pack may add a sound or give
+/// one of the built-in sounds' names to play in its place, and where packs
+/// share a name, the newest install wins. See [`SoundRef`] for how a
+/// setting picks one.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SoundLayers {
+    /// Each name, with every pack that has it, newest install first.
+    by_name: HashMap<String, Vec<LayeredSound>>,
+}
+
+impl SoundLayers {
+    /// Add `sound` under `name`.
+    pub fn add(&mut self, name: &str, sound: LayeredSound) {
+        let layers = self.by_name.entry(name.to_owned()).or_default();
+        layers.push(sound);
+        layers.sort_by(|a, b| {
+            b.installed_at
+                .cmp(&a.installed_at)
+                .then_with(|| a.pack.cmp(&b.pack))
+        });
+    }
+
+    /// Whether no pack has any sound.
+    pub fn is_empty(&self) -> bool {
+        self.by_name.is_empty()
+    }
+
+    /// Every pack that has a sound called `name`, newest install first.
+    pub fn layers(&self, name: &str) -> &[LayeredSound] {
+        self.by_name.get(name).map_or(&[], Vec::as_slice)
+    }
+
+    /// Every name a pack has a sound for, in order.
+    pub fn names(&self) -> Vec<&str> {
+        let mut names: Vec<&str> = self.by_name.keys().map(String::as_str).collect();
+        names.sort();
+        names
+    }
+
+    /// The file `sound` plays from a pack, or `None` to play the built-in
+    /// sound of its name (or nothing, if there's none):
+    ///
+    /// - a plain name: the newest install's;
+    /// - pinned to a pack: that pack's, if it's installed;
+    /// - built in: never a pack's.
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    /// use raptaboard::sound::{LayeredSound, SoundLayers, SoundRef};
+    /// let mut layers = SoundLayers::default();
+    /// let sound = |pack: &str, at| LayeredSound {
+    ///     pack: pack.into(), pack_name: pack.into(),
+    ///     path: PathBuf::from(format!("/{pack}/fire.mp3")), installed_at: at,
+    /// };
+    /// layers.add("fire 1", sound("old", 1));
+    /// layers.add("fire 1", sound("new", 2));
+    /// let file = |s: &str| layers.resolve(&SoundRef::parse(s));
+    /// assert_eq!(file("fire 1"), Some(PathBuf::from("/new/fire.mp3")));
+    /// assert_eq!(file("pack:old/fire 1"), Some(PathBuf::from("/old/fire.mp3")));
+    /// assert_eq!(file("pack:gone/fire 1"), None); // the built-in one
+    /// assert_eq!(file("builtin:fire 1"), None);
+    /// ```
+    pub fn resolve(&self, sound: &SoundRef) -> Option<PathBuf> {
+        match sound {
+            SoundRef::Name(name) => self.layers(name).first(),
+            SoundRef::Pack { pack, name } => self.layers(name).iter().find(|s| s.pack == *pack),
+            SoundRef::BuiltIn(_) => None,
+        }
+        .map(|s| s.path.clone())
+    }
+}
+
+/// A sound setting: which sound of a name to play. Saved as text: `fire 1`
+/// (the newest pack's, else the built-in one), `pack:fan-clips/fire 1`
+/// (that pack's, else the built-in one) or `builtin:fire 1` (the built-in
+/// one, whatever packs are installed). Whatever isn't found falls back to
+/// the built-in sound of that name, or none.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SoundRef {
+    /// The newest installed pack's sound of this name, else the built-in one.
+    Name(String),
+    /// This pack's sound of this name, else the built-in one.
+    Pack {
+        /// The pack's id.
+        pack: String,
+        /// The sound's name.
+        name: String,
+    },
+    /// The built-in sound of this name, ignoring packs.
+    BuiltIn(String),
+}
+
+impl SoundRef {
+    /// Read a setting.
+    ///
+    /// ```
+    /// use raptaboard::sound::SoundRef;
+    /// assert_eq!(SoundRef::parse("fire 1"), SoundRef::Name("fire 1".into()));
+    /// let pinned = SoundRef::parse("pack:fan-clips/fire 1");
+    /// assert_eq!(pinned, SoundRef::Pack { pack: "fan-clips".into(), name: "fire 1".into() });
+    /// assert_eq!(pinned.setting(), "pack:fan-clips/fire 1");
+    /// ```
+    pub fn parse(setting: &str) -> SoundRef {
+        if let Some(name) = setting.strip_prefix("builtin:") {
+            return SoundRef::BuiltIn(name.to_owned());
+        }
+        if let Some(rest) = setting.strip_prefix("pack:")
+            && let Some((pack, name)) = rest.split_once('/')
+        {
+            return SoundRef::Pack {
+                pack: pack.to_owned(),
+                name: name.to_owned(),
+            };
+        }
+        SoundRef::Name(setting.to_owned())
+    }
+
+    /// The sound's name, whichever sound of it is picked.
+    pub fn name(&self) -> &str {
+        match self {
+            SoundRef::Name(n) | SoundRef::BuiltIn(n) | SoundRef::Pack { name: n, .. } => n,
+        }
+    }
+
+    /// The setting's text, as [`SoundRef::parse`] reads it.
+    pub fn setting(&self) -> String {
+        match self {
+            SoundRef::Name(n) => n.clone(),
+            SoundRef::Pack { pack, name } => format!("pack:{pack}/{name}"),
+            SoundRef::BuiltIn(n) => format!("builtin:{n}"),
+        }
+    }
+}
+
+/// The file an installed pack gives `tone`'s name (the newest install's),
+/// if any.
+fn pack_file(files: &SoundFiles, tone: Tone) -> Option<PathBuf> {
+    let name = tone.name()?;
+    files.read().ok()?.resolve(&SoundRef::Name(name.to_owned()))
+}
+
 /// A sound for a robot state event: a built-in tone or clip, or a sound
 /// file the team picked.
 #[derive(Debug, Clone, PartialEq)]
@@ -186,6 +351,8 @@ pub struct Sound {
     tones: Vec<Tone>,
     /// Plays robot state sounds; shared with the NetworkTables thread.
     player: SoundPlayer,
+    /// Sounds from installed packs, which the sound thread plays.
+    files: SoundFiles,
 }
 
 /// Plays robot state sounds from any thread ([`Sound::player`]): the
@@ -229,6 +396,8 @@ impl Sound {
     /// An alert that plays through the computer's speakers.
     pub fn new() -> Sound {
         let (send, receive) = mpsc::channel::<Request>();
+        let files = SoundFiles::default();
+        let packs = files.clone();
         let started = std::thread::Builder::new()
             .name("raptaboard-sound".into())
             .spawn(move || {
@@ -256,12 +425,16 @@ impl Sound {
                             }
                             let player = rodio::Player::connect_new(sink.mixer());
                             player.set_volume(volume.clamp(0.0, 1.0));
-                            append_clip(&player, &clip);
+                            append_clip(&player, &clip, &packs);
                             event_player = Some(player);
                             continue;
                         }
                     };
-                    if let Some(bytes) = tone.clip() {
+                    if let Some(path) = pack_file(&packs, tone)
+                        && let Some(clip) = decode_file(&path)
+                    {
+                        sink.mixer().add(clip.amplify(CLIP_VOLUME));
+                    } else if let Some(bytes) = tone.clip() {
                         // A clip that doesn't decode just stays quiet.
                         if let Ok(clip) = rodio::Decoder::new(std::io::Cursor::new(bytes)) {
                             sink.mixer().add(clip.amplify(CLIP_VOLUME));
@@ -292,6 +465,7 @@ impl Sound {
             sound,
             played: 0,
             tones: Vec::new(),
+            files,
         }
     }
 
@@ -305,7 +479,14 @@ impl Sound {
                 send: None,
                 played: Arc::default(),
             },
+            files: SoundFiles::default(),
         }
+    }
+
+    /// The installed packs' sounds this plays, for
+    /// [`crate::content::Content`] to fill.
+    pub fn files(&self) -> SoundFiles {
+        self.files.clone()
     }
 
     /// Play the failed-send tone (if not silent). Never blocks.
@@ -355,17 +536,29 @@ impl Sound {
     }
 }
 
-/// Queue `clip` on `player`, at full volume (the player sets the volume).
-fn append_clip(player: &rodio::Player, clip: &Clip) {
+/// The sound file at `path`, decoded; `None` if it's missing or doesn't
+/// decode.
+fn decode_file(
+    path: &std::path::Path,
+) -> Option<rodio::Decoder<std::io::BufReader<std::fs::File>>> {
+    let file = std::fs::File::open(path).ok()?;
+    rodio::Decoder::try_from(file).ok()
+}
+
+/// Queue `clip` on `player`, at full volume (the player sets the volume);
+/// a built-in sound an installed pack gives a file for plays that file.
+fn append_clip(player: &rodio::Player, clip: &Clip, packs: &SoundFiles) {
     match clip {
         Clip::File(path) => {
-            if let Ok(file) = std::fs::File::open(path)
-                && let Ok(decoded) = rodio::Decoder::try_from(file)
-            {
+            if let Some(decoded) = decode_file(path) {
                 player.append(decoded);
             }
         }
         Clip::Tone(tone) => {
+            if let Some(decoded) = pack_file(packs, *tone).and_then(|p| decode_file(&p)) {
+                player.append(decoded);
+                return;
+            }
             if let Some(bytes) = tone.clip() {
                 if let Ok(decoded) = rodio::Decoder::new(std::io::Cursor::new(bytes)) {
                     player.append(decoded);
@@ -393,17 +586,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_fan_clips_are_built_in_or_tones_stand_in_for_them() {
+    fn tones_stand_in_for_the_fan_clips_until_their_pack_is_installed() {
+        let files = SoundFiles::default();
         for tone in [Tone::Disabled1, Tone::Disabled2, Tone::Fire1, Tone::Fire2] {
-            if cfg!(feature = "fan-clips") {
-                assert!(tone.clip().is_some(), "{tone:?} is a clip");
-            } else {
-                assert!(tone.clip().is_none(), "{tone:?} left out");
-                assert!(!tone.notes().is_empty(), "{tone:?} plays a tone instead");
-            }
+            assert!(tone.clip().is_none(), "{tone:?} isn't built in");
+            assert!(!tone.notes().is_empty(), "{tone:?} plays a tone instead");
+            assert_eq!(pack_file(&files, tone), None);
         }
-        // Our own clips are in every build.
+        // Our own clips are built in.
         assert!(Tone::Danger.clip().is_some() && Tone::LostComms.clip().is_some());
+        // Installed, the pack's file plays for the sound of that name.
+        files.write().unwrap().add(
+            "fire 1",
+            LayeredSound {
+                pack: "fan-clips".into(),
+                pack_name: "IT Crowd clips".into(),
+                path: PathBuf::from("/packs/fan-clips/fire1.mp3"),
+                installed_at: 1,
+            },
+        );
+        assert_eq!(
+            pack_file(&files, Tone::Fire1),
+            Some(PathBuf::from("/packs/fan-clips/fire1.mp3"))
+        );
+        assert_eq!(pack_file(&files, Tone::Fire2), None);
+        assert_eq!(pack_file(&files, Tone::Failure), None);
     }
 
     #[test]

@@ -13,8 +13,8 @@ given (--target aarch64-apple-darwin --target x86_64-apple-darwin). Linux: a
 info (keep it to decode crash reports).
 
 With --msix (Windows), also an MSIX for the Microsoft Store in dist-store/,
-not dist/: built without the `fan-clips` feature (the clips that aren't ours
-are left out), unsigned (the Store signs it), from packaging/windows/msix/
+not dist/: the same raptaboard.exe as the other Windows packages, unsigned
+(the Store signs it), from packaging/windows/msix/
 (the manifest, and store.json with the identity from Partner Center), with
 makeappx from the Windows SDK. It's uploaded to Partner Center, never
 attached to a GitHub release (unsigned, it won't install).
@@ -151,17 +151,11 @@ def find_makeappx() -> str | None:
     return str(tools[-1]) if tools else None
 
 
-def package_msix(ver: str, out: Path, skip_build: bool) -> None:
-    """The Microsoft Store's MSIX, into `out`."""
-    store_target = ROOT / "target" / "store"
-    if not skip_build:
-        run(
-            "cargo", "build", "--release", "--locked", "-p", "raptaboard",
-            "--no-default-features", "--target-dir", store_target,
-        )
+def package_msix(ver: str, out: Path) -> None:
+    """The Microsoft Store's MSIX, into `out`, from the program already built."""
     identity = json.loads((PACKAGING / "windows" / "msix" / "store.json").read_text(encoding="utf-8"))
     stage = fresh(out / "stage" / "msix")
-    shutil.copy(store_target / "release" / "raptaboard.exe", stage)
+    shutil.copy(build_dir(None) / "raptaboard.exe", stage)
     add_docs(stage, ver)
     shutil.copytree(ICONS / "msix", stage / "Assets")
     manifest = (PACKAGING / "windows" / "msix" / "AppxManifest.xml").read_text(encoding="utf-8")
@@ -310,7 +304,7 @@ def main() -> None:
         if args.msix:
             store_out = (out.parent / "dist-store").resolve()
             store_out.mkdir(parents=True, exist_ok=True)
-            package_msix(ver, store_out, args.skip_build)
+            package_msix(ver, store_out)
             shutil.rmtree(store_out / "stage", ignore_errors=True)
     elif which == "macos":
         package_macos(ver, out, targets)

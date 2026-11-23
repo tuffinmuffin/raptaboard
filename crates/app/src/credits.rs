@@ -22,6 +22,94 @@
 /// raptaboard's own license (MIT), the repo's `LICENSE` file.
 pub const LICENSE: &str = include_str!("../../../LICENSE");
 
+/// raptaboard's privacy policy (the repo's `PRIVACY.md`, which the Microsoft
+/// Store listing links to), shown on the About window's Privacy page.
+pub const PRIVACY: &str = include_str!("../../../PRIVACY.md");
+
+/// Where the privacy policy is online.
+pub const PRIVACY_URL: &str = "https://github.com/tuffinmuffin/raptaboard/blob/main/PRIVACY.md";
+
+/// A part of the privacy policy, as the About window draws it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PolicyBlock {
+    /// The title (`# `).
+    Title(String),
+    /// A section heading (`## `).
+    Heading(String),
+    /// A paragraph, its lines joined.
+    Paragraph(String),
+    /// A list item (`- `), its lines joined.
+    Item(String),
+}
+
+/// The privacy policy's Markdown as blocks of plain text: links become
+/// their text with the address after it, and `**` and backticks go.
+///
+/// ```
+/// use raptaboard::credits::{policy_blocks, PolicyBlock};
+/// let blocks = policy_blocks("# Title\n\nSome **bold**\ntext, [a link](https://x.org).\n\n- one\n  more");
+/// assert_eq!(blocks, [
+///     PolicyBlock::Title("Title".into()),
+///     PolicyBlock::Paragraph("Some bold text, a link (https://x.org).".into()),
+///     PolicyBlock::Item("one more".into()),
+/// ]);
+/// ```
+pub fn policy_blocks(markdown: &str) -> Vec<PolicyBlock> {
+    let mut blocks = Vec::new();
+    for chunk in markdown.split("\n\n") {
+        let mut item: Option<String> = None;
+        let mut para: Vec<&str> = Vec::new();
+        let flush = |blocks: &mut Vec<PolicyBlock>, item: &mut Option<String>| {
+            if let Some(i) = item.take() {
+                blocks.push(PolicyBlock::Item(plain(&i)));
+            }
+        };
+        for line in chunk.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            if let Some(h) = line.strip_prefix("## ") {
+                blocks.push(PolicyBlock::Heading(plain(h)));
+            } else if let Some(h) = line.strip_prefix("# ") {
+                blocks.push(PolicyBlock::Title(plain(h)));
+            } else if let Some(i) = line.strip_prefix("- ") {
+                flush(&mut blocks, &mut item);
+                item = Some(i.to_owned());
+            } else if let Some(i) = &mut item {
+                i.push(' ');
+                i.push_str(line);
+            } else {
+                para.push(line);
+            }
+        }
+        flush(&mut blocks, &mut item);
+        if !para.is_empty() {
+            blocks.push(PolicyBlock::Paragraph(plain(&para.join(" "))));
+        }
+    }
+    blocks
+}
+
+/// Markdown inline text as plain text: `[text](url)` → `text (url)`,
+/// `<url>` → `url`, no `**` or backticks.
+fn plain(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find('[') {
+        let Some(mid) = rest[start..].find("](").map(|m| start + m) else {
+            break;
+        };
+        let Some(end) = rest[mid..].find(')').map(|e| mid + e) else {
+            break;
+        };
+        out.push_str(&rest[..start]);
+        out.push_str(&rest[start + 1..mid]);
+        out.push_str(" (");
+        out.push_str(&rest[mid + 2..end]);
+        out.push(')');
+        rest = &rest[end + 1..];
+    }
+    out.push_str(rest);
+    out.replace("**", "").replace(['`', '<', '>'], "")
+}
+
 /// The crate list, made by `scripts/crate_licenses.py`: one tab-separated
 /// line per crate (name, version, license, repository).
 pub const CRATES_TSV: &str = include_str!("../../../licenses/rust-crates.tsv");
@@ -94,27 +182,6 @@ pub const MEDIA: &[MediaCredit] = &[
         note: "No other license or restriction.",
     },
     MediaCredit {
-        kind: "Sound",
-        files: &["disabled1.mp3", "disabled2.mp3"],
-        what: "\"I'm disabled\"",
-        source: "a line from the TV series The IT Crowd (its channel: \
-                 https://www.youtube.com/@TheITCrowdChannel), taken from a fan upload, \
-                 \"The IT Crowd Disabled\" by wormy76, https://www.youtube.com/watch?v=dDZzl9AyXeg",
-        license: "not ours",
-        link: Some("https://www.youtube.com/watch?v=dDZzl9AyXeg"),
-        note: "A short quote kept for non-commercial, educational use; removed if the owner asks.",
-    },
-    MediaCredit {
-        kind: "Sound",
-        files: &["fire1.mp3", "fire2.mp3"],
-        what: "\"Fire!\"",
-        source: "from The IT Crowd, Series 1, Episode 2: \"Fire!\", on The IT Crowd's \
-                 YouTube channel, https://www.youtube.com/watch?v=1EBfxjSFAxQ",
-        license: "not ours",
-        link: Some("https://www.youtube.com/watch?v=1EBfxjSFAxQ"),
-        note: "Kept for non-commercial, educational use; removed if the owner asks.",
-    },
-    MediaCredit {
         kind: "Image",
         files: &[
             "armed.svg",
@@ -159,27 +226,6 @@ pub const MEDIA: &[MediaCredit] = &[
         note: "",
     },
 ];
-
-/// The entries of [`MEDIA`] for what this build has: all of them, except
-/// without the `fan-clips` feature (the Microsoft Store build), which
-/// leaves out the clips that aren't ours.
-///
-/// ```
-/// let media = raptaboard::credits::media();
-/// assert!(media.iter().any(|m| m.files.contains(&"danger.mp3")));
-/// ```
-pub fn media() -> Vec<&'static MediaCredit> {
-    MEDIA
-        .iter()
-        .filter(|m| cfg!(feature = "fan-clips") || !is_fan_clip(m))
-        .collect()
-}
-
-/// Whether `m` is one of the fan clips (the IT Crowd's): sounds whose
-/// license is "not ours".
-fn is_fan_clip(m: &MediaCredit) -> bool {
-    m.kind == "Sound" && m.license == "not ours"
-}
 
 /// WPILib's license, which the built-in field comes under.
 pub const WPILIB_LICENSE: &str = include_str!("../../../fields/LICENSE-WPILib.md");
@@ -287,13 +333,6 @@ mod tests {
     }
 
     #[test]
-    fn a_build_lists_the_fan_clips_only_if_it_has_them() {
-        let listed = media().iter().any(|m| m.files.contains(&"disabled1.mp3"));
-        assert_eq!(listed, cfg!(feature = "fan-clips"));
-        assert_eq!(MEDIA.iter().filter(|m| is_fan_clip(m)).count(), 2);
-    }
-
-    #[test]
     fn every_built_in_file_has_a_credit() {
         let credited: BTreeSet<&str> = MEDIA.iter().flat_map(|m| m.files.iter().copied()).collect();
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../media/audio");
@@ -305,6 +344,57 @@ mod tests {
         }
         for (name, _) in crate::images::BUILT_IN {
             assert!(credited.contains(name), "no credit for {name}");
+        }
+    }
+
+    #[test]
+    fn the_privacy_policy_reads_as_plain_text() {
+        let blocks = policy_blocks(PRIVACY);
+        assert_eq!(
+            blocks.first(),
+            Some(&PolicyBlock::Title("raptaboard privacy policy".into()))
+        );
+        let headings: Vec<&str> = blocks
+            .iter()
+            .filter_map(|b| match b {
+                PolicyBlock::Heading(h) => Some(h.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            headings.contains(&"We collect no personal data"),
+            "{headings:?}"
+        );
+        assert!(
+            headings.contains(&"What raptaboard connects to"),
+            "{headings:?}"
+        );
+        // No Markdown left to show as symbols.
+        for b in &blocks {
+            let text = format!("{b:?}");
+            assert!(
+                !text.contains("**") && !text.contains("](") && !text.contains('`'),
+                "{text}"
+            );
+        }
+        assert!(
+            blocks
+                .iter()
+                .any(|b| matches!(b, PolicyBlock::Item(i) if i.contains("content packs")))
+        );
+    }
+
+    #[test]
+    fn every_credited_sound_is_built_in() {
+        // The fan clips moved to a content pack (their credits with them).
+        let dir = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../media/audio"));
+        for m in MEDIA.iter().filter(|m| m.kind == "Sound") {
+            for file in m.files {
+                assert!(
+                    dir.join(file).is_file(),
+                    "{file} is credited but not built in"
+                );
+            }
         }
     }
 }

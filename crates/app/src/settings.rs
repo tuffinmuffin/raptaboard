@@ -25,6 +25,7 @@
 //! alert_sound = true # a tone when a value can't be sent
 //! alert_history = 1000 # alert events kept in the alert history
 //! alert_history_ignore = ["Frame Timing:"] # alerts not recorded, by text they contain
+//! content_sources = ["https://example.org/catalog.json"] # content pack sources added
 //! layout = "/Users/me/layouts/match.json"
 //! tab = "Teleoperated"
 //! tab_index = 0
@@ -75,6 +76,10 @@ pub struct Settings {
     /// these (ignoring case).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alert_history_ignore: Option<Vec<String>>,
+    /// Content pack sources added in the Content window (catalog URLs),
+    /// beside the official one ([`crate::content::OFFICIAL`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_sources: Option<Vec<String>>,
     /// The layout file to open at start: the one last opened or saved.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<String>,
@@ -120,6 +125,7 @@ pub fn defaults() -> Settings {
         alert_sound: Some(true),
         alert_history: Some(crate::alert_history::DEFAULT_CAPACITY),
         alert_history_ignore: Some(Vec::new()),
+        content_sources: Some(Vec::new()),
         layout: None,
         tab: None,
         tab_index: None,
@@ -172,6 +178,7 @@ impl Settings {
             alert_sound: self.alert_sound.or(lower.alert_sound),
             alert_history: self.alert_history.or(lower.alert_history),
             alert_history_ignore: self.alert_history_ignore.or(lower.alert_history_ignore),
+            content_sources: self.content_sources.or(lower.content_sources),
             layout: self.layout.or(lower.layout),
             tab: self.tab.or(lower.tab),
             tab_index: self.tab_index.or(lower.tab_index),
@@ -319,6 +326,7 @@ impl Tracker {
         note!(alert_sound);
         note!(alert_history);
         note!(alert_history_ignore);
+        note!(content_sources);
         note!(layout);
         note!(tab);
         note!(tab_index);

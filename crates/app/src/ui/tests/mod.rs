@@ -9,6 +9,7 @@ mod battery;
 mod chassis;
 mod choosers;
 mod clips;
+mod content;
 mod enums;
 mod field;
 mod files;

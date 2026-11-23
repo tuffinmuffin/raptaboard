@@ -27,7 +27,11 @@ fn main() -> eframe::Result {
         eprintln!("raptaboard: {note}");
     }
     let window = loaded.settings.window;
-    let options = StartupOptions::from(loaded);
+    let mut options = StartupOptions::from(loaded);
+    options.content_dir = home.as_deref().map(|h| {
+        h.join(settings::DIR_NAME)
+            .join(raptaboard::content::DIR_NAME)
+    });
 
     let mut viewport = eframe::egui::ViewportBuilder::default()
         .with_title("raptaboard")
