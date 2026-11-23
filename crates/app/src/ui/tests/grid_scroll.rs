@@ -176,3 +176,23 @@ fn a_locked_grid_does_not_scroll() {
         scrolled(&harness)
     );
 }
+
+#[test]
+fn the_wheel_over_a_paused_graph_moves_the_graph_not_the_grid() {
+    let robot = Robot::start();
+    let mut harness = harness_with(&robot, true);
+    // Widget 0 becomes a graph, and is paused.
+    harness.state_mut().layout.tabs[0].grid_layout.containers[0].widget_type = "Graph".into();
+    settle(&mut harness);
+    harness.get_by_label("⏸").click();
+    settle(&mut harness);
+    assert!(harness.query_by_label("▶").is_some(), "paused");
+    let scrolled = |h: &Harness| h.state().grid.scroll.get(&0).copied().unwrap_or_default();
+    let graph = on_screen(&harness, 0).center() + egui::vec2(0.0, 10.0);
+    wheel(&mut harness, graph, egui::vec2(0.0, -500.0));
+    assert_eq!(scrolled(&harness), egui::Vec2::ZERO, "the grid stayed");
+    // Off the graph, the same wheel scrolls the grid.
+    let empty = harness.state().grid.visible.center() + egui::vec2(100.0, 100.0);
+    wheel(&mut harness, empty, egui::vec2(0.0, -500.0));
+    assert!(scrolled(&harness).y > 0.0, "{:?}", scrolled(&harness));
+}

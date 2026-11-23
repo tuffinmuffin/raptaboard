@@ -14,11 +14,20 @@
 //! cursors, A then B (with only A, clicking A takes it away; with both,
 //! any click clears them), and a readout gives the
 //! time between them and each line's values there, like a scope's cursors.
+//! Paused, the plot can also look back through everything recorded (the
+//! `history_kept` setting, a minute unless set): the mouse wheel or a drag
+//! along it moves through time, and Ctrl (⌘ on a Mac) with the wheel zooms.
+//! Lines are thinned to about two points per pixel column before drawing,
+//! so minutes of values draw quickly; the cursors and hover read every
+//! value.
 //!
 //! Elastic's settings: `time_displayed` (seconds shown, 5; older files say
 //! `visibleTime`), `min_value` and `max_value` (a fixed range; both unset
 //! fits the values), `color` (the main line, cyan) and `line_width` (2).
-//! raptaboard's: `series`, `show_legend`, `show_pause` and `show_hover`.
+//! raptaboard's: `series`, `show_legend`, `show_pause`, `show_hover` and
+//! `history_kept`.
+
+use std::sync::Arc;
 
 use eframe::egui::{self, Color32, Rect, Sense};
 use egui_plot::{Corner, Legend, Line, Plot, PlotPoints, Points, VLine};
@@ -55,8 +64,12 @@ pub const SHOW_LEGEND: &str = "show_legend";
 pub const SHOW_PAUSE: &str = "show_pause";
 /// Show values where the pointer is; on unless turned off (raptaboard).
 pub const SHOW_HOVER: &str = "show_hover";
+/// How many seconds of values are kept, to look back through while paused
+/// (raptaboard). Never less than `time_displayed`.
+pub const HISTORY_KEPT: &str = "history_kept";
 
-const KEYS: [&str; 7] = [
+const KEYS: [&str; 8] = [
+    HISTORY_KEPT,
     TIME_DISPLAYED,
     MIN_VALUE,
     MAX_VALUE,
@@ -74,6 +87,12 @@ const KEYS: [&str; 7] = [
 pub const DEFAULT_PERIOD_S: f64 = 0.016;
 /// Elastic's default: 5 seconds shown.
 pub const DEFAULT_TIME: f64 = 5.0;
+/// Seconds of values kept when `history_kept` isn't set: a minute.
+pub const DEFAULT_HISTORY: f64 = 60.0;
+/// The most seconds of values a graph keeps: 10 minutes.
+pub const MAX_HISTORY: f64 = 600.0;
+/// The fewest seconds a paused graph zooms in to.
+const MIN_SPAN: f64 = 0.05;
 /// Elastic's default line color (Material cyan 500).
 pub const DEFAULT_COLOR: Color32 = Color32::from_rgb(0x00, 0xBC, 0xD4);
 const DEFAULT_WIDTH: f64 = 2.0;
@@ -154,6 +173,75 @@ pub struct Series {
 pub fn time_displayed(props: &Map<String, Json>) -> f64 {
     let older = props::number(props, VISIBLE_TIME, DEFAULT_TIME);
     props::number(props, TIME_DISPLAYED, older).clamp(0.1, 3600.0)
+}
+
+/// Seconds of values `props` keeps to look back through while paused:
+/// `history_kept` (a minute if not set, at most 10 minutes), and never less
+/// than the time shown.
+///
+/// ```
+/// use raptaboard::widgets::builtin::graph::history_kept;
+/// assert_eq!(history_kept(&serde_json::Map::new()), 60.0);
+/// let long = serde_json::json!({"history_kept": 300, "time_displayed": 5});
+/// assert_eq!(history_kept(long.as_object().unwrap()), 300.0);
+/// let wide = serde_json::json!({"history_kept": 10, "time_displayed": 30});
+/// assert_eq!(history_kept(wide.as_object().unwrap()), 30.0);
+/// ```
+pub fn history_kept(props: &Map<String, Json>) -> f64 {
+    props::number(props, HISTORY_KEPT, DEFAULT_HISTORY)
+        .clamp(1.0, MAX_HISTORY)
+        .max(time_displayed(props))
+}
+
+/// `points` (time, value; oldest first) between `from` and `to`, thinned
+/// for drawing `columns` wide: where there are more than two points per
+/// column, each column keeps only its lowest and highest (in the order they
+/// came), so peaks still show. The points just outside the range are kept
+/// too, so lines reach the edges.
+///
+/// ```
+/// use raptaboard::widgets::builtin::graph::thin;
+/// let points: Vec<[f64; 2]> = (0..1000).map(|i| [i as f64, (i % 10) as f64]).collect();
+/// let drawn = thin(&points, 0.0, 999.0, 100);
+/// assert!(drawn.len() <= 2 * 100 + 2);
+/// // Every column still reaches 0 and 9.
+/// assert!(drawn.iter().any(|p| p[1] == 9.0) && drawn.iter().any(|p| p[1] == 0.0));
+/// // Few points: all of them, between the edges.
+/// assert_eq!(thin(&points[..5], 1.0, 3.0, 100), &points[..5]);
+/// ```
+pub fn thin(points: &[[f64; 2]], from: f64, to: f64, columns: usize) -> Vec<[f64; 2]> {
+    let start = points.partition_point(|p| p[0] < from).saturating_sub(1);
+    let end = (points.partition_point(|p| p[0] <= to) + 1).min(points.len());
+    let shown = &points[start..end.max(start)];
+    let columns = columns.max(1);
+    if shown.len() <= 2 * columns + 2 || to <= from {
+        return shown.to_vec();
+    }
+    let per = columns as f64 / (to - from);
+    let column = |x: f64| ((x - from) * per).floor().clamp(-1.0, columns as f64) as i64;
+    let mut out = Vec::with_capacity(2 * columns + 4);
+    let mut i = 0;
+    while i < shown.len() {
+        let c = column(shown[i][0]);
+        let mut j = i;
+        let (mut low, mut high) = (i, i);
+        while j < shown.len() && column(shown[j][0]) == c {
+            if shown[j][1] < shown[low][1] {
+                low = j;
+            }
+            if shown[j][1] > shown[high][1] {
+                high = j;
+            }
+            j += 1;
+        }
+        let (a, b) = (low.min(high), low.max(high));
+        out.push(shown[a]);
+        if b != a {
+            out.push(shown[b]);
+        }
+        i = j;
+    }
+    out
 }
 
 /// The fixed range, if both ends are set and the bottom is below the top.
@@ -347,7 +435,10 @@ fn show_legend(props: &Map<String, Json>, lines: usize) -> bool {
 /// assert_eq!(value_at(&points, 3.0), None);
 /// ```
 pub fn value_at(points: &[[f64; 2]], x: f64) -> Option<f64> {
-    let after = points.iter().position(|p| p[0] >= x)?;
+    let after = points.partition_point(|p| p[0] < x);
+    if after == points.len() {
+        return None;
+    }
     let [x1, y1] = points[after];
     if after == 0 {
         return (x1 == x).then_some(y1);
@@ -364,12 +455,12 @@ pub fn value_at(points: &[[f64; 2]], x: f64) -> Option<f64> {
 ///
 /// ```
 /// use raptaboard::widgets::builtin::graph::readout;
-/// let lines = vec![("speed".to_string(), vec![[-2.0, 0.0], [0.0, 4.0]])];
-/// let text = readout(&[-2.0, -1.0], &lines);
+/// let points = [[-2.0, 0.0], [0.0, 4.0]];
+/// let text = readout(&[-2.0, -1.0], &[("speed", &points[..])]);
 /// assert_eq!(text[0], "A -2.000 s   B -1.000 s   Δt 1.000 s   (click again to clear)");
 /// assert_eq!(text[1], "speed   0.000 → 2.000   Δ 2.000");
 /// ```
-pub fn readout(cursors: &[f64], lines: &[(String, Vec<[f64; 2]>)]) -> Vec<String> {
+pub fn readout(cursors: &[f64], lines: &[(&str, &[[f64; 2]])]) -> Vec<String> {
     let mut text = Vec::new();
     match cursors {
         [a] => {
@@ -408,15 +499,108 @@ fn show(value: Option<f64>) -> String {
 /// value).
 type Drawn = (String, Color32, Vec<[f64; 2]>);
 
-/// What a graph on screen is doing: frozen or live, and where the measuring
-/// cursors are. Kept in egui's memory for the widget, not in the layout.
+/// What a graph on screen is doing: frozen or live, where the measuring
+/// cursors are, and (paused) which stretch of time shows. Kept in egui's
+/// memory for the widget, not in the layout.
 #[derive(Debug, Clone, Default)]
 struct View {
-    /// While paused: each line's name, color and points as they were (time
-    /// in seconds before the pause).
-    frozen: Option<Vec<Drawn>>,
+    /// While paused: each line's name, color and every point kept (time in
+    /// seconds before the pause). Shared, so keeping the view each frame
+    /// doesn't copy them.
+    frozen: Option<Arc<Vec<Drawn>>>,
     /// Measuring cursors' times, in the same seconds: A, then B.
     cursors: Vec<f64>,
+    /// While paused, what shows.
+    window: Window,
+}
+
+/// The stretch of time a paused graph shows, in seconds before the pause.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Window {
+    /// The time at the right edge: 0 is the pause, -10 ten seconds before.
+    pub end: f64,
+    /// How many seconds show.
+    pub span: f64,
+}
+
+impl Window {
+    /// Kept to what's recorded: no later than the pause, no earlier than
+    /// `oldest` (the first point's time) where there's enough to fill it,
+    /// and no wider than all of it (or `shown`, the time the graph shows
+    /// live, if that's wider).
+    ///
+    /// ```
+    /// use raptaboard::widgets::builtin::graph::Window;
+    /// let w = Window { end: -100.0, span: 5.0 }.kept(-60.0, 5.0);
+    /// assert_eq!(w, Window { end: -55.0, span: 5.0 });
+    /// let w = Window { end: 3.0, span: 500.0 }.kept(-60.0, 5.0);
+    /// assert_eq!(w, Window { end: 0.0, span: 60.0 });
+    /// ```
+    pub fn kept(self, oldest: f64, shown: f64) -> Window {
+        let span = self.span.clamp(MIN_SPAN, (-oldest).max(shown));
+        let end = self.end.clamp((oldest + span).min(0.0), 0.0);
+        Window { end, span }
+    }
+
+    /// Moved `seconds` later (negative: earlier).
+    pub fn moved(self, seconds: f64) -> Window {
+        Window {
+            end: self.end + seconds,
+            ..self
+        }
+    }
+
+    /// Zoomed by `factor` (above 1 shows more time) about time `at`, which
+    /// stays where it is on screen.
+    ///
+    /// ```
+    /// use raptaboard::widgets::builtin::graph::Window;
+    /// let w = Window { end: 0.0, span: 10.0 }.zoomed(2.0, -5.0);
+    /// assert_eq!(w, Window { end: 5.0, span: 20.0 });
+    /// ```
+    pub fn zoomed(self, factor: f64, at: f64) -> Window {
+        Window {
+            end: at + (self.end - at) * factor,
+            span: self.span * factor,
+        }
+    }
+}
+
+/// The time of the oldest point in `lines`, or 0 if there are none.
+fn oldest(lines: &[Drawn]) -> f64 {
+    lines
+        .iter()
+        .filter_map(|(_, _, points)| points.first().map(|p| p[0]))
+        .fold(0.0, f64::min)
+}
+
+/// Each line's points from the traces, in seconds before now: those from
+/// `from` seconds back (and the one before, so the line reaches the edge),
+/// or every one kept if `from` is `None`. The last value holds until a new
+/// one arrives, so a line reaches "now" even for a topic that rarely
+/// changes.
+fn lines(widget: &WidgetContainer, live: &Live<'_>, from: Option<f64>) -> Vec<Drawn> {
+    series(widget)
+        .into_iter()
+        .map(|line| {
+            let traces = live.frame.traces;
+            let now = live.frame.now_us;
+            let to_point = |(t, v): (i64, f64)| [(t - now) as f64 / 1e6, v];
+            let mut points: Vec<[f64; 2]> = match from {
+                Some(from) => traces
+                    .points_since(&line.key, now + (from * 1e6) as i64)
+                    .map(to_point)
+                    .collect(),
+                None => traces.points(&line.key).map(to_point).collect(),
+            };
+            if let Some(&[x, y]) = points.last()
+                && x < 0.0
+            {
+                points.push([0.0, y]);
+            }
+            (line.name, line.color, points)
+        })
+        .collect()
 }
 
 impl WidgetType for Graph {
@@ -448,36 +632,30 @@ impl WidgetType for Graph {
         let range = fixed_range(p);
         let width = props::number(p, LINE_WIDTH, DEFAULT_WIDTH).clamp(0.5, 20.0) as f32;
 
-        // The lines: as frozen while paused, else live from the traces.
-        let now: Vec<Drawn> = series(widget)
-            .into_iter()
-            .map(|line| {
-                let mut points: Vec<[f64; 2]> = live
-                    .frame
-                    .traces
-                    .points(&line.key)
-                    .map(|(t, v)| [(t - live.frame.now_us) as f64 / 1e6, v])
-                    .collect();
-                // The last value holds until a new one arrives, so a line
-                // reaches "now" even for a topic that rarely changes.
-                if let Some(&[x, y]) = points.last()
-                    && x < 0.0
-                {
-                    points.push([0.0, y]);
-                }
-                (line.name, line.color, points)
-            })
-            .collect();
-        let shown = view.frozen.clone().unwrap_or_else(|| now.clone());
+        // The lines: as frozen while paused, else live from the traces
+        // (just the time shown).
         let paused = view.frozen.is_some();
+        let shown: Arc<Vec<Drawn>> = match &view.frozen {
+            Some(frozen) => Arc::clone(frozen),
+            None => Arc::new(lines(widget, live, Some(-seconds))),
+        };
+        if paused {
+            view.window = view.window.kept(oldest(&shown), seconds);
+        }
+        let (from, to) = if paused {
+            (view.window.end - view.window.span, view.window.end)
+        } else {
+            (-seconds, 0.0)
+        };
 
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body));
         child.set_clip_rect(body.intersect(ui.clip_rect()));
         // Live, it only senses hover, so it never takes the drags that move
-        // the widget; paused, it takes clicks too, for the cursors.
+        // the widget; paused, it takes clicks for the cursors and drags to
+        // move through time.
         let mut plot = Plot::new("graph")
             .sense(if paused {
-                Sense::click()
+                Sense::click_and_drag()
             } else {
                 Sense::hover()
             })
@@ -498,17 +676,21 @@ impl WidgetType for Graph {
             plot = plot.legend(Legend::default().position(Corner::LeftTop));
         }
         let cursors = view.cursors.clone();
+        let columns = body.width().max(1.0) as usize;
         let clicked_at = plot.show(&mut child, |plot_ui| {
-            plot_ui.set_plot_bounds_x(-seconds..=0.0);
+            plot_ui.set_plot_bounds_x(from..=to);
             match range {
                 Some((low, high)) => plot_ui.set_plot_bounds_y(low..=high),
                 None => plot_ui.set_auto_bounds([false, true]),
             }
-            for (name, color, points) in &shown {
+            for (name, color, points) in shown.iter() {
                 plot_ui.line(
-                    Line::new(name.clone(), PlotPoints::new(points.clone()))
-                        .color(*color)
-                        .width(width),
+                    Line::new(
+                        name.clone(),
+                        PlotPoints::new(thin(points, from, to, columns)),
+                    )
+                    .color(*color)
+                    .width(width),
                 );
             }
             for x in &cursors {
@@ -522,7 +704,7 @@ impl WidgetType for Graph {
             let hover_x = pointer_x.filter(|_| hover && hovered);
             if let Some(x) = hover_x {
                 plot_ui.vline(VLine::new("", x).color(HOVER_COLOR).width(1.0));
-                for (_, color, points) in &shown {
+                for (_, color, points) in shown.iter() {
                     if let Some(y) = value_at(points, x) {
                         plot_ui.points(
                             Points::new("", vec![[x, y]])
@@ -554,9 +736,47 @@ impl WidgetType for Graph {
             } else {
                 None
             };
-            (click, hover_x)
+            // Paused: dragging along the plot or the wheel moves through
+            // time (in points; seconds below), Ctrl or ⌘ with the wheel
+            // zooms about the pointer.
+            let response = plot_ui.response();
+            let mut moved = 0.0;
+            let mut zoom = None;
+            if paused {
+                if response.dragged() {
+                    moved -= response.drag_delta().x;
+                }
+                if response.hovered() {
+                    let (scroll, factor) = plot_ui
+                        .ctx()
+                        .input(|i| (i.smooth_scroll_delta, i.zoom_delta()));
+                    moved -= scroll.x + scroll.y;
+                    if factor != 1.0
+                        && let Some(x) = pointer_x
+                    {
+                        zoom = Some((1.0 / f64::from(factor), x));
+                    }
+                }
+            }
+            (click, hover_x, moved, zoom, response.rect.width())
         });
-        let (click, hover_x) = clicked_at.inner;
+        let (click, hover_x, moved, zoom, plot_width) = clicked_at.inner;
+        if paused {
+            if moved != 0.0 {
+                let per_point = view.window.span / f64::from(plot_width.max(1.0));
+                view.window = view.window.moved(f64::from(moved) * per_point);
+            }
+            if let Some((factor, at)) = zoom {
+                view.window = view.window.zoomed(factor, at);
+            }
+            if moved != 0.0 || zoom.is_some() {
+                // The wheel moved the graph, not the grid behind it.
+                // (The window is kept to what's recorded next frame, before
+                // it's drawn.)
+                ui.ctx()
+                    .input_mut(|i| i.smooth_scroll_delta = egui::Vec2::ZERO);
+            }
+        }
         // The hovered values, bottom right, each in its line's color.
         if let Some(x) = hover_x {
             let mut job = egui::text::LayoutJob::default();
@@ -565,7 +785,7 @@ impl WidgetType for Graph {
                 job.append(&text, 0.0, egui::TextFormat::simple(font.clone(), color));
             };
             add(format!("{x:.2} s"), ui.visuals().weak_text_color());
-            for (name, color, points) in &shown {
+            for (name, color, points) in shown.iter() {
                 add(format!("\n{name} {}", show(value_at(points, x))), *color);
             }
             let galley = ui.painter().layout_job(job);
@@ -593,9 +813,9 @@ impl WidgetType for Graph {
 
         // The readout, bottom left, while measuring.
         if paused && !view.cursors.is_empty() {
-            let lines: Vec<(String, Vec<[f64; 2]>)> = shown
+            let lines: Vec<(&str, &[[f64; 2]])> = shown
                 .iter()
-                .map(|(name, _, points)| (name.clone(), points.clone()))
+                .map(|(name, _, points)| (name.as_str(), points.as_slice()))
                 .collect();
             let text = readout(&view.cursors, &lines).join("\n");
             let galley = ui.painter().layout(
@@ -626,7 +846,9 @@ impl WidgetType for Graph {
                 (
                     "⏸",
                     "Pause: freeze the picture; values keep recording. \
-                     Then click the plot twice to measure between two times.",
+                     Then click the plot twice to measure between two times, \
+                     and drag it or use the mouse wheel to look back \
+                     (Ctrl or ⌘ with the wheel zooms).",
                 )
             };
             if ui
@@ -638,8 +860,13 @@ impl WidgetType for Graph {
                     View::default()
                 } else {
                     View {
-                        frozen: Some(now),
+                        // Everything kept, to look back through.
+                        frozen: Some(Arc::new(lines(widget, live, None))),
                         cursors: Vec::new(),
+                        window: Window {
+                            end: 0.0,
+                            span: seconds,
+                        },
                     }
                 };
             }
@@ -686,7 +913,8 @@ impl WidgetType for Graph {
     }
 
     fn traced(&self, widget: &WidgetContainer) -> Vec<(SeriesKey, f64)> {
-        let seconds = time_displayed(&widget.properties);
+        // Everything kept, not just what shows, to look back through.
+        let seconds = history_kept(&widget.properties);
         series(widget)
             .into_iter()
             .map(|s| (s.key, seconds))
@@ -720,6 +948,14 @@ impl WidgetType for Graph {
             TIME_DISPLAYED,
             DEFAULT_TIME,
             0.1..=3600.0,
+        );
+        props::number_row(
+            ui,
+            p,
+            "History kept (s)",
+            HISTORY_KEPT,
+            DEFAULT_HISTORY,
+            1.0..=MAX_HISTORY,
         );
 
         ui.label("Range");
@@ -952,7 +1188,7 @@ mod tests {
         assert_eq!(value_at(&points, -3.0), Some(2.0));
         assert_eq!(value_at(&points, -4.0), Some(1.0));
         assert_eq!(value_at(&points, -5.0), None);
-        let lines = vec![("speed".to_string(), points)];
+        let lines = [("speed", &points[..])];
         let one = readout(&[-3.0], &lines);
         assert_eq!(one, ["A -3.000 s   (click again for B)", "speed   2.000"]);
         let two = readout(&[-1.0, -4.0], &lines);
@@ -1189,5 +1425,167 @@ mod tests {
         )]);
         let texts = frame(vec![]);
         assert!(texts.contains("speed 7.500"), "{texts}");
+    }
+
+    #[test]
+    fn paused_it_looks_back_through_everything_kept() {
+        use egui::{Event, Modifiers, PointerButton, Pos2, RawInput};
+        let w = graph();
+        let mut traces = crate::traces::Traces::default();
+        let key = series(&w)[0].key.clone();
+        // It asks for a minute of values recorded, not just the 5 s shown.
+        assert_eq!(Graph.traced(&w), [(key.clone(), 60.0)]);
+        traces.want(&key, history_kept(&w.properties));
+        // A minute at 10 a second; each value is its time in seconds.
+        for i in 0..=600 {
+            traces.record(&key, i * 100_000, i as f64 / 10.0);
+        }
+        let ctx = egui::Context::default();
+        let rect = Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 300.0));
+        let frame = |events: Vec<Event>| -> Vec<String> {
+            let raw = RawInput {
+                screen_rect: Some(rect),
+                events,
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(raw, |ui| {
+                let (others, effects) = (Default::default(), Default::default());
+                let frame = Frame {
+                    traces: &traces,
+                    now_us: 60_000_000,
+                    others: &others,
+                    connected: true,
+                    effects: &effects,
+                    structs: None,
+                };
+                let live = frame.live(None, Place::default());
+                Graph.show(ui, rect, &w, &live);
+            });
+            output.textures_delta.clear();
+            let mut texts = Vec::new();
+            fn walk(shape: &egui::Shape, texts: &mut Vec<String>) {
+                match shape {
+                    egui::Shape::Text(t) => texts.push(t.galley.text().to_owned()),
+                    egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, texts)),
+                    _ => {}
+                }
+            }
+            for s in &output.shapes {
+                walk(&s.shape, &mut texts);
+            }
+            texts
+        };
+        let press = |at: Pos2, pressed: bool| Event::PointerButton {
+            pos: at,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        let click = |at: Pos2| vec![Event::PointerMoved(at), press(at, true), press(at, false)];
+        let wheel = |dy: f32, modifiers: Modifiers| Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, dy),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
+            modifiers,
+        };
+        let body = rect
+            .with_min_y(rect.min.y + card::TITLE_HEIGHT)
+            .shrink(card::BODY_MARGIN);
+        let button = egui::pos2(
+            body.max.x - BUTTON_SIZE.x / 2.0,
+            body.min.y + BUTTON_SIZE.y / 2.0,
+        );
+        let middle = body.center();
+        // Where cursor A is, in seconds before the pause, and the line's
+        // value there: place it at `at` and read the readout, then take it
+        // away.
+        let measure = |at: Pos2| -> (f64, f64) {
+            frame(click(at));
+            let texts = frame(vec![]);
+            let found = texts
+                .iter()
+                .find(|t| t.starts_with("A "))
+                .unwrap_or_else(|| panic!("a readout in {texts:?}"))
+                .clone();
+            frame(click(at));
+            frame(vec![]);
+            let mut lines = found.lines();
+            let time: f64 = lines.next().unwrap()[2..]
+                .split(' ')
+                .next()
+                .unwrap()
+                .parse()
+                .unwrap();
+            let value: f64 = lines
+                .next()
+                .unwrap()
+                .split_whitespace()
+                .nth(1)
+                .unwrap()
+                .parse()
+                .unwrap();
+            (time, value)
+        };
+        frame(vec![]);
+        frame(click(button));
+        frame(vec![]);
+        // At first, the last 5 s: the middle is about 2.5 s back.
+        let (t, v) = measure(middle);
+        assert!((-3.5..-1.5).contains(&t), "{t}");
+        assert!((v - (60.0 + t)).abs() < 0.11, "{t} {v}");
+
+        // The wheel moves back in time, past what shows live.
+        frame(vec![
+            Event::PointerMoved(middle),
+            wheel(300.0, Modifiers::NONE),
+        ]);
+        for _ in 0..30 {
+            frame(vec![]);
+        }
+        let (back, v) = measure(middle);
+        assert!(back < -6.0, "moved back: {back}");
+        assert!((v - (60.0 + back)).abs() < 0.11, "{back} {v}");
+
+        // Dragging to the left moves later again.
+        let from = middle;
+        let to = middle - egui::vec2(100.0, 0.0);
+        frame(vec![Event::PointerMoved(from), press(from, true)]);
+        for step in 1..=10 {
+            let at = from + (to - from) * (step as f32 / 10.0);
+            frame(vec![Event::PointerMoved(at)]);
+        }
+        frame(vec![press(to, false)]);
+        frame(vec![]);
+        let (dragged, _) = measure(middle);
+        assert!(dragged > back + 0.5, "dragged later: {back} → {dragged}");
+
+        // Zoomed out with Ctrl and the wheel: the left edge reaches further.
+        let left = egui::pos2(body.min.x + 30.0, middle.y);
+        let (before, _) = measure(left);
+        frame(vec![
+            Event::PointerMoved(middle),
+            wheel(-400.0, Modifiers::CTRL),
+        ]);
+        for _ in 0..30 {
+            frame(vec![]);
+        }
+        let (after, _) = measure(left);
+        assert!(after < before - 1.0, "zoomed out: {before} → {after}");
+
+        // Never before the oldest value kept, however far back it goes.
+        for _ in 0..20 {
+            frame(vec![
+                Event::PointerMoved(middle),
+                wheel(2000.0, Modifiers::NONE),
+            ]);
+        }
+        for _ in 0..30 {
+            frame(vec![]);
+        }
+        let (oldest, v) = measure(left);
+        assert!(oldest >= -60.01, "{oldest}");
+        assert!(oldest < -50.0, "{oldest}");
+        assert!((v - (60.0 + oldest)).abs() < 0.11, "{oldest} {v}");
     }
 }

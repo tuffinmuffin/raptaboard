@@ -214,6 +214,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `show_legend` | `builtin/graph.rs` | Graph | show the legend | when there's more than one line |
 | `show_pause` | `builtin/graph.rs` | Graph | show the pause button (and measuring) | true |
 | `show_hover` | `builtin/graph.rs` | Graph | show values where the pointer is | true |
+| `history_kept` | `builtin/graph.rs` | Graph | seconds of values recorded, to look back through while paused (1–600; never less than `time_displayed`) | 60 |
 | `label_inside` | `list_layout.rs` | List Layout | `true`: each label drawn over its value (on a see-through backing) instead of beside it | off |
 | `dividers` | `list_layout.rs` | List Layout | `true`: a thin line under the list's title and below each child | off |
 | `hidden` | `list_layout.rs` | a List Layout's child | `true`: kept in the list but not shown or subscribed | shown |
@@ -433,14 +434,15 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      points so a closed tab keeps it; "Reset scale" in the widget's right-click menu
      (`WidgetType::resettable`). Bars and gauges have an accessible label with the scale drawn
      ("Arm: scale 0 to 8"). Not saved; each run starts fresh.
-   - Graph history review: while paused, scroll back and forward through time (drag or the scroll
-     wheel along the time axis, maybe zoom), beyond the window shown, for looking back at what led
-     up to an event. A per-graph "history kept" setting (expected use is up to 3–5 minutes; memory
-     is fine at that, about 1 MB per line at 100 Hz for 10 minutes; make the `traces.rs` cap follow
-     the setting instead of a fixed point count) sets how far back is recorded; the cursors measure
-     anywhere in it. Zoomed out over minutes, reduce each line to about one point per pixel column
-     before drawing, so a frame doesn't copy tens of thousands of points per line. Applies to X/Y and polar graphs
-     too.
+   - Graph history review (**done**, after 0.1.0): `history_kept` (a minute unless set, up to 10
+     minutes) is how far back a graph records (`traced` asks for it), and `traces.rs`'s cap follows
+     each series' window (`traces::cap`: 200 values a second, 2,000 to 120,000 points) instead of a
+     fixed count. Pausing freezes everything kept (shared, an `Arc`); while paused the wheel or a
+     drag along the plot moves through time and Ctrl/⌘ with the wheel zooms about the pointer
+     (`graph::Window`, kept to what's recorded), and the wheel is used up so the grid behind
+     doesn't scroll. Lines are thinned to each pixel column's lowest and highest before drawing
+     (`graph::thin`); the cursors and hover read every value. Still to do: the same for X/Y and
+     polar graphs, when they exist.
    - Graph sample statistics: an option (off by default) to show each line's min, max and average
      over the samples in view: the time window shown, or between the A and B cursors when both
      are placed (so a measurement gives them for just that stretch), and the frozen window while

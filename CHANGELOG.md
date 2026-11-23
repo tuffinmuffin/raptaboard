@@ -10,6 +10,9 @@ What changes in each raptaboard release. Newest first.
 - **Min, max and average** under the value on Text Display, Number Bar, Voltage View and
   Radial Gauge: over the last few seconds or since a reset (the robot reconnecting, or Reset
   min/max in the right-click menu), from every value received so short peaks count.
+- **Graph history:** graphs keep the last minute (the new "History kept" setting, up to 10
+  minutes); paused, drag or use the mouse wheel to look back through it, Ctrl or ⌘ with the
+  wheel to zoom, and measure anywhere in it with the cursors.
 - Touchscreens tested on Windows (a laptop), without issues.
 
 ## 0.1.0

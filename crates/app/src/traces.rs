@@ -3,7 +3,7 @@
 //! The NT client keeps only each topic's newest value, so the app records
 //! every value graphs want here, taken from the client's event stream so none
 //! are lost between frames. Each series is a ring buffer (`VecDeque`) that
-//! grows as needed up to [`MAX_POINTS`]. Only the series some graph on
+//! grows as needed up to [`cap`] points for its window. Only the series some graph on
 //! the open tab wants are kept, each for the longest time window a graph
 //! wants it for; a series no graph wants any more is forgotten.
 //!
@@ -27,9 +27,27 @@ pub struct SeriesKey {
     pub field: Option<Vec<String>>,
 }
 
-/// The most points kept for one series, so a fast topic with a long window
-/// can't use up memory: 100 a second for 10 minutes.
-pub const MAX_POINTS: usize = 60_000;
+/// The fastest rate a series is kept at, values a second: past it, the
+/// oldest points go early, so a runaway topic can't use up memory.
+pub const MAX_RATE_HZ: f64 = 200.0;
+/// The most points kept for one series, whatever its window: 200 a second
+/// for 10 minutes (about 2 MB).
+pub const MAX_POINTS: usize = 120_000;
+/// The fewest points a series may keep, for short windows.
+const MIN_POINTS: usize = 2_000;
+
+/// The most points kept for a series wanted for `seconds` back: enough
+/// for [`MAX_RATE_HZ`] over that time, between 2,000 and [`MAX_POINTS`].
+///
+/// ```
+/// use raptaboard::traces::{cap, MAX_POINTS};
+/// assert_eq!(cap(60.0), 12_000);
+/// assert_eq!(cap(1.0), 2_000);
+/// assert_eq!(cap(1e9), MAX_POINTS);
+/// ```
+pub fn cap(seconds: f64) -> usize {
+    ((seconds * MAX_RATE_HZ).ceil() as usize).clamp(MIN_POINTS, MAX_POINTS)
+}
 
 /// Recorded values for every series a graph wants.
 ///
@@ -169,7 +187,7 @@ impl Traces {
             return;
         }
         trace.points.push_back((time_us, value));
-        if trace.points.len() > MAX_POINTS {
+        if trace.points.len() > cap(trace.keep_s) {
             trace.points.pop_front();
         }
         if value.is_finite() {
@@ -296,6 +314,32 @@ impl Traces {
             .flat_map(|t| t.points.iter().copied())
     }
 
+    /// The points for `key` from time `from_us` on, oldest first, with the
+    /// one before it (the value when that time began), as
+    /// [`points`](Self::points) gives them.
+    ///
+    /// ```
+    /// use raptaboard::traces::{SeriesKey, Traces};
+    /// let key = SeriesKey { topic: "/Arm/angle".into(), field: None };
+    /// let mut traces = Traces::default();
+    /// traces.want(&key, 60.0);
+    /// for s in 0..10 {
+    ///     traces.record(&key, s * 1_000_000, s as f64);
+    /// }
+    /// let times: Vec<i64> = traces.points_since(&key, 7_500_000).map(|(t, _)| t / 1_000_000).collect();
+    /// assert_eq!(times, [7, 8, 9]);
+    /// ```
+    pub fn points_since(
+        &self,
+        key: &SeriesKey,
+        from_us: i64,
+    ) -> impl Iterator<Item = (i64, f64)> + '_ {
+        self.series.get(key).into_iter().flat_map(move |t| {
+            let first = t.points.partition_point(|&(time, _)| time < from_us);
+            t.points.range(first.saturating_sub(1)..).copied()
+        })
+    }
+
     /// Call once a frame after recording: forgets series no graph wanted
     /// this frame, and points older than each series' window at `now_us`.
     /// One point from before the window is kept, so the line reaches the
@@ -387,6 +431,13 @@ mod tests {
         }
         assert_eq!(traces.points(&a).count(), MAX_POINTS);
         assert_eq!(traces.points(&a).next().unwrap().0, 10);
+        // A short window keeps fewer: its cap follows the window.
+        let b = key("/short");
+        traces.want(&b, 1.0);
+        for t in 0..5_000 {
+            traces.record(&b, t, 0.0);
+        }
+        assert_eq!(traces.points(&b).count(), cap(1.0));
     }
 
     #[test]
