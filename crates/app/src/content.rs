@@ -35,7 +35,7 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::sound::SoundFiles;
+use crate::sound::{LayeredSound, SoundFiles, SoundLayers};
 
 /// The official source's catalog: raptaboard-content's latest release.
 pub const OFFICIAL: &str =
@@ -94,7 +94,9 @@ pub struct Pack {
     pub name: String,
     /// Its version (`1.0.0`); a higher one is an update.
     pub version: String,
-    /// `sounds` or `plugin`.
+    /// What it holds, in a word, if the catalog says (older catalogs did:
+    /// `sounds`); what it holds is its sections, [`Pack::contents`].
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub kind: String,
     /// The oldest raptaboard it works with.
     pub min_app: String,
@@ -107,21 +109,85 @@ pub struct Pack {
     /// Ticked in the list offered on the first run.
     #[serde(default)]
     pub suggested: bool,
-    /// The sounds in a sounds pack.
-    #[serde(default)]
+    /// Its sounds. One may have a new name, or a built-in sound's name
+    /// (`disabled 1`), which it then plays in place of the built-in one
+    /// (see [`crate::sound::SoundLayers`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sounds: Vec<PackSound>,
-    /// Its files.
+    /// Its images, for widgets that show one (a Boolean Box). Not used yet.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<PackItem>,
+    /// Its fields (WPILib field JSON files, each naming its image, also in
+    /// the pack). Not used yet.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<PackItem>,
+    /// Its widget plugins (`.wasm` components). Not used yet.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plugins: Vec<PackItem>,
+    /// Its files: everything the sections use, and any data they read.
     pub files: Vec<PackFile>,
 }
 
-/// A sound in a sounds pack: offered under `name`, played from `file`.
+/// A sound in a pack: offered under `name`, played from `file`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PackSound {
-    /// The name it's offered under. A built-in sound's name (`disabled 1`)
-    /// plays this file in place of the generated tone.
+    /// The name it's offered under: a new one, or a built-in sound's
+    /// (`disabled 1`) to play in its place.
     pub name: String,
     /// One of the pack's files.
     pub file: String,
+}
+
+/// An image, field or plugin in a pack: one of its files, and the name it's
+/// offered under (if not the file's).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PackItem {
+    /// The name it's offered under; the file's name if not given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// One of the pack's files.
+    pub file: String,
+}
+
+impl Pack {
+    /// What it holds, in words: "4 sounds", "2 images, 1 plugin".
+    ///
+    /// ```
+    /// # let pack: raptaboard::content::Pack = serde_json::from_value(serde_json::json!({
+    /// #   "id": "p", "name": "P", "version": "1.0.0", "min_app": "0.1.0", "summary": "",
+    /// #   "license": "", "credits": "",
+    /// #   "sounds": [{"name": "a", "file": "a.mp3"}, {"name": "b", "file": "b.mp3"}],
+    /// #   "images": [{"file": "c.svg"}], "files": []})).unwrap();
+    /// assert_eq!(pack.contents(), "2 sounds, 1 image");
+    /// ```
+    pub fn contents(&self) -> String {
+        let parts: Vec<String> = [
+            (self.sounds.len(), "sound"),
+            (self.images.len(), "image"),
+            (self.fields.len(), "field"),
+            (self.plugins.len(), "plugin"),
+        ]
+        .into_iter()
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, what)| format!("{n} {what}{}", if n == 1 { "" } else { "s" }))
+        .collect();
+        if parts.is_empty() {
+            format!("{} files", self.files.len())
+        } else {
+            parts.join(", ")
+        }
+    }
+
+    /// Every file its sections use.
+    fn used_files(&self) -> impl Iterator<Item = &str> {
+        self.sounds.iter().map(|s| s.file.as_str()).chain(
+            self.images
+                .iter()
+                .chain(&self.fields)
+                .chain(&self.plugins)
+                .map(|i| i.file.as_str()),
+        )
+    }
 }
 
 /// A file in a pack.
@@ -142,6 +208,10 @@ pub struct PackFile {
 pub struct Installed {
     /// The catalog URL it was installed from.
     pub source: String,
+    /// When it was installed (or last updated), in seconds since 1970: the
+    /// newest install wins where packs give the same sound.
+    #[serde(default)]
+    pub installed_at: u64,
     /// The catalog's entry for it, as it was when installed.
     pub pack: Pack,
 }
@@ -259,11 +329,11 @@ impl Catalog {
                     return Err(format!("{}: file name {:?} isn't allowed", pack.id, f.path));
                 }
             }
-            for s in &pack.sounds {
-                if !pack.files.iter().any(|f| f.path == s.file) {
+            for file in pack.used_files() {
+                if !pack.files.iter().any(|f| f.path == file) {
                     return Err(format!(
-                        "{}: sound {} has no file {}",
-                        pack.id, s.name, s.file
+                        "{}: it uses {file}, which it doesn't have",
+                        pack.id
                     ));
                 }
             }
@@ -434,8 +504,12 @@ impl Store {
             std::fs::write(folder.join(&f.path), &bytes)
                 .map_err(|e| format!("can't save {}: {e}", f.path))?;
         }
+        let installed_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
         let record = Installed {
             source: source.to_owned(),
+            installed_at,
             pack: pack.clone(),
         };
         let json = serde_json::to_vec_pretty(&record).map_err(|e| e.to_string())?;
@@ -456,18 +530,25 @@ impl Store {
         }
     }
 
-    /// The sounds the installed packs offer: each name and its file.
-    pub fn sounds(&self) -> HashMap<String, PathBuf> {
-        self.installed()
-            .into_iter()
-            .flat_map(|i| {
-                let dir = self.pack_dir(&i.pack.id);
-                i.pack
-                    .sounds
-                    .into_iter()
-                    .map(move |s| (s.name, dir.join(s.file)))
-            })
-            .collect()
+    /// The sounds the installed packs offer, each name with every pack
+    /// that has it, newest install first.
+    pub fn sounds(&self) -> SoundLayers {
+        let mut layers = SoundLayers::default();
+        for i in self.installed() {
+            let dir = self.pack_dir(&i.pack.id);
+            for s in &i.pack.sounds {
+                layers.add(
+                    &s.name,
+                    LayeredSound {
+                        pack: i.pack.id.clone(),
+                        pack_name: i.pack.name.clone(),
+                        path: dir.join(&s.file),
+                        installed_at: i.installed_at,
+                    },
+                );
+            }
+        }
+        layers
     }
 
     /// What's remembered between runs; the default if nothing is yet.
@@ -996,6 +1077,9 @@ pub(crate) mod tests {
                     file: (*file).into(),
                 })
                 .collect(),
+            images: Vec::new(),
+            fields: Vec::new(),
+            plugins: Vec::new(),
             files: files
                 .iter()
                 .map(|(_, file)| PackFile {
@@ -1285,7 +1369,12 @@ pub(crate) mod tests {
             std::fs::read(dir.join("beeps/beep.mp3")).unwrap(),
             b"beep.mp3"
         );
-        assert_eq!(store.sounds()["beep"], dir.join("beeps/beep.mp3"));
+        assert_eq!(
+            store
+                .sounds()
+                .resolve(&crate::sound::SoundRef::Name("beep".into())),
+            Some(dir.join("beeps/beep.mp3"))
+        );
 
         let v2 = sound_pack("beeps", "1.1.0", &[("boop", "boop.mp3")], "https://x");
         assert_eq!(
@@ -1305,6 +1394,84 @@ pub(crate) mod tests {
         store.remove("beeps").unwrap();
         assert!(store.installed().is_empty() && !dir.join("beeps").exists());
         store.remove("beeps").unwrap();
+    }
+
+    #[test]
+    fn where_packs_share_a_sound_the_newest_install_wins() {
+        use crate::sound::SoundRef;
+        let dir = folder("layers");
+        let store = Store::new(&dir);
+        let web = Web::default();
+        let a = sound_pack(
+            "aaa",
+            "1.0.0",
+            &[("fire 1", "a.mp3"), ("horn", "horn.mp3")],
+            "https://x",
+        );
+        let b = sound_pack("bbb", "1.0.0", &[("fire 1", "b.mp3")], "https://x");
+        web.serve(
+            "https://x/c.json",
+            &catalog(vec![a.clone(), b.clone()]),
+            None,
+        );
+        store
+            .install("https://x/c.json", &a, &*web.fetch())
+            .unwrap();
+        store
+            .install("https://x/c.json", &b, &*web.fetch())
+            .unwrap();
+        // Installed in the same second: set the times as if b came later.
+        for (id, at) in [("aaa", 100), ("bbb", 200)] {
+            let path = dir.join(id).join(Installed::FILE);
+            let mut i: Installed = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            i.installed_at = at;
+            std::fs::write(&path, serde_json::to_vec(&i).unwrap()).unwrap();
+        }
+        let layers = store.sounds();
+        let file = |s: &str| layers.resolve(&SoundRef::parse(s));
+        assert_eq!(file("fire 1"), Some(dir.join("bbb/b.mp3")));
+        assert_eq!(file("pack:aaa/fire 1"), Some(dir.join("aaa/a.mp3")));
+        assert_eq!(file("builtin:fire 1"), None);
+        // A new name, from one pack.
+        assert_eq!(file("horn"), Some(dir.join("aaa/horn.mp3")));
+        assert_eq!(layers.names(), ["fire 1", "horn"]);
+        let packs: Vec<&str> = layers
+            .layers("fire 1")
+            .iter()
+            .map(|s| s.pack.as_str())
+            .collect();
+        assert_eq!(packs, ["bbb", "aaa"]);
+        // Removing the newest falls back to the next.
+        store.remove("bbb").unwrap();
+        assert_eq!(
+            store.sounds().resolve(&SoundRef::parse("fire 1")),
+            Some(dir.join("aaa/a.mp3"))
+        );
+    }
+
+    #[test]
+    fn a_pack_can_mix_sections_but_not_name_files_it_lacks() {
+        let mut pack = sound_pack("mixed", "1.0.0", &[("horn", "horn.mp3")], "https://x");
+        pack.images.push(PackItem {
+            name: Some("raptor".into()),
+            file: "horn.mp3".into(),
+        });
+        let ok = serde_json::to_vec(&catalog(vec![pack.clone()])).unwrap();
+        assert_eq!(
+            Catalog::parse(&ok).unwrap().packs[0].contents(),
+            "1 sound, 1 image"
+        );
+        pack.plugins.push(PackItem {
+            name: None,
+            file: "doom.wasm".into(),
+        });
+        let bad = serde_json::to_vec(&catalog(vec![pack])).unwrap();
+        assert!(Catalog::parse(&bad).unwrap_err().contains("doom.wasm"));
+        // An older catalog's kind still reads.
+        let old = br#"{"format": 1, "packs": [{"id": "p", "name": "P", "version": "1.0.0",
+            "kind": "sounds", "min_app": "0.1.0", "summary": "", "license": "", "credits": "",
+            "files": []}]}"#;
+        assert_eq!(Catalog::parse(old).unwrap().packs[0].kind, "sounds");
     }
 
     #[test]
@@ -1416,7 +1583,10 @@ pub(crate) mod tests {
         assert_eq!((done.action, &done.result), (Action::Install, &Ok(())));
         assert!(done.describe().contains("Its sounds: beep"));
         assert!(content.installed("beeps").is_some());
-        assert_eq!(sounds.read().unwrap()["beep"], dir.join("beeps/beep.mp3"));
+        assert_eq!(
+            sounds.read().unwrap().layers("beep")[0].path,
+            dir.join("beeps/beep.mp3")
+        );
 
         content.remove("beeps");
         wait(&mut content);

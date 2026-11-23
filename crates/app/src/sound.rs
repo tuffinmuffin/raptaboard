@@ -149,15 +149,162 @@ impl Tone {
     }
 }
 
-/// Sounds from installed content packs, by name, and the file each plays:
-/// a built-in sound's name plays its file in place of the built-in one.
-/// Shared between [`Sound`] and [`crate::content::Content`], which fills it.
-pub type SoundFiles = Arc<RwLock<HashMap<String, PathBuf>>>;
+/// The installed content packs' sounds, shared between [`Sound`] and
+/// [`crate::content::Content`], which fills it.
+pub type SoundFiles = Arc<RwLock<SoundLayers>>;
 
-/// The file an installed pack gives `tone`, if any.
+/// One installed pack's sound under a name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LayeredSound {
+    /// The pack's id.
+    pub pack: String,
+    /// The pack's name, for the sound pickers ("fire 1 (IT Crowd clips)").
+    pub pack_name: String,
+    /// The file it plays.
+    pub path: PathBuf,
+    /// When the pack was installed, in seconds since 1970.
+    pub installed_at: u64,
+}
+
+/// The installed packs' sounds by name: a pack may add a sound or give
+/// one of the built-in sounds' names to play in its place, and where packs
+/// share a name, the newest install wins. See [`SoundRef`] for how a
+/// setting picks one.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SoundLayers {
+    /// Each name, with every pack that has it, newest install first.
+    by_name: HashMap<String, Vec<LayeredSound>>,
+}
+
+impl SoundLayers {
+    /// Add `sound` under `name`.
+    pub fn add(&mut self, name: &str, sound: LayeredSound) {
+        let layers = self.by_name.entry(name.to_owned()).or_default();
+        layers.push(sound);
+        layers.sort_by(|a, b| {
+            b.installed_at
+                .cmp(&a.installed_at)
+                .then_with(|| a.pack.cmp(&b.pack))
+        });
+    }
+
+    /// Whether no pack has any sound.
+    pub fn is_empty(&self) -> bool {
+        self.by_name.is_empty()
+    }
+
+    /// Every pack that has a sound called `name`, newest install first.
+    pub fn layers(&self, name: &str) -> &[LayeredSound] {
+        self.by_name.get(name).map_or(&[], Vec::as_slice)
+    }
+
+    /// Every name a pack has a sound for, in order.
+    pub fn names(&self) -> Vec<&str> {
+        let mut names: Vec<&str> = self.by_name.keys().map(String::as_str).collect();
+        names.sort();
+        names
+    }
+
+    /// The file `sound` plays from a pack, or `None` to play the built-in
+    /// sound of its name (or nothing, if there's none):
+    ///
+    /// - a plain name: the newest install's;
+    /// - pinned to a pack: that pack's, if it's installed;
+    /// - built in: never a pack's.
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    /// use raptaboard::sound::{LayeredSound, SoundLayers, SoundRef};
+    /// let mut layers = SoundLayers::default();
+    /// let sound = |pack: &str, at| LayeredSound {
+    ///     pack: pack.into(), pack_name: pack.into(),
+    ///     path: PathBuf::from(format!("/{pack}/fire.mp3")), installed_at: at,
+    /// };
+    /// layers.add("fire 1", sound("old", 1));
+    /// layers.add("fire 1", sound("new", 2));
+    /// let file = |s: &str| layers.resolve(&SoundRef::parse(s));
+    /// assert_eq!(file("fire 1"), Some(PathBuf::from("/new/fire.mp3")));
+    /// assert_eq!(file("pack:old/fire 1"), Some(PathBuf::from("/old/fire.mp3")));
+    /// assert_eq!(file("pack:gone/fire 1"), None); // the built-in one
+    /// assert_eq!(file("builtin:fire 1"), None);
+    /// ```
+    pub fn resolve(&self, sound: &SoundRef) -> Option<PathBuf> {
+        match sound {
+            SoundRef::Name(name) => self.layers(name).first(),
+            SoundRef::Pack { pack, name } => self.layers(name).iter().find(|s| s.pack == *pack),
+            SoundRef::BuiltIn(_) => None,
+        }
+        .map(|s| s.path.clone())
+    }
+}
+
+/// A sound setting: which sound of a name to play. Saved as text: `fire 1`
+/// (the newest pack's, else the built-in one), `pack:fan-clips/fire 1`
+/// (that pack's, else the built-in one) or `builtin:fire 1` (the built-in
+/// one, whatever packs are installed). Whatever isn't found falls back to
+/// the built-in sound of that name, or none.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SoundRef {
+    /// The newest installed pack's sound of this name, else the built-in one.
+    Name(String),
+    /// This pack's sound of this name, else the built-in one.
+    Pack {
+        /// The pack's id.
+        pack: String,
+        /// The sound's name.
+        name: String,
+    },
+    /// The built-in sound of this name, ignoring packs.
+    BuiltIn(String),
+}
+
+impl SoundRef {
+    /// Read a setting.
+    ///
+    /// ```
+    /// use raptaboard::sound::SoundRef;
+    /// assert_eq!(SoundRef::parse("fire 1"), SoundRef::Name("fire 1".into()));
+    /// let pinned = SoundRef::parse("pack:fan-clips/fire 1");
+    /// assert_eq!(pinned, SoundRef::Pack { pack: "fan-clips".into(), name: "fire 1".into() });
+    /// assert_eq!(pinned.setting(), "pack:fan-clips/fire 1");
+    /// ```
+    pub fn parse(setting: &str) -> SoundRef {
+        if let Some(name) = setting.strip_prefix("builtin:") {
+            return SoundRef::BuiltIn(name.to_owned());
+        }
+        if let Some(rest) = setting.strip_prefix("pack:")
+            && let Some((pack, name)) = rest.split_once('/')
+        {
+            return SoundRef::Pack {
+                pack: pack.to_owned(),
+                name: name.to_owned(),
+            };
+        }
+        SoundRef::Name(setting.to_owned())
+    }
+
+    /// The sound's name, whichever sound of it is picked.
+    pub fn name(&self) -> &str {
+        match self {
+            SoundRef::Name(n) | SoundRef::BuiltIn(n) | SoundRef::Pack { name: n, .. } => n,
+        }
+    }
+
+    /// The setting's text, as [`SoundRef::parse`] reads it.
+    pub fn setting(&self) -> String {
+        match self {
+            SoundRef::Name(n) => n.clone(),
+            SoundRef::Pack { pack, name } => format!("pack:{pack}/{name}"),
+            SoundRef::BuiltIn(n) => format!("builtin:{n}"),
+        }
+    }
+}
+
+/// The file an installed pack gives `tone`'s name (the newest install's),
+/// if any.
 fn pack_file(files: &SoundFiles, tone: Tone) -> Option<PathBuf> {
     let name = tone.name()?;
-    files.read().ok()?.get(name).cloned()
+    files.read().ok()?.resolve(&SoundRef::Name(name.to_owned()))
 }
 
 /// A sound for a robot state event: a built-in tone or clip, or a sound
@@ -449,10 +596,15 @@ mod tests {
         // Our own clips are built in.
         assert!(Tone::Danger.clip().is_some() && Tone::LostComms.clip().is_some());
         // Installed, the pack's file plays for the sound of that name.
-        files
-            .write()
-            .unwrap()
-            .insert("fire 1".into(), PathBuf::from("/packs/fan-clips/fire1.mp3"));
+        files.write().unwrap().add(
+            "fire 1",
+            LayeredSound {
+                pack: "fan-clips".into(),
+                pack_name: "IT Crowd clips".into(),
+                path: PathBuf::from("/packs/fan-clips/fire1.mp3"),
+                installed_at: 1,
+            },
+        );
         assert_eq!(
             pack_file(&files, Tone::Fire1),
             Some(PathBuf::from("/packs/fan-clips/fire1.mp3"))

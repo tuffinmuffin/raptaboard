@@ -352,7 +352,9 @@ impl DashboardApp {
             let busy = content.busy.contains(&pack.id);
             ui.horizontal(|ui| {
                 ui.strong(&pack.name);
-                ui.label(egui::RichText::new(format!("{} · {}", pack.version, pack.kind)).weak());
+                ui.label(
+                    egui::RichText::new(format!("{} · {}", pack.version, pack.contents())).weak(),
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if busy {
                         ui.spinner();

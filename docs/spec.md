@@ -311,6 +311,18 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   releases (GitHub's API) and uses the newest with a catalog, saying so in the Content window;
   if none works, it says why. Offline, it stops at the first error. Packs
   that aren't fully open source (the IT Crowd clips) live there too, saying so in their license.
+- **What a pack holds:** sections, mixed as needed, each naming its files: `[[sound]]` (name, file),
+  `[[image]]`, `[[field]]` and `[[plugin]]` (file, optional name). Only sounds are used so far;
+  images (Boolean Box), fields (WPILib field JSONs) and plugins (WASM widgets) come later. The
+  single `kind` older catalogs had is optional and only a label.
+- **Sound layering** (decided with the user 2026-11-23): a pack's sound may add a new name or use a
+  built-in name to replace it. Each install records `installed_at`; where packs share a name, the
+  newest install wins (`sound::SoundLayers`). A sound setting is `fire 1` (newest pack's, else the
+  built-in one), `pack:<id>/fire 1` (that pack's, else built in) or `builtin:fire 1` (ignore packs);
+  anything not found falls back to the built-in sound of that name, or none (`sound::SoundRef`).
+  Today's settings are plain names. Later, the sound pickers list each name once, then each
+  pack's ("fire 1 (IT Crowd clips)") and the built-in one ("fire 1 (built in)"), and new names
+  from packs.
 - **Other sources** are any catalog URL the user adds in the Content window (`content_sources` in
   the settings file). They aren't signed; the window says to add only sources you trust. Every
   file from any source is checked against its catalog's size and checksum.

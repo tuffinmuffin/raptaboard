@@ -73,8 +73,10 @@ or sources the user adds. `content.rs` is the catalog, signature (`OFFICIAL_KEYS
 `Content::with_fetch` and `content::tests::Web`, never the network; the one real-network test is ignored);
 `ui/content_window.rs` the Content window (⚙ Settings → Content packs…) and the list offered on the first start and
 after an upgrade (`content::State`: `last_version`, `offer_pending`, `shown`). `upgrade.rs` holds the one-time tasks
-for a new version's first start: add any migration there. A pack's sound with
-a built-in name plays in place of the built-in tone (`sound::SoundFiles`): that's how the IT Crowd clips (the
+for a new version's first start: add any migration there. A pack holds sections
+(`[[sound]]`, `[[image]]`, `[[field]]`, `[[plugin]]`; only sounds are used so far). A pack's sound may be new or use a
+built-in name to replace it, the newest install winning (`sound::SoundLayers`, `installed_at`); a setting picks
+`fire 1`, `pack:<id>/fire 1` or `builtin:fire 1` (`sound::SoundRef`). That's how the IT Crowd clips (the
 `fan-clips` pack, not built in since 2026-11-23) come back. The signing key's private half is the content repo's
 `CONTENT_SIGNING_KEY` secret, with a copy kept outside the repos by the user.
 

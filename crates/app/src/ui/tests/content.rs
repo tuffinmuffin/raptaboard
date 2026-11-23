@@ -120,7 +120,7 @@ fn the_first_run_offers_the_packs_and_downloads_those_ticked() {
     // Its sounds play in place of the built-in names.
     let files = harness.state().sound.files();
     assert_eq!(
-        files.read().unwrap()["fire 1"],
+        files.read().unwrap().layers("fire 1")[0].path,
         dir.join("fan-clips/fire1.mp3")
     );
     // Asked once: the next start doesn't offer again.
