@@ -59,8 +59,9 @@ About window's list), plus a `-debug` archive. Nothing is code-signed yet (decid
 `version` in the workspace `Cargo.toml`, add its `## x.y.z` section to `CHANGELOG.md` (short: what's
 in it, not every PR), merge, then push a tag `vx.y.z` on `main`; `.github/workflows/release.yml` builds
 the packages and publishes the GitHub Release (a tag with a suffix, `vx.y.z-rc.1`, publishes a prerelease
-instead, for trying the process; delete it afterwards with `gh release delete vx.y.z-rc.1 --cleanup-tag`) (it also builds them, without publishing, on PRs that
-change packaging).
+instead, for trying the process; delete it afterwards with `gh release delete vx.y.z-rc.1 --cleanup-tag`) (it also builds them, without publishing, on every push to
+`main`, kept as workflow artifacts for 14 days so the newest `main` can be tried, and on PRs that change packaging files;
+`CHANGELOG.md` isn't one, so ordinary PRs stay quick).
 
 CI (`.github/workflows/ci.yml`) runs fmt, clippy with `-D warnings` and tests on Linux, Windows and
 macOS. Run the same locally before pushing. Its `coverage` job (cargo-llvm-cov, as in nt4-rs) posts a

@@ -4,12 +4,17 @@ name: Release
 # Linux. Pushing a tag like v0.1.0 also publishes them as a GitHub Release,
 # with notes from CHANGELOG.md. A tag with a suffix, like v0.1.0-rc.1,
 # publishes a prerelease instead (for trying the packages and the release
-# itself): it isn't marked latest, so the README's download link skips it. On a pull request that changes packaging,
-# the packages are built and kept as workflow artifacts (to try them before
-# a release), and nothing is published.
+# itself): it isn't marked latest, so the README's download link skips it.
+# Every push to main (each merged PR) builds them too, kept as workflow
+# artifacts for 14 days, so the newest main can always be downloaded and
+# tried; a newer push cancels the build before it. A pull request builds
+# them only when it changes packaging (the paths below), so other PRs stay
+# quick; CHANGELOG.md isn't one, as most PRs add a line to it. Nothing is
+# published except from a tag.
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   pull_request:
     paths:
@@ -20,7 +25,6 @@ on:
       - "crates/app/build.rs"
       - "crates/app/windows/**"
       - "media/icon/**"
-      - "CHANGELOG.md"
   workflow_dispatch:
 
 permissions:
@@ -79,6 +83,7 @@ jobs:
           name: raptaboard-${{ matrix.name }}
           path: dist/*
           if-no-files-found: error
+          retention-days: 14
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
