@@ -58,7 +58,11 @@ About window's list), plus a `-debug` archive. Nothing is code-signed yet (decid
 (`packaging/windows/msix/`: the manifest, and `store.json` with the identity from Partner Center), in
 `dist-store/` and its own `store-msix` artifact, never on the GitHub release. It's built without the `fan-clips`
 cargo feature (on by default), leaving out the clips that aren't ours, with generated tones in their place; CI
-lints and tests that build too. Each release's `.msix` is uploaded in Partner Center by hand for now. The icon is
+lints and tests that build too. Each release's `.msix` is uploaded in Partner Center by hand for now.
+`PRIVACY.md` is the privacy policy the Store listing links to (raptaboard collects nothing, connects only to the
+NetworkTables server chosen, and stores only its settings, saved layouts and imported images): update it, and its
+date, in the same PR as anything that makes raptaboard connect somewhere new (such as downloading clips) or store
+something new. The icon is
 `media/icon/raptaboard.svg` (Raptacon's raptor mark from its brand kit in a rust-red gear); `cargo run -p raptaboard --example make_icons` remakes the `.ico`,
 `.icns` and `.png`, and `build.rs` puts the `.ico` into the Windows program. To release: bump
 `version` in the workspace `Cargo.toml`, add its `## x.y.z` section to `CHANGELOG.md` (short: what's
