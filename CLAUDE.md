@@ -60,7 +60,8 @@ About window's list), plus a `-debug` archive. Nothing is code-signed yet (decid
 (`packaging/windows/msix/`: the manifest, and `store.json` with the identity from Partner Center), in
 `dist-store/` and its own `store-msix` artifact, never on the GitHub release; it holds the same `raptaboard.exe`
 as the other Windows packages. Each release's `.msix` is uploaded in Partner Center by hand for now.
-`PRIVACY.md` is the privacy policy the Store listing links to, built into the About window's Privacy page
+`PRIVACY.md` is the privacy policy the Store listing links to (its GitHub URL on `main`, from the release after 0.2.1;
+0.2.1's listing had the text pasted in), built into the About window's Privacy page
 (`credits::PRIVACY`, drawn from its Markdown by `credits::policy_blocks`) (raptaboard collects nothing, connects only to the
 NetworkTables server chosen and, when asked, the content sources, and stores only its settings, saved layouts,
 imported images and content packs): update it, and its date, in the same PR as anything that makes raptaboard
