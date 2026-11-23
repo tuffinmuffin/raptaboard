@@ -1,4 +1,5 @@
-//! The ⚙ Settings window (robot connection, sound) and the "About and
+//! The ⚙ Settings window (robot connection, sound, the robot state's
+//! border and e-stop pop-up) and the "About and
 //! licenses" window it opens: raptaboard's version and license, where the
 //! built-in sounds, images and fields came from, and every Rust crate it's
 //! built from with its license (from [`crate::credits`]).
@@ -156,6 +157,9 @@ impl DashboardApp {
             .on_hover_text(
                 "A failed send's tone and the Alerts widget's sounds. The bell in the bar does the same.",
             );
+        ui.separator();
+        ui.strong("Robot state");
+        super::robot_state_view::settings_rows(ui, &mut self.robot);
         ui.separator();
         if ui.button("About and licenses…").clicked() {
             self.gear.about = true;

@@ -15,6 +15,9 @@ What changes in each raptaboard release. Newest first.
   wheel to zoom, and measure anywhere in it with the cursors.
 - **Graph statistics:** each line's min, max and average over the time shown, or between the
   measuring cursors.
+- **Robot state for the whole window** (⚙ Settings): a pop-up over everything when the robot is
+  e-stopped (on by default), and a window border colored by the robot's state that flashes red
+  after a disable (off by default; colors per state).
 - Touchscreens tested on Windows (a laptop), without issues.
 
 ## 0.1.0

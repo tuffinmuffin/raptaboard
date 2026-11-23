@@ -531,12 +531,19 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        non-commercial, educational use by Team 3200 is low risk, and any clip is removed at once
        if its owner asks. Revisit when teams outside Raptacon use raptaboard.
    - Later, after 0.1.0 (asked for by the user 2026-11-22), from the same robot state:
-     - Window border by state: a colored border around the whole window, red while disabled, and
-       flashing red for a few seconds right after the robot is disabled, so the state shows at a
-       glance from any tab. Colors per state set in the Settings window; off by default.
-     - E-stop pop-up: a large modal over the whole window when the robot enters e-stop, saying so
-       plainly. It clears on a click anywhere or when the robot reconnects (an e-stopped robot
-       stays e-stopped until it reboots).
+     - Window border by state (**done**, `ui/robot_state_view.rs`): a colored border around the
+       whole window, red while disabled, and flashing red for 3 s right after the robot is
+       disabled, so the state shows at a glance from any tab. Colors per state set in the Settings
+       window (the FMSInfo widget's colors by default, none for no robot; any state can be set to
+       none); off by default. Settings: `state_border`, `[state_border_colors]` (`"#RRGGBB"` or
+       `"none"` per state).
+     - E-stop pop-up (**done**): a large modal over the whole window when the robot enters e-stop,
+       saying so plainly. It clears on a click anywhere, when the robot reconnects (an e-stopped
+       robot stays e-stopped until it reboots) or leaves e-stop. On by default (`estop_popup`); not
+       shown for a robot already e-stopped when the dashboard connects, as the sounds aren't.
+     - Both read the state from the first FMSInfo widget's table, else the server's
+       `/DriverStation` or `/FMSInfo`, and ask for its topics whatever tab is open, so they work
+       with no FMSInfo widget at all.
    - Connection settings behind a gear (**done**, `ui/settings_window.rs`; asked for by the user
      2026-11-22): a ⚙ button in the settings bar opens a Settings window with the team number,
      address mode, custom address and port, and sound on or off (later: volume). The bar keeps the
