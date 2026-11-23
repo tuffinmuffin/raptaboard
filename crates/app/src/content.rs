@@ -691,6 +691,59 @@ enum Done {
     Removed(String, Result<(), String>),
 }
 
+/// Installing or removing a pack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    /// Installing (or updating) it.
+    Install,
+    /// Removing it.
+    Remove,
+}
+
+/// What became of an install or remove.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Outcome {
+    /// Which it was.
+    pub action: Action,
+    /// The pack: the version installed, or the one removed.
+    pub pack: Pack,
+    /// Whether it worked, or why not.
+    pub result: Result<(), String>,
+}
+
+impl Outcome {
+    /// What happened, in a sentence or two for the user.
+    ///
+    /// ```
+    /// use raptaboard::content::{Action, Outcome, Pack};
+    /// # let pack: Pack = serde_json::from_value(serde_json::json!({
+    /// #   "id": "fan-clips", "name": "IT Crowd clips", "version": "1.0.0", "kind": "sounds",
+    /// #   "min_app": "0.1.0", "summary": "", "license": "", "credits": "",
+    /// #   "sounds": [{"name": "fire 1", "file": "fire1.mp3"}],
+    /// #   "files": [{"path": "fire1.mp3", "url": "https://x/f", "size": 1, "sha256": ""}]})).unwrap();
+    /// let done = Outcome { action: Action::Install, pack, result: Ok(()) };
+    /// assert_eq!(done.describe(), "Installed IT Crowd clips 1.0.0. Its sounds: fire 1.");
+    /// ```
+    pub fn describe(&self) -> String {
+        let name = &self.pack.name;
+        match (&self.action, &self.result) {
+            (Action::Install, Ok(())) => {
+                let sounds: Vec<&str> = self.pack.sounds.iter().map(|s| s.name.as_str()).collect();
+                let mut text = format!("Installed {name} {}.", self.pack.version);
+                if !sounds.is_empty() {
+                    text.push_str(&format!(" Its sounds: {}.", sounds.join(", ")));
+                }
+                text
+            }
+            (Action::Install, Err(e)) => {
+                format!("Couldn't install {name}: {e}. Nothing was changed.")
+            }
+            (Action::Remove, Ok(())) => format!("Removed {name}."),
+            (Action::Remove, Err(e)) => format!("Couldn't remove {name}: {e}."),
+        }
+    }
+}
+
 /// The packs as the app knows them: what's installed, the sources as last
 /// checked, and a thread that does the downloading.
 pub struct Content {
@@ -711,8 +764,10 @@ pub struct Content {
     again: Option<Vec<Source>>,
     /// Packs being installed or removed, by id.
     pub busy: HashSet<String>,
-    /// The last install or remove, in words, if it failed.
-    pub problem: Option<String>,
+    /// What's being done to each pack in `busy`, and to which version.
+    requested: HashMap<String, (Action, Pack)>,
+    /// Every install and remove finished, oldest first.
+    pub outcomes: Vec<Outcome>,
     /// The installed sounds, shared with the sound thread.
     sounds: SoundFiles,
 }
@@ -785,7 +840,8 @@ impl Content {
             checking: false,
             again: None,
             busy: HashSet::new(),
-            problem: None,
+            requested: HashMap::new(),
+            outcomes: Vec::new(),
             sounds,
         };
         content.refresh();
@@ -817,19 +873,29 @@ impl Content {
     /// Install (or update) `pack` from the catalog at `source`.
     pub fn install(&mut self, source: &str, pack: &Pack) {
         if self.busy.insert(pack.id.clone()) {
-            self.problem = None;
+            self.requested
+                .insert(pack.id.clone(), (Action::Install, pack.clone()));
             let _ = self
                 .jobs
                 .send(Job::Install(source.into(), Box::new(pack.clone())));
         }
     }
 
-    /// Remove pack `id`.
+    /// Remove pack `id` (if it's installed).
     pub fn remove(&mut self, id: &str) {
+        let Some(installed) = self.installed(id).map(|i| i.pack.clone()) else {
+            return;
+        };
         if self.busy.insert(id.to_owned()) {
-            self.problem = None;
+            self.requested
+                .insert(id.to_owned(), (Action::Remove, installed));
             let _ = self.jobs.send(Job::Remove(id.to_owned()));
         }
+    }
+
+    /// The newest finished install or remove of pack `id`, if any.
+    pub fn outcome(&self, id: &str) -> Option<&Outcome> {
+        self.outcomes.iter().rev().find(|o| o.pack.id == id)
     }
 
     /// Pick up what the download thread has done. Returns whether anything
@@ -848,8 +914,12 @@ impl Content {
                 }
                 Done::Installed(id, result) | Done::Removed(id, result) => {
                     self.busy.remove(&id);
-                    if let Err(e) = result {
-                        self.problem = Some(e);
+                    if let Some((action, pack)) = self.requested.remove(&id) {
+                        self.outcomes.push(Outcome {
+                            action,
+                            pack,
+                            result,
+                        });
                     }
                     self.refresh();
                 }
@@ -1342,7 +1412,9 @@ pub(crate) mod tests {
 
         content.install(OFFICIAL, &pack);
         wait(&mut content);
-        assert_eq!(content.problem, None);
+        let done = content.outcome("beeps").unwrap();
+        assert_eq!((done.action, &done.result), (Action::Install, &Ok(())));
+        assert!(done.describe().contains("Its sounds: beep"));
         assert!(content.installed("beeps").is_some());
         assert_eq!(sounds.read().unwrap()["beep"], dir.join("beeps/beep.mp3"));
 

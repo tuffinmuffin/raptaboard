@@ -104,11 +104,19 @@ fn the_first_run_offers_the_packs_and_downloads_those_ticked() {
     harness.get_by_label("Download").click();
     until_idle(&mut harness);
     assert_eq!(installed(&harness), ["fan-clips"]);
+    // The window stays to say what was installed, until Done.
     assert!(
         harness
             .query_by_label("Extra content for raptaboard")
             .is_none()
     );
+    harness.get_by_label("Content packs installed");
+    harness
+        .get_by_label_contains("Installed IT Crowd clips 1.0.0. Its sounds: fire 1, disabled 1.");
+    harness.get_by_label("Done").click();
+    settle(&mut harness);
+    assert!(harness.query_by_label("Content packs installed").is_none());
+    assert!(harness.state().packs.offer.is_none());
     // Its sounds play in place of the built-in names.
     let files = harness.state().sound.files();
     assert_eq!(
@@ -210,9 +218,11 @@ fn the_content_window_installs_and_removes_packs() {
     harness.get_all_by_label("Install").next().unwrap().click();
     until_idle(&mut harness);
     assert_eq!(installed(&harness), ["fan-clips"]);
+    harness.get_by_label_contains("Installed IT Crowd clips 1.0.0.");
     harness.get_by_label("Remove").click();
     until_idle(&mut harness);
     assert!(installed(&harness).is_empty());
+    harness.get_by_label("Removed IT Crowd clips.");
     assert!(!dir.join("fan-clips").exists());
 }
 
@@ -318,4 +328,27 @@ fn offline_after_an_upgrade_offers_at_the_next_start() {
     assert!(state.offer_pending);
     let mut again = harness_with(&dir, &web, public);
     labelled_soon(&mut again, "Extra content for raptaboard");
+}
+
+#[test]
+fn a_download_that_fails_says_why_and_leaves_done() {
+    let dir = folder("ui-download-fails");
+    let (web, public) = official_web();
+    // The catalog is there, a file isn't.
+    web.files
+        .lock()
+        .unwrap()
+        .remove("https://x/fan-clips.fire1.mp3");
+    let mut harness = harness_with(&dir, &web, public);
+    labelled_soon(&mut harness, "Download");
+    harness.get_by_label("Download").click();
+    until_idle(&mut harness);
+    assert!(installed(&harness).is_empty());
+    harness.get_by_label("Some packs didn't install");
+    harness.get_by_label_contains("Couldn't install IT Crowd clips");
+    harness.get_by_label_contains("404");
+    harness.get_by_label("You can try again in ⚙ Settings → Content packs.");
+    harness.get_by_label("Done").click();
+    settle(&mut harness);
+    assert!(harness.state().packs.offer.is_none());
 }

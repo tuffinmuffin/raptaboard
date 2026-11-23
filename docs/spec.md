@@ -326,12 +326,13 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   the very first; a pre-0.3.0 file counts as one) runs `upgrade.rs`'s one-time tasks, which set
   `offer_pending`: the official catalog is read and the packs not installed are offered, each with
   its license and credits, suggested ones not offered before ticked; nothing downloads without
-  "Download". Answering (Download or Not now) clears `offer_pending`; offline, it stays, and the
+  "Download". After Download the window stays, showing each pack downloading, then installed (with
+  its sounds) or why not, until Done. Answering (Download or Not now) clears `offer_pending`; offline, it stays, and the
   list is offered at the next start. The same version again reads nothing at start. Not shown
   while the robot is enabled. `~/.raptaboard` outlives uninstalling, so a reinstall of the same
   version doesn't ask again.
 - **Content window** (⚙ Settings → Content packs…): each pack with Install, Update or Remove and
-  its credits; packs needing a newer raptaboard say so; sources listed, added and removed.
+  its credits, and a line saying what the last install or remove did (`content::Outcome`); packs needing a newer raptaboard say so; sources listed, added and removed.
 - **Next:** a background check for updates (every hour by default, configurable; only while the
   robot is disabled or not connected; quiet on failure) with a one-line notice in the bar that's
   easy to dismiss (remembering the versions dismissed). Then plugin packs, starting with the

@@ -37,6 +37,8 @@ pub(super) struct Offer {
     pub picked: Option<HashMap<String, bool>>,
     /// The packs offered before, which start unticked.
     pub shown: Vec<String>,
+    /// After Download: the packs downloading, shown until Done.
+    pub installing: Vec<Pack>,
 }
 
 /// The official source's packs this raptaboard can install, from the
@@ -53,6 +55,61 @@ fn official_packs(content: &Content) -> Option<Vec<Pack>> {
             .cloned()
             .collect(),
     )
+}
+
+/// The first-run window after Download: each pack downloading, then
+/// installed (with its sounds) or why not, and Done once none is still
+/// downloading. Returns whether Done was clicked.
+fn installing_window(ctx: &egui::Context, content: &Content, packs: &[Pack]) -> bool {
+    let busy = packs.iter().any(|p| content.busy.contains(&p.id));
+    let failed = packs
+        .iter()
+        .any(|p| content.outcome(&p.id).is_some_and(|o| o.result.is_err()));
+    let mut done = false;
+    egui::Modal::new(egui::Id::unique("content_offer")).show(ctx, |ui| {
+        ui.set_max_width(520.0);
+        ui.heading(if busy {
+            "Downloading content packs…"
+        } else if failed {
+            "Some packs didn't install"
+        } else {
+            "Content packs installed"
+        });
+        ui.separator();
+        for pack in packs {
+            ui.horizontal_wrapped(|ui| {
+                if content.busy.contains(&pack.id) {
+                    ui.spinner();
+                    ui.label(format!("Downloading {}…", pack.name));
+                    return;
+                }
+                match content.outcome(&pack.id) {
+                    Some(o) if o.result.is_ok() => {
+                        ui.label("✔");
+                        ui.label(o.describe());
+                    }
+                    Some(o) => {
+                        ui.colored_label(ui.visuals().error_fg_color, "✖");
+                        ui.colored_label(ui.visuals().error_fg_color, o.describe());
+                    }
+                    None => {
+                        ui.spinner();
+                        ui.label(format!("Downloading {}…", pack.name));
+                    }
+                }
+            });
+        }
+        ui.separator();
+        if failed {
+            ui.label("You can try again in ⚙ Settings → Content packs.");
+        } else {
+            ui.label("Add or remove packs any time in ⚙ Settings → Content packs.");
+        }
+        if ui.add_enabled(!busy, egui::Button::new("Done")).clicked() {
+            done = true;
+        }
+    });
+    done
 }
 
 /// Remember that the list of `packs` was answered: not pending, and those
@@ -102,6 +159,7 @@ impl DashboardApp {
             self.packs.offer = Some(Offer {
                 picked: None,
                 shown: state.shown,
+                installing: Vec::new(),
             });
         }
     }
@@ -136,6 +194,12 @@ impl DashboardApp {
         let (Some(content), Some(offer)) = (&self.content, &mut self.packs.offer) else {
             return;
         };
+        if !offer.installing.is_empty() {
+            if !running && installing_window(ctx, content, &offer.installing) {
+                self.packs.offer = None;
+            }
+            return;
+        }
         if content.checking {
             return;
         }
@@ -193,20 +257,25 @@ impl DashboardApp {
             return;
         };
         let picked = offer.picked.take().unwrap_or_default();
-        self.packs.offer = None;
+        let chosen: Vec<Pack> = packs
+            .iter()
+            .filter(|p| download && picked.get(&p.id) == Some(&true))
+            .cloned()
+            .collect();
         let Some(content) = &mut self.content else {
             return;
         };
-        if download {
-            for pack in packs.iter().filter(|p| picked.get(&p.id) == Some(&true)) {
-                content.install(content::OFFICIAL, pack);
-            }
+        for pack in &chosen {
+            content.install(content::OFFICIAL, pack);
         }
-        self.status = match answered(content, &packs) {
-            Ok(()) if download => "Downloading content packs…".into(),
-            Ok(()) => String::new(),
-            Err(e) => format!("Couldn't save the content packs' state: {e}"),
-        };
+        if let Err(e) = answered(content, &packs) {
+            self.status = format!("Couldn't save the content packs' state: {e}");
+        }
+        // Downloading: the window stays, showing each pack until Done.
+        match &mut self.packs.offer {
+            Some(offer) if !chosen.is_empty() => offer.installing = chosen,
+            _ => self.packs.offer = None,
+        }
     }
 
     /// The Content window: sources, and each pack with its button.
@@ -251,8 +320,13 @@ impl DashboardApp {
                 .weak()
                 .small(),
         );
-        if let Some(problem) = &content.problem {
-            ui.colored_label(ui.visuals().error_fg_color, problem);
+        if let Some(last) = content.outcomes.last() {
+            let color = if last.result.is_ok() {
+                ui.visuals().text_color()
+            } else {
+                ui.visuals().error_fg_color
+            };
+            ui.colored_label(color, last.describe());
         }
         ui.separator();
 
