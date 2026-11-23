@@ -105,7 +105,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   a test checks that too), `ui/settings_window.rs` the ⚙ Settings window (connection, sound, robot state) and the About and
   licenses window, `ui/robot_state_view.rs` the robot's state for the whole window (`RobotView`: a border colored by
   state, flashing after a disable, and the e-stop pop-up; the state from the first FMSInfo widget's table or the
-  server's `/DriverStation` / `/FMSInfo`, its topics asked for whatever tab is open), `nt.rs` the live connection (`NtConnection`: a 1-thread tokio runtime that owns the `nt4::Client`
+  server's `/DriverStation` / `/FMSInfo`, its topics asked for whatever tab is open; their settings, `Look`, are kept
+  in the layout file's `"robot_state"` object, look and feel being the layout's and connections the settings file's,
+  and changed with `History::set_everywhere` so undo leaves them alone), `nt.rs` the live connection (`NtConnection`: a 1-thread tokio runtime that owns the `nt4::Client`
   and restarts it when the address changes; the UI only makes non-blocking calls; `write` sends a
   widget's value to an announced topic in that topic's type, or returns a `WriteError` saying why
   not), `sound.rs` the sounds (`Sound`: a failed write's tone, and the Alerts widget's `Tone`s; its own

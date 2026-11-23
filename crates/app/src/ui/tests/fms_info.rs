@@ -79,7 +79,11 @@ fn state_sounds_play_from_a_closed_tab_without_frames_and_only_for_changes() {
     // off, only the sounds' count (so the wait below means the sound task
     // has seen the state).
     app.tree.shown = false;
-    app.robot.estop_popup = false;
+    crate::ui::robot_state_view::Look {
+        estop_popup: Some(false),
+        ..Default::default()
+    }
+    .write_to(&mut app.layout);
     wait_a_while(&mut harness);
     // The sound task has seen it disabled (values arrive in order, so it
     // sees the change next); on a slow machine the first state it saw could

@@ -535,12 +535,19 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        whole window, red while disabled, and flashing red for 3 s right after the robot is
        disabled, so the state shows at a glance from any tab. Colors per state set in the Settings
        window (the FMSInfo widget's colors by default, none for no robot; any state can be set to
-       none); off by default. Settings: `state_border`, `[state_border_colors]` (`"#RRGGBB"` or
-       `"none"` per state).
+       none); off by default.
      - E-stop pop-up (**done**): a large modal over the whole window when the robot enters e-stop,
        saying so plainly. It clears on a click anywhere, when the robot reconnects (an e-stopped
-       robot stays e-stopped until it reboots) or leaves e-stop. On by default (`estop_popup`); not
-       shown for a robot already e-stopped when the dashboard connects, as the sounds aren't.
+       robot stays e-stopped until it reboots) or leaves e-stop. On by default; not shown for a
+       robot already e-stopped when the dashboard connects, as the sounds aren't.
+     - Both are kept in the layout file, not the settings file (decided with the user 2026-11-23:
+       they're look and feel, which should travel with the layout and not change with a computer's
+       settings file, unlike the team number and connection, which follow the robot or test setup
+       being connected to): a raptaboard-only top-level `"robot_state"` object, `{"border": true,
+       "border_colors": {"teleop": "none", "disabled": "#C62828"}, "estop_popup": false}`, each part
+       left out at its default (`robot_state_view::Look`). They're set in the ⚙ Settings window, which
+       makes the layout unsaved, but they're settings, not edits: undo and redo leave them alone
+       (`History::set_everywhere` makes the change to every version kept).
      - Both read the state from the first FMSInfo widget's table, else the server's
        `/DriverStation` or `/FMSInfo`, and ask for its topics whatever tab is open, so they work
        with no FMSInfo widget at all.

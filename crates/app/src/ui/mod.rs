@@ -173,11 +173,7 @@ impl DashboardApp {
             sends: Sends::default(),
             taps: taps::TapHold::default(),
             gear: Default::default(),
-            robot: robot_state_view::RobotView::new(
-                options.state_border,
-                options.state_border_colors,
-                options.estop_popup,
-            ),
+            robot: robot_state_view::RobotView::default(),
         };
         if let Some(path) = options.layout_path {
             let path = PathBuf::from(path);
@@ -216,9 +212,6 @@ impl DashboardApp {
             alert_sound: Some(self.alert_sound),
             alert_history: Some(self.alerts.history.capacity()),
             alert_history_ignore: Some(self.alerts.history.ignored().to_vec()),
-            state_border: Some(self.robot.border),
-            state_border_colors: Some(self.robot.colors.clone()),
-            estop_popup: Some(self.robot.estop_popup),
             tab: self
                 .layout
                 .tabs

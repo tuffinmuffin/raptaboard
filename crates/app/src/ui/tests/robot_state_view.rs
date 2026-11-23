@@ -36,7 +36,12 @@ fn the_border_and_estop_popup_follow_the_robot_from_any_tab() {
     app.file.saved = app.layout.clone();
     app.history = History::new(&app.layout);
     app.current_tab = 0;
-    app.robot.border = true;
+    // The border is on in the layout.
+    crate::ui::robot_state_view::Look {
+        border: true,
+        ..Default::default()
+    }
+    .write_to(&mut app.layout);
     // The tree asks for values of its own; hidden, only the border's count.
     app.tree.shown = false;
     let mode_soon = |harness: &mut Harness, want: Mode| {
@@ -72,4 +77,45 @@ fn the_border_and_estop_popup_follow_the_robot_from_any_tab() {
     );
     settle(&mut harness);
     assert!(harness.query_by_label("ROBOT E-STOPPED").is_none());
+}
+
+#[test]
+fn the_border_is_set_in_the_layout_from_the_settings_window_and_undo_leaves_it() {
+    use crate::ui::robot_state_view::Look;
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    let app = harness.state_mut();
+    app.layout = ElasticLayout::default();
+    app.file.saved = app.layout.clone();
+    app.history = History::new(&app.layout);
+    app.locked = false;
+    settle(&mut harness);
+    // An edit first: a tab taken away.
+    harness.state_mut().layout.tabs.pop();
+    settle(&mut harness);
+    harness.get_by_label("⚙").click();
+    settle(&mut harness);
+    // Clear of the bar, so its buttons still work while it's open.
+    let window = harness.get_by_label("Settings").rect();
+    let bar = harness.get_by_label("Undo").rect();
+    assert!(window.min.y > bar.max.y, "{window:?} under {bar:?}");
+    harness
+        .get_by_label("Color the window's border by the robot's state")
+        .click();
+    settle(&mut harness);
+    // In the layout, so it's an unsaved change to it...
+    assert!(Look::of(&harness.state().layout).border);
+    assert!(harness.state().unsaved());
+    assert!(harness.state().robot.look.border);
+    // ...but a setting, not an edit: undo brings the tab back, and the
+    // border stays.
+    harness.get_by_label("Undo").click();
+    settle(&mut harness);
+    assert_eq!(harness.state().layout.tabs.len(), 2, "the tab is back");
+    assert!(Look::of(&harness.state().layout).border, "the border stays");
+    assert!(!harness.state().history.can_undo());
+    // The gear closes it again.
+    harness.get_by_label("⚙").click();
+    settle(&mut harness);
+    assert!(!harness.state().gear.settings);
 }

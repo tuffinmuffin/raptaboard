@@ -95,12 +95,6 @@ pub struct StartupOptions {
     pub alert_history: usize,
     /// Alerts the history doesn't record, by text they contain.
     pub alert_history_ignore: Vec<String>,
-    /// Color the window's border by the robot's state.
-    pub state_border: bool,
-    /// The border's colors, where they aren't the defaults.
-    pub state_border_colors: settings::StateColors,
-    /// A pop-up over everything when the robot is e-stopped.
-    pub estop_popup: bool,
     /// The settings file changes go to.
     pub store: settings::Store,
     /// Things to tell the user at startup, such as a settings file that
@@ -139,9 +133,6 @@ impl From<Loaded> for StartupOptions {
                 .alert_history
                 .unwrap_or(crate::alert_history::DEFAULT_CAPACITY),
             alert_history_ignore: s.alert_history_ignore.unwrap_or_default(),
-            state_border: s.state_border.unwrap_or(false),
-            state_border_colors: s.state_border_colors.unwrap_or_default(),
-            estop_popup: s.estop_popup.unwrap_or(true),
             store: loaded.store,
             notes: loaded.notes,
         }

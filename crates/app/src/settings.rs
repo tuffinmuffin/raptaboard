@@ -25,8 +25,6 @@
 //! alert_sound = true # a tone when a value can't be sent
 //! alert_history = 1000 # alert events kept in the alert history
 //! alert_history_ignore = ["Frame Timing:"] # alerts not recorded, by text they contain
-//! state_border = false # color the window's border by the robot's state
-//! estop_popup = true   # a pop-up over everything when the robot is e-stopped
 //! layout = "/Users/me/layouts/match.json"
 //! tab = "Teleoperated"
 //! tab_index = 0
@@ -34,10 +32,6 @@
 //! [window]
 //! width = 1280.0
 //! height = 720.0
-//!
-//! [state_border_colors] # "#RRGGBB", or "none" for no border in that state
-//! disabled = "#C62828"
-//! no_robot = "none"
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -92,44 +86,9 @@ pub struct Settings {
     /// with the same name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tab_index: Option<usize>,
-    /// Whether the window's border shows the robot's state in color.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub state_border: Option<bool>,
-    /// The border's color in each state, where it isn't the default.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub state_border_colors: Option<StateColors>,
-    /// Whether a pop-up covers the window when the robot is e-stopped.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub estop_popup: Option<bool>,
     /// The window's size and place.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub window: Option<Window>,
-}
-
-/// The window border's color in each robot state, as `"#RRGGBB"`, or
-/// `"none"` for no border; not set is the default (the FMSInfo widget's
-/// color for that state, and none for no robot).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct StateColors {
-    /// Not connected, or no Driver Station.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub no_robot: Option<String>,
-    /// Disabled.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub disabled: Option<String>,
-    /// Enabled in autonomous.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub autonomous: Option<String>,
-    /// Enabled in teleop.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub teleop: Option<String>,
-    /// Enabled in test.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub test: Option<String>,
-    /// Emergency-stopped.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub estop: Option<String>,
 }
 
 /// The window's size and, if known, its place on screen, in points.
@@ -161,9 +120,6 @@ pub fn defaults() -> Settings {
         alert_sound: Some(true),
         alert_history: Some(crate::alert_history::DEFAULT_CAPACITY),
         alert_history_ignore: Some(Vec::new()),
-        state_border: Some(false),
-        state_border_colors: Some(StateColors::default()),
-        estop_popup: Some(true),
         layout: None,
         tab: None,
         tab_index: None,
@@ -216,9 +172,6 @@ impl Settings {
             alert_sound: self.alert_sound.or(lower.alert_sound),
             alert_history: self.alert_history.or(lower.alert_history),
             alert_history_ignore: self.alert_history_ignore.or(lower.alert_history_ignore),
-            state_border: self.state_border.or(lower.state_border),
-            state_border_colors: self.state_border_colors.or(lower.state_border_colors),
-            estop_popup: self.estop_popup.or(lower.estop_popup),
             layout: self.layout.or(lower.layout),
             tab: self.tab.or(lower.tab),
             tab_index: self.tab_index.or(lower.tab_index),
@@ -366,9 +319,6 @@ impl Tracker {
         note!(alert_sound);
         note!(alert_history);
         note!(alert_history_ignore);
-        note!(state_border);
-        note!(state_border_colors);
-        note!(estop_popup);
         note!(layout);
         note!(tab);
         note!(tab_index);

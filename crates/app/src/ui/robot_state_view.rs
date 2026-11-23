@@ -4,6 +4,11 @@
 //! the robot is e-stopped (on unless turned off), so the state shows at a
 //! glance from any tab.
 //!
+//! These are look and feel, so they're kept in the layout file (its
+//! raptaboard-only `"robot_state"` object, [`Look`]), not in the settings
+//! file, which is for the computer's connection to a robot: whoever opens
+//! the layout gets them.
+//!
 //! The state comes from the Driver Station's table, read by
 //! [`robot_state`]: the first FMSInfo widget's table if the layout has one,
 //! else `/DriverStation` (2027) or `/FMSInfo` (2026), whichever the server
@@ -14,8 +19,9 @@ use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32};
 use nt4::{Topic, Value};
+use raptaboard_layout::ElasticLayout;
+use serde::{Deserialize, Serialize};
 
-use crate::settings::StateColors;
 use crate::types::robot_state::{self, Event, Mode, Watch};
 use crate::widgets;
 
@@ -30,15 +36,109 @@ pub const BORDER_WIDTH: f32 = 6.0;
 /// How often the robot state's topics are sent (seconds).
 pub(super) const STATE_PERIOD_S: f64 = 0.1;
 
+/// The layout file's key for [`Look`] (raptaboard's; Elastic ignores it).
+pub const LAYOUT_KEY: &str = "robot_state";
+
+/// How the window shows the robot's state, as the layout file keeps it:
+///
+/// ```json
+/// "robot_state": {"border": true, "border_colors": {"teleop": "none"}, "estop_popup": false}
+/// ```
+///
+/// Each part is left out at its default (no border, the default colors,
+/// the pop-up on).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Look {
+    /// Color the window's border by the robot's state.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub border: bool,
+    /// The border's colors, where they aren't the defaults.
+    #[serde(skip_serializing_if = "StateColors::is_default")]
+    pub border_colors: StateColors,
+    /// Whether a pop-up covers the window when the robot is e-stopped; on
+    /// if not set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estop_popup: Option<bool>,
+}
+
+impl Look {
+    /// What `layout` says (the defaults where it says nothing).
+    ///
+    /// ```
+    /// use raptaboard::ui::robot_state_view::Look;
+    /// let mut layout = raptaboard_layout::ElasticLayout::default();
+    /// assert_eq!(Look::of(&layout), Look::default());
+    /// let look = Look { border: true, ..Look::default() };
+    /// look.write_to(&mut layout);
+    /// assert_eq!(Look::of(&layout), look);
+    /// // Back to the defaults: nothing left in the file.
+    /// Look::default().write_to(&mut layout);
+    /// assert!(layout.extra.is_empty());
+    /// ```
+    pub fn of(layout: &ElasticLayout) -> Look {
+        layout
+            .extra
+            .get(LAYOUT_KEY)
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default()
+    }
+
+    /// Put this into `layout`, or take it out if it's all defaults.
+    pub fn write_to(&self, layout: &mut ElasticLayout) {
+        match serde_json::to_value(self) {
+            Ok(v) if *self != Look::default() => {
+                layout.extra.insert(LAYOUT_KEY.into(), v);
+            }
+            _ => {
+                layout.extra.remove(LAYOUT_KEY);
+            }
+        }
+    }
+
+    /// Whether the e-stop pop-up is on.
+    pub fn estop_popup(&self) -> bool {
+        self.estop_popup.unwrap_or(true)
+    }
+}
+
+/// The window border's color in each robot state, as `"#RRGGBB"`, or
+/// `"none"` for no border; not set is the default ([`default_color`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StateColors {
+    /// Not connected, or no Driver Station.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub no_robot: Option<String>,
+    /// Disabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disabled: Option<String>,
+    /// Enabled in autonomous.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub autonomous: Option<String>,
+    /// Enabled in teleop.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub teleop: Option<String>,
+    /// Enabled in test.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub test: Option<String>,
+    /// Emergency-stopped.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estop: Option<String>,
+}
+
+impl StateColors {
+    /// Every state at its default color.
+    pub fn is_default(&self) -> bool {
+        *self == StateColors::default()
+    }
+}
+
 /// The window's view of the robot's state.
 #[derive(Debug, Default)]
 pub struct RobotView {
-    /// Color the border by state.
-    pub border: bool,
-    /// The border's colors, where they aren't the defaults.
-    pub colors: StateColors,
-    /// Show the e-stop pop-up.
-    pub estop_popup: bool,
+    /// The layout's border and pop-up settings, read each frame.
+    pub look: Look,
     /// The state now, if known.
     pub mode: Option<Mode>,
     /// Finds the changes.
@@ -106,9 +206,11 @@ impl RobotView {
     /// and no state seen yet.
     pub fn new(border: bool, colors: StateColors, estop_popup: bool) -> RobotView {
         RobotView {
-            border,
-            colors,
-            estop_popup,
+            look: Look {
+                border,
+                border_colors: colors,
+                estop_popup: Some(estop_popup),
+            },
             ..Default::default()
         }
     }
@@ -126,7 +228,7 @@ impl RobotView {
         for event in self.watch.update(connected, state) {
             match event {
                 Event::Disabled => self.flash_from = Some(now),
-                Event::EStop => self.estopped = self.estop_popup,
+                Event::EStop => self.estopped = self.look.estop_popup(),
                 // An e-stopped robot stays so until it restarts: it's back.
                 Event::RobotConnected => self.estopped = false,
                 _ => {}
@@ -146,16 +248,17 @@ impl RobotView {
     /// The border's color at `now`, if there's a border: the state's color,
     /// flashing on and off for a few seconds after a disable.
     pub fn border_color(&self, now: Instant) -> Option<Color32> {
-        if !self.border {
+        if !self.look.border {
             return None;
         }
-        let color = color_for(&self.colors, self.mode.unwrap_or(Mode::NoRobot));
+        let colors = &self.look.border_colors;
+        let color = color_for(colors, self.mode.unwrap_or(Mode::NoRobot));
         match self.flash_from {
             Some(from) => {
                 let step = now.duration_since(from).as_millis() / FLASH_STEP.as_millis();
                 // On first, then off, and so on.
                 step.is_multiple_of(2)
-                    .then(|| color_for(&self.colors, Mode::Disabled))
+                    .then(|| color_for(colors, Mode::Disabled))
                     .flatten()
             }
             None => color,
@@ -164,7 +267,7 @@ impl RobotView {
 
     /// Whether the border is flashing, so the window should redraw often.
     pub fn flashing(&self) -> bool {
-        self.border && self.flash_from.is_some()
+        self.look.border && self.flash_from.is_some()
     }
 }
 
@@ -180,28 +283,37 @@ const MODES: [Mode; 6] = [
 
 /// The ⚙ Settings window's rows for the robot state: the pop-up, the
 /// border, and (with the border on) each state's color, or none.
-pub(super) fn settings_rows(ui: &mut egui::Ui, view: &mut RobotView) {
+pub(super) fn settings_rows(ui: &mut egui::Ui, look: &mut Look) {
+    ui.label(
+        egui::RichText::new("Kept in the layout file: save the layout to keep them.")
+            .small()
+            .weak(),
+    );
+    let mut popup = look.estop_popup();
+    if ui
+        .checkbox(&mut popup, "A pop-up when the robot is e-stopped")
+        .on_hover_text("Over the whole window, until clicked or the robot restarts")
+        .changed()
+    {
+        look.estop_popup = (!popup).then_some(false);
+    }
     ui.checkbox(
-        &mut view.estop_popup,
-        "A pop-up when the robot is e-stopped",
-    )
-    .on_hover_text("Over the whole window, until clicked or the robot restarts");
-    ui.checkbox(
-        &mut view.border,
+        &mut look.border,
         "Color the window's border by the robot's state",
     )
     .on_hover_text("Seen from any tab; it flashes for 3 s after the robot is disabled");
-    if !view.border {
+    if !look.border {
         return;
     }
+    let view = look;
     egui::Grid::new("state_border_colors")
         .num_columns(3)
         .spacing([12.0, 4.0])
         .show(ui, |ui| {
             for mode in MODES {
                 ui.label(mode.label());
-                let shown = color_for(&view.colors, mode);
-                let setting = slot(&mut view.colors, mode);
+                let shown = color_for(&view.border_colors, mode);
+                let setting = slot(&mut view.border_colors, mode);
                 let mut on = shown.is_some();
                 let mut color = shown.or(default_color(mode)).unwrap_or(Color32::GRAY);
                 ui.horizontal(|ui| {
@@ -271,7 +383,7 @@ impl DashboardApp {
     /// The robot state's topics, to ask for whatever tab is open, while the
     /// border or the e-stop pop-up is on.
     pub(super) fn robot_topics(&self, topics: &[Topic]) -> Vec<String> {
-        if !(self.robot.border || self.robot.estop_popup) {
+        if !(self.robot.look.border || self.robot.look.estop_popup()) {
             return Vec::new();
         }
         self.robot_table(topics)
@@ -293,6 +405,7 @@ impl DashboardApp {
         let state = self
             .robot_table(topics)
             .and_then(|table| robot_state::read(&table, values));
+        self.robot.look = Look::of(&self.layout);
         self.robot.update(connected, state, now);
     }
 
@@ -389,7 +502,7 @@ mod tests {
         assert!(!view.flashing());
         assert_eq!(view.border_color(ms(d, 3300)), red);
         // Off in the settings: no border at all.
-        view.border = false;
+        view.look.border = false;
         assert_eq!(view.border_color(ms(d, 3300)), None);
     }
 
