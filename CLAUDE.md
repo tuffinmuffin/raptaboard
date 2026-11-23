@@ -36,6 +36,8 @@ cargo run -p raptaboard -- --help
 # The README's clips (ui/tests/clips.rs: the app headless against a scripted robot, saved as GIFs
 # in docs/images/; needs a GPU, ~30 s):
 cargo test -p raptaboard --lib record_ -- --ignored --nocapture
+# The Microsoft Store listing's screenshots (media/store/; needs a GPU and robot-2027's sim running here):
+cargo test -p raptaboard --lib record_store_screenshots -- --ignored --nocapture
 # Log pointer and touch input to the terminal (input_log.rs: egui's events each frame and what the
 # Field's target made of them), for odd clicks and taps:
 RAPTABOARD_LOG_INPUT=1 cargo run -p raptaboard -- --address sim layouts/robot2027_sim.json

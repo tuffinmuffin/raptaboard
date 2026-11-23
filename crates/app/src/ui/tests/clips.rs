@@ -1,5 +1,6 @@
 //! The clips in the README, made by running the app headless against a
-//! scripted robot and saving the frames as a GIF. Ignored in normal test
+//! scripted robot and saving the frames as a GIF, and the Microsoft Store
+//! listing's screenshots, made the same way against robot-2027's sim. Ignored in normal test
 //! runs (they need a GPU and take a while); make them again after changing
 //! what they show:
 //!
@@ -10,6 +11,7 @@
 // Tests written by Claude.
 
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
+use std::path::Path;
 
 use image::codecs::gif::{GifEncoder, Repeat};
 use image::{Delay, Frame, RgbaImage, imageops};
@@ -252,4 +254,74 @@ fn save_gif(frames: &[RgbaImage], path: &str) {
             .map(|f| Frame::from_parts(f.clone(), 0, 0, delay)),
     )
     .expect("write the GIF");
+}
+
+/// Where the Microsoft Store's screenshots go, from the repo's root.
+const STORE_DIR: &str = "media/store";
+
+#[test]
+#[ignore = "makes the Microsoft Store's screenshots: needs a GPU and robot-2027's sim running \
+            on this computer (layouts/robot2027_sim.json's topics); run with --ignored"]
+fn record_store_screenshots() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let path = root.join("layouts/robot2027_sim.json");
+    let layout = crate::layout_file::load(&path).expect("the sim layout opens");
+    let mut app = DashboardApp::new(StartupOptions::default()).expect("app starts");
+    app.show_layout(layout, path);
+    app.sound = crate::sound::Sound::silent();
+    app.address.mode = AddressMode::Custom;
+    app.address.custom = "127.0.0.1".into();
+    app.address.port = nt4::proto::ROBOT_CODE_PORT;
+    app.locked = true;
+    app.tree.shown = false;
+    // 1920 x 1080 pixels, at 1.25 points a pixel as a laptop shows it.
+    let mut harness = egui_kittest::Harness::builder()
+        .with_size(egui::vec2(1536.0, 864.0))
+        .with_pixels_per_point(1.25)
+        .allow_missing_glyphs()
+        .with_step_dt(1.0 / 60.0)
+        .wgpu()
+        .build_ui_state(|ui, app: &mut DashboardApp| app.show(ui), app);
+    // Symbols egui's own fonts lack (⚙, the bell, the pause button) from
+    // the computer's fonts, as the app gets them through eframe.
+    harness.ctx.add_font_provider(std::sync::Arc::new(
+        egui_system_font_provider::SystemFontProvider::new(),
+    ));
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !connected(harness.state()) {
+        assert!(
+            Instant::now() < deadline,
+            "never connected: is the sim running?"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    let shoot = |harness: &mut Harness, tab: &str, name: &str| {
+        let index = harness
+            .state()
+            .layout
+            .tabs
+            .iter()
+            .position(|t| t.name == tab)
+            .unwrap_or_else(|| panic!("no {tab} tab"));
+        harness.state_mut().current_tab = index;
+        // Ten seconds of values, at about 60 frames a second.
+        let until = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < until {
+            harness.step();
+            std::thread::sleep(Duration::from_millis(16));
+        }
+        let image = harness.render().expect("render a frame");
+        let out = root.join(STORE_DIR).join(name);
+        image.save(&out).expect("save the screenshot");
+        println!(
+            "wrote {} ({}x{})",
+            out.display(),
+            image.width(),
+            image.height()
+        );
+    };
+    shoot(&mut harness, "Field", "screenshot-field.png");
+    shoot(&mut harness, "More widgets", "screenshot-graphs.png");
+    shoot(&mut harness, "Widgets", "screenshot-widgets.png");
 }
