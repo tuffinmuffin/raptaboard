@@ -45,6 +45,8 @@ jobs:
         include:
           - name: windows
             os: windows-latest
+            # Also the Microsoft Store's MSIX (dist-store/, its own artifact).
+            package_args: --msix
           - name: macos
             os: macos-latest
             # One app for Apple Silicon and Intel.
@@ -84,6 +86,15 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 14
+      # The Store's MSIX, to upload in Partner Center: unsigned (the Store
+      # signs it), so never on the GitHub release.
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: store-msix
+          path: dist-store/*.msix
+          if-no-files-found: error
+          retention-days: 14
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -96,6 +107,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          # The packages only, not the Store's MSIX.
+          pattern: raptaboard-*
           merge-multiple: true
       - name: The tag matches the version in Cargo.toml
         run: |

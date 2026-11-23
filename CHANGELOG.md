@@ -2,6 +2,11 @@
 
 What changes in each raptaboard release. Newest first.
 
+## Unreleased
+
+- **Microsoft Store package:** an MSIX the Store signs, so Windows trusts it. The Store build
+  leaves out the IT Crowd clips and plays tones in their place.
+
 ## 0.2.0
 
 Measuring and the robot's state: scales that fit the values, min/max/average, graph history,

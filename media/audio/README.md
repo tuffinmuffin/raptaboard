@@ -22,6 +22,11 @@ Team 3200, which is low risk, and a clip is removed at once if its owner asks (a
 If teams outside Raptacon start using raptaboard, look at these again and replace any that aren't
 clearly ours to ship.
 
+The Microsoft Store build leaves them out (2026-11-23): a Store listing is public, and Store
+certification checks for content that isn't the publisher's. It's built without the `fan-clips`
+cargo feature, and generated tones play in their place (a falling "power down" for disabled, an
+alarm for fire). The GitHub builds keep them.
+
 ## Adding a clip
 
 Keep clips short (a few seconds) and MP3. Use only sounds that are ours to ship: our own

@@ -18,6 +18,15 @@ pub const SVG: &[u8] = include_bytes!("../../../media/icon/raptaboard.svg");
 /// taskbar pick the one that fits).
 pub const ICO_SIZES: [u32; 6] = [16, 24, 32, 48, 64, 256];
 
+/// The Microsoft Store package's logos (`media/icon/msix/`), by file name
+/// and size in pixels: the Store's listing, the Start menu tile, and the
+/// taskbar and app list.
+pub const MSIX_LOGOS: [(&str, u32); 3] = [
+    ("StoreLogo.png", 50),
+    ("Square150x150Logo.png", 150),
+    ("Square44x44Logo.png", 44),
+];
+
 /// The icon drawn `size` pixels square, four bytes a pixel (red, green,
 /// blue, alpha), row by row.
 ///

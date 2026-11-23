@@ -1,7 +1,10 @@
 //! The tones raptaboard plays: when a widget's value can't be sent to the
 //! robot, and the ones an Alerts widget can play when a new error arrives
 //! ([`Tone`]): a few generated ones, and short sound clips built into the
-//! program from `media/audio/` (MP3, decoded when played).
+//! program from `media/audio/` (MP3, decoded when played). Built without
+//! the `fan-clips` feature (the Microsoft Store build), the clips that
+//! aren't ours ("disabled 1" and "2", "fire 1" and "2") are left out and
+//! generated tones play in their place.
 //!
 //! An FMSInfo widget's robot state sounds ([`Sound::play_event`]) are a channel of
 //! their own: a built-in [`Tone`] or a sound file the team picks (MP3 or
@@ -82,9 +85,13 @@ impl Tone {
     /// The MP3 a clip plays, if this is a clip.
     pub fn clip(self) -> Option<&'static [u8]> {
         match self {
+            #[cfg(feature = "fan-clips")]
             Tone::Disabled1 => Some(clip!("disabled1.mp3")),
+            #[cfg(feature = "fan-clips")]
             Tone::Disabled2 => Some(clip!("disabled2.mp3")),
+            #[cfg(feature = "fan-clips")]
             Tone::Fire1 => Some(clip!("fire1.mp3")),
+            #[cfg(feature = "fan-clips")]
             Tone::Fire2 => Some(clip!("fire2.mp3")),
             Tone::Danger => Some(clip!("danger.mp3")),
             Tone::AutoGhosts => Some(clip!("auto-ghosts.mp3")),
@@ -117,6 +124,19 @@ impl Tone {
             Tone::Beep => &[(988.0, 0.15)],
             Tone::DoubleBeep => &[(988.0, 0.1), (0.0, 0.07), (988.0, 0.1)],
             Tone::Chirp => &[(659.0, 0.07), (880.0, 0.07), (1319.0, 0.12)],
+            // Without the fan clips: a falling "powering down" for
+            // disabled, a quick two-note alarm for fire.
+            #[cfg(not(feature = "fan-clips"))]
+            Tone::Disabled1 | Tone::Disabled2 => &[(784.0, 0.12), (587.0, 0.12), (392.0, 0.28)],
+            #[cfg(not(feature = "fan-clips"))]
+            Tone::Fire1 | Tone::Fire2 => &[
+                (1319.0, 0.1),
+                (988.0, 0.1),
+                (1319.0, 0.1),
+                (988.0, 0.1),
+                (1319.0, 0.1),
+                (988.0, 0.1),
+            ],
             // Clips play their file instead.
             _ => &[],
         }
@@ -371,6 +391,20 @@ fn append_clip(player: &rodio::Player, clip: &Clip) {
 mod tests {
     // Tests written by Claude.
     use super::*;
+
+    #[test]
+    fn the_fan_clips_are_built_in_or_tones_stand_in_for_them() {
+        for tone in [Tone::Disabled1, Tone::Disabled2, Tone::Fire1, Tone::Fire2] {
+            if cfg!(feature = "fan-clips") {
+                assert!(tone.clip().is_some(), "{tone:?} is a clip");
+            } else {
+                assert!(tone.clip().is_none(), "{tone:?} left out");
+                assert!(!tone.notes().is_empty(), "{tone:?} plays a tone instead");
+            }
+        }
+        // Our own clips are in every build.
+        assert!(Tone::Danger.clip().is_some() && Tone::LostComms.clip().is_some());
+    }
 
     #[test]
     fn every_clip_is_built_in_and_decodes() {

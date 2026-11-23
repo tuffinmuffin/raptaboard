@@ -1,6 +1,7 @@
 //! Make the icon files in `media/icon/` from `media/icon/raptaboard.svg`:
-//! `raptaboard.ico` (Windows), `raptaboard.png` (512 px, Linux), and on
-//! macOS `raptaboard.icns` (through the system's `iconutil`). Run it after
+//! `raptaboard.ico` (Windows), `raptaboard.png` (512 px, Linux), the
+//! Microsoft Store package's logos in `msix/`, and on macOS
+//! `raptaboard.icns` (through the system's `iconutil`). Run it after
 //! changing the SVG, from the repo's top folder:
 //!
 //! ```text
@@ -23,6 +24,12 @@ fn main() {
         &app_icon::ico(&app_icon::ICO_SIZES),
     );
     write(&out.join("raptaboard.png"), &app_icon::png(512));
+    // The MSIX package's logos, at the sizes its manifest names.
+    let msix = out.join("msix");
+    std::fs::create_dir_all(&msix).expect("make the msix folder");
+    for (name, size) in app_icon::MSIX_LOGOS {
+        write(&msix.join(name), &app_icon::png(size));
+    }
 
     // macOS: an .iconset folder of PNGs, which iconutil packs into .icns.
     if cfg!(target_os = "macos") {

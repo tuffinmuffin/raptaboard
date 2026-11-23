@@ -53,7 +53,12 @@ own `.raptaboard/` settings folder) and a per-user Inno Setup installer (`packag
 no admin, `%LOCALAPPDATA%\Programs\raptaboard`); macOS a zipped universal `raptaboard.app` (ad-hoc
 signed only); Linux a `.tar.gz` with `install.sh` (per-user, `~/.local`). Each has README.txt (the user's
 first steps), CHANGELOG.md, the licenses and `THIRD-PARTY-LICENSES.txt` (copied from `licenses/THIRD_PARTY_LICENSES.txt`, the
-About window's list), plus a `-debug` archive. Nothing is code-signed yet (decided 2026-11-22). The icon is
+About window's list), plus a `-debug` archive. Nothing is code-signed yet (decided 2026-11-22), except through the Microsoft Store: with `--msix`
+(the Release workflow's Windows job) `package.py` also makes an unsigned MSIX for the Store, which signs it
+(`packaging/windows/msix/`: the manifest, and `store.json` with the identity from Partner Center), in
+`dist-store/` and its own `store-msix` artifact, never on the GitHub release. It's built without the `fan-clips`
+cargo feature (on by default), leaving out the clips that aren't ours, with generated tones in their place; CI
+lints and tests that build too. Each release's `.msix` is uploaded in Partner Center by hand for now. The icon is
 `media/icon/raptaboard.svg` (Raptacon's raptor mark from its brand kit in a rust-red gear); `cargo run -p raptaboard --example make_icons` remakes the `.ico`,
 `.icns` and `.png`, and `build.rs` puts the `.ico` into the Windows program. To release: bump
 `version` in the workspace `Cargo.toml`, add its `## x.y.z` section to `CHANGELOG.md` (short: what's

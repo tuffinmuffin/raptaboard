@@ -9,6 +9,7 @@ it, and the release packages use the files made from it:
 | `raptaboard.ico` | Windows: built into `raptaboard.exe` (`crates/app/build.rs`) and the installer |
 | `raptaboard.icns` | macOS: the app bundle |
 | `raptaboard.png` | Linux: the menu entry (512 px) |
+| `msix/*.png` | the Microsoft Store package: its listing logo (50 px), Start tile (150 px) and taskbar and app list (44 px) |
 
 After changing the SVG, remake them from the repo's top folder (on macOS, for the `.icns`):
 

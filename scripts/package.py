@@ -3,6 +3,7 @@
 
     python scripts/package.py                # build, then package into dist/
     python scripts/package.py --skip-build   # package what's already built
+    python scripts/package.py --msix         # Windows: also the Microsoft Store package
 
 Windows: a portable zip (with its own .raptaboard settings folder) and a
 per-user installer (Inno Setup's iscc must be installed). macOS: a zipped
@@ -10,6 +11,13 @@ raptaboard.app, one program for Apple Silicon and Intel when both targets are
 given (--target aarch64-apple-darwin --target x86_64-apple-darwin). Linux: a
 .tar.gz with install.sh. Each also gets a -debug archive holding the debug
 info (keep it to decode crash reports).
+
+With --msix (Windows), also an MSIX for the Microsoft Store in dist-store/,
+not dist/: built without the `fan-clips` feature (the clips that aren't ours
+are left out), unsigned (the Store signs it), from packaging/windows/msix/
+(the manifest, and store.json with the identity from Partner Center), with
+makeappx from the Windows SDK. It's uploaded to Partner Center, never
+attached to a GitHub release (unsigned, it won't install).
 
 The crates' license texts come from licenses/THIRD_PARTY_LICENSES.txt (made by
 scripts/crate_licenses.py, the same list the About window shows). Run from
@@ -20,6 +28,7 @@ library is used.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import platform
 import shutil
@@ -118,6 +127,60 @@ def debug_archive(files: list[Path], out: Path) -> None:
             for item in items:
                 z.write(item, item.relative_to(f.parent))
     print("wrote", out)
+
+
+def msix_version(ver: str) -> str:
+    """The Store's four-part version: 0.2.0 is 0.2.0.0 (the last part must
+    be 0). A prerelease suffix is dropped.
+
+    >>> msix_version("0.2.0")
+    '0.2.0.0'
+    >>> msix_version("1.4.2-rc.1")
+    '1.4.2.0'
+    """
+    return ver.split("-")[0] + ".0"
+
+
+def find_makeappx() -> str | None:
+    """makeappx.exe from the newest Windows SDK installed."""
+    found = shutil.which("makeappx")
+    if found:
+        return found
+    base = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
+    tools = sorted((base / "Windows Kits" / "10" / "bin").glob("10.*/x64/makeappx.exe"))
+    return str(tools[-1]) if tools else None
+
+
+def package_msix(ver: str, out: Path, skip_build: bool) -> None:
+    """The Microsoft Store's MSIX, into `out`."""
+    store_target = ROOT / "target" / "store"
+    if not skip_build:
+        run(
+            "cargo", "build", "--release", "--locked", "-p", "raptaboard",
+            "--no-default-features", "--target-dir", store_target,
+        )
+    identity = json.loads((PACKAGING / "windows" / "msix" / "store.json").read_text(encoding="utf-8"))
+    stage = fresh(out / "stage" / "msix")
+    shutil.copy(store_target / "release" / "raptaboard.exe", stage)
+    add_docs(stage, ver)
+    shutil.copytree(ICONS / "msix", stage / "Assets")
+    manifest = (PACKAGING / "windows" / "msix" / "AppxManifest.xml").read_text(encoding="utf-8")
+    for key, value in {
+        "IDENTITY_NAME": identity["identity_name"],
+        "PUBLISHER": identity["publisher"],
+        "PUBLISHER_DISPLAY_NAME": identity["publisher_display_name"],
+        "DISPLAY_NAME": identity["display_name"],
+        "VERSION": msix_version(ver),
+    }.items():
+        manifest = manifest.replace("{" + key + "}", value)
+    assert "{" not in manifest.split("-->", 1)[1], "a placeholder left in the manifest"
+    (stage / "AppxManifest.xml").write_text(manifest, encoding="utf-8")
+    makeappx = find_makeappx()
+    if not makeappx:
+        sys.exit("makeappx wasn't found; install the Windows SDK")
+    msix = out / f"raptaboard-{ver}-store.msix"
+    run(makeappx, "pack", "/o", "/d", stage, "/p", msix)
+    print("wrote", msix)
 
 
 def find_iscc() -> str | None:
@@ -232,6 +295,7 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=ROOT / "dist", help="where the packages go (default dist/)")
     parser.add_argument("--skip-build", action="store_true", help="package what's already built")
     parser.add_argument("--no-installer", action="store_true", help="Windows: the zip only")
+    parser.add_argument("--msix", action="store_true", help="Windows: also the Microsoft Store MSIX, in dist-store/")
     args = parser.parse_args()
 
     ver = version()
@@ -243,6 +307,11 @@ def main() -> None:
     which = system()
     if which == "windows":
         package_windows(ver, out, not args.no_installer)
+        if args.msix:
+            store_out = (out.parent / "dist-store").resolve()
+            store_out.mkdir(parents=True, exist_ok=True)
+            package_msix(ver, store_out, args.skip_build)
+            shutil.rmtree(store_out / "stage", ignore_errors=True)
     elif which == "macos":
         package_macos(ver, out, targets)
     else:

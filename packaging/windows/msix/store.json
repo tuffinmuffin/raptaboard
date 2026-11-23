@@ -1,0 +1,8 @@
+{
+  "_comment": "raptaboard's Microsoft Store identity, from Partner Center (Product management > Product identity). The MSIX must match these exactly. Not secret: they're in every package.",
+  "identity_name": "Tuffinmuffin.Raptaboard",
+  "publisher": "CN=78317577-621B-482F-A00B-D74234FA902F",
+  "publisher_display_name": "Tuffinmuffin",
+  "display_name": "Raptaboard",
+  "package_family_name": "Tuffinmuffin.Raptaboard_cqhwey6vnfsf6"
+}
