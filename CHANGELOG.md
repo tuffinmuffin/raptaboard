@@ -2,7 +2,7 @@
 
 What changes in each raptaboard release. Newest first.
 
-## Unreleased
+## 0.2.1
 
 - **Microsoft Store package:** an MSIX the Store signs, so Windows trusts it. The Store build
   leaves out the IT Crowd clips and plays tones in their place.
