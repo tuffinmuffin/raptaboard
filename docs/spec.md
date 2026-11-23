@@ -351,7 +351,8 @@ chooses, never needed at an event: packs are installed beforehand and used from 
 - **Next:** a background check for updates (every hour by default, configurable; only while the
   robot is disabled or not connected; quiet on failure) with a one-line notice in the bar that's
   easy to dismiss (remembering the versions dismissed). Then plugin packs, starting with the
-  Doom field. A repository manager (asked for by the user 2026-11-23): sources saved in
+  Doom field. A repository manager (asked for by the user 2026-11-23; a later improvement, around 0.5 after
+  plugins, since teams aren't expected to use other sources yet): sources saved in
   `~/.raptaboard/content/sources.json` rather than `settings.toml`, each with a name, on or off,
   an optional signing key (so a team's own source can be signed), and when it was last checked
   and how; a Repositories section in the Content window to add, rename, turn off, check and
