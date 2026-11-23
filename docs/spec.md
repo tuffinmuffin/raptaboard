@@ -188,6 +188,8 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `thickness` | `shared/scale.rs` | the same | bar or track thickness, points (1–200) | 8 bars, 6 gauges |
 | `show_value` | `shared/scale.rs` | the same | show the current value and unit | true |
 | `show_labels` | `shared/scale.rs` | the same | show the numbers along the scale | true |
+| `autoscale` | `shared/scale.rs` | the same (not a gauge with `wrap_value`) | the scale runs from the lowest to the highest value seen (every value received, from the app's start or the right-click menu's Reset scale; kept while the tab is closed, nothing recorded then), rounded out to round numbers; never saved as the range | false |
+| `autoscale_keep_range` | `shared/scale.rs` | the same | with `autoscale`, `min_value` to `max_value` stays on the scale and only an end that's passed moves out | false |
 | `time_displayed` (Elastic; older `visibleTime`) | `builtin/graph.rs` | Graph | seconds shown | 5 |
 | `min_value`, `max_value` (Elastic) | `builtin/graph.rs` | Graph | a fixed range; both unset fits the values | unset |
 | `counter_clockwise_positive` (Elastic) | `builtin/gyro.rs` | Gyro | `true`: a number (or a `Gyro` table's `Value`) counts counterclockwise; a `Rotation2d` always does | off (clockwise) |
@@ -422,10 +424,13 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      widgets inside: group-level settings (font size, period, colors) that every child uses
      unless it sets its own, and resizing the group scales its children's sizes (and text) to
      match.
-   - Autoscale for bars and gauges: an option where the scale follows the lowest and highest values
-     seen instead of fixed `min_value`/`max_value` (widening as new extremes arrive; optionally only
-     growing from the set range, and a reset in the right-click menu). Not saved as the range;
-     starts fresh each run.
+   - Autoscale for bars and gauges (**done**, after 0.1.0): `autoscale` (and `autoscale_keep_range`)
+     in `shared/scale.rs`. The range comes from every value received: an autoscaled widget asks for
+     its series through `traced` (keeping no points), and `Traces` keeps each series' lowest and
+     highest since it was first recorded or reset (`Traces::range`, `reset_range`), outliving the
+     points so a closed tab keeps it; "Reset scale" in the widget's right-click menu
+     (`WidgetType::resettable`). Bars and gauges have an accessible label with the scale drawn
+     ("Arm: scale 0 to 8"). Not saved; each run starts fresh.
    - Graph history review: while paused, scroll back and forward through time (drag or the scroll
      wheel along the time axis, maybe zoom), beyond the window shown, for looking back at what led
      up to an event. A per-graph "history kept" setting (expected use is up to 3–5 minutes; memory

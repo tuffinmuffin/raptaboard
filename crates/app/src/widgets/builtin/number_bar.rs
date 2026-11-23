@@ -12,16 +12,18 @@
 
 use eframe::egui::{self, Color32, CornerRadius, Rect, Stroke};
 use nt4::Value;
+use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
 
+use crate::traces::SeriesKey;
 use crate::widgets::shared::format::{number_of, short_number};
 use crate::widgets::shared::{card, props, scale};
-use crate::widgets::{ValueInfo, WidgetType};
+use crate::widgets::{Live, ValueInfo, WidgetType};
 
 /// The lowest value on the bar (Elastic).
-pub const MIN_VALUE: &str = "min_value";
+pub const MIN_VALUE: &str = scale::MIN_VALUE;
 /// The highest value on the bar (Elastic).
-pub const MAX_VALUE: &str = "max_value";
+pub const MAX_VALUE: &str = scale::MAX_VALUE;
 /// How many labels along the bar, ends included (Elastic).
 pub const DIVISIONS: &str = "divisions";
 /// Fill from the far end (Elastic).
@@ -29,7 +31,9 @@ pub const INVERTED: &str = "inverted";
 /// `horizontal` or `vertical` (Elastic).
 pub const ORIENTATION: &str = "orientation";
 
-const KEYS: [&str; 18] = [
+const KEYS: [&str; 20] = [
+    scale::AUTOSCALE,
+    scale::AUTOSCALE_KEEP_RANGE,
     crate::widgets::shared::value_colors::COLOR_BY,
     crate::widgets::shared::value_colors::COLOR_BELOW,
     crate::widgets::shared::value_colors::COLOR_ABOVE,
@@ -276,6 +280,7 @@ fn draw_bar(
 fn settings_rows(style: &Style, ui: &mut egui::Ui, p: &mut Map<String, Json>) {
     props::number_row(ui, p, "Minimum", MIN_VALUE, style.min, -1e9..=1e9);
     props::number_row(ui, p, "Maximum", MAX_VALUE, style.max, -1e9..=1e9);
+    scale::autoscale_rows(ui, p);
     props::whole_row(ui, p, "Labels", DIVISIONS, 5, 2..=50);
     props::flag_row(ui, p, "Direction", "Fill from the far end", INVERTED, false);
     props::choice_row(
@@ -295,6 +300,57 @@ fn is_number(nt_type: &str) -> bool {
 }
 
 impl WidgetType for NumberBar {
+    fn show(
+        &self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        widget: &WidgetContainer,
+        live: &Live<'_>,
+    ) -> Option<Value> {
+        let scaled = scale::with_autoscale(widget, live, (NUMBER_BAR.min, NUMBER_BAR.max));
+        self.draw(
+            ui.painter(),
+            ui.visuals(),
+            rect,
+            scaled.as_ref().unwrap_or(widget),
+            live.value,
+        );
+        scale::describe(
+            ui,
+            rect,
+            scaled.as_ref().unwrap_or(widget),
+            (NUMBER_BAR.min, NUMBER_BAR.max),
+        );
+        None
+    }
+    fn show_body(
+        &self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        widget: &WidgetContainer,
+        live: &Live<'_>,
+    ) -> Option<Value> {
+        let scaled = scale::with_autoscale(widget, live, (NUMBER_BAR.min, NUMBER_BAR.max));
+        let p = &scaled.as_ref().unwrap_or(widget).properties;
+        self.draw_body(ui.painter(), ui.visuals(), rect, p, live.value);
+        scale::describe(
+            ui,
+            rect,
+            scaled.as_ref().unwrap_or(widget),
+            (NUMBER_BAR.min, NUMBER_BAR.max),
+        );
+        None
+    }
+    fn traced(&self, widget: &WidgetContainer) -> Vec<(SeriesKey, f64)> {
+        // Every value, for the range; no points need keeping.
+        scale::autoscale_series(widget)
+            .into_iter()
+            .map(|k| (k, 0.0))
+            .collect()
+    }
+    fn resettable(&self, widget: &WidgetContainer) -> Vec<SeriesKey> {
+        scale::autoscale_series(widget)
+    }
     fn names(&self) -> &'static [&'static str] {
         &["Number Bar"]
     }
@@ -323,6 +379,57 @@ impl WidgetType for NumberBar {
 }
 
 impl WidgetType for VoltageView {
+    fn show(
+        &self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        widget: &WidgetContainer,
+        live: &Live<'_>,
+    ) -> Option<Value> {
+        let scaled = scale::with_autoscale(widget, live, (VOLTAGE_VIEW.min, VOLTAGE_VIEW.max));
+        self.draw(
+            ui.painter(),
+            ui.visuals(),
+            rect,
+            scaled.as_ref().unwrap_or(widget),
+            live.value,
+        );
+        scale::describe(
+            ui,
+            rect,
+            scaled.as_ref().unwrap_or(widget),
+            (VOLTAGE_VIEW.min, VOLTAGE_VIEW.max),
+        );
+        None
+    }
+    fn show_body(
+        &self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        widget: &WidgetContainer,
+        live: &Live<'_>,
+    ) -> Option<Value> {
+        let scaled = scale::with_autoscale(widget, live, (VOLTAGE_VIEW.min, VOLTAGE_VIEW.max));
+        let p = &scaled.as_ref().unwrap_or(widget).properties;
+        self.draw_body(ui.painter(), ui.visuals(), rect, p, live.value);
+        scale::describe(
+            ui,
+            rect,
+            scaled.as_ref().unwrap_or(widget),
+            (VOLTAGE_VIEW.min, VOLTAGE_VIEW.max),
+        );
+        None
+    }
+    fn traced(&self, widget: &WidgetContainer) -> Vec<(SeriesKey, f64)> {
+        // Every value, for the range; no points need keeping.
+        scale::autoscale_series(widget)
+            .into_iter()
+            .map(|k| (k, 0.0))
+            .collect()
+    }
+    fn resettable(&self, widget: &WidgetContainer) -> Vec<SeriesKey> {
+        scale::autoscale_series(widget)
+    }
     fn names(&self) -> &'static [&'static str] {
         &["Voltage View"]
     }

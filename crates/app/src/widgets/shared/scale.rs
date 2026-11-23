@@ -1,14 +1,20 @@
 //! Settings shared by widgets that show a number on a scale (Number Bar,
 //! Voltage View, Radial Gauge): the fill color, solid or blended by value;
-//! a unit after the value; showing the value and the scale's labels; and
-//! whether the value is past either end of the scale.
+//! a unit after the value; showing the value and the scale's labels;
+//! whether the value is past either end of the scale; and autoscale, where
+//! the scale follows the lowest and highest values seen instead of the set
+//! `min_value` and `max_value`.
 //!
 //! All are raptaboard's own settings; Elastic ignores them.
 
 use eframe::egui::{self, Color32, Pos2};
 use serde_json::{Map, Value as Json};
 
+use raptaboard_layout::WidgetContainer;
+
 use super::props::{self, set_property};
+use crate::traces::SeriesKey;
+use crate::widgets::Live;
 
 /// The fill color when it doesn't change with the value, as ARGB.
 pub const FILL_COLOR: &str = "fill_color";
@@ -34,11 +40,29 @@ pub const SHOW_VALUE: &str = "show_value";
 /// How thick the bar or the gauge's track is, in points.
 pub const THICKNESS: &str = "thickness";
 
+/// `true` makes the scale run from the lowest to the highest value seen
+/// (since the app started or the widget's Reset scale) instead of from
+/// `min_value` to `max_value`. Never saved as the range.
+pub const AUTOSCALE: &str = "autoscale";
+/// With `autoscale`, `true` keeps `min_value` to `max_value` on the scale,
+/// widening it only for values past them.
+pub const AUTOSCALE_KEEP_RANGE: &str = "autoscale_keep_range";
+/// The scale's lowest value (Elastic's name, for bars and gauges alike).
+pub const MIN_VALUE: &str = "min_value";
+/// The scale's highest value (Elastic's name, for bars and gauges alike).
+pub const MAX_VALUE: &str = "max_value";
+
+/// A Radial Gauge's `wrap_value` (Elastic): values wrap around the range,
+/// which turns autoscale off.
+const WRAP_VALUE: &str = "wrap_value";
+
 /// The thickest a bar or track may be, in points.
 pub const MAX_THICKNESS: f64 = 200.0;
 
 /// Every setting key in this file.
-pub const KEYS: [&str; 13] = [
+pub const KEYS: [&str; 15] = [
+    AUTOSCALE,
+    AUTOSCALE_KEEP_RANGE,
     super::value_colors::COLOR_BY,
     super::value_colors::COLOR_BELOW,
     super::value_colors::COLOR_ABOVE,
@@ -198,6 +222,157 @@ pub fn past_end(value: f64, min: f64, max: f64) -> Option<Past> {
     }
 }
 
+/// `value` rounded down (`up` false) or up to a whole number of `step`s,
+/// ignoring float noise just past one.
+fn round_to(value: f64, step: f64, up: bool) -> f64 {
+    let steps = value / step;
+    if (steps - steps.round()).abs() < 1e-9 {
+        // Already on a step: keep it as given (0.3, not 6 × 0.05).
+        return value;
+    }
+    if up {
+        steps.ceil() * step
+    } else {
+        steps.floor() * step
+    }
+}
+
+/// The scale an autoscaled bar or gauge shows: the `seen` range (lowest,
+/// highest), widened to round numbers, or the `set` range until anything
+/// has been seen. With `keep_set`, the set range always stays on the
+/// scale and only an end that's been passed moves out (to a round number).
+/// A range that's a single value is widened by 1 each way.
+///
+/// ```
+/// use raptaboard::widgets::shared::scale::autoscaled_range;
+/// // Seen 0.13 to 7.86: the scale runs 0 to 8.
+/// assert_eq!(autoscaled_range((-1.0, 1.0), Some((0.13, 7.86)), false), (0.0, 8.0));
+/// // Keeping 0 to 100, a value of 130 widens only the top.
+/// assert_eq!(autoscaled_range((0.0, 100.0), Some((20.0, 130.0)), true), (0.0, 150.0));
+/// // Nothing seen yet: the set range.
+/// assert_eq!(autoscaled_range((4.0, 13.0), None, false), (4.0, 13.0));
+/// ```
+pub fn autoscaled_range(set: (f64, f64), seen: Option<(f64, f64)>, keep_set: bool) -> (f64, f64) {
+    let Some((mut lo, mut hi)) = seen.filter(|(lo, hi)| lo.is_finite() && hi.is_finite()) else {
+        return set;
+    };
+    if keep_set {
+        if lo >= set.0 && hi <= set.1 {
+            return set;
+        }
+        lo = lo.min(set.0);
+        hi = hi.max(set.1);
+    }
+    if hi - lo < 1e-9 {
+        lo -= 1.0;
+        hi += 1.0;
+    }
+    // Round outward to half the range's power of ten: 7.73 wide rounds to
+    // 0.5s, 130 wide to 50s.
+    let step = 10f64.powf((hi - lo).log10().floor()) / 2.0;
+    let rounded = (round_to(lo, step, false), round_to(hi, step, true));
+    if keep_set {
+        // Only the passed ends move.
+        (
+            if lo < set.0 { rounded.0 } else { set.0 },
+            if hi > set.1 { rounded.1 } else { set.1 },
+        )
+    } else {
+        rounded
+    }
+}
+
+/// Whether `widget` autoscales (the `autoscale` setting). A Radial Gauge
+/// that wraps values around (an angle, `wrap_value`) never does: its range
+/// is the wrap.
+pub fn autoscales(widget: &WidgetContainer) -> bool {
+    let p = &widget.properties;
+    props::flag(p, AUTOSCALE, false) && !props::flag(p, WRAP_VALUE, false)
+}
+
+/// The series an autoscaled widget needs recorded (every value, so short
+/// peaks count), for [`WidgetType::traced`](crate::widgets::WidgetType::traced)
+/// and its Reset scale. None when it doesn't autoscale.
+pub fn autoscale_series(widget: &WidgetContainer) -> Vec<SeriesKey> {
+    if !autoscales(widget) {
+        return Vec::new();
+    }
+    SeriesKey::of(widget).into_iter().collect()
+}
+
+/// `widget` with its `min_value` and `max_value` swapped for the autoscaled
+/// range ([`autoscaled_range`]) from what `live` has recorded for it, to
+/// draw with; `None` when it doesn't autoscale. `defaults` is the widget
+/// type's (min, max) when they aren't set.
+pub fn with_autoscale(
+    widget: &WidgetContainer,
+    live: &Live<'_>,
+    defaults: (f64, f64),
+) -> Option<WidgetContainer> {
+    if !autoscales(widget) {
+        return None;
+    }
+    let p = &widget.properties;
+    let set = (
+        props::number(p, MIN_VALUE, defaults.0),
+        props::number(p, MAX_VALUE, defaults.1),
+    );
+    let seen = SeriesKey::of(widget).and_then(|k| live.frame.traces.range(&k));
+    let (min, max) = autoscaled_range(set, seen, props::flag(p, AUTOSCALE_KEEP_RANGE, false));
+    let mut scaled = widget.clone();
+    scaled.properties.insert(MIN_VALUE.into(), min.into());
+    scaled.properties.insert(MAX_VALUE.into(), max.into());
+    Some(scaled)
+}
+
+/// The scale `widget` shows, for screen readers (and tests): "Arm: scale
+/// 0 to 8". `defaults` is the widget type's (min, max) when they aren't
+/// set; pass the autoscaled widget to give the range drawn.
+pub fn describe(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    widget: &WidgetContainer,
+    defaults: (f64, f64),
+) {
+    let p = &widget.properties;
+    let text = format!(
+        "{}: scale {} to {}",
+        widget.title,
+        super::format::short_number(props::number(p, MIN_VALUE, defaults.0)),
+        super::format::short_number(props::number(p, MAX_VALUE, defaults.1)),
+    );
+    ui.interact(rect, ui.scope_id().with("scale"), egui::Sense::hover())
+        .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Image, true, &text));
+}
+
+/// The settings dialog rows for autoscale: on or off, and whether the set
+/// range stays on the scale.
+pub fn autoscale_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>) {
+    ui.label("Autoscale");
+    let mut on = props::flag(p, AUTOSCALE, false);
+    if ui
+        .checkbox(&mut on, "Follow the lowest and highest values seen")
+        .on_hover_text(
+            "The scale widens as new extremes arrive, from when the app started or \
+             Reset scale in the widget's right-click menu. Not saved.",
+        )
+        .changed()
+    {
+        set_property(p, AUTOSCALE, on.then_some(true.into()));
+    }
+    ui.end_row();
+    if on {
+        props::flag_row(
+            ui,
+            p,
+            "",
+            "Keep the minimum and maximum on the scale",
+            AUTOSCALE_KEEP_RANGE,
+            false,
+        );
+    }
+}
+
 /// Draw the "past the end" dot at `at`.
 pub fn draw_past_dot(painter: &egui::Painter, at: Pos2) {
     painter.circle_filled(at, 3.5, SATURATED);
@@ -300,6 +475,38 @@ pub fn rows(
 mod tests {
     // Tests written by Claude.
     use super::*;
+
+    #[test]
+    fn autoscale_rounds_out_to_round_numbers() {
+        let set = (-1.0, 1.0);
+        // A single value: widened by 1 each way, then rounded.
+        assert_eq!(
+            autoscaled_range(set, Some((0.25, 0.25)), false),
+            (-1.0, 1.5)
+        );
+        assert_eq!(
+            autoscaled_range(set, Some((12.0, 12.0)), false),
+            (11.0, 13.0)
+        );
+        // Negative and large ranges.
+        assert_eq!(
+            autoscaled_range(set, Some((-3.0, 7.86)), false),
+            (-5.0, 10.0)
+        );
+        assert_eq!(
+            autoscaled_range(set, Some((-1234.0, 4567.0)), false),
+            (-1500.0, 5000.0)
+        );
+        // Already round: unchanged (no float noise pushing it a step out).
+        assert_eq!(autoscaled_range(set, Some((0.0, 0.3)), false), (0.0, 0.3));
+        // Keeping the set range: a value past the bottom moves only it.
+        assert_eq!(
+            autoscaled_range((0.0, 100.0), Some((-12.0, 50.0)), true),
+            (-50.0, 100.0)
+        );
+        // Not-a-number seen counts as nothing seen.
+        assert_eq!(autoscaled_range(set, Some((f64::NAN, 1.0)), false), set);
+    }
 
     #[test]
     fn a_bars_fill_uses_color_by_value_unless_its_own_gradient_is_on() {

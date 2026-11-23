@@ -2,6 +2,13 @@
 
 What changes in each raptaboard release. Newest first.
 
+## Unreleased
+
+- **Autoscale** for Number Bar, Voltage View and Radial Gauge: the scale follows the lowest and
+  highest values seen (short peaks too), optionally keeping the set range, with Reset scale in
+  the right-click menu.
+- Touchscreens tested on Windows (a laptop), without issues.
+
 ## 0.1.0
 
 The first release: the basics of a driver dashboard, opening Elastic layouts.

@@ -15,16 +15,18 @@ use std::f32::consts::PI;
 
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke};
 use nt4::Value;
+use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
 
+use crate::traces::SeriesKey;
 use crate::widgets::shared::format::{number_of, short_number};
 use crate::widgets::shared::{card, props, scale};
-use crate::widgets::{ValueInfo, WidgetType};
+use crate::widgets::{Live, ValueInfo, WidgetType};
 
 /// The value at the dial's start (Elastic).
-pub const MIN_VALUE: &str = "min_value";
+pub const MIN_VALUE: &str = scale::MIN_VALUE;
 /// The value at the dial's end (Elastic).
-pub const MAX_VALUE: &str = "max_value";
+pub const MAX_VALUE: &str = scale::MAX_VALUE;
 /// Where the dial starts, in degrees clockwise from straight up (Elastic).
 pub const START_ANGLE: &str = "start_angle";
 /// Where the dial ends, in degrees clockwise from straight up (Elastic).
@@ -38,7 +40,9 @@ pub const SHOW_POINTER: &str = "show_pointer";
 /// Draw tick marks at the labels (Elastic).
 pub const SHOW_TICKS: &str = "show_ticks";
 
-const KEYS: [&str; 21] = [
+const KEYS: [&str; 23] = [
+    scale::AUTOSCALE,
+    scale::AUTOSCALE_KEEP_RANGE,
     crate::widgets::shared::value_colors::COLOR_BY,
     crate::widgets::shared::value_colors::COLOR_BELOW,
     crate::widgets::shared::value_colors::COLOR_ABOVE,
@@ -152,6 +156,57 @@ fn arc(center: Pos2, radius: f32, from: f64, to: f64) -> Vec<Pos2> {
 }
 
 impl WidgetType for RadialGauge {
+    fn show(
+        &self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        widget: &WidgetContainer,
+        live: &Live<'_>,
+    ) -> Option<Value> {
+        let scaled = scale::with_autoscale(widget, live, (DEFAULT_MIN, DEFAULT_MAX));
+        self.draw(
+            ui.painter(),
+            ui.visuals(),
+            rect,
+            scaled.as_ref().unwrap_or(widget),
+            live.value,
+        );
+        scale::describe(
+            ui,
+            rect,
+            scaled.as_ref().unwrap_or(widget),
+            (DEFAULT_MIN, DEFAULT_MAX),
+        );
+        None
+    }
+    fn show_body(
+        &self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        widget: &WidgetContainer,
+        live: &Live<'_>,
+    ) -> Option<Value> {
+        let scaled = scale::with_autoscale(widget, live, (DEFAULT_MIN, DEFAULT_MAX));
+        let p = &scaled.as_ref().unwrap_or(widget).properties;
+        self.draw_body(ui.painter(), ui.visuals(), rect, p, live.value);
+        scale::describe(
+            ui,
+            rect,
+            scaled.as_ref().unwrap_or(widget),
+            (DEFAULT_MIN, DEFAULT_MAX),
+        );
+        None
+    }
+    fn traced(&self, widget: &WidgetContainer) -> Vec<(SeriesKey, f64)> {
+        // Every value, for the range; no points need keeping.
+        scale::autoscale_series(widget)
+            .into_iter()
+            .map(|k| (k, 0.0))
+            .collect()
+    }
+    fn resettable(&self, widget: &WidgetContainer) -> Vec<SeriesKey> {
+        scale::autoscale_series(widget)
+    }
     fn names(&self) -> &'static [&'static str] {
         &["Radial Gauge", "Simple Dial"]
     }
@@ -305,6 +360,9 @@ impl WidgetType for RadialGauge {
             WRAP_VALUE,
             false,
         );
+        if !props::flag(p, WRAP_VALUE, false) {
+            scale::autoscale_rows(ui, p);
+        }
         props::flag_row(ui, p, "Needle", "Show the needle", SHOW_POINTER, true);
         props::flag_row(ui, p, "Ticks", "Show tick marks", SHOW_TICKS, true);
         scale::rows(ui, p, "", DEFAULT_FILL, TRACK_WIDTH);
