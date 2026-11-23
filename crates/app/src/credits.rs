@@ -135,6 +135,17 @@ pub const MEDIA: &[MediaCredit] = &[
         note: "Public domain: use them for anything.",
     },
     MediaCredit {
+        kind: "Image",
+        files: &["raptaboard.svg"],
+        what: "raptaboard's app icon: the raptor in a gear",
+        source: "Raptacon's raptor mark, from Raptacon's brand kit \
+                 (https://github.com/Raptacon/brand-kit), in Raptacon Green inside a \
+                 gear drawn for raptaboard",
+        license: "Raptacon (Team 3200) brand: free to use and modify for team purposes",
+        link: Some("https://github.com/Raptacon/brand-kit"),
+        note: "The raptor mark is Raptacon's; ask the team before using it elsewhere.",
+    },
+    MediaCredit {
         kind: "Field",
         files: &[
             "2026-rebuilt.png",

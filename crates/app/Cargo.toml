@@ -29,6 +29,10 @@ resvg = { version = "0.49.0", default-features = false }
 [lints]
 workspace = true
 
+# Puts the icon into the Windows program (build.rs).
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3.0.12"
+
 [dev-dependencies]
 egui_kittest = { version = "0.37", features = ["wgpu"] }
 # The README's clips (`ui/tests/clips.rs`) are saved as GIFs.

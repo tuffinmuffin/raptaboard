@@ -6,6 +6,13 @@
 //! cargo run -p raptaboard -- --address sim path/to/layout.json
 //! cargo run -p raptaboard -- --help
 //! ```
+//!
+//! Release builds on Windows are window programs: no console window opens
+//! beside the dashboard (so `--help` and startup notes print nothing there;
+//! debug builds still have the console).
+
+// A Windows release build opens no console window.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use raptaboard::cli::{self, StartupOptions};
 use raptaboard::settings;
@@ -24,6 +31,7 @@ fn main() -> eframe::Result {
 
     let mut viewport = eframe::egui::ViewportBuilder::default()
         .with_title("raptaboard")
+        .with_icon(raptaboard::app_icon::window_icon())
         .with_inner_size(window.map_or([1280.0, 720.0], |w| [w.width, w.height]));
     if let Some(w) = window
         && let (Some(x), Some(y)) = (w.x, w.y)

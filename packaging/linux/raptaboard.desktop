@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=raptaboard
+Comment=FRC driver dashboard
+Exec=raptaboard %f
+Icon=raptaboard
+Terminal=false
+Categories=Development;Utility;
