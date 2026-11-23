@@ -312,8 +312,11 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   if none works, it says why. Offline, it stops at the first error. Packs
   that aren't fully open source (the IT Crowd clips) live there too, saying so in their license.
 - **What a pack holds:** sections, mixed as needed, each naming its files: `[[sound]]` (name, file),
-  `[[image]]`, `[[field]]` and `[[plugin]]` (file, optional name). Only sounds are used so far;
-  images (Boolean Box), fields (WPILib field JSONs) and plugins (WASM widgets) come later. The
+  `[[image]]`, `[[field]]`, `[[plugin]]` and `[[layout]]` (file, optional name), plus `files` for
+  data the sections read (a plugin's WADs). Only sounds are used so far; images (Boolean Box),
+  fields (WPILib field JSONs), plugins (WASM widgets) and layouts (to start a new layout from, or
+  add a tab from; later perhaps tabs a plugin provides) come later, and a `[[data]]` section
+  naming data files for plugins can join with the plugin host. The
   single `kind` older catalogs had is optional and only a label.
 - **Sound layering** (decided with the user 2026-11-23): a pack's sound may add a new name or use a
   built-in name to replace it. Each install records `installed_at`; where packs share a name, the

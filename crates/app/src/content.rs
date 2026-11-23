@@ -124,6 +124,10 @@ pub struct Pack {
     /// Its widget plugins (`.wasm` components). Not used yet.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub plugins: Vec<PackItem>,
+    /// Its layouts (layout `.json` files) to start from, or take tabs from.
+    /// Not used yet.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layouts: Vec<PackItem>,
     /// Its files: everything the sections use, and any data they read.
     pub files: Vec<PackFile>,
 }
@@ -166,6 +170,7 @@ impl Pack {
             (self.images.len(), "image"),
             (self.fields.len(), "field"),
             (self.plugins.len(), "plugin"),
+            (self.layouts.len(), "layout"),
         ]
         .into_iter()
         .filter(|(n, _)| *n > 0)
@@ -185,6 +190,7 @@ impl Pack {
                 .iter()
                 .chain(&self.fields)
                 .chain(&self.plugins)
+                .chain(&self.layouts)
                 .map(|i| i.file.as_str()),
         )
     }
@@ -1080,6 +1086,7 @@ pub(crate) mod tests {
             images: Vec::new(),
             fields: Vec::new(),
             plugins: Vec::new(),
+            layouts: Vec::new(),
             files: files
                 .iter()
                 .map(|(_, file)| PackFile {
@@ -1456,10 +1463,17 @@ pub(crate) mod tests {
             name: Some("raptor".into()),
             file: "horn.mp3".into(),
         });
+        pack.layouts.push(PackItem {
+            name: Some("Match".into()),
+            file: "match.json".into(),
+        });
+        let missing = serde_json::to_vec(&catalog(vec![pack.clone()])).unwrap();
+        assert!(Catalog::parse(&missing).unwrap_err().contains("match.json"));
+        pack.layouts[0].file = "horn.mp3".into();
         let ok = serde_json::to_vec(&catalog(vec![pack.clone()])).unwrap();
         assert_eq!(
             Catalog::parse(&ok).unwrap().packs[0].contents(),
-            "1 sound, 1 image"
+            "1 sound, 1 image, 1 layout"
         );
         pack.plugins.push(PackItem {
             name: None,
