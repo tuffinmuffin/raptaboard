@@ -306,7 +306,10 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   `catalog.json` (each pack with its files' URLs, sizes and SHA-256), signed with Ed25519
   (`catalog.json.sig`, the `CONTENT_SIGNING_KEY` secret; the public key is `catalog-key.pub`
   there and `content::OFFICIAL_KEYS` here). raptaboard reads
-  `releases/latest/download/catalog.json` and refuses it unless the signature checks. Packs
+  `releases/latest/download/catalog.json` and refuses it unless the signature checks. If the
+  latest release has none (a content release that failed or is still publishing), it lists the
+  releases (GitHub's API) and uses the newest with a catalog, saying so in the Content window;
+  if none works, it says why. Offline, it stops at the first error. Packs
   that aren't fully open source (the IT Crowd clips) live there too, saying so in their license.
 - **Other sources** are any catalog URL the user adds in the Content window (`content_sources` in
   the settings file). They aren't signed; the window says to add only sources you trust. Every

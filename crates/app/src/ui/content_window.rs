@@ -342,12 +342,13 @@ impl DashboardApp {
                     }
                 }
             });
-            if let Some(Err(e)) = checked
-                .iter()
-                .find(|c| c.source == *source)
-                .map(|c| &c.catalog)
-            {
-                ui.colored_label(ui.visuals().warn_fg_color, format!("  {e}"));
+            if let Some(c) = checked.iter().find(|c| c.source == *source) {
+                if let Err(e) = &c.catalog {
+                    ui.colored_label(ui.visuals().warn_fg_color, e);
+                }
+                if let Some(note) = &c.note {
+                    ui.colored_label(ui.visuals().warn_fg_color, note);
+                }
             }
         }
         ui.horizontal(|ui| {

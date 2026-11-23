@@ -40,6 +40,14 @@ use crate::sound::SoundFiles;
 /// The official source's catalog: raptaboard-content's latest release.
 pub const OFFICIAL: &str =
     "https://github.com/tuffinmuffin/raptaboard-content/releases/latest/download/catalog.json";
+/// The official source's repository on GitHub.
+pub const OFFICIAL_REPO: &str = "tuffinmuffin/raptaboard-content";
+/// Its releases, newest first, for when the latest has no catalog (a
+/// release that failed or is still publishing): GitHub's API.
+pub const OFFICIAL_RELEASES: &str =
+    "https://api.github.com/repos/tuffinmuffin/raptaboard-content/releases?per_page=10";
+/// How many older releases are tried when the latest has no catalog.
+const FALLBACK_RELEASES: usize = 3;
 
 /// The keys the official catalog may be signed with (raw Ed25519 public
 /// keys): raptaboard-content's `catalog-key.pub`. When the key changes,
@@ -479,6 +487,80 @@ pub fn fetch_catalog(url: &str, keys: &[[u8; 32]], fetch: &Fetch) -> Result<Cata
     Catalog::parse(&bytes)
 }
 
+/// The official catalog: the latest release's, or if that has none (its
+/// release failed or is still publishing), the newest release before it
+/// that has one, with a note saying so. Signed either way. Offline, it
+/// stops at the first error.
+pub fn fetch_official(
+    keys: &[[u8; 32]],
+    fetch: &Fetch,
+) -> Result<(Catalog, Option<String>), String> {
+    let first = match fetch_catalog(OFFICIAL, keys, fetch) {
+        Ok(catalog) => return Ok((catalog, None)),
+        Err(e) if is_offline(&e) => return Err(e),
+        Err(e) => e,
+    };
+    #[derive(Deserialize)]
+    struct Release {
+        tag_name: String,
+        #[serde(default)]
+        draft: bool,
+        #[serde(default)]
+        prerelease: bool,
+        #[serde(default)]
+        assets: Vec<Asset>,
+    }
+    #[derive(Deserialize)]
+    struct Asset {
+        name: String,
+    }
+    let gave_up = |why: String| {
+        format!(
+            "The official source's latest release has no usable catalog ({first}). A content \
+             release may have failed or still be publishing; try again in a few minutes.{why}"
+        )
+    };
+    let releases: Vec<Release> = match fetch(OFFICIAL_RELEASES, CATALOG_LIMIT)
+        .and_then(|b| serde_json::from_slice(&b).map_err(|e| e.to_string()))
+    {
+        Ok(r) => r,
+        Err(e) => return Err(gave_up(format!(" (Couldn't list its releases: {e}.)"))),
+    };
+    let has = |r: &Release, name: &str| r.assets.iter().any(|a| a.name == name);
+    let newest = releases
+        .iter()
+        .find(|r| !r.draft)
+        .map(|r| r.tag_name.clone());
+    for release in releases
+        .iter()
+        .filter(|r| !r.draft && !r.prerelease)
+        .filter(|r| has(r, "catalog.json") && has(r, "catalog.json.sig"))
+        .take(FALLBACK_RELEASES)
+    {
+        let url = format!(
+            "https://github.com/{OFFICIAL_REPO}/releases/download/{}/catalog.json",
+            release.tag_name
+        );
+        if let Ok(catalog) = fetch_catalog(&url, keys, fetch) {
+            let newest = newest.unwrap_or_else(|| "the latest".into());
+            let note = format!(
+                "The newest content release ({newest}) has no usable catalog ({first}), so \
+                 these packs are from {} instead.",
+                release.tag_name
+            );
+            return Ok((catalog, Some(note)));
+        }
+    }
+    Err(gave_up(String::new()))
+}
+
+/// Whether a download error means the network can't reach the server at
+/// all (offline, or a network with no internet), not that the server
+/// answered with something wrong.
+fn is_offline(e: &str) -> bool {
+    e.ends_with("(offline?)")
+}
+
 /// Download over HTTPS (or HTTP, for a source on the local network) with
 /// short timeouts, checking certificates against the computer's own (so
 /// networks that add their own certificate work, as a browser would).
@@ -522,9 +604,15 @@ fn short_error(url: &str, e: &ureq::Error) -> String {
         .nth(1)
         .and_then(|rest| rest.split('/').next())
         .unwrap_or(url);
+    // The file asked for, without any query.
+    let file = url
+        .split('?')
+        .next()
+        .and_then(|u| u.rsplit('/').next())
+        .unwrap_or(url);
     match e {
-        ureq::Error::StatusCode(404) => format!("{host}: not found (404)"),
-        ureq::Error::StatusCode(code) => format!("{host}: the server said {code}"),
+        ureq::Error::StatusCode(404) => format!("{host} has no {file} (404)"),
+        ureq::Error::StatusCode(code) => format!("{host}: the server said {code} for {file}"),
         ureq::Error::Timeout(_) => format!("{host}: no answer (offline?)"),
         ureq::Error::HostNotFound => format!("{host}: not found (offline?)"),
         ureq::Error::Io(_) | ureq::Error::ConnectionFailed => {
@@ -569,6 +657,8 @@ pub struct Checked {
     pub source: Source,
     /// Its catalog, or why it couldn't be had.
     pub catalog: Result<Catalog, String>,
+    /// Something to know about the catalog it did get (an older release's).
+    pub note: Option<String>,
 }
 
 /// What the download thread is asked to do.
@@ -646,10 +736,17 @@ impl Content {
                             sources
                                 .into_iter()
                                 .map(|source| {
-                                    let keys: &[[u8; 32]] =
-                                        if source.official { &keys } else { &[] };
+                                    let (catalog, note) = if source.official {
+                                        match fetch_official(&keys, &*fetch) {
+                                            Ok((c, note)) => (Ok(c), note),
+                                            Err(e) => (Err(e), None),
+                                        }
+                                    } else {
+                                        (fetch_catalog(&source.url, &[], &*fetch), None)
+                                    };
                                     Checked {
-                                        catalog: fetch_catalog(&source.url, keys, &*fetch),
+                                        catalog,
+                                        note,
                                         source,
                                     }
                                 })
@@ -900,6 +997,17 @@ pub(crate) mod tests {
             store.install(OFFICIAL, pack, &http_get).unwrap();
         }
         assert_eq!(store.installed().len(), catalog.packs.len());
+        // With the latest release broken, GitHub's real list of releases
+        // finds one with a catalog.
+        let broken = |url: &str, limit: u64| {
+            if url == OFFICIAL {
+                Err("github.com has no catalog.json (404)".to_string())
+            } else {
+                http_get(url, limit)
+            }
+        };
+        let (older, note) = fetch_official(OFFICIAL_KEYS, &broken).unwrap();
+        assert!(!older.packs.is_empty() && note.is_some(), "{note:?}");
         // Somewhere with no server: a quick error, not a hang.
         let start = std::time::Instant::now();
         assert!(http_get("https://10.255.255.1/catalog.json", 1000).is_err());
@@ -982,6 +1090,101 @@ pub(crate) mod tests {
                 .unwrap_err()
                 .contains("newer raptaboard")
         );
+    }
+
+    /// GitHub's list of releases, newest first: each tag and whether it
+    /// has the catalog's two files.
+    fn releases(tags: &[(&str, bool)]) -> Vec<u8> {
+        let list: Vec<serde_json::Value> = tags
+            .iter()
+            .map(|(tag, whole)| {
+                let assets: Vec<serde_json::Value> = if *whole {
+                    vec![
+                        serde_json::json!({"name": "catalog.json"}),
+                        serde_json::json!({"name": "catalog.json.sig"}),
+                    ]
+                } else {
+                    vec![]
+                };
+                serde_json::json!({"tag_name": tag, "draft": false, "prerelease": false, "assets": assets})
+            })
+            .collect();
+        serde_json::to_vec(&list).unwrap()
+    }
+
+    fn release_url(tag: &str) -> String {
+        format!("https://github.com/{OFFICIAL_REPO}/releases/download/{tag}/catalog.json")
+    }
+
+    #[test]
+    fn the_official_urls_name_the_same_repo() {
+        assert!(OFFICIAL.contains(OFFICIAL_REPO) && OFFICIAL_RELEASES.contains(OFFICIAL_REPO));
+    }
+
+    #[test]
+    fn a_latest_release_without_a_catalog_falls_back_to_the_one_before() {
+        let (key, public) = test_key();
+        let web = Web::default();
+        // v2's release failed: latest points at it, and it has no catalog.
+        let v1 = catalog(vec![sound_pack(
+            "beeps",
+            "1.0.0",
+            &[("beep", "beep.mp3")],
+            "https://x",
+        )]);
+        web.serve(&release_url("v1"), &v1, Some(&key));
+        web.files.lock().unwrap().insert(
+            OFFICIAL_RELEASES.into(),
+            releases(&[("v2", false), ("v1", true)]),
+        );
+        let (got, note) = fetch_official(&[public], &*web.fetch()).unwrap();
+        assert_eq!(got, v1);
+        let note = note.unwrap();
+        assert!(note.contains("v2") && note.contains("from v1"), "{note}");
+        // The latest working: no note, no list asked for.
+        web.serve(OFFICIAL, &v1, Some(&key));
+        web.asked.lock().unwrap().clear();
+        assert_eq!(fetch_official(&[public], &*web.fetch()).unwrap().1, None);
+        assert!(
+            !web.asked
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|u| u == OFFICIAL_RELEASES)
+        );
+    }
+
+    #[test]
+    fn no_usable_release_says_why_clearly() {
+        let (_, public) = test_key();
+        let web = Web::default();
+        web.files
+            .lock()
+            .unwrap()
+            .insert(OFFICIAL_RELEASES.into(), releases(&[("v2", false)]));
+        let err = fetch_official(&[public], &*web.fetch()).unwrap_err();
+        assert!(
+            err.contains("may have failed or still be publishing"),
+            "{err}"
+        );
+        // Can't list them either: still says what happened.
+        let empty = Web::default();
+        let err = fetch_official(&[public], &*empty.fetch()).unwrap_err();
+        assert!(err.contains("Couldn't list its releases"), "{err}");
+    }
+
+    #[test]
+    fn offline_doesnt_try_the_release_list() {
+        let (_, public) = test_key();
+        let asked = Arc::new(Mutex::new(Vec::<String>::new()));
+        let log = asked.clone();
+        let offline: Box<Fetch> = Box::new(move |url: &str, _| {
+            log.lock().unwrap().push(url.into());
+            Err("github.com: can't connect (offline?)".into())
+        });
+        let err = fetch_official(&[public], &*offline).unwrap_err();
+        assert!(err.contains("offline"), "{err}");
+        assert_eq!(*asked.lock().unwrap(), [OFFICIAL]);
     }
 
     #[test]
