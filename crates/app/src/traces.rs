@@ -6,6 +6,12 @@
 //! grows as needed up to [`MAX_POINTS`]. Only the series some graph on
 //! the open tab wants are kept, each for the longest time window a graph
 //! wants it for; a series no graph wants any more is forgotten.
+//!
+//! Each series also keeps the lowest and highest values it has had since
+//! it was first recorded or last [reset](Traces::reset_range), for
+//! autoscaled bars and gauges. That range outlives the points: it stays
+//! while the widget's tab is closed (nothing is recorded then), and is
+//! never saved, so each run starts fresh.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -37,6 +43,28 @@ pub const MAX_POINTS: usize = 60_000;
 #[derive(Debug, Default)]
 pub struct Traces {
     series: HashMap<SeriesKey, Trace>,
+    /// (lowest, highest) since first recorded or reset, by series.
+    ranges: HashMap<SeriesKey, (f64, f64)>,
+}
+
+impl SeriesKey {
+    /// What `widget` shows: its topic, and the struct field if it's bound
+    /// to one. `None` for a widget with no topic.
+    ///
+    /// ```
+    /// use raptaboard::traces::SeriesKey;
+    /// let w: raptaboard_layout::WidgetContainer = serde_json::from_value(serde_json::json!({
+    ///     "title": "Arm", "x": 0.0, "y": 0.0, "width": 128.0, "height": 128.0,
+    ///     "type": "Number Bar", "properties": {"topic": "/Arm/angle"},
+    /// })).unwrap();
+    /// assert_eq!(SeriesKey::of(&w).unwrap().topic, "/Arm/angle");
+    /// ```
+    pub fn of(widget: &raptaboard_layout::WidgetContainer) -> Option<SeriesKey> {
+        Some(SeriesKey {
+            topic: widget.topic()?.to_owned(),
+            field: widget.struct_meta().map(|m| m.path),
+        })
+    }
 }
 
 #[derive(Debug, Default)]
@@ -77,6 +105,49 @@ impl Traces {
         trace.points.push_back((time_us, value));
         if trace.points.len() > MAX_POINTS {
             trace.points.pop_front();
+        }
+        if value.is_finite() {
+            let range = self.ranges.entry(key.clone()).or_insert((value, value));
+            range.0 = range.0.min(value);
+            range.1 = range.1.max(value);
+        }
+    }
+
+    /// The (lowest, highest) values recorded for `key` since it was first
+    /// recorded or last reset, if any.
+    ///
+    /// ```
+    /// use raptaboard::traces::{SeriesKey, Traces};
+    /// let key = SeriesKey { topic: "/Arm/angle".into(), field: None };
+    /// let mut traces = Traces::default();
+    /// traces.want(&key, 0.0);
+    /// traces.record(&key, 1, 30.0);
+    /// traces.record(&key, 2, -10.0);
+    /// traces.record(&key, 3, 5.0);
+    /// assert_eq!(traces.range(&key), Some((-10.0, 30.0)));
+    /// traces.reset_range(&key);
+    /// assert_eq!(traces.range(&key), Some((5.0, 5.0)));
+    /// ```
+    pub fn range(&self, key: &SeriesKey) -> Option<(f64, f64)> {
+        self.ranges.get(key).copied()
+    }
+
+    /// Forget the range seen for `key`: it starts again from the newest
+    /// value recorded, if it's still being recorded, or from the next.
+    pub fn reset_range(&mut self, key: &SeriesKey) {
+        let newest = self
+            .series
+            .get(key)
+            .and_then(|t| t.points.back())
+            .map(|&(_, v)| v)
+            .filter(|v| v.is_finite());
+        match newest {
+            Some(v) => {
+                self.ranges.insert(key.clone(), (v, v));
+            }
+            None => {
+                self.ranges.remove(key);
+            }
         }
     }
 

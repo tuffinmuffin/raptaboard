@@ -539,6 +539,20 @@
               "period": 0.06,
               "data_type": "double"
             }
+          },
+          {
+            "title": "Seconds bar (autoscale)",
+            "x": 640.0,
+            "y": 128.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Number Bar",
+            "properties": {
+              "topic": "/DashTest/Seconds",
+              "period": 0.06,
+              "data_type": "int",
+              "autoscale": true
+            }
           }
         ]
       }

@@ -334,6 +334,13 @@ pub trait WidgetType: Sync {
         Vec::new()
     }
 
+    /// The series whose lowest and highest values seen this widget uses
+    /// (an autoscaled bar's), which its right-click menu's "Reset scale"
+    /// starts again from the value now. None by default (no menu item).
+    fn resettable(&self, _widget: &WidgetContainer) -> Vec<SeriesKey> {
+        Vec::new()
+    }
+
     /// Whether topics dragged from the tree can be dropped onto this widget
     /// (a graph takes them as lines). No by default.
     fn takes_topics(&self) -> bool {

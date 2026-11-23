@@ -18,6 +18,7 @@ use raptaboard_layout::{GridLayout, Rect as LayoutRect, Tab, WidgetContainer};
 use crate::binding::{self, WidgetValues, WriteTarget};
 use crate::edit::EditAction;
 use crate::grid::{self, Item};
+use crate::traces::SeriesKey;
 use crate::tree::DraggedTopics;
 use crate::widgets::shared::card;
 use crate::widgets::{self, list_layout};
@@ -123,6 +124,32 @@ pub(super) struct Requests {
     pub find_quietly: Option<WidgetContainer>,
     /// Values widgets want sent, and which widget sent each.
     pub writes: Vec<(Sender, Value)>,
+    /// Series whose range seen to forget: "Reset scale" from a widget's
+    /// menu.
+    pub reset_ranges: Vec<SeriesKey>,
+}
+
+/// "Reset scale" in a widget's right-click menu, if it has a range to
+/// reset ([`widgets::WidgetType::resettable`]); clicked, its series go in
+/// `reset`.
+fn reset_scale_button(
+    ui: &mut egui::Ui,
+    widget: Option<&WidgetContainer>,
+    reset: &mut Vec<SeriesKey>,
+) {
+    let Some(w) = widget else { return };
+    let Some(ty) = widgets::find(&w.widget_type) else {
+        return;
+    };
+    let keys = ty.resettable(w);
+    if !keys.is_empty()
+        && ui
+            .button("Reset scale")
+            .on_hover_text("Start the autoscaled range again from the value now")
+            .clicked()
+    {
+        reset.extend(keys);
+    }
 }
 
 impl DashboardApp {
@@ -389,6 +416,11 @@ impl DashboardApp {
                         {
                             requests.menu_action = Some((item, EditAction::Edit));
                         }
+                        reset_scale_button(
+                            ui,
+                            list.children.get(row.index),
+                            &mut requests.reset_ranges,
+                        );
                     });
                     if child.dragged() {
                         ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
@@ -451,6 +483,13 @@ impl DashboardApp {
                         .clicked()
                 {
                     requests.wrap = Some(widget);
+                }
+                if let Item::Widget(widget) = item {
+                    reset_scale_button(
+                        ui,
+                        tab.grid_layout.containers.get(widget),
+                        &mut requests.reset_ranges,
+                    );
                 }
             });
             if corner.hovered() || corner.dragged() {
@@ -644,7 +683,11 @@ impl DashboardApp {
             find_in_tree,
             find_quietly,
             writes,
+            reset_ranges,
         } = requests;
+        for key in &reset_ranges {
+            self.traces.reset_range(key);
+        }
         for (sender, value) in writes {
             self.send(sender, value);
         }

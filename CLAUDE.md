@@ -154,7 +154,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   tap really was: a touchscreen on macOS sends a whole tap in one frame and puts the cursor back, so
   positions come from the release event; `ui/taps.rs` `TapHold`, run from `raw_input_hook`, holds the
   move back to the mouse for the next frame so egui gives the tap to the widget tapped; tests replay it
-  with `tap_burst`, mouse on another widget), `format.rs` (number and
+  with `tap_burst`, mouse on another widget; a Windows touchscreen laptop worked without issues, tested by the
+  user 2026-11-22), `format.rs` (number and
   enum text, `EnumDisplay`), `alert_sign.rs` (alert level colors and signs, for the widget, tab marks
   and history), `props.rs` (period, font size, colors, a topic picker), `value_colors.rs` (color by value: thresholds or a gradient), `robot_view.rs` (a robot from above with
   speed and spin arrows, for the swerve view and Chassis Speeds) and `settings.rs` (the settings dialog's shared
@@ -173,7 +174,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   can't). Widget values come from a
   second set of subscriptions (`NtConnection::watch_widget_values`), one per `period` on the open
   tab, and `traces.rs` (`Traces`) records the values over time that graphs show (every value, from the NT client's event stream, fed by
-  `ui/live.rs` `record_traces`; a growable ring buffer per series), `sampling.rs` (`Sampler`) has each widget take a new value only once per its period, so
+  `ui/live.rs` `record_traces`; a growable ring buffer per series; and each series' lowest and highest since a reset,
+  `Traces::range`, for autoscaled bars and gauges: `shared/scale.rs` `with_autoscale`, reset from the right-click
+  menu through `WidgetType::resettable`), `sampling.rs` (`Sampler`) has each widget take a new value only once per its period, so
   fast redraws (mouse moves) or the tree watching the same topic don't make it jump ahead.
   `tests/cpu_load.rs` is the ignored 30-widgets-at-50-Hz CPU test (runs with the tree shown and
   hidden; prints % of one core and of the machine); its `other_dashboard` test runs the same load against Elastic for comparison
