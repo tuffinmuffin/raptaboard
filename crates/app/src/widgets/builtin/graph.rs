@@ -21,11 +21,16 @@
 //! so minutes of values draw quickly; the cursors and hover read every
 //! value.
 //!
+//! With `show_stats`, each line's min, max and average show bottom left, in
+//! its color: over the time shown, or between the A and B cursors once both
+//! are placed. They come from every value recorded in that time, not the
+//! thinned lines.
+//!
 //! Elastic's settings: `time_displayed` (seconds shown, 5; older files say
 //! `visibleTime`), `min_value` and `max_value` (a fixed range; both unset
 //! fits the values), `color` (the main line, cyan) and `line_width` (2).
-//! raptaboard's: `series`, `show_legend`, `show_pause`, `show_hover` and
-//! `history_kept`.
+//! raptaboard's: `series`, `show_legend`, `show_pause`, `show_hover`,
+//! `history_kept` and `show_stats`.
 
 use std::sync::Arc;
 
@@ -35,7 +40,7 @@ use nt4::Value;
 use raptaboard_layout::{StructMeta, WidgetContainer};
 use serde_json::{Map, Value as Json};
 
-use crate::traces::SeriesKey;
+use crate::traces::{SeriesKey, Stats};
 use crate::tree::DraggedTopic;
 use crate::widgets::shared::card;
 use crate::widgets::shared::format::number_of;
@@ -68,7 +73,12 @@ pub const SHOW_HOVER: &str = "show_hover";
 /// (raptaboard). Never less than `time_displayed`.
 pub const HISTORY_KEPT: &str = "history_kept";
 
-const KEYS: [&str; 8] = [
+/// Show each line's min, max and average over the time shown, or between
+/// the cursors (raptaboard; off unless set).
+pub const SHOW_STATS: &str = crate::widgets::shared::stats::SHOW_STATS;
+
+const KEYS: [&str; 9] = [
+    SHOW_STATS,
     HISTORY_KEPT,
     TIME_DISPLAYED,
     MIN_VALUE,
@@ -242,6 +252,23 @@ pub fn thin(points: &[[f64; 2]], from: f64, to: f64, columns: usize) -> Vec<[f64
         i = j;
     }
     out
+}
+
+/// The min, max and average of the values in `points` (time, value; oldest
+/// first) from time `from` to `to`, ends included; `None` if there are
+/// none.
+///
+/// ```
+/// use raptaboard::widgets::builtin::graph::stats_between;
+/// let points = [[-4.0, 9.0], [-3.0, 1.0], [-2.0, 3.0], [-1.0, 5.0], [0.0, 0.0]];
+/// let s = stats_between(&points, -3.0, -1.0).unwrap();
+/// assert_eq!((s.min, s.mean(), s.max), (1.0, 3.0, 5.0));
+/// assert!(stats_between(&points, -10.0, -5.0).is_none());
+/// ```
+pub fn stats_between(points: &[[f64; 2]], from: f64, to: f64) -> Option<Stats> {
+    let first = points.partition_point(|p| p[0] < from);
+    let end = points.partition_point(|p| p[0] <= to);
+    Stats::from_values(points[first..end.max(first)].iter().map(|p| p[1]))
 }
 
 /// The fixed range, if both ends are set and the bottom is below the top.
@@ -811,7 +838,9 @@ impl WidgetType for Graph {
             None => {}
         }
 
-        // The readout, bottom left, while measuring.
+        // The readout, bottom left, while measuring; each line's statistics
+        // above it (or there, without it).
+        let mut stats_bottom = body.max.y - 22.0;
         if paused && !view.cursors.is_empty() {
             let lines: Vec<(&str, &[[f64; 2]])> = shown
                 .iter()
@@ -825,6 +854,44 @@ impl WidgetType for Graph {
                 body.width(),
             );
             let at = egui::pos2(body.min.x + 4.0, body.max.y - galley.size().y - 22.0);
+            let back = Rect::from_min_size(at, galley.size()).expand(3.0);
+            ui.painter().rect_filled(
+                back,
+                egui::CornerRadius::same(3),
+                ui.visuals().extreme_bg_color.gamma_multiply(0.85),
+            );
+            ui.painter().galley(at, galley, ui.visuals().text_color());
+            stats_bottom = back.min.y - 4.0;
+        }
+        if props::flag(p, SHOW_STATS, false) {
+            // Between the cursors once both are placed, else what shows.
+            let (low, high, over) = match view.cursors[..] {
+                [a, b, ..] if paused => (a.min(b), a.max(b), "A→B"),
+                _ => (from, to, "shown"),
+            };
+            let mut job = egui::text::LayoutJob::default();
+            let font = egui::FontId::monospace(11.0);
+            let mut add = |text: String, color: Color32| {
+                job.append(&text, 0.0, egui::TextFormat::simple(font.clone(), color));
+            };
+            add(
+                format!("min / avg / max, {over}"),
+                ui.visuals().weak_text_color(),
+            );
+            for (name, color, points) in shown.iter() {
+                let text = match stats_between(points, low, high) {
+                    Some(s) => format!(
+                        "{} / {} / {}",
+                        show(Some(s.min)),
+                        show(Some(s.mean())),
+                        show(Some(s.max))
+                    ),
+                    None => "—".to_owned(),
+                };
+                add(format!("\n{name}   {text}"), *color);
+            }
+            let galley = ui.painter().layout_job(job);
+            let at = egui::pos2(body.min.x + 4.0, stats_bottom - galley.size().y);
             let back = Rect::from_min_size(at, galley.size()).expand(3.0);
             ui.painter().rect_filled(
                 back,
@@ -1003,6 +1070,15 @@ impl WidgetType for Graph {
             "Show values where the pointer is",
             SHOW_HOVER,
             true,
+        );
+        props::flag_row(
+            ui,
+            p,
+            "Min / max",
+            "Show each line's min, max and average over the time shown \
+             (or between the cursors)",
+            SHOW_STATS,
+            false,
         );
 
         // Every line, main first: color, name, and buttons to reorder or
@@ -1587,5 +1663,121 @@ mod tests {
         assert!(oldest >= -60.01, "{oldest}");
         assert!(oldest < -50.0, "{oldest}");
         assert!((v - (60.0 + oldest)).abs() < 0.11, "{oldest} {v}");
+    }
+
+    #[test]
+    fn line_statistics_cover_the_time_shown_or_between_the_cursors() {
+        use egui::{Event, Modifiers, PointerButton, Pos2, RawInput};
+        let mut w = graph();
+        w.properties.insert(SHOW_STATS.into(), true.into());
+        let mut traces = crate::traces::Traces::default();
+        let key = series(&w)[0].key.clone();
+        traces.want(&key, 60.0);
+        // A minute at 10 a second; each value is its time in seconds.
+        for i in 0..=600 {
+            traces.record(&key, i * 100_000, i as f64 / 10.0);
+        }
+        let ctx = egui::Context::default();
+        let rect = Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 300.0));
+        let frame = |events: Vec<Event>| -> Vec<String> {
+            let raw = RawInput {
+                screen_rect: Some(rect),
+                events,
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(raw, |ui| {
+                let (others, effects) = (Default::default(), Default::default());
+                let frame = Frame {
+                    traces: &traces,
+                    now_us: 60_000_000,
+                    others: &others,
+                    connected: true,
+                    effects: &effects,
+                    structs: None,
+                };
+                let live = frame.live(None, Place::default());
+                Graph.show(ui, rect, &w, &live);
+            });
+            output.textures_delta.clear();
+            let mut texts = Vec::new();
+            fn walk(shape: &egui::Shape, texts: &mut Vec<String>) {
+                match shape {
+                    egui::Shape::Text(t) => texts.push(t.galley.text().to_owned()),
+                    egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, texts)),
+                    _ => {}
+                }
+            }
+            for s in &output.shapes {
+                walk(&s.shape, &mut texts);
+            }
+            texts
+        };
+        // The statistics panel's text.
+        let stats = |texts: &[String]| -> String {
+            texts
+                .iter()
+                .find(|t| t.starts_with("min / avg / max"))
+                .unwrap_or_else(|| panic!("statistics in {texts:?}"))
+                .clone()
+        };
+        let press = |at: Pos2, pressed: bool| Event::PointerButton {
+            pos: at,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        let click = |at: Pos2| vec![Event::PointerMoved(at), press(at, true), press(at, false)];
+        let body = rect
+            .with_min_y(rect.min.y + card::TITLE_HEIGHT)
+            .shrink(card::BODY_MARGIN);
+        let button = egui::pos2(
+            body.max.x - BUTTON_SIZE.x / 2.0,
+            body.min.y + BUTTON_SIZE.y / 2.0,
+        );
+        frame(vec![]);
+        // Live: the last 5 s, 55 to 60.
+        assert_eq!(
+            stats(&frame(vec![])),
+            "min / avg / max, shown\nspeed   55.000 / 57.500 / 60.000"
+        );
+        // Paused with A and B placed: just between them.
+        frame(click(button));
+        frame(vec![]);
+        frame(click(body.center() - egui::vec2(100.0, 0.0)));
+        frame(vec![]);
+        frame(click(body.center() + egui::vec2(50.0, 0.0)));
+        let texts = frame(vec![]);
+        let text = stats(&texts);
+        assert!(text.starts_with("min / avg / max, A→B\nspeed   "), "{text}");
+        let numbers: Vec<f64> = text
+            .lines()
+            .nth(1)
+            .unwrap()
+            .split_whitespace()
+            .filter_map(|n| n.parse().ok())
+            .collect();
+        let readout = texts.iter().find(|t| t.starts_with("A ")).unwrap();
+        let times: Vec<f64> = readout
+            .lines()
+            .next()
+            .unwrap()
+            .split_whitespace()
+            .filter_map(|n| n.parse().ok())
+            .collect();
+        // A, B, Δt: the values between A and B run from 60 + A to 60 + B.
+        let (a, b) = (times[0], times[1]);
+        assert!(a < b && b < 0.0, "{times:?}");
+        assert!(
+            (numbers[0] - (60.0 + a)).abs() <= 0.1,
+            "{numbers:?} {times:?}"
+        );
+        assert!(
+            (numbers[2] - (60.0 + b)).abs() <= 0.1,
+            "{numbers:?} {times:?}"
+        );
+        assert!((numbers[1] - (120.0 + a + b) / 2.0).abs() <= 0.1);
+        // A click clears the cursors: back to what shows.
+        frame(click(body.center()));
+        assert!(stats(&frame(vec![])).starts_with("min / avg / max, shown\nspeed   55.000"));
     }
 }
