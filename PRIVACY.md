@@ -4,7 +4,7 @@ Last updated: November 23, 2026
 
 raptaboard is a driver dashboard for FIRST Robotics Competition robots, made by Team 3200
 (Raptacon). This policy covers the raptaboard app, however you install it: from the Microsoft
-Store or from GitHub.
+Store or from GitHub. raptaboard shows it too, in ⚙ Settings → About and licenses → Privacy.
 
 ## We collect no personal data
 
