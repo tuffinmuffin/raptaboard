@@ -1,7 +1,8 @@
 //! Make the icon files in `media/icon/` from `media/icon/raptaboard.svg`:
 //! `raptaboard.ico` (Windows), `raptaboard.png` (512 px, Linux), the
 //! Microsoft Store package's logos in `msix/`, the Store listing's poster
-//! art (`media/store/poster-*.png`, 9:16), and on macOS
+//! and square art (`media/store/poster-*.png`, 9:16, and `square-*.png`),
+//! and on macOS
 //! `raptaboard.icns` (through the system's `iconutil`). Run it after
 //! changing the SVG, from the repo's top folder:
 //!
@@ -39,6 +40,13 @@ fn main() {
     for (w, h) in [(720, 1080), (1440, 2160)] {
         write(&store.join(format!("poster-{w}x{h}.png")), &poster(w, h));
     }
+    // And its square (1:1) art.
+    for size in [1080, 2160] {
+        write(
+            &store.join(format!("square-{size}x{size}.png")),
+            &poster(size, size),
+        );
+    }
 
     // macOS: an .iconset folder of PNGs, which iconutil packs into .icns.
     if cfg!(target_os = "macos") {
@@ -70,8 +78,8 @@ fn main() {
     }
 }
 
-/// The icon `width` x `height` pixels: centered a little above the middle,
-/// 80% of the width across, on a dark blue background that fades darker
+/// The icon `width` x `height` pixels: 80% of the width across, centered
+/// (a little above the middle in a tall image), on a dark blue background that fades darker
 /// toward the bottom (the icon's own dark disc's colors).
 fn poster(width: u32, height: u32) -> Vec<u8> {
     let (top, bottom) = ([0x1B, 0x2A, 0x38], [0x0B, 0x11, 0x18]);
@@ -88,7 +96,12 @@ fn poster(width: u32, height: u32) -> Vec<u8> {
     let size = width * 8 / 10;
     let icon = image::RgbaImage::from_raw(size, size, app_icon::rgba(size)).expect("size matches");
     let x = i64::from((width - size) / 2);
-    let y = i64::from(height * 42 / 100) - i64::from(size / 2);
+    let center = if height > width {
+        height * 42 / 100
+    } else {
+        height / 2
+    };
+    let y = i64::from(center) - i64::from(size / 2);
     image::imageops::overlay(&mut image, &icon, x, y);
     let mut out = std::io::Cursor::new(Vec::new());
     image
