@@ -27,7 +27,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       # The Microsoft Store build (no fan clips) builds and keeps its sounds.
       - run: cargo clippy -p raptaboard --no-default-features --all-targets -- -D warnings
-      - run: cargo test -p raptaboard --no-default-features --lib -- sound:: credits::
+      - run: "cargo test -p raptaboard --no-default-features --lib -- sound:: credits::"
 
   test:
     strategy:
