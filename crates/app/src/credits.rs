@@ -36,10 +36,14 @@ pub enum PolicyBlock {
     Title(String),
     /// A section heading (`## `).
     Heading(String),
+    /// A smaller heading, inside a section (`### `).
+    Subheading(String),
     /// A paragraph, its lines joined.
     Paragraph(String),
     /// A list item (`- `), its lines joined.
     Item(String),
+    /// A list item inside another (`  - `), its lines joined.
+    SubItem(String),
 }
 
 /// The privacy policy's Markdown as blocks of plain text: links become
@@ -47,32 +51,42 @@ pub enum PolicyBlock {
 ///
 /// ```
 /// use raptaboard::credits::{policy_blocks, PolicyBlock};
-/// let blocks = policy_blocks("# Title\n\nSome **bold**\ntext, [a link](https://x.org).\n\n- one\n  more");
+/// let blocks = policy_blocks(
+///     "# Title\n\n### Part\n\nSome **bold**\ntext, [a link](https://x.org).\n\n- one\n  more\n  - inner",
+/// );
 /// assert_eq!(blocks, [
 ///     PolicyBlock::Title("Title".into()),
+///     PolicyBlock::Subheading("Part".into()),
 ///     PolicyBlock::Paragraph("Some bold text, a link (https://x.org).".into()),
 ///     PolicyBlock::Item("one more".into()),
+///     PolicyBlock::SubItem("inner".into()),
 /// ]);
 /// ```
 pub fn policy_blocks(markdown: &str) -> Vec<PolicyBlock> {
     let mut blocks = Vec::new();
     for chunk in markdown.split("\n\n") {
-        let mut item: Option<String> = None;
+        // The item being read, and whether it's inside another.
+        let mut item: Option<(String, bool)> = None;
         let mut para: Vec<&str> = Vec::new();
-        let flush = |blocks: &mut Vec<PolicyBlock>, item: &mut Option<String>| {
-            if let Some(i) = item.take() {
-                blocks.push(PolicyBlock::Item(plain(&i)));
-            }
-        };
-        for line in chunk.lines().map(str::trim).filter(|l| !l.is_empty()) {
-            if let Some(h) = line.strip_prefix("## ") {
+        let flush =
+            |blocks: &mut Vec<PolicyBlock>, item: &mut Option<(String, bool)>| match item.take() {
+                Some((i, false)) => blocks.push(PolicyBlock::Item(plain(&i))),
+                Some((i, true)) => blocks.push(PolicyBlock::SubItem(plain(&i))),
+                None => {}
+            };
+        for raw in chunk.lines().filter(|l| !l.trim().is_empty()) {
+            let line = raw.trim();
+            let indented = raw.starts_with(' ');
+            if let Some(h) = line.strip_prefix("### ") {
+                blocks.push(PolicyBlock::Subheading(plain(h)));
+            } else if let Some(h) = line.strip_prefix("## ") {
                 blocks.push(PolicyBlock::Heading(plain(h)));
             } else if let Some(h) = line.strip_prefix("# ") {
                 blocks.push(PolicyBlock::Title(plain(h)));
             } else if let Some(i) = line.strip_prefix("- ") {
                 flush(&mut blocks, &mut item);
-                item = Some(i.to_owned());
-            } else if let Some(i) = &mut item {
+                item = Some((i.to_owned(), indented));
+            } else if let Some((i, _)) = &mut item {
                 i.push(' ');
                 i.push_str(line);
             } else {
@@ -373,10 +387,20 @@ mod tests {
         for b in &blocks {
             let text = format!("{b:?}");
             assert!(
-                !text.contains("**") && !text.contains("](") && !text.contains('`'),
+                !text.contains("**")
+                    && !text.contains("](")
+                    && !text.contains('`')
+                    && !text.contains("\"#")
+                    && !text.contains("\"- "),
                 "{text}"
             );
         }
+        assert!(blocks.contains(&PolicyBlock::Subheading("Content packs".into())));
+        assert!(
+            blocks
+                .iter()
+                .any(|b| matches!(b, PolicyBlock::SubItem(i) if i.contains("about once an hour")))
+        );
         assert!(
             blocks
                 .iter()

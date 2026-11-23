@@ -276,9 +276,20 @@ fn about_privacy(ui: &mut egui::Ui) {
                 credits::PolicyBlock::Paragraph(p) => {
                     ui.label(p);
                 }
+                credits::PolicyBlock::Subheading(h) => {
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new(h).strong().italics());
+                }
                 credits::PolicyBlock::Item(i) => {
                     ui.horizontal_wrapped(|ui| {
                         ui.label("•");
+                        ui.label(i);
+                    });
+                }
+                credits::PolicyBlock::SubItem(i) => {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(16.0);
+                        ui.label("◦");
                         ui.label(i);
                     });
                 }
