@@ -47,7 +47,7 @@ fn main() {
         );
     }
     // And its app tile icons: the icon itself, see-through corners.
-    for size in [300, 150, 50] {
+    for size in [300, 150, 71] {
         write(
             &store.join(format!("tile-{size}x{size}.png")),
             &app_icon::png(size),

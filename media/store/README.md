@@ -6,7 +6,7 @@ Images for raptaboard's Microsoft Store listing (uploaded by hand in Partner Cen
 | --- | --- | --- |
 | `poster-720x1080.png`, `poster-1440x2160.png` | the listing's 9:16 poster art: the app icon on a dark background | `cargo run -p raptaboard --example make_icons`, from `media/icon/raptaboard.svg` |
 | `square-1080x1080.png`, `square-2160x2160.png` | the listing's 1:1 art: the same, square | the same |
-| `tile-300x300.png`, `tile-150x150.png`, `tile-50x50.png` | the listing's app tile icons: the icon itself, with see-through corners | the same |
+| `tile-300x300.png`, `tile-150x150.png`, `tile-71x71.png` | the listing's app tile icons: the icon itself, with see-through corners | the same |
 | `screenshot-field.png` | the Field tab: fields, gyros and swerve views | the screenshot recorder below |
 | `screenshot-graphs.png` | the "More widgets" tab after 10 s: graphs, bars, gauges, min/max | the screenshot recorder below |
 | `screenshot-widgets.png` | the "Widgets" tab (many of its widgets show missing topics on purpose; not for the listing) | the screenshot recorder below |
