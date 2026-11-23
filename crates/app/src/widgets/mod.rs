@@ -155,6 +155,18 @@ pub enum Effect {
     },
 }
 
+/// A reset in a widget's right-click menu ([`WidgetType::resettable`]):
+/// the series whose ranges and statistics it starts again.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Reset {
+    /// The menu item: "Reset scale".
+    pub label: &'static str,
+    /// Its hover text.
+    pub hover: &'static str,
+    /// The series reset ([`Traces::reset`](crate::traces::Traces::reset)).
+    pub series: Vec<SeriesKey>,
+}
+
 /// What's on the server, for widgets whose topics depend on more than their
 /// own settings (an Alerts widget showing every group).
 #[derive(Debug, Clone, Copy, Default)]
@@ -334,11 +346,11 @@ pub trait WidgetType: Sync {
         Vec::new()
     }
 
-    /// The series whose lowest and highest values seen this widget uses
-    /// (an autoscaled bar's), which its right-click menu's "Reset scale"
-    /// starts again from the value now. None by default (no menu item).
-    fn resettable(&self, _widget: &WidgetContainer) -> Vec<SeriesKey> {
-        Vec::new()
+    /// What this widget's right-click menu can reset: the series whose
+    /// values seen it uses (an autoscaled bar's range, a min/max/average),
+    /// started again from the value now. `None` by default (no menu item).
+    fn resettable(&self, _widget: &WidgetContainer) -> Option<Reset> {
+        None
     }
 
     /// Whether topics dragged from the tree can be dropped onto this widget

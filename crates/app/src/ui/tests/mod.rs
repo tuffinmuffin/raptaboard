@@ -18,6 +18,7 @@ mod gyro;
 mod mechanism;
 mod pose3d;
 mod sliders;
+mod stats;
 mod struct_view;
 mod swerve;
 mod tree;

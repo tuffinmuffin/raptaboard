@@ -373,7 +373,7 @@
             }
           },
           {
-            "title": "Sine bar",
+            "title": "Sine bar (min/max, last 5 s)",
             "x": 256.0,
             "y": 0.0,
             "width": 256.0,
@@ -382,7 +382,9 @@
             "properties": {
               "topic": "/DashTest/Sine",
               "period": 0.06,
-              "data_type": "double"
+              "data_type": "double",
+              "show_stats": true,
+              "stats_window": 5.0
             }
           },
           {
@@ -541,7 +543,7 @@
             }
           },
           {
-            "title": "Seconds bar (autoscale)",
+            "title": "Seconds bar (autoscale, min/max)",
             "x": 640.0,
             "y": 128.0,
             "width": 256.0,
@@ -551,7 +553,8 @@
               "topic": "/DashTest/Seconds",
               "period": 0.06,
               "data_type": "int",
-              "autoscale": true
+              "autoscale": true,
+              "show_stats": true
             }
           }
         ]

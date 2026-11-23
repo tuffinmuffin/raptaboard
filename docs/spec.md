@@ -189,6 +189,8 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `show_value` | `shared/scale.rs` | the same | show the current value and unit | true |
 | `show_labels` | `shared/scale.rs` | the same | show the numbers along the scale | true |
 | `autoscale` | `shared/scale.rs` | the same (not a gauge with `wrap_value`) | the scale runs from the lowest to the highest value seen (every value received, from the app's start or the right-click menu's Reset scale; kept while the tab is closed, nothing recorded then), rounded out to round numbers; never saved as the range | false |
+| `show_stats` | `shared/stats.rs` | Text Display (numbers), Number Bar, Voltage View, Radial Gauge | a line under the value with the min, max and average of every value received (short peaks count; each value counts once in the average) | false |
+| `stats_window` | `shared/stats.rs` | the same | the statistics cover the last this many seconds (0.5–600); not set: since the last reset (the app's start, the server reconnecting, or Reset min/max in the right-click menu) | not set |
 | `autoscale_keep_range` | `shared/scale.rs` | the same | with `autoscale`, `min_value` to `max_value` stays on the scale and only an end that's passed moves out | false |
 | `time_displayed` (Elastic; older `visibleTime`) | `builtin/graph.rs` | Graph | seconds shown | 5 |
 | `min_value`, `max_value` (Elastic) | `builtin/graph.rs` | Graph | a fixed range; both unset fits the values | unset |
@@ -445,12 +447,14 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
      paused. Shown with the legend or the readout, in each line's color; reduced points for
      drawing (see history review) must not change them, so they're worked out from the recorded
      samples.
-   - Min, max and average on number widgets (Text Display, Number Bar, Radial
-     Gauge): an option (off by default) to show them next to the value, over a set time window
-     (such as the last 10 s) or since the last reset (a Reset in the widget's right-click menu,
-     and when the robot reconnects). Taken from every value received, as graphs record them
-     (`traces.rs`), not from the widget's sampled period, so short peaks count. Bars and gauges
-     could also mark the min and max on their scale.
+   - Min, max and average on number widgets (**done**, after 0.1.0; Text Display, Number Bar,
+     Voltage View, Radial Gauge): `show_stats` and `stats_window` in `shared/stats.rs`, a line under
+     the value. From every value received (`traced`), not the widget's sampled value: `Traces`
+     keeps each series' statistics since reset (`since_reset`; cleared when the server connects
+     again, `Traces::connected`, and by "Reset min/max", `WidgetType::resettable`), and
+     `Traces::window` works them out over the last seconds from the points kept, starting with the
+     value held when the window began. Bars and gauges draw through `scale::show` /
+     `show_body`. Still to do: bars and gauges marking the min and max on their scale.
    - Widget type choices that fit (**done**): the settings dialog's Widget list offers only the types
      that can show what the widget is bound to (`widgets::types_showing`, as the tree's "Add as"): for
      a table its `.type` is the value type (`DashboardApp::value_type`), so a chooser offers the
