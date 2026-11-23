@@ -78,6 +78,14 @@ fn state_sounds_play_from_a_closed_tab_without_frames_and_only_for_changes() {
     // The tree asks for values of its own; hidden, only the sounds' count.
     app.tree.shown = false;
     wait_a_while(&mut harness);
+    // The sound task has seen it disabled (values arrive in order, so it
+    // sees the change next); on a slow machine the first state it saw could
+    // otherwise be the enabled one, which is quiet, as at connect.
+    dashboard_has(
+        &mut harness,
+        "/FMSInfo/FMSControlData",
+        nt4::Value::Int(0x20),
+    );
     // Disabled when it connected: no sound for that.
     assert!(harness.state().sound.events().is_empty());
     // Enabled in teleop, with no frames drawn (a window in the background):
