@@ -58,6 +58,7 @@ fn answered_before(dir: &std::path::Path, shown: &[&str]) {
             last_version: Some(crate::content::app_version().into()),
             offer_pending: false,
             shown: shown.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
         })
         .unwrap();
 }
@@ -274,6 +275,7 @@ fn an_upgrade_offers_the_packs_again_with_those_seen_unticked() {
             last_version: Some("0.2.0".into()),
             offer_pending: false,
             shown: vec!["fan-clips".into()],
+            ..Default::default()
         })
         .unwrap();
     let mut harness = harness_with(&dir, &web, public);
@@ -351,4 +353,72 @@ fn a_download_that_fails_says_why_and_leaves_done() {
     harness.get_by_label("Done").click();
     settle(&mut harness);
     assert!(harness.state().packs.offer.is_none());
+}
+
+/// Make the background check due now.
+fn check_now(harness: &mut Harness) {
+    harness.state_mut().content_timer =
+        crate::content::CheckTimer::starting(Instant::now(), Duration::ZERO);
+}
+
+#[test]
+fn the_background_check_finds_an_update_and_the_notice_dismisses() {
+    let dir = folder("ui-notice");
+    let (web, public) = official_web();
+    // An older fan-clips installed; both packs offered before.
+    let old = sound_pack(
+        "fan-clips",
+        "0.9.0",
+        &[("fire 1", "fire1.mp3"), ("disabled 1", "disabled1.mp3")],
+        "https://x",
+    );
+    crate::content::Store::new(&dir)
+        .install(OFFICIAL, &old, &*web.fetch())
+        .unwrap();
+    answered_before(&dir, &["fan-clips", "extra"]);
+    web.asked.lock().unwrap().clear();
+    let mut harness = harness_with(&dir, &web, public);
+    settle(&mut harness);
+    assert!(web.asked.lock().unwrap().is_empty(), "not due yet");
+    check_now(&mut harness);
+    until_idle(&mut harness);
+    labelled_soon(&mut harness, "📦 Content: 1 update");
+    // Review opens the Content window, where Update is.
+    harness.get_by_label("Review").click();
+    settle(&mut harness);
+    assert!(harness.state().packs.open);
+    harness.get_by_label("Update");
+    // ✕ hides it, and it stays hidden after a restart.
+    harness.get_by_label("✕").click();
+    settle(&mut harness);
+    assert!(harness.query_by_label("📦 Content: 1 update").is_none());
+    let mut again = harness_with(&dir, &web, public);
+    check_now(&mut again);
+    until_idle(&mut again);
+    assert!(again.query_by_label("📦 Content: 1 update").is_none());
+}
+
+#[test]
+fn turned_off_the_background_check_reads_nothing() {
+    let dir = folder("ui-check-off");
+    let (web, public) = official_web();
+    answered_before(&dir, &[]);
+    let mut harness = harness_with(&dir, &web, public);
+    harness.state_mut().content_check_minutes = 0;
+    check_now(&mut harness);
+    settle(&mut harness);
+    assert!(web.asked.lock().unwrap().is_empty());
+    assert_eq!(
+        harness.state().current_settings(None).content_check_minutes,
+        Some(0)
+    );
+    // On, it reads the catalog, and with nothing new says nothing.
+    harness.state_mut().content_check_minutes = 60;
+    check_now(&mut harness);
+    until_idle(&mut harness);
+    assert!(!web.asked.lock().unwrap().is_empty());
+    assert!(
+        harness.query_by_label_contains("📦 Content").is_some(),
+        "two packs never offered"
+    );
 }

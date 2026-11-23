@@ -26,6 +26,7 @@
 //! alert_history = 1000 # alert events kept in the alert history
 //! alert_history_ignore = ["Frame Timing:"] # alerts not recorded, by text they contain
 //! content_sources = ["https://example.org/catalog.json"] # content pack sources added
+//! content_check_minutes = 60 # check for content updates this often; 0 for never
 //! layout = "/Users/me/layouts/match.json"
 //! tab = "Teleoperated"
 //! tab_index = 0
@@ -80,6 +81,11 @@ pub struct Settings {
     /// beside the official one ([`crate::content::OFFICIAL`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_sources: Option<Vec<String>>,
+    /// How often to check the content sources for updates in the
+    /// background, in minutes; 0 for never. Only while the robot isn't
+    /// enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_check_minutes: Option<u32>,
     /// The layout file to open at start: the one last opened or saved.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<String>,
@@ -126,6 +132,7 @@ pub fn defaults() -> Settings {
         alert_history: Some(crate::alert_history::DEFAULT_CAPACITY),
         alert_history_ignore: Some(Vec::new()),
         content_sources: Some(Vec::new()),
+        content_check_minutes: Some(60),
         layout: None,
         tab: None,
         tab_index: None,
@@ -179,6 +186,7 @@ impl Settings {
             alert_history: self.alert_history.or(lower.alert_history),
             alert_history_ignore: self.alert_history_ignore.or(lower.alert_history_ignore),
             content_sources: self.content_sources.or(lower.content_sources),
+            content_check_minutes: self.content_check_minutes.or(lower.content_check_minutes),
             layout: self.layout.or(lower.layout),
             tab: self.tab.or(lower.tab),
             tab_index: self.tab_index.or(lower.tab_index),
@@ -327,6 +335,7 @@ impl Tracker {
         note!(alert_history);
         note!(alert_history_ignore);
         note!(content_sources);
+        note!(content_check_minutes);
         note!(layout);
         note!(tab);
         note!(tab_index);

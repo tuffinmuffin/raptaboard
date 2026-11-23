@@ -97,6 +97,8 @@ pub struct StartupOptions {
     pub alert_history_ignore: Vec<String>,
     /// Content pack sources added (catalog URLs), beside the official one.
     pub content_sources: Vec<String>,
+    /// How often to check for content updates, in minutes; 0 for never.
+    pub content_check_minutes: u32,
     /// Where content packs are installed (`~/.raptaboard/content`); `None`
     /// for none at all (tests, or no home folder): no packs, and nothing
     /// downloaded.
@@ -140,6 +142,7 @@ impl From<Loaded> for StartupOptions {
                 .unwrap_or(crate::alert_history::DEFAULT_CAPACITY),
             alert_history_ignore: s.alert_history_ignore.unwrap_or_default(),
             content_sources: s.content_sources.unwrap_or_default(),
+            content_check_minutes: s.content_check_minutes.unwrap_or(60),
             // main.rs sets it: the settings files don't say where.
             content_dir: None,
             store: loaded.store,

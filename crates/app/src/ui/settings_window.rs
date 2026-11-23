@@ -181,6 +181,29 @@ impl DashboardApp {
             self.robot.look = look;
         }
         ui.separator();
+        ui.strong("Content packs");
+        ui.horizontal(|ui| {
+            ui.label("Check for updates every");
+            ui.add(
+                egui::DragValue::new(&mut self.content_check_minutes)
+                    .range(0..=24 * 60)
+                    .suffix(" min"),
+            )
+            .on_hover_text(
+                "How often to look for new content packs and updates, only while the robot \
+                 isn't enabled. 0 never checks.",
+            )
+            .widget_info(|| {
+                egui::WidgetInfo::labeled(
+                    egui::accesskit::Role::SpinButton,
+                    true,
+                    "Content update check, minutes",
+                )
+            });
+            if self.content_check_minutes == 0 {
+                ui.weak("(never)");
+            }
+        });
         ui.horizontal(|ui| {
             if ui
                 .button("Content packs…")

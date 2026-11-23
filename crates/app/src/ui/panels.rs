@@ -161,6 +161,7 @@ impl DashboardApp {
                     }
                 });
             }
+            self.content_notice(ui);
         });
     }
 

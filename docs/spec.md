@@ -348,9 +348,15 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   version doesn't ask again.
 - **Content window** (⚙ Settings → Content packs…): each pack with Install, Update or Remove and
   its credits, and a line saying what the last install or remove did (`content::Outcome`); packs needing a newer raptaboard say so; sources listed, added and removed.
-- **Next:** a background check for updates (every hour by default, configurable; only while the
-  robot is disabled or not connected; quiet on failure) with a one-line notice in the bar that's
-  easy to dismiss (remembering the versions dismissed). Then plugin packs, starting with the
+- **Background check** (done 2026-11-23): `content_check_minutes` in the settings file (60 by
+  default, 0 for never; ⚙ Settings → Content packs), first 30 s after starting, then that often,
+  only while the robot isn't enabled and no list is showing (`content::CheckTimer`: a check due
+  while enabled waits for the next quiet moment). Failures say nothing (the Content window shows
+  why if opened). What it found (`Content::news`: updates to installed packs, and packs never
+  offered) shows as "📦 Content: 1 update · Review · ✕" at the end of the bar's second row, hidden
+  while the robot is enabled. Review opens the Content window; ✕ records each pack's version in
+  `state.json`'s `dismissed`, so only something newer shows it again.
+- **Next:** the sound pickers using the layers, then plugin packs, starting with the
   Doom field. A repository manager (asked for by the user 2026-11-23; a later improvement, around 0.5 after
   plugins, since teams aren't expected to use other sources yet): sources saved in
   `~/.raptaboard/content/sources.json` rather than `settings.toml`, each with a name, on or off,

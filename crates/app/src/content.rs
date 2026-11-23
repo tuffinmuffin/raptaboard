@@ -236,8 +236,107 @@ pub struct State {
     /// be read, offline, it's offered at the next start).
     pub offer_pending: bool,
     /// The packs offered so far, by id: offered again after an upgrade,
-    /// they aren't ticked.
+    /// they aren't ticked, and the update notice doesn't call them new.
     pub shown: Vec<String>,
+    /// Packs the update notice was dismissed for, by id, at the version
+    /// it showed: it shows them again only for a newer one.
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub dismissed: HashMap<String, String>,
+}
+
+/// Something new from the sources, for the update notice.
+#[derive(Debug, Clone, PartialEq)]
+pub enum News {
+    /// A newer version of an installed pack.
+    Update {
+        /// The pack, as the catalog has it now.
+        pack: Pack,
+        /// The version installed.
+        from: String,
+    },
+    /// A pack not offered before.
+    New(Pack),
+}
+
+impl News {
+    /// The pack it's about.
+    pub fn pack(&self) -> &Pack {
+        match self {
+            News::Update { pack, .. } | News::New(pack) => pack,
+        }
+    }
+}
+
+/// The update notice's words for `news`: "1 update, 2 new packs".
+///
+/// ```
+/// use raptaboard::content::news_text;
+/// assert_eq!(news_text(&[]), "");
+/// ```
+pub fn news_text(news: &[News]) -> String {
+    let updates = news
+        .iter()
+        .filter(|n| matches!(n, News::Update { .. }))
+        .count();
+    let new = news.len() - updates;
+    let mut parts = Vec::new();
+    if updates > 0 {
+        parts.push(format!(
+            "{updates} update{}",
+            if updates == 1 { "" } else { "s" }
+        ));
+    }
+    if new > 0 {
+        parts.push(format!("{new} new pack{}", if new == 1 { "" } else { "s" }));
+    }
+    parts.join(", ")
+}
+
+/// When to check the sources in the background: every so often, only while
+/// it's quiet (the robot not enabled, no list of packs showing), and a
+/// check that couldn't run waits for the next quiet moment.
+#[derive(Debug, Clone, Default)]
+pub struct CheckTimer {
+    /// When the next check is due; `None` before the first.
+    next: Option<std::time::Instant>,
+}
+
+impl CheckTimer {
+    /// The first check `delay` after `now` (a moment after starting, so
+    /// it doesn't hold up opening the window).
+    pub fn starting(now: std::time::Instant, delay: Duration) -> CheckTimer {
+        CheckTimer {
+            next: Some(now + delay),
+        }
+    }
+
+    /// Whether to check now, given how often (`None`: never) and whether
+    /// it's quiet. If so, the next check is `every` from now.
+    ///
+    /// ```
+    /// use std::time::{Duration, Instant};
+    /// use raptaboard::content::CheckTimer;
+    /// let start = Instant::now();
+    /// let hour = Some(Duration::from_secs(3600));
+    /// let mut timer = CheckTimer::starting(start, Duration::from_secs(30));
+    /// assert!(!timer.due(start, hour, true)); // not yet
+    /// let later = start + Duration::from_secs(31);
+    /// assert!(!timer.due(later, hour, false)); // the robot is enabled
+    /// assert!(timer.due(later, hour, true));
+    /// assert!(!timer.due(later, hour, true)); // the next is in an hour
+    /// assert!(!timer.due(later + Duration::from_secs(7200), None, true)); // off
+    /// ```
+    pub fn due(&mut self, now: std::time::Instant, every: Option<Duration>, quiet: bool) -> bool {
+        let Some(every) = every else {
+            return false;
+        };
+        let next = *self.next.get_or_insert(now);
+        if now < next || !quiet {
+            return false;
+        }
+        self.next = Some(now + every);
+        true
+    }
 }
 
 /// Whether `id` can be a pack's folder name.
@@ -855,6 +954,8 @@ pub struct Content {
     requested: HashMap<String, (Action, Pack)>,
     /// Every install and remove finished, oldest first.
     pub outcomes: Vec<Outcome>,
+    /// What the update notice shows ([`Content::news`]).
+    news: Vec<News>,
     /// The installed sounds, shared with the sound thread.
     sounds: SoundFiles,
 }
@@ -929,10 +1030,55 @@ impl Content {
             busy: HashSet::new(),
             requested: HashMap::new(),
             outcomes: Vec::new(),
+            news: Vec::new(),
             sounds,
         };
         content.refresh();
         content
+    }
+
+    /// What the update notice would show now: from the last check, packs
+    /// with a newer version than installed and suggested packs never
+    /// offered, less those dismissed at that version.
+    pub fn news(&self) -> &[News] {
+        &self.news
+    }
+
+    /// Work out [`Content::news`] again (after a check, an install, a
+    /// dismissal).
+    pub fn refresh_news(&mut self) {
+        let state = self.state();
+        let news: Vec<News> = self
+            .offered()
+            .into_iter()
+            .filter_map(|(_, pack)| {
+                let item = match status(pack, self.installed(&pack.id)) {
+                    Status::Update { from } => News::Update {
+                        pack: pack.clone(),
+                        from,
+                    },
+                    Status::Available if !state.shown.contains(&pack.id) => News::New(pack.clone()),
+                    _ => return None,
+                };
+                (state.dismissed.get(&pack.id) != Some(&pack.version)).then_some(item)
+            })
+            .collect();
+        self.news = news;
+    }
+
+    /// Hide the update notice for what it shows now, until something
+    /// newer.
+    pub fn dismiss_news(&mut self) -> Result<(), String> {
+        let mut state = self.state();
+        for n in &self.news {
+            let pack = n.pack();
+            state
+                .dismissed
+                .insert(pack.id.clone(), pack.version.clone());
+        }
+        self.save_state(&state)?;
+        self.refresh_news();
+        Ok(())
     }
 
     /// The packs folder.
@@ -995,6 +1141,7 @@ impl Content {
                 Done::Checked(checked) => {
                     self.checked = Some(checked);
                     self.checking = false;
+                    self.refresh_news();
                     if let Some(sources) = self.again.take() {
                         self.check(sources);
                     }
@@ -1009,6 +1156,7 @@ impl Content {
                         });
                     }
                     self.refresh();
+                    self.refresh_news();
                 }
             }
         }
@@ -1489,6 +1637,64 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_news_is_updates_and_unseen_packs_less_those_dismissed() {
+        let (key, public) = test_key();
+        let web = Web::default();
+        let dir = folder("news");
+        let old = sound_pack("beeps", "1.0.0", &[("beep", "beep.mp3")], "https://x");
+        web.serve(OFFICIAL, &catalog(vec![old.clone()]), Some(&key));
+        Store::new(&dir)
+            .install(OFFICIAL, &old, &*web.fetch())
+            .unwrap();
+        let mut seen = sound_pack("seen", "1.0.0", &[("a", "a.mp3")], "https://x");
+        seen.suggested = false;
+        let fresh = sound_pack("fresh", "1.0.0", &[("b", "b.mp3")], "https://x");
+        let mut future = sound_pack("future", "1.0.0", &[("c", "c.mp3")], "https://x");
+        future.min_app = "99.0.0".into();
+        let newer = sound_pack("beeps", "1.1.0", &[("beep", "beep.mp3")], "https://x");
+        web.serve(
+            OFFICIAL,
+            &catalog(vec![newer.clone(), seen, fresh, future]),
+            Some(&key),
+        );
+        Store::new(&dir)
+            .save_state(&State {
+                shown: vec!["beeps".into(), "seen".into()],
+                ..Default::default()
+            })
+            .unwrap();
+        let mut content =
+            Content::with_fetch(&dir, SoundFiles::default(), vec![public], web.fetch());
+        content.check(sources(&[]));
+        while !content.idle() || content.checked.is_none() {
+            content.poll();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let about: Vec<(&str, bool)> = content
+            .news()
+            .iter()
+            .map(|n| (n.pack().id.as_str(), matches!(n, News::Update { .. })))
+            .collect();
+        // An update, and a pack never offered; not one seen before, nor one
+        // needing a newer raptaboard.
+        assert_eq!(about, [("beeps", true), ("fresh", false)]);
+        assert_eq!(news_text(content.news()), "1 update, 1 new pack");
+        content.dismiss_news().unwrap();
+        assert!(content.news().is_empty());
+        assert_eq!(content.state().dismissed["beeps"], "1.1.0");
+        // Something newer than what was dismissed shows again.
+        let newest = sound_pack("beeps", "1.2.0", &[("beep", "beep.mp3")], "https://x");
+        web.serve(OFFICIAL, &catalog(vec![newest]), Some(&key));
+        content.check(sources(&[]));
+        content.checked = None;
+        while !content.idle() || content.checked.is_none() {
+            content.poll();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(news_text(content.news()), "1 update");
+    }
+
+    #[test]
     fn a_file_that_doesnt_match_leaves_the_old_copy() {
         let dir = folder("mismatch");
         let store = Store::new(&dir);
@@ -1542,6 +1748,7 @@ pub(crate) mod tests {
             last_version: Some("0.3.0".into()),
             offer_pending: false,
             shown: vec!["fan-clips".into()],
+            ..Default::default()
         };
         store.save_state(&state).unwrap();
         assert_eq!(store.state(), state);
