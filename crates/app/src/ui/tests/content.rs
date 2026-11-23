@@ -50,6 +50,18 @@ fn harness_with(dir: &std::path::Path, web: &Web, public: [u8; 32]) -> Harness {
         .build_ui_state(|ui, app: &mut DashboardApp| app.show(ui), app)
 }
 
+/// A state file saying this version already started and its list was
+/// answered, having offered `shown`.
+fn answered_before(dir: &std::path::Path, shown: &[&str]) {
+    crate::content::Store::new(dir)
+        .save_state(&crate::content::State {
+            last_version: Some(crate::content::app_version().into()),
+            offer_pending: false,
+            shown: shown.iter().map(|s| s.to_string()).collect(),
+        })
+        .unwrap();
+}
+
 /// Run frames until the download thread has nothing left to do.
 fn until_idle(harness: &mut Harness) {
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -178,9 +190,7 @@ fn the_content_window_installs_and_removes_packs() {
     let dir = folder("ui-window");
     let (web, public) = official_web();
     // Already offered, so only the window asks.
-    crate::content::Store::new(&dir)
-        .save_state(&crate::content::State { offered: true })
-        .unwrap();
+    answered_before(&dir, &[]);
     let mut harness = harness_with(&dir, &web, public);
     settle(&mut harness);
     assert!(web.asked.lock().unwrap().is_empty(), "nothing read unasked");
@@ -225,9 +235,7 @@ fn a_source_added_is_saved_and_its_packs_listed() {
         }],
     };
     web.serve("https://team.example/catalog.json", &theirs, None);
-    crate::content::Store::new(&dir)
-        .save_state(&crate::content::State { offered: true })
-        .unwrap();
+    answered_before(&dir, &[]);
     let mut harness = harness_with(&dir, &web, public);
     harness.state_mut().packs.open = true;
     until_idle(&mut harness);
@@ -244,4 +252,70 @@ fn a_source_added_is_saved_and_its_packs_listed() {
         harness.state().current_settings(None).content_sources,
         Some(vec!["https://team.example/catalog.json".to_string()])
     );
+}
+
+#[test]
+fn an_upgrade_offers_the_packs_again_with_those_seen_unticked() {
+    let dir = folder("ui-upgrade");
+    let (web, public) = official_web();
+    // An older version offered the fan clips, and they were turned down.
+    crate::content::Store::new(&dir)
+        .save_state(&crate::content::State {
+            last_version: Some("0.2.0".into()),
+            offer_pending: false,
+            shown: vec!["fan-clips".into()],
+        })
+        .unwrap();
+    let mut harness = harness_with(&dir, &web, public);
+    labelled_soon(&mut harness, "Extra content for raptaboard");
+    let picked = harness.state().packs.offer.as_ref().unwrap().picked.clone();
+    assert!(!picked.unwrap()["fan-clips"]);
+    harness.get_by_label("Not now").click();
+    until_idle(&mut harness);
+    let state = crate::content::Store::new(&dir).state();
+    assert_eq!(
+        state.last_version.as_deref(),
+        Some(crate::content::app_version())
+    );
+    assert!(!state.offer_pending);
+    assert_eq!(state.shown, ["fan-clips", "extra"]);
+}
+
+#[test]
+fn the_same_version_again_reads_nothing_at_start() {
+    let dir = folder("ui-same");
+    let (web, public) = official_web();
+    answered_before(&dir, &["fan-clips"]);
+    let mut harness = harness_with(&dir, &web, public);
+    settle(&mut harness);
+    assert!(web.asked.lock().unwrap().is_empty());
+    assert!(harness.state().packs.offer.is_none());
+}
+
+#[test]
+fn offline_after_an_upgrade_offers_at_the_next_start() {
+    let dir = folder("ui-upgrade-offline");
+    let (web, public) = official_web();
+    crate::content::Store::new(&dir)
+        .save_state(&crate::content::State {
+            last_version: Some("0.2.0".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let mut offline = harness_with(&dir, &Web::default(), public);
+    until_idle(&mut offline);
+    assert!(
+        offline
+            .query_by_label("Extra content for raptaboard")
+            .is_none()
+    );
+    // The version is recorded, but the offer still waits.
+    let state = crate::content::Store::new(&dir).state();
+    assert_eq!(
+        state.last_version.as_deref(),
+        Some(crate::content::app_version())
+    );
+    assert!(state.offer_pending);
+    let mut again = harness_with(&dir, &web, public);
+    labelled_soon(&mut again, "Extra content for raptaboard");
 }

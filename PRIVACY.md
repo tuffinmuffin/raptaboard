@@ -21,8 +21,9 @@ network.
 
 raptaboard also downloads **content packs** (extra sounds, and later widget plugins) from the
 internet, but only when you ask: when you open the Content packs window, press "Check for
-packs", or choose packs to download. On its first start it reads the list of packs from
-raptaboard-content on GitHub once, to offer them; nothing is downloaded unless you choose it.
+packs", or choose packs to download. On its first start, and the first start after an update,
+it reads the list of packs from raptaboard-content on GitHub once, to offer them; nothing is
+downloaded unless you choose it.
 These requests go to GitHub (or to another source you add yourself). Like any download, the
 server sees your IP address and raptaboard's version; nothing else is sent, and we don't receive
 these requests. GitHub handles them under the

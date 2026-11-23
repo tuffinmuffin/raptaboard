@@ -29,4 +29,5 @@ pub mod traces;
 pub mod tree;
 pub mod types;
 pub mod ui;
+pub mod upgrade;
 pub mod widgets;

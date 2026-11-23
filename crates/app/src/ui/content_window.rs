@@ -29,12 +29,14 @@ pub(super) struct ContentWindows {
     pub offer: Option<Offer>,
 }
 
-/// The first-run list of packs.
+/// The list of packs offered on the first start and after an upgrade.
 #[derive(Debug, Default)]
 pub(super) struct Offer {
     /// Packs ticked, by id: once the official catalog is read, the
-    /// suggested ones.
+    /// suggested ones not offered before.
     pub picked: Option<HashMap<String, bool>>,
+    /// The packs offered before, which start unticked.
+    pub shown: Vec<String>,
 }
 
 /// The official source's packs this raptaboard can install, from the
@@ -53,6 +55,19 @@ fn official_packs(content: &Content) -> Option<Vec<Pack>> {
     )
 }
 
+/// Remember that the list of `packs` was answered: not pending, and those
+/// packs shown.
+fn answered(content: &Content, packs: &[Pack]) -> Result<(), String> {
+    let mut state = content.state();
+    state.offer_pending = false;
+    for pack in packs {
+        if !state.shown.contains(&pack.id) {
+            state.shown.push(pack.id.clone());
+        }
+    }
+    content.save_state(&state)
+}
+
 impl DashboardApp {
     /// Whether the robot is enabled (autonomous, teleop or test): no
     /// pop-ups about content then.
@@ -68,15 +83,26 @@ impl DashboardApp {
         content::sources(&self.content_sources)
     }
 
-    /// Start the first run's offer, if this is one: read the official
-    /// catalog, to list its packs once it arrives. Called once at start.
+    /// Called once at start: on the first start of a new version (or the
+    /// very first), run its one-time tasks ([`crate::upgrade`]); then if
+    /// the packs are still to be offered, read the official catalog to
+    /// list them once it arrives.
     pub(super) fn start_content(&mut self) {
         let Some(content) = &mut self.content else {
             return;
         };
-        if !content.state().offered {
+        let mut state = content.state();
+        if crate::upgrade::start(&mut state).is_some()
+            && let Err(e) = content.save_state(&state)
+        {
+            self.status = format!("Couldn't save the content packs' state: {e}");
+        }
+        if state.offer_pending {
             content.check(content::sources(&self.content_sources));
-            self.packs.offer = Some(Offer::default());
+            self.packs.offer = Some(Offer {
+                picked: None,
+                shown: state.shown,
+            });
         }
     }
 
@@ -102,8 +128,9 @@ impl DashboardApp {
         }
     }
 
-    /// The list offered on the first run, once the official catalog is in.
-    /// If it can't be read (offline), it's offered again next start.
+    /// The list offered on the first start and after an upgrade, once the
+    /// official catalog is in: the packs not installed. If it can't be read
+    /// (offline), it's offered again next start.
     fn first_run_list(&mut self, ctx: &egui::Context) {
         let running = self.robot_running();
         let (Some(content), Some(offer)) = (&self.content, &mut self.packs.offer) else {
@@ -119,15 +146,19 @@ impl DashboardApp {
         };
         if packs.is_empty() {
             self.packs.offer = None;
-            let _ = content.save_state(&content::State { offered: true });
+            let _ = answered(content, &[]);
             return;
         }
         if running {
             return;
         }
-        let picked = offer
-            .picked
-            .get_or_insert_with(|| packs.iter().map(|p| (p.id.clone(), p.suggested)).collect());
+        let shown = &offer.shown;
+        let picked = offer.picked.get_or_insert_with(|| {
+            packs
+                .iter()
+                .map(|p| (p.id.clone(), p.suggested && !shown.contains(&p.id)))
+                .collect()
+        });
         let mut answer = None;
         egui::Modal::new(egui::Id::unique("content_offer")).show(ctx, |ui| {
             ui.set_max_width(520.0);
@@ -171,7 +202,7 @@ impl DashboardApp {
                 content.install(content::OFFICIAL, pack);
             }
         }
-        self.status = match content.save_state(&content::State { offered: true }) {
+        self.status = match answered(content, &packs) {
             Ok(()) if download => "Downloading content packs…".into(),
             Ok(()) => String::new(),
             Err(e) => format!("Couldn't save the content packs' state: {e}"),

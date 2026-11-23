@@ -147,11 +147,21 @@ pub struct Installed {
 }
 
 /// What's remembered about the packs between runs: `content/state.json`.
+/// A file from before 0.3.0's release (`{"offered": true}`) reads as no
+/// version yet, so it counts as an upgrade.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct State {
-    /// The first-run list of packs has been offered (and answered).
-    pub offered: bool,
+    /// The raptaboard version that last started, for the first start of a
+    /// new one ([`crate::upgrade`]).
+    pub last_version: Option<String>,
+    /// The list of packs is still to be offered: set on the first start
+    /// and after an upgrade, cleared once it's answered (so if it couldn't
+    /// be read, offline, it's offered at the next start).
+    pub offer_pending: bool,
+    /// The packs offered so far, by id: offered again after an upgrade,
+    /// they aren't ticked.
+    pub shown: Vec<String>,
 }
 
 /// Whether `id` can be a pack's folder name.
@@ -1274,11 +1284,23 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_first_run_offer_is_remembered() {
+    fn the_state_is_remembered_and_an_old_file_reads_as_an_upgrade() {
         let store = Store::new(folder("state"));
-        assert!(!store.state().offered);
-        store.save_state(&State { offered: true }).unwrap();
-        assert!(store.state().offered);
+        assert_eq!(store.state(), State::default());
+        let state = State {
+            last_version: Some("0.3.0".into()),
+            offer_pending: false,
+            shown: vec!["fan-clips".into()],
+        };
+        store.save_state(&state).unwrap();
+        assert_eq!(store.state(), state);
+        // Written by a 0.3.0 development build.
+        std::fs::write(store.dir.join("state.json"), br#"{"offered": true}"#).unwrap();
+        let mut old = store.state();
+        assert_eq!(old.last_version, None);
+        assert_eq!(crate::upgrade::start(&mut old), Some(None));
+        assert!(old.offer_pending);
+        assert_eq!(old.last_version.as_deref(), Some(app_version()));
     }
 
     #[test]

@@ -321,16 +321,22 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   `ui/content_window.rs` (the window and the first-run list). Downloads use `ureq` with rustls
   and the computer's own certificates (school and team networks that add theirs work), with a
   5 s connect timeout so a network without internet fails fast and quietly.
-- **First run:** the official catalog is read and its packs offered once, each with its license
-  and credits, the suggested ones ticked; nothing downloads without "Download". "Not now" isn't
-  asked again; offline, it's offered at the next start instead. Not shown while the robot is
-  enabled.
+- **First run and upgrades:** `content/state.json` keeps `last_version` (the raptaboard that last
+  started), `offer_pending` and `shown` (the packs offered). The first start of a new version (or
+  the very first; a pre-0.3.0 file counts as one) runs `upgrade.rs`'s one-time tasks, which set
+  `offer_pending`: the official catalog is read and the packs not installed are offered, each with
+  its license and credits, suggested ones not offered before ticked; nothing downloads without
+  "Download". Answering (Download or Not now) clears `offer_pending`; offline, it stays, and the
+  list is offered at the next start. The same version again reads nothing at start. Not shown
+  while the robot is enabled. `~/.raptaboard` outlives uninstalling, so a reinstall of the same
+  version doesn't ask again.
 - **Content window** (⚙ Settings → Content packs…): each pack with Install, Update or Remove and
   its credits; packs needing a newer raptaboard say so; sources listed, added and removed.
 - **Next:** a background check for updates (every hour by default, configurable; only while the
   robot is disabled or not connected; quiet on failure) with a one-line notice in the bar that's
   easy to dismiss (remembering the versions dismissed). Then plugin packs, starting with the
-  Doom field.
+  Doom field. After that, managing packs from the command line (asked for by the user
+  2026-11-23): list, install, update and remove without opening the window.
 
 ## Milestones
 
