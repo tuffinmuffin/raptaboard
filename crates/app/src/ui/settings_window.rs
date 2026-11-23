@@ -179,9 +179,18 @@ impl DashboardApp {
             self.robot.look = look;
         }
         ui.separator();
-        if ui.button("About and licenses…").clicked() {
-            self.gear.about = true;
-        }
+        ui.horizontal(|ui| {
+            if ui
+                .button("Content packs…")
+                .on_hover_text("Download sound packs, such as the IT Crowd clips")
+                .clicked()
+            {
+                self.packs.open = true;
+            }
+            if ui.button("About and licenses…").clicked() {
+                self.gear.about = true;
+            }
+        });
     }
 
     fn about_contents(&mut self, ui: &mut egui::Ui) {
@@ -223,7 +232,7 @@ fn about_raptaboard(ui: &mut egui::Ui) {
 
 fn about_media(ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().show(ui, |ui| {
-        for m in credits::media() {
+        for m in credits::MEDIA {
             ui.group(|ui| {
                 ui.set_width(ui.available_width());
                 ui.strong(format!("{}: {}", m.kind, m.what));

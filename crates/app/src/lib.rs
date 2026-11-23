@@ -11,6 +11,7 @@ pub mod app_icon;
 pub mod binding;
 pub mod cli;
 pub mod connection;
+pub mod content;
 pub mod credits;
 pub mod edit;
 pub mod fields;

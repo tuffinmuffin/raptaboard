@@ -94,27 +94,6 @@ pub const MEDIA: &[MediaCredit] = &[
         note: "No other license or restriction.",
     },
     MediaCredit {
-        kind: "Sound",
-        files: &["disabled1.mp3", "disabled2.mp3"],
-        what: "\"I'm disabled\"",
-        source: "a line from the TV series The IT Crowd (its channel: \
-                 https://www.youtube.com/@TheITCrowdChannel), taken from a fan upload, \
-                 \"The IT Crowd Disabled\" by wormy76, https://www.youtube.com/watch?v=dDZzl9AyXeg",
-        license: "not ours",
-        link: Some("https://www.youtube.com/watch?v=dDZzl9AyXeg"),
-        note: "A short quote kept for non-commercial, educational use; removed if the owner asks.",
-    },
-    MediaCredit {
-        kind: "Sound",
-        files: &["fire1.mp3", "fire2.mp3"],
-        what: "\"Fire!\"",
-        source: "from The IT Crowd, Series 1, Episode 2: \"Fire!\", on The IT Crowd's \
-                 YouTube channel, https://www.youtube.com/watch?v=1EBfxjSFAxQ",
-        license: "not ours",
-        link: Some("https://www.youtube.com/watch?v=1EBfxjSFAxQ"),
-        note: "Kept for non-commercial, educational use; removed if the owner asks.",
-    },
-    MediaCredit {
         kind: "Image",
         files: &[
             "armed.svg",
@@ -159,27 +138,6 @@ pub const MEDIA: &[MediaCredit] = &[
         note: "",
     },
 ];
-
-/// The entries of [`MEDIA`] for what this build has: all of them, except
-/// without the `fan-clips` feature (the Microsoft Store build), which
-/// leaves out the clips that aren't ours.
-///
-/// ```
-/// let media = raptaboard::credits::media();
-/// assert!(media.iter().any(|m| m.files.contains(&"danger.mp3")));
-/// ```
-pub fn media() -> Vec<&'static MediaCredit> {
-    MEDIA
-        .iter()
-        .filter(|m| cfg!(feature = "fan-clips") || !is_fan_clip(m))
-        .collect()
-}
-
-/// Whether `m` is one of the fan clips (the IT Crowd's): sounds whose
-/// license is "not ours".
-fn is_fan_clip(m: &MediaCredit) -> bool {
-    m.kind == "Sound" && m.license == "not ours"
-}
 
 /// WPILib's license, which the built-in field comes under.
 pub const WPILIB_LICENSE: &str = include_str!("../../../fields/LICENSE-WPILib.md");
@@ -287,13 +245,6 @@ mod tests {
     }
 
     #[test]
-    fn a_build_lists_the_fan_clips_only_if_it_has_them() {
-        let listed = media().iter().any(|m| m.files.contains(&"disabled1.mp3"));
-        assert_eq!(listed, cfg!(feature = "fan-clips"));
-        assert_eq!(MEDIA.iter().filter(|m| is_fan_clip(m)).count(), 2);
-    }
-
-    #[test]
     fn every_built_in_file_has_a_credit() {
         let credited: BTreeSet<&str> = MEDIA.iter().flat_map(|m| m.files.iter().copied()).collect();
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../media/audio");
@@ -305,6 +256,20 @@ mod tests {
         }
         for (name, _) in crate::images::BUILT_IN {
             assert!(credited.contains(name), "no credit for {name}");
+        }
+    }
+
+    #[test]
+    fn every_credited_sound_is_built_in() {
+        // The fan clips moved to a content pack (their credits with them).
+        let dir = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../media/audio"));
+        for m in MEDIA.iter().filter(|m| m.kind == "Sound") {
+            for file in m.files {
+                assert!(
+                    dir.join(file).is_file(),
+                    "{file} is credited but not built in"
+                );
+            }
         }
     }
 }

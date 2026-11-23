@@ -95,6 +95,12 @@ pub struct StartupOptions {
     pub alert_history: usize,
     /// Alerts the history doesn't record, by text they contain.
     pub alert_history_ignore: Vec<String>,
+    /// Content pack sources added (catalog URLs), beside the official one.
+    pub content_sources: Vec<String>,
+    /// Where content packs are installed (`~/.raptaboard/content`); `None`
+    /// for none at all (tests, or no home folder): no packs, and nothing
+    /// downloaded.
+    pub content_dir: Option<std::path::PathBuf>,
     /// The settings file changes go to.
     pub store: settings::Store,
     /// Things to tell the user at startup, such as a settings file that
@@ -133,6 +139,9 @@ impl From<Loaded> for StartupOptions {
                 .alert_history
                 .unwrap_or(crate::alert_history::DEFAULT_CAPACITY),
             alert_history_ignore: s.alert_history_ignore.unwrap_or_default(),
+            content_sources: s.content_sources.unwrap_or_default(),
+            // main.rs sets it: the settings files don't say where.
+            content_dir: None,
             store: loaded.store,
             notes: loaded.notes,
         }

@@ -58,13 +58,24 @@ first steps), CHANGELOG.md, the licenses and `THIRD-PARTY-LICENSES.txt` (copied 
 About window's list), plus a `-debug` archive. Nothing is code-signed yet (decided 2026-11-22), except through the Microsoft Store: with `--msix`
 (the Release workflow's Windows job) `package.py` also makes an unsigned MSIX for the Store, which signs it
 (`packaging/windows/msix/`: the manifest, and `store.json` with the identity from Partner Center), in
-`dist-store/` and its own `store-msix` artifact, never on the GitHub release. It's built without the `fan-clips`
-cargo feature (on by default), leaving out the clips that aren't ours, with generated tones in their place; CI
-lints and tests that build too. Each release's `.msix` is uploaded in Partner Center by hand for now.
+`dist-store/` and its own `store-msix` artifact, never on the GitHub release; it holds the same `raptaboard.exe`
+as the other Windows packages. Each release's `.msix` is uploaded in Partner Center by hand for now.
 `PRIVACY.md` is the privacy policy the Store listing links to (raptaboard collects nothing, connects only to the
-NetworkTables server chosen, and stores only its settings, saved layouts and imported images): update it, and its
-date, in the same PR as anything that makes raptaboard connect somewhere new (such as downloading clips) or store
-something new. The icon is
+NetworkTables server chosen and, when asked, the content sources, and stores only its settings, saved layouts,
+imported images and content packs): update it, and its date, in the same PR as anything that makes raptaboard
+connect somewhere new or store something new.
+
+Content packs (`docs/spec.md` "Content packs"): sounds now, plugins later, downloaded only when the user chooses,
+from `tuffinmuffin/raptaboard-content` (its signed `catalog.json`, its own repo and release process: tag `vN` there)
+or sources the user adds. `content.rs` is the catalog, signature (`OFFICIAL_KEYS`, raptaboard-content's
+`catalog-key.pub`), checksums, the store in `~/.raptaboard/content/` and the download thread (`Content`; tests use
+`Content::with_fetch` and `content::tests::Web`, never the network; the one real-network test is ignored);
+`ui/content_window.rs` the Content window (⚙ Settings → Content packs…) and the first-run list. A pack's sound with
+a built-in name plays in place of the built-in tone (`sound::SoundFiles`): that's how the IT Crowd clips (the
+`fan-clips` pack, not built in since 2026-11-23) come back. The signing key's private half is the content repo's
+`CONTENT_SIGNING_KEY` secret, with a copy kept outside the repos by the user.
+
+The icon is
 `media/icon/raptaboard.svg` (Raptacon's raptor mark from its brand kit in a rust-red gear); `cargo run -p raptaboard --example make_icons` remakes the `.ico`,
 `.icns` and `.png`, and `build.rs` puts the `.ico` into the Windows program. To release: bump
 `version` in the workspace `Cargo.toml`, add its `## x.y.z` section to `CHANGELOG.md` (short: what's

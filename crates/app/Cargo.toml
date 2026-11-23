@@ -25,13 +25,12 @@ chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 # SVG images (built-in icons and imported .svg files); no text, so no fonts.
 resvg = { version = "0.49.0", default-features = false }
-
-[features]
-default = ["fan-clips"]
-# The built-in clips that aren't ours to give away (the IT Crowd's "disabled"
-# and "fire", media/audio/README.md): in the GitHub builds, left out of the
-# Microsoft Store build, where generated tones stand in for them.
-fan-clips = []
+# Content packs (`content.rs`): HTTPS downloads (rustls, the system's
+# certificates so school and team networks' own work), the catalog's
+# signature and each file's checksum.
+ureq = { version = "3.5.1", default-features = false, features = ["rustls", "platform-verifier"] }
+ed25519-dalek = { version = "3.0.0", default-features = false }
+sha2 = "0.11.1"
 
 [lints]
 workspace = true

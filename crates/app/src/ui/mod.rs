@@ -1,6 +1,7 @@
 //! The main window: settings bar, tab bar and the widget grid.
 
 mod alert_history_panel;
+mod content_window;
 mod dialogs;
 mod drag;
 mod grid_view;
@@ -124,6 +125,13 @@ pub struct DashboardApp {
     /// The robot's state for the whole window: the border and the e-stop
     /// pop-up.
     robot: robot_state_view::RobotView,
+    /// Content packs: installed, offered, downloading; `None` with nowhere
+    /// to keep them (tests, no home folder).
+    content: Option<crate::content::Content>,
+    /// Content sources added, beside the official one (a setting).
+    content_sources: Vec<String>,
+    /// The Content window and the first-run list.
+    packs: content_window::ContentWindows,
 }
 
 impl DashboardApp {
@@ -174,7 +182,14 @@ impl DashboardApp {
             taps: taps::TapHold::default(),
             gear: Default::default(),
             robot: robot_state_view::RobotView::default(),
+            content: None,
+            content_sources: options.content_sources,
+            packs: Default::default(),
         };
+        if let Some(dir) = options.content_dir {
+            app.content = Some(crate::content::Content::new(dir, app.sound.files()));
+            app.start_content();
+        }
         if let Some(path) = options.layout_path {
             let path = PathBuf::from(path);
             match layout_file::load(&path) {
@@ -212,6 +227,7 @@ impl DashboardApp {
             alert_sound: Some(self.alert_sound),
             alert_history: Some(self.alerts.history.capacity()),
             alert_history_ignore: Some(self.alerts.history.ignored().to_vec()),
+            content_sources: Some(self.content_sources.clone()),
             tab: self
                 .layout
                 .tabs
@@ -608,6 +624,7 @@ impl DashboardApp {
         self.load_problem_dialog(&ctx);
         self.widget_dialog(&ctx);
         self.gear_windows(&ctx);
+        self.content_windows(&ctx);
         let title = format!(
             "{}{} - raptaboard",
             layout_file::display_name(self.file.path.as_deref()),
