@@ -1,6 +1,8 @@
 //! The robot's state for the whole window: a colored border around it by
-//! state (off unless turned on in ⚙ Settings), flashing red for a few
-//! seconds after the robot is disabled, and a pop-up over everything when
+//! state (off unless turned on in ⚙ Settings; none while disabled or with
+//! no robot unless colors are set for them, so it isn't red all through
+//! setup), a red border flashing for a few seconds after the robot is
+//! disabled (its own option, also off), and a pop-up over everything when
 //! the robot is e-stopped (on unless turned off), so the state shows at a
 //! glance from any tab.
 //!
@@ -42,11 +44,11 @@ pub const LAYOUT_KEY: &str = "robot_state";
 /// How the window shows the robot's state, as the layout file keeps it:
 ///
 /// ```json
-/// "robot_state": {"border": true, "border_colors": {"teleop": "none"}, "estop_popup": false}
+/// "robot_state": {"border": true, "border_colors": {"teleop": "none"}, "flash": true, "estop_popup": false}
 /// ```
 ///
 /// Each part is left out at its default (no border, the default colors,
-/// the pop-up on).
+/// no flash, the pop-up on).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Look {
@@ -56,6 +58,10 @@ pub struct Look {
     /// The border's colors, where they aren't the defaults.
     #[serde(skip_serializing_if = "StateColors::is_default")]
     pub border_colors: StateColors,
+    /// Flash a red border for a few seconds when the robot is disabled,
+    /// whether the border by state is on or not.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub flash: bool,
     /// Whether a pop-up covers the window when the robot is e-stopped; on
     /// if not set.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -149,12 +155,16 @@ pub struct RobotView {
     pub estopped: bool,
 }
 
-/// The default border color for `mode`: the FMSInfo widget's, and none for
-/// no robot.
+/// The flash's color after a disable.
+pub const FLASH_COLOR: Color32 = Color32::from_rgb(0xE5, 0x39, 0x35);
+
+/// The default border color for `mode`: the FMSInfo widget's while enabled
+/// or e-stopped, and none while disabled or with no robot (a red border all
+/// through setup and between matches is too much; the flash marks a
+/// disable instead).
 pub fn default_color(mode: Mode) -> Option<Color32> {
     match mode {
-        Mode::NoRobot => None,
-        Mode::Disabled => Some(Color32::from_rgb(0xC6, 0x28, 0x28)),
+        Mode::NoRobot | Mode::Disabled => None,
         Mode::Autonomous => Some(Color32::from_rgb(0x15, 0x65, 0xC0)),
         Mode::Teleop => Some(Color32::from_rgb(0x2E, 0x7D, 0x32)),
         Mode::Test => Some(Color32::from_rgb(0xEF, 0x6C, 0x00)),
@@ -204,11 +214,12 @@ pub fn color_for(colors: &StateColors, mode: Mode) -> Option<Color32> {
 impl RobotView {
     /// With the border (and its `colors`) and the e-stop pop-up on or off,
     /// and no state seen yet.
-    pub fn new(border: bool, colors: StateColors, estop_popup: bool) -> RobotView {
+    pub fn new(border: bool, colors: StateColors, flash: bool, estop_popup: bool) -> RobotView {
         RobotView {
             look: Look {
                 border,
                 border_colors: colors,
+                flash,
                 estop_popup: Some(estop_popup),
             },
             ..Default::default()
@@ -245,29 +256,26 @@ impl RobotView {
         }
     }
 
-    /// The border's color at `now`, if there's a border: the state's color,
-    /// flashing on and off for a few seconds after a disable.
+    /// The border's color at `now`, if there's a border: red flashing on
+    /// and off for a few seconds after a disable (with the flash on), else
+    /// the state's color (with the border on).
     pub fn border_color(&self, now: Instant) -> Option<Color32> {
+        if self.flashing()
+            && let Some(from) = self.flash_from
+        {
+            let step = now.duration_since(from).as_millis() / FLASH_STEP.as_millis();
+            // On first, then off, and so on.
+            return step.is_multiple_of(2).then_some(FLASH_COLOR);
+        }
         if !self.look.border {
             return None;
         }
-        let colors = &self.look.border_colors;
-        let color = color_for(colors, self.mode.unwrap_or(Mode::NoRobot));
-        match self.flash_from {
-            Some(from) => {
-                let step = now.duration_since(from).as_millis() / FLASH_STEP.as_millis();
-                // On first, then off, and so on.
-                step.is_multiple_of(2)
-                    .then(|| color_for(colors, Mode::Disabled))
-                    .flatten()
-            }
-            None => color,
-        }
+        color_for(&self.look.border_colors, self.mode.unwrap_or(Mode::NoRobot))
     }
 
     /// Whether the border is flashing, so the window should redraw often.
     pub fn flashing(&self) -> bool {
-        self.look.border && self.flash_from.is_some()
+        self.look.flash && self.flash_from.is_some()
     }
 }
 
@@ -298,10 +306,18 @@ pub(super) fn settings_rows(ui: &mut egui::Ui, look: &mut Look) {
         look.estop_popup = (!popup).then_some(false);
     }
     ui.checkbox(
+        &mut look.flash,
+        "Flash a red border when the robot is disabled",
+    )
+    .on_hover_text("For 3 s, seen from any tab");
+    ui.checkbox(
         &mut look.border,
         "Color the window's border by the robot's state",
     )
-    .on_hover_text("Seen from any tab; it flashes for 3 s after the robot is disabled");
+    .on_hover_text(
+        "Seen from any tab. Disabled and no robot have no border unless you pick a color \
+         for them.",
+    );
     if !look.border {
         return;
     }
@@ -483,15 +499,18 @@ mod tests {
     #[test]
     fn the_border_follows_the_state_and_flashes_after_a_disable() {
         let t = Instant::now();
-        let mut view = RobotView::new(true, StateColors::default(), true);
-        let red = default_color(Mode::Disabled);
+        let mut view = RobotView::new(true, StateColors::default(), true, true);
+        let red = Some(FLASH_COLOR);
         let green = default_color(Mode::Teleop);
         // No robot yet: no border.
         view.update(false, None, t);
         assert_eq!(view.border_color(t), None);
+        view.update(true, Some(from_fms_control_data(DISABLED)), t);
+        // Disabled from the start (setup): no border, no flash.
+        assert_eq!(view.border_color(t), None);
         view.update(true, Some(from_fms_control_data(TELEOP)), t);
         assert_eq!(view.border_color(t), green);
-        // Disabled: red, flashing on and off for 3 s, then red.
+        // Disabled: red flashing on and off for 3 s, then no border.
         let d = ms(t, 1000);
         view.update(true, Some(from_fms_control_data(DISABLED)), d);
         assert_eq!(view.border_color(d), red);
@@ -500,10 +519,30 @@ mod tests {
         assert!(view.flashing());
         view.update(true, Some(from_fms_control_data(DISABLED)), ms(d, 3100));
         assert!(!view.flashing());
-        assert_eq!(view.border_color(ms(d, 3300)), red);
-        // Off in the settings: no border at all.
-        view.look.border = false;
         assert_eq!(view.border_color(ms(d, 3300)), None);
+        // A color picked for disabled shows once the flash is over.
+        view.look.border_colors.disabled = Some("#010203".into());
+        assert_eq!(
+            view.border_color(ms(d, 3300)),
+            Some(Color32::from_rgb(1, 2, 3))
+        );
+    }
+
+    #[test]
+    fn the_flash_is_its_own_option() {
+        let t = Instant::now();
+        // The flash without the border: red after a disable, else nothing.
+        let mut flash_only = RobotView::new(false, StateColors::default(), true, true);
+        flash_only.update(true, Some(from_fms_control_data(TELEOP)), t);
+        assert_eq!(flash_only.border_color(t), None);
+        flash_only.update(true, Some(from_fms_control_data(DISABLED)), t);
+        assert_eq!(flash_only.border_color(t), Some(FLASH_COLOR));
+        // The border without the flash: a disable just ends the teleop color.
+        let mut border_only = RobotView::new(true, StateColors::default(), false, true);
+        border_only.update(true, Some(from_fms_control_data(TELEOP)), t);
+        border_only.update(true, Some(from_fms_control_data(DISABLED)), t);
+        assert!(!border_only.flashing());
+        assert_eq!(border_only.border_color(t), None);
     }
 
     #[test]
@@ -523,12 +562,14 @@ mod tests {
             default_color(Mode::Autonomous)
         );
         assert_eq!(color_for(&colors, Mode::NoRobot), None);
+        // Disabled has no border unless a color is picked.
+        assert_eq!(color_for(&StateColors::default(), Mode::Disabled), None);
     }
 
     #[test]
     fn the_estop_popup_comes_up_on_an_estop_and_down_when_the_robot_is_back() {
         let t = Instant::now();
-        let mut view = RobotView::new(false, StateColors::default(), true);
+        let mut view = RobotView::new(false, StateColors::default(), false, true);
         view.update(true, Some(from_fms_control_data(TELEOP)), t);
         assert!(!view.estopped);
         view.update(true, Some(from_fms_control_data(ESTOP)), t);
@@ -541,12 +582,12 @@ mod tests {
         view.update(true, Some(from_fms_control_data(DISABLED)), t);
         assert!(!view.estopped, "down once the robot is back");
         // Turned off: no pop-up.
-        let mut off = RobotView::new(false, StateColors::default(), false);
+        let mut off = RobotView::new(false, StateColors::default(), false, false);
         off.update(true, Some(from_fms_control_data(TELEOP)), t);
         off.update(true, Some(from_fms_control_data(ESTOP)), t);
         assert!(!off.estopped);
         // Already e-stopped when the dashboard connects: no event, no pop-up.
-        let mut late = RobotView::new(false, StateColors::default(), true);
+        let mut late = RobotView::new(false, StateColors::default(), false, true);
         late.update(true, Some(from_fms_control_data(ESTOP)), t);
         assert!(!late.estopped);
     }

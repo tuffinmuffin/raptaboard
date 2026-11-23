@@ -1253,5 +1253,13 @@
         ]
       }
     }
-  ]
+  ],
+  "robot_state": {
+    "border": true,
+    "border_colors": {
+      "no_robot": "#00E5FF",
+      "disabled": "none"
+    },
+    "flash": true
+  }
 }

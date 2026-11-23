@@ -532,10 +532,12 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        if its owner asks. Revisit when teams outside Raptacon use raptaboard.
    - Later, after 0.1.0 (asked for by the user 2026-11-22), from the same robot state:
      - Window border by state (**done**, `ui/robot_state_view.rs`): a colored border around the
-       whole window, red while disabled, and flashing red for 3 s right after the robot is
-       disabled, so the state shows at a glance from any tab. Colors per state set in the Settings
-       window (the FMSInfo widget's colors by default, none for no robot; any state can be set to
-       none); off by default.
+       whole window, so the state shows at a glance from any tab. Colors per state set in the
+       Settings window: the FMSInfo widget's colors while enabled or e-stopped, and none while
+       disabled or with no robot (changed 2026-11-23 at the user's ask: a red border all through
+       setup was distracting), any state can be given a color or none; off by default.
+     - Flash on disable (**done**, its own option, asked for 2026-11-23): a red border flashing for
+       3 s right after the robot is disabled, with or without the border by state; off by default.
      - E-stop pop-up (**done**): a large modal over the whole window when the robot enters e-stop,
        saying so plainly. It clears on a click anywhere, when the robot reconnects (an e-stopped
        robot stays e-stopped until it reboots) or leaves e-stop. On by default; not shown for a
@@ -544,7 +546,8 @@ Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`
        they're look and feel, which should travel with the layout and not change with a computer's
        settings file, unlike the team number and connection, which follow the robot or test setup
        being connected to): a raptaboard-only top-level `"robot_state"` object, `{"border": true,
-       "border_colors": {"teleop": "none", "disabled": "#C62828"}, "estop_popup": false}`, each part
+       "border_colors": {"teleop": "none", "disabled": "#C62828"}, "flash": true, "estop_popup":
+       false}`, each part
        left out at its default (`robot_state_view::Look`). They're set in the ⚙ Settings window, which
        makes the layout unsaved, but they're settings, not edits: undo and redo leave them alone
        (`History::set_everywhere` makes the change to every version kept).

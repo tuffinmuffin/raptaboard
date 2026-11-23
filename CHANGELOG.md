@@ -16,8 +16,8 @@ What changes in each raptaboard release. Newest first.
 - **Graph statistics:** each line's min, max and average over the time shown, or between the
   measuring cursors.
 - **Robot state for the whole window** (⚙ Settings, kept in the layout): a pop-up over everything
-  when the robot is e-stopped (on by default), and a window border colored by the robot's state
-  that flashes red after a disable (off by default; colors per state).
+  when the robot is e-stopped (on by default), a window border colored by the robot's state, and
+  a red border flashing after a disable (both off by default; colors per state).
 - The Settings window opens below the bars, so the ⚙ and Undo stay clickable while it's open.
 - Touchscreens tested on Windows (a laptop), without issues.
 
