@@ -2,7 +2,10 @@
 
 What changes in each raptaboard release. Newest first.
 
-## Unreleased
+## 0.2.0
+
+Measuring and the robot's state: scales that fit the values, min/max/average, graph history,
+and the robot's state for the whole window.
 
 - **Autoscale** for Number Bar, Voltage View and Radial Gauge: the scale follows the lowest and
   highest values seen (short peaks too), optionally keeping the set range, with Reset scale in
