@@ -1,9 +1,8 @@
 //! Make the icon files in `media/icon/` from `media/icon/raptaboard.svg`:
 //! `raptaboard.ico` (Windows), `raptaboard.png` (512 px, Linux), the
 //! Microsoft Store package's logos in `msix/`, the Store listing's poster
-//! and square art (`media/store/poster-*.png`, 9:16, and `square-*.png`),
-//! and on macOS
-//! `raptaboard.icns` (through the system's `iconutil`). Run it after
+//! and square art (`media/store/poster-*.png`, 9:16, and `square-*.png`)
+//! and app tile icons (`tile-*.png`), and on macOS `raptaboard.icns` (through the system's `iconutil`). Run it after
 //! changing the SVG, from the repo's top folder:
 //!
 //! ```text
@@ -45,6 +44,13 @@ fn main() {
         write(
             &store.join(format!("square-{size}x{size}.png")),
             &poster(size, size),
+        );
+    }
+    // And its app tile icons: the icon itself, see-through corners.
+    for size in [300, 150, 50] {
+        write(
+            &store.join(format!("tile-{size}x{size}.png")),
+            &app_icon::png(size),
         );
     }
 
