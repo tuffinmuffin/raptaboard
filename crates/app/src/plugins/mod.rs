@@ -150,17 +150,19 @@ fn wasm_path(folder: &Path, manifest: &Manifest) -> PathBuf {
     if built.exists() { built } else { own }
 }
 
-/// A folder plugin's files: its `plugin.toml`, and its `.wasm` ([`wasm_path`]).
-fn folder_files(folder: &Path) -> Result<Files, String> {
+/// A folder plugin's files: its `plugin.toml`, and its `.wasm` ([`wasm_path`]),
+/// and its name.
+fn folder_files(folder: &Path) -> Result<(Files, String), String> {
     let manifest = folder.join("plugin.toml");
     let text =
         std::fs::read_to_string(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
     let m = Manifest::from_toml(&text).map_err(|e| format!("{}: {e}", folder.display()))?;
-    Ok(Files {
+    let files = Files {
         wasm: wasm_path(folder, &m),
         manifest,
         folder: folder.to_path_buf(),
-    })
+    };
+    Ok((files, m.name))
 }
 
 /// Compile the plugin in `files`. `allowed`: the permissions its pack said
@@ -235,10 +237,29 @@ fn register(loaded: Loaded) -> String {
 
 /// Load the plugin in `folder` (`plugin.toml` and its `.wasm`), for
 /// developing one. Returns its widget type's name (`plugin:<name>`), or
-/// what's wrong. It replaces any plugin of its name, a pack's too.
+/// what's wrong. It replaces any plugin of its name, a pack's too. Loading
+/// the same folder again with its `.wasm` unchanged does nothing, so its
+/// widgets keep running.
 pub fn load(folder: &Path) -> Result<String, String> {
-    let files = folder_files(folder)?;
+    let (files, name) = folder_files(folder)?;
+    let type_name = format!("{TYPE_PREFIX}{name}");
+    if let Some(ty) = find(&type_name) {
+        let loaded = ty.loaded();
+        let modified = std::fs::metadata(&files.wasm)
+            .and_then(|m| m.modified())
+            .ok();
+        if loaded.origin == Origin::Folder && loaded.files == files && loaded.modified == modified {
+            return Ok(type_name);
+        }
+    }
     Ok(register(compile(files, Origin::Folder, None, 0)?))
+}
+
+/// How many times the plugin of widget type `type_name` has been loaded
+/// again (for tests).
+#[cfg(test)]
+pub(crate) fn generation(type_name: &str) -> Option<u64> {
+    find(type_name).map(|t| t.loaded().generation)
 }
 
 /// Use the plugins of the packs installed in the packs folder `store`:

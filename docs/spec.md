@@ -493,7 +493,12 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   offered) shows as "📦 Content: 1 update · Review · ✕" at the end of the bar's second row, hidden
   while the robot is enabled. Review opens the Content window; ✕ records each pack's version in
   `state.json`'s `dismissed`, so only something newer shows it again.
-- **Next:** the `example-widgets` pack (Number and Alerts), then the Doom field. A repository manager (asked for by the user 2026-11-23; a later improvement, around 0.5 after
+- **Next:** the `example-widgets` pack (Number and Alerts), then the Doom field. For now its
+  `.wasm` files are built here and copied into raptaboard-content by hand. Later (decided with the
+  user 2026-11-24): plugin sources stay in their own repos (the examples in this one's `plugins/`),
+  whose CI builds each plugin as a release artifact, and a pack names where its plugin comes from
+  (repo, tag, artifact) so the content repo's release workflow downloads and checks it
+  instead of keeping built `.wasm` files. A repository manager (asked for by the user 2026-11-23; a later improvement, around 0.5 after
   plugins, since teams aren't expected to use other sources yet): sources saved in
   `~/.raptaboard/content/sources.json` rather than `settings.toml`, each with a name, on or off,
   an optional signing key (so a team's own source can be signed), and when it was last checked

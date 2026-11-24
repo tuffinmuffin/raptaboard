@@ -81,6 +81,16 @@ fn the_number_plugin_shows_a_topic_beside_the_built_in() {
 }
 
 #[test]
+fn loading_a_plugin_again_unchanged_keeps_its_widgets_running() {
+    // Tests load plugins at the same time; one test's load mustn't restart
+    // another's widgets.
+    let number = load("number");
+    let before = crate::plugins::generation(&number);
+    load("number");
+    assert_eq!(crate::plugins::generation(&number), before);
+}
+
+#[test]
 fn a_plugin_that_stops_offers_a_restart() {
     let name = load("limits-test");
     let robot = Robot::start();
