@@ -314,6 +314,9 @@ fn agreed(pack: &Pack, yes: bool, env: &mut Env<'_>) -> bool {
     );
     say(env, &format!("  {}", pack.summary));
     say(env, &format!("  Holds: {}", pack.contents()));
+    for line in pack.plugin_lines() {
+        say(env, &format!("  {line}"));
+    }
     say(env, &format!("  License: {}", pack.license));
     for line in pack.credits.trim().lines() {
         say(env, &format!("    {line}"));
@@ -756,10 +759,19 @@ mod tests {
             pack.join("pack.toml"),
             "id = \"horns\"\nname = \"Horns\"\nversion = \"0.1.0\"\nmin_app = \"0.1.0\"\n\
              summary = \"Horns.\"\nlicense = \"CC0\"\ncredits = \"Us.\"\n\
-             [[sound]]\nname = \"horn\"\nfile = \"horn.mp3\"\n",
+             [[sound]]\nname = \"horn\"\nfile = \"horn.mp3\"\n\
+             [[plugin]]\nfile = \"honk.wasm\"\n",
         )
         .unwrap();
         std::fs::write(pack.join("horn.mp3"), b"toot").unwrap();
+        // A plugin (its manifest beside it), whose permissions are shown.
+        std::fs::write(pack.join("honk.wasm"), b"wasm").unwrap();
+        std::fs::write(
+            pack.join("honk.toml"),
+            "name = \"honk\"\nversion = \"0.1.0\"\napi = \"0.2\"\n[match]\ntype = \"Horn\"\n\
+             [permissions]\npublish = true\n",
+        )
+        .unwrap();
         let path = pack.display().to_string();
         let ran = run_in(
             &dir,
@@ -777,8 +789,17 @@ mod tests {
             false,
         );
         assert_eq!(ran.result, Ok(()), "{}", ran.out);
+        assert!(
+            ran.out.contains("Plugin honk: sends values to the robot"),
+            "{}",
+            ran.out
+        );
         let store = Store::new(&dir);
         assert_eq!(store.installed()[0].source, format!("file:{path}"));
+        assert_eq!(
+            store.plugins()[0].manifest,
+            store.pack_dir("horns").join("honk.toml")
+        );
         assert_eq!(
             std::fs::read(store.pack_dir("horns").join("horn.mp3")).unwrap(),
             b"toot"

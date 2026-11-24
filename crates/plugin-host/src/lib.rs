@@ -150,6 +150,26 @@ pub struct Permissions {
     pub background: bool,
 }
 
+impl Permissions {
+    /// The permissions asked for, by their names in `plugin.toml`.
+    ///
+    /// ```
+    /// use raptaboard_plugin_host::Permissions;
+    /// let p = Permissions { sound: true, background: true, ..Default::default() };
+    /// assert_eq!(p.names(), ["sound", "background"]);
+    /// ```
+    pub fn names(&self) -> Vec<&'static str> {
+        [
+            (self.publish, "publish"),
+            (self.sound, "sound"),
+            (self.background, "background"),
+        ]
+        .into_iter()
+        .filter_map(|(on, name)| on.then_some(name))
+        .collect()
+    }
+}
+
 /// What the dashboard knows about one NT table when matching plugins.
 #[derive(Debug, Clone, Copy)]
 pub struct TableInfo<'a> {

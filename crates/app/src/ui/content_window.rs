@@ -181,6 +181,17 @@ impl DashboardApp {
         if content.poll() {
             ctx.request_repaint();
         }
+        // Packs installed or removed (or the first frame): their plugins.
+        if std::mem::take(&mut content.plugins_changed) {
+            let problems = crate::plugins::use_packs(content.dir(), &content.plugins());
+            for p in &problems {
+                eprintln!("raptaboard: plugin not loaded: {p}");
+            }
+            if let Some(first) = problems.first() {
+                self.status = format!("Plugin not loaded: {first}");
+            }
+            ctx.request_repaint();
+        }
         if !content.idle() {
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
@@ -259,6 +270,9 @@ impl DashboardApp {
                 ui.checkbox(on, egui::RichText::new(&pack.name).strong());
                 ui.indent(&pack.id, |ui| {
                     ui.label(&pack.summary);
+                    for line in pack.plugin_lines() {
+                        ui.label(egui::RichText::new(line).weak());
+                    }
                     ui.label(egui::RichText::new(format!("License: {}", pack.license)).weak());
                     ui.collapsing("Credits and license", |ui| ui.label(&pack.credits));
                 });
@@ -460,6 +474,9 @@ impl DashboardApp {
                 });
             });
             ui.label(&pack.summary);
+            for line in pack.plugin_lines() {
+                ui.label(egui::RichText::new(line).weak());
+            }
             ui.label(egui::RichText::new(format!("License: {}", pack.license)).weak());
             let mut shown = self.packs.credits.contains(&pack.id);
             if ui.toggle_value(&mut shown, "Credits and license").clicked() {

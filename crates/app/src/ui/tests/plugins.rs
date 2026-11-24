@@ -237,3 +237,185 @@ fn the_alerts_plugin_marks_its_tab_while_it_is_closed() {
         "the arm's tab stayed closed"
     );
 }
+
+/// A pack folder `id` holding the repo's plugin `plugin` (built), renamed
+/// `id`: its `.wasm`, its manifest beside it, and `pack.toml`.
+fn plugin_pack(id: &str, plugin: &str) -> PathBuf {
+    raptaboard_plugin_host::dev::repo_plugins();
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
+    let dir = crate::content::tests::folder(id);
+    std::fs::copy(
+        repo.join(format!(
+            "target/wasm32-wasip2/release/{}.wasm",
+            plugin.replace('-', "_")
+        )),
+        dir.join(format!("{id}.wasm")),
+    )
+    .unwrap();
+    let manifest = std::fs::read_to_string(repo.join(plugin).join("plugin.toml")).unwrap();
+    let renamed = manifest.replace(&format!("name = \"{plugin}\""), &format!("name = \"{id}\""));
+    assert_ne!(renamed, manifest);
+    std::fs::write(dir.join(format!("{id}.toml")), renamed).unwrap();
+    std::fs::write(
+        dir.join("pack.toml"),
+        format!(
+            "id = \"{id}\"\nname = \"Test {id}\"\nversion = \"1.0.0\"\nmin_app = \"0.1.0\"\n\
+             summary = \"A plugin.\"\nlicense = \"MIT\"\ncredits = \"Us.\"\n\n\
+             [[plugin]]\nfile = \"{id}.wasm\"\n"
+        ),
+    )
+    .unwrap();
+    dir
+}
+
+/// Run frames until `harness`'s packs are done downloading and loaded.
+fn packs_settled(harness: &mut Harness) {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        settle(harness);
+        let content = harness.state().content.as_ref().unwrap();
+        if content.idle() && !content.plugins_changed {
+            return;
+        }
+        assert!(Instant::now() < deadline, "the packs didn't settle");
+    }
+}
+
+#[test]
+fn a_packs_plugin_is_used_while_its_installed() {
+    let pack = crate::pack_folder::load(&plugin_pack("pack-number", "number")).unwrap();
+    // The catalog names it and says what it may do.
+    assert_eq!(pack.plugins[0].name.as_deref(), Some("pack-number"));
+    assert_eq!(
+        pack.plugin_lines(),
+        ["Plugin pack-number: nothing more than draw"]
+    );
+    let robot = Robot::start();
+    let value = robot._server.publish::<f64>("/Plugin/packed");
+    value.set(1.5);
+    let mut packed = widget("plugin:pack-number", "/Plugin/packed", "double", at(0.0));
+    packed.title = "Packed".into();
+    let mut harness = harness_with(&robot, vec![packed.clone()]);
+    // Not installed: a placeholder, its settings kept.
+    assert!(crate::plugins::find("plugin:pack-number").is_none());
+    assert!(harness.query_by_label("Packed: 1.5").is_none());
+
+    let store = crate::content::tests::folder("pack-number-store");
+    let app = harness.state_mut();
+    app.content = Some(crate::content::Content::with_fetch(
+        &store,
+        app.sound.files(),
+        vec![],
+        Box::new(crate::pack_folder::read_file),
+    ));
+    harness
+        .state_mut()
+        .content
+        .as_mut()
+        .unwrap()
+        .install("local", &pack);
+    packs_settled(&mut harness);
+    labelled_soon(&mut harness, "Packed: 1.5");
+    let ty = crate::plugins::find("plugin:pack-number").unwrap();
+    assert!(matches!(ty.origin(), crate::plugins::Origin::Pack { id, .. } if id == "pack-number"));
+
+    // Removed: gone again, and its widget's worker stopped.
+    harness
+        .state_mut()
+        .content
+        .as_mut()
+        .unwrap()
+        .remove("pack-number");
+    packs_settled(&mut harness);
+    settle(&mut harness);
+    assert!(crate::plugins::find("plugin:pack-number").is_none());
+    assert!(!crate::plugins::has_worker(&harness.ctx.clone(), &packed));
+    assert!(harness.query_by_label("Packed: 1.5").is_none());
+}
+
+#[test]
+fn a_packs_plugin_asking_for_more_than_its_catalog_said_isnt_loaded() {
+    let mut pack = crate::pack_folder::load(&plugin_pack("pack-alerts", "alerts")).unwrap();
+    assert_eq!(
+        pack.plugin_lines(),
+        ["Plugin pack-alerts: plays sounds, runs while its tab is closed"]
+    );
+    // A catalog that hides what it asks for.
+    pack.plugins[0].permissions = vec!["sound".into()];
+    let robot = Robot::start();
+    let mut harness = harness_with(&robot, vec![]);
+    let store = crate::content::tests::folder("pack-alerts-store");
+    let app = harness.state_mut();
+    app.content = Some(crate::content::Content::with_fetch(
+        &store,
+        app.sound.files(),
+        vec![],
+        Box::new(crate::pack_folder::read_file),
+    ));
+    harness
+        .state_mut()
+        .content
+        .as_mut()
+        .unwrap()
+        .install("local", &pack);
+    packs_settled(&mut harness);
+    assert!(crate::plugins::find("plugin:pack-alerts").is_none());
+    let status = &harness.state().status;
+    assert!(
+        status.contains("asks for background, which its pack didn't list"),
+        "{status}"
+    );
+}
+
+#[test]
+fn the_newest_pack_wins_and_a_folder_plugin_beats_a_pack() {
+    use crate::content::InstalledPlugin;
+    use crate::plugins::{Origin, use_packs};
+    raptaboard_plugin_host::dev::repo_plugins();
+    let store = crate::content::tests::folder("pack-layers-store");
+    // Two packs with a plugin of one name, and one named as a folder plugin.
+    let copy = |pack: &str, id: &str, plugin: &str| {
+        let made = plugin_pack(id, plugin);
+        let to = store.join(pack);
+        std::fs::create_dir_all(&to).unwrap();
+        for f in [format!("{id}.wasm"), format!("{id}.toml")] {
+            std::fs::copy(made.join(&f), to.join(&f)).unwrap();
+        }
+        InstalledPlugin {
+            pack: pack.into(),
+            pack_name: pack.into(),
+            installed_at: 0,
+            name: Some(id.into()),
+            wasm: to.join(format!("{id}.wasm")),
+            manifest: to.join(format!("{id}.toml")),
+            folder: to,
+            permissions: vec![],
+        }
+    };
+    let mut older = copy("older", "layered", "number");
+    older.installed_at = 100;
+    let mut newer = copy("newer", "layered", "number");
+    newer.installed_at = 200;
+    assert!(use_packs(&store, &[older.clone(), newer.clone()]).is_empty());
+    let origin = || crate::plugins::find("plugin:layered").unwrap().origin();
+    assert!(matches!(origin(), Origin::Pack { id, .. } if id == "newer"));
+    // The newer one removed: the older one.
+    assert!(use_packs(&store, &[older]).is_empty());
+    assert!(matches!(origin(), Origin::Pack { id, .. } if id == "older"));
+    assert!(use_packs(&store, &[]).is_empty());
+    assert!(crate::plugins::find("plugin:layered").is_none());
+
+    // A folder plugin keeps its name.
+    load("number");
+    let number = copy("numbers", "number-folder-test", "number");
+    let named_number = InstalledPlugin {
+        name: Some("number".into()),
+        ..number
+    };
+    let problems = use_packs(&store, &[named_number]);
+    assert!(problems.is_empty(), "{problems:?}");
+    assert_eq!(
+        crate::plugins::find("plugin:number").unwrap().origin(),
+        Origin::Folder
+    );
+}

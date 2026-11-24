@@ -108,7 +108,14 @@ cargo run -p raptaboard -- --plugin plugins/number --plugin plugins/alerts --add
 
 Their widget types (`plugin:number`, `plugin:alerts`) are then in "Add as" and the settings dialog's widget choice for
 the topics and tables they show, after the built-in ones. Rebuild one while the dashboard runs and its
-widgets restart with the new build. See `docs/spec.md`, "Plugin system", for what's coming.
+widgets restart with the new build.
+
+To share a plugin, put it in a content pack: its `.wasm` and its `plugin.toml`, renamed for it
+(`alerts.wasm` and `alerts.toml`), with a `[[plugin]]` naming the `.wasm` in the pack's `pack.toml`.
+Try a pack folder with `raptaboard packs install --package <folder> --unsigned`. Installed packs'
+plugins load at once, without a restart; before installing, raptaboard shows what each plugin may
+do (send values, play sounds, run while its tab is closed). See `docs/spec.md`, "Plugin system",
+for what's coming.
 
 ## Contributing
 
