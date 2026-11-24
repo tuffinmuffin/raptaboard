@@ -25,10 +25,10 @@ use nt4::Value;
 use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
 
-use crate::sound::Tone;
+use crate::sound::{self, Clip, Tone};
 use crate::types::alerts::{self, ActiveAlert, AlertWatch, Freshness, Level};
 use crate::widgets::shared::alert_sign::{self, draw_sign};
-use crate::widgets::shared::{card, props};
+use crate::widgets::shared::{card, props, sound_pick};
 use crate::widgets::{Effect, Live, Server, ValueInfo, WidgetType};
 
 /// Every alert group on the server, not just the widget's `topic`.
@@ -313,8 +313,9 @@ impl AlertsWidget {
                 && memory.last_tone.is_none_or(|last| now - last >= TONE_GAP_S)
             {
                 memory.last_tone = Some(now);
-                let tone = Tone::named(props::text(p, TONE, "beep"));
-                live.frame.effects.borrow_mut().push(Effect::Tone(tone));
+                let clip =
+                    Clip::named(props::text(p, TONE, "beep")).unwrap_or(Clip::Tone(Tone::Beep));
+                live.frame.effects.borrow_mut().push(Effect::Sound(clip));
             }
         }
         let (note, dim) = match seen.freshness {
@@ -507,11 +508,32 @@ impl WidgetType for AlertsWidget {
             SOUND,
             false,
         );
-        let names: Vec<&str> = Tone::CHOICES.iter().map(|(_, n)| *n).collect();
-        props::choice_row(ui, p, "Tone", TONE, "beep", &names);
+        tone_row(ui, p);
     }
     fn setting_keys(&self) -> &'static [&'static str] {
         &KEYS
+    }
+}
+
+/// The settings row picking the sound for a new error: any built-in or
+/// installed pack's sound ([`sound_pick`]).
+fn tone_row(ui: &mut egui::Ui, p: &mut Map<String, Json>) {
+    ui.label("Tone");
+    let layers = sound_pick::installed(ui);
+    let current = props::text(p, TONE, "beep").to_owned();
+    let mut picked = current.clone();
+    let (shown, found) = sound::sound_label(&current, &layers);
+    ui.horizontal(|ui| {
+        sound_pick::sound_combo(ui, TONE, "Tone", &shown, |ui| {
+            sound_pick::sound_menu(ui, &mut picked, &layers)
+        });
+        if !found {
+            sound_pick::missing_note(ui, &current);
+        }
+    });
+    ui.end_row();
+    if picked != current {
+        props::set_property(p, TONE, (picked != "beep").then(|| picked.into()));
     }
 }
 

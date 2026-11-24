@@ -323,9 +323,14 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   newest install wins (`sound::SoundLayers`). A sound setting is `fire 1` (newest pack's, else the
   built-in one), `pack:<id>/fire 1` (that pack's, else built in) or `builtin:fire 1` (ignore packs);
   anything not found falls back to the built-in sound of that name, or none (`sound::SoundRef`).
-  Today's settings are plain names. Later, the sound pickers list each name once, then each
-  pack's ("fire 1 (IT Crowd clips)") and the built-in one ("fire 1 (built in)"), and new names
-  from packs.
+  The sound pickers (done 2026-11-23; FMSInfo's state sounds and the Alerts tone,
+  `widgets/shared/sound_pick.rs`, `sound::sound_choices`) list each built-in name, then each
+  sound only packs have; under a name a pack has, indented, each pack's ("fire 1 (IT Crowd
+  clips)", newest install first) and the built-in one ("fire 1 (built in)"). A saved sound whose
+  pack is gone shows "fire 1 (fan-clips, not installed)" or "horn (not installed)" and a red
+  "not installed", and plays the built-in sound of its name, or nothing (`sound::Clip::playable`;
+  a pack's file that won't decode plays the built-in one too). In FMSInfo, a setting that's a
+  path or ends in .mp3 or .wav is a file the team picked; anything else is a sound's name.
 - **Other sources** are any catalog URL the user adds in the Content window (`content_sources` in
   the settings file). They aren't signed; the window says to add only sources you trust. Every
   file from any source is checked against its catalog's size and checksum.
@@ -356,7 +361,7 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   offered) shows as "📦 Content: 1 update · Review · ✕" at the end of the bar's second row, hidden
   while the robot is enabled. Review opens the Content window; ✕ records each pack's version in
   `state.json`'s `dismissed`, so only something newer shows it again.
-- **Next:** the sound pickers using the layers, then plugin packs, starting with the
+- **Next:** plugin packs, starting with the
   Doom field. A repository manager (asked for by the user 2026-11-23; a later improvement, around 0.5 after
   plugins, since teams aren't expected to use other sources yet): sources saved in
   `~/.raptaboard/content/sources.json` rather than `settings.toml`, each with a name, on or off,

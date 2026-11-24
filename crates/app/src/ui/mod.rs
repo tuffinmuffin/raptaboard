@@ -591,6 +591,8 @@ impl DashboardApp {
     fn show(&mut self, ui: &mut egui::Ui) {
         // Pointer and touch events, when RAPTABOARD_LOG_INPUT is set.
         crate::input_log::log_frame(ui.ctx());
+        // The sound pickers in settings dialogs list the installed packs'.
+        crate::sound::share_files(ui.ctx(), &self.sound.files());
         // One copy of every topic per frame, shared by the tab marks, the tree
         // and the grid.
         let topics = self.nt.topics();

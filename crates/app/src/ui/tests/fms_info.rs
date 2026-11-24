@@ -112,3 +112,111 @@ fn state_sounds_play_from_a_closed_tab_without_frames_and_only_for_changes() {
     wait_a_while(&mut harness);
     assert_eq!(harness.state().sound.events().len(), 1);
 }
+
+/// Give the app's installed sounds `fire 1` and `horn` from the
+/// "IT Crowd clips" pack, as installing it would.
+fn install_clips(harness: &mut Harness) {
+    let files = harness.state().sound.files();
+    let mut layers = files.write().unwrap();
+    for (name, file) in [
+        ("fire 1", "/packs/fan-clips/fire1.mp3"),
+        ("horn", "/packs/fan-clips/horn.mp3"),
+    ] {
+        layers.add(
+            name,
+            crate::sound::LayeredSound {
+                pack: "fan-clips".into(),
+                pack_name: "IT Crowd clips".into(),
+                path: file.into(),
+                installed_at: 1,
+            },
+        );
+    }
+}
+
+/// The dropdown named `name` (beside the label of the same text).
+fn combo<'h>(harness: &'h Harness, name: &'h str) -> egui_kittest::Node<'h> {
+    harness.get_by(|n| {
+        n.role() == egui::accesskit::Role::ComboBox && n.label().as_deref() == Some(name)
+    })
+}
+
+/// Open the dropdown named `name`, and pick `entry` in it.
+fn pick_sound(harness: &mut Harness, name: &str, entry: &str) {
+    let combo = combo(harness, name).rect().center();
+    click_at(
+        harness,
+        combo,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    // The list scrolls: bring `entry` into view first.
+    harness.get_by_label(entry).scroll_to_me();
+    settle(harness);
+    harness.get_by_label(entry).click();
+    settle(harness);
+}
+
+/// The FMSInfo's saved sound for test mode.
+fn test_sound(harness: &Harness) -> Option<serde_json::Value> {
+    harness.state().layout.tabs[1].grid_layout.containers[0]
+        .properties
+        .get("sound_test")
+        .cloned()
+}
+
+#[test]
+fn the_sound_picker_offers_each_packs_sound_and_the_built_in_one() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    let app = harness.state_mut();
+    app.layout = layout();
+    app.file.saved = app.layout.clone();
+    app.history = History::new(&app.layout);
+    app.current_tab = 1;
+    let original = app.layout.tabs[1].grid_layout.containers[0].clone();
+    app.editing = Some(Editing::Widget {
+        tab: 1,
+        index: 0,
+        original,
+    });
+    install_clips(&mut harness);
+    settle(&mut harness);
+    // Test mode's "danger danger" to the built-in fire 1, ignoring the pack.
+    assert_eq!(
+        combo(&harness, "Sound: Test").value().as_deref(),
+        Some("danger danger")
+    );
+    pick_sound(&mut harness, "Sound: Test", "    fire 1 (built in)");
+    assert_eq!(test_sound(&harness), Some(json!("builtin:fire 1")));
+    let plays = |h: &Harness| {
+        let w = &h.state().layout.tabs[1].grid_layout.containers[0];
+        let clip = crate::widgets::builtin::fms_info::sound_for(
+            &w.properties,
+            crate::types::robot_state::Event::Test,
+        )
+        .unwrap();
+        clip.playable(&h.state().sound.files().read().unwrap())
+    };
+    assert_eq!(
+        plays(&harness),
+        crate::sound::Playable::BuiltIn(Tone::Fire1)
+    );
+    // Then a sound only the pack has.
+    pick_sound(&mut harness, "Sound: Test", "horn");
+    assert_eq!(test_sound(&harness), Some(json!("horn")));
+    assert_eq!(
+        plays(&harness),
+        crate::sound::Playable::File("/packs/fan-clips/horn.mp3".into())
+    );
+    assert!(harness.query_by_label("not installed").is_none());
+    // The pack removed: it says so, and plays nothing.
+    *harness.state().sound.files().write().unwrap() = Default::default();
+    settle(&mut harness);
+    assert_eq!(
+        combo(&harness, "Sound: Test").value().as_deref(),
+        Some("horn (not installed)")
+    );
+    harness.get_by_label("not installed");
+    assert_eq!(plays(&harness), crate::sound::Playable::Nothing);
+}
