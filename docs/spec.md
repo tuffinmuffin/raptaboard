@@ -337,10 +337,29 @@ on a plugin.
   `wasm32-wasip2`) and a template. Other languages can build components too, but only Rust is
   supported.
 
+### Developing and testing plugins
+
+Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to see a plugin work.
+
+- **Test harness** (`raptaboard-plugin-test`, with the SDK): loads a built `widget.wasm` in the real
+  host runtime and limits, for `cargo test`. A test sets values (one at a time or a timed script),
+  sizes, the connection state and the theme, and sends input (`activate("bell")`, keys). It then
+  checks what came back: shapes, regions found by label, the tab mark, redraw requests, sounds asked
+  for and log lines, and optionally a rendered PNG snapshot. Our own Number and Alerts plugins are
+  checked against the built-ins with it.
+- **Sandbox window** (`raptaboard plugin dev <folder>`): the dashboard with its own NT server inside
+  (the in-process `nt4::Server` the UI tests use) instead of a robot. The plugin from the folder is
+  placed on a tab and reloads when the `.wasm` is rebuilt. A values panel types values, drags
+  sliders, adds and removes topics, and plays scripted sequences (later, a `.wpilog` replay). A dev
+  overlay shows the regions' outlines, time and memory per call against the limits, the plugin's
+  log and any trap with Restart, with switches for theme, connected and locked and preset widget
+  sizes. `--address` points it at the sim or a robot instead. It doubles as a demo of a plugin
+  without a robot.
+
 ### Order
 
 1. **Runtime and the two example plugins** (next). The wasmtime host with the limits above, API 0.2,
-   the adapter, loading from packs and from a local folder, and the SDK crate. Then two plugins in
+   the adapter, loading from packs and from a local folder, the SDK crate and the test harness. Then two plugins in
    `plugins/` (built in CI, shipped as an `example-widgets` pack in raptaboard-content), each set beside
    its built-in to show plugins can match them:
    - **Number**: a Text Display for a number (decimals, unit, font size or fit, color by value).
@@ -351,6 +370,8 @@ on a plugin.
      against it too.
 
    The arm plugin (`plugins/arm`) stays as the manifest fixture.
+
+   Then the sandbox window, before Doom (whose keys, ticks and sound need a live window most).
 2. **Doom**, the easter egg (doomMod, `tuffinmuffin/raptaboard-doom`): API additions for a plugin
    that fills a tab (a manifest can claim a tab title, `tab = "Doom"`, so a tab of that name
    becomes the game when the pack is installed), an RGBA pixel frame drawn as a scaled texture,
