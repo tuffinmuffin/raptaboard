@@ -27,7 +27,7 @@ use std::path::PathBuf;
 use clap::{Args, Subcommand};
 
 use crate::content::{
-    self, Catalog, Fetch, OFFICIAL, Pack, Status, Store, fetch_catalog, fetch_official, status,
+    self, Action, Checked, Fetch, OFFICIAL, Outcome, Pack, Source, Status, Store, offers, status,
 };
 use crate::pack_folder;
 
@@ -104,13 +104,13 @@ pub struct Env<'a> {
     pub ask: &'a mut dyn FnMut(&str) -> bool,
 }
 
-/// A source's catalog as read for a command.
+/// The catalogs a command read: each source as the Content window checks
+/// it ([`Source::read`]).
 struct Read {
-    /// The source: a catalog URL, or `file:<folder>` for a pack folder.
-    source: String,
-    /// Its catalog, or why it couldn't be had.
-    catalog: Result<Catalog, String>,
-    /// From a folder on this computer (its files are read from disk).
+    /// Each source, its catalog (or why not) and any note about it.
+    checked: Vec<Checked>,
+    /// From a pack folder on this computer (`--package`): its files are
+    /// read from disk, not downloaded.
     local: bool,
 }
 
@@ -143,65 +143,68 @@ fn say(env: &mut Env<'_>, line: &str) {
 
 /// Read the catalogs `from` names: the settings' sources, or only its
 /// `--url` or `--package`. Refuses unsigned ones without `--unsigned`.
-fn read(from: &From, env: &Env<'_>) -> Result<Vec<Read>, String> {
-    if let Some(folder) = &from.package {
+/// Prints any note about a catalog (an older release's being used).
+fn read(from: &From, env: &mut Env<'_>) -> Result<Read, String> {
+    let read = if let Some(folder) = &from.package {
         if !from.unsigned {
             return Err(format!(
                 "{} is a pack folder, which isn't signed by raptaboard: add --unsigned to use it",
                 folder.display()
             ));
         }
-        return Ok(vec![Read {
-            source: format!("file:{}", folder.display()),
-            catalog: pack_folder::catalog(folder),
+        Read {
+            checked: vec![Checked {
+                source: Source {
+                    url: format!("file:{}", folder.display()),
+                    official: false,
+                },
+                catalog: pack_folder::catalog(folder),
+                note: None,
+            }],
             local: true,
-        }]);
-    }
-    if let Some(url) = &from.url {
-        let keys: &[[u8; 32]] = if url == OFFICIAL {
-            env.keys
-        } else if from.unsigned {
-            &[]
-        } else {
-            return Err(format!(
-                "{url} isn't the official catalog, so it isn't signed by raptaboard: add --unsigned to use it"
-            ));
+        }
+    } else {
+        let sources = match &from.url {
+            Some(url) if url != OFFICIAL && !from.unsigned => {
+                return Err(format!(
+                    "{url} isn't the official catalog, so it isn't signed by raptaboard: add --unsigned to use it"
+                ));
+            }
+            Some(url) => vec![Source {
+                url: url.clone(),
+                official: url == OFFICIAL,
+            }],
+            None => content::sources(&env.sources),
         };
-        return Ok(vec![Read {
-            source: url.clone(),
-            catalog: fetch_catalog(url, keys, env.fetch),
+        Read {
+            checked: sources
+                .into_iter()
+                .map(|s| s.read(env.keys, env.fetch))
+                .collect(),
             local: false,
-        }]);
+        }
+    };
+    for c in &read.checked {
+        if let Some(note) = &c.note {
+            say(env, &format!("Note: {note}"));
+        }
     }
-    Ok(content::sources(&env.sources)
-        .into_iter()
-        .map(|s| Read {
-            catalog: if s.official {
-                fetch_official(env.keys, env.fetch).map(|(c, _)| c)
-            } else {
-                fetch_catalog(&s.url, &[], env.fetch)
-            },
-            source: s.url,
-            local: false,
-        })
-        .collect())
+    Ok(read)
 }
 
 /// Print each catalog that couldn't be read, and why.
-fn report_unread(reads: &[Read], env: &mut Env<'_>) {
-    for r in reads {
-        if let Err(e) = &r.catalog {
-            say(env, &format!("Couldn't read {}: {e}", r.source));
+fn report_unread(read: &Read, env: &mut Env<'_>) {
+    for c in &read.checked {
+        if let Err(e) = &c.catalog {
+            say(env, &format!("Couldn't read {}: {e}", c.source.url));
         }
     }
 }
 
-/// The first catalog with pack `id`, and the pack.
-fn find<'r>(reads: &'r [Read], id: &str) -> Option<(&'r Read, &'r Pack)> {
-    reads.iter().find_map(|r| {
-        let pack = r.catalog.as_ref().ok()?.packs.iter().find(|p| p.id == id)?;
-        Some((r, pack))
-    })
+/// The pack `id` from the first source that has it, and that source, as
+/// the Content window picks it ([`offers`]).
+fn find<'r>(read: &'r Read, id: &str) -> Option<(&'r Source, &'r Pack)> {
+    offers(&read.checked).into_iter().find(|(_, p)| p.id == id)
 }
 
 fn list(from: &From, env: &mut Env<'_>) -> Result<(), String> {
@@ -231,25 +234,22 @@ fn list(from: &From, env: &mut Env<'_>) -> Result<(), String> {
     }
     say(env, "Available:");
     let mut any = false;
-    for r in &reads {
-        let Ok(catalog) = &r.catalog else { continue };
-        for p in &catalog.packs {
-            if installed.iter().any(|i| i.pack.id == p.id) {
-                continue;
-            }
-            any = true;
-            let needs = match status(p, None) {
-                Status::NeedsApp => format!("  (needs raptaboard {})", p.min_app),
-                _ => String::new(),
-            };
-            say(
-                env,
-                &format!(
-                    "  {} {}  {}: {} License: {}{needs}",
-                    p.id, p.version, p.name, p.summary, p.license
-                ),
-            );
+    for (_, p) in offers(&reads.checked) {
+        if installed.iter().any(|i| i.pack.id == p.id) {
+            continue;
         }
+        any = true;
+        let needs = match status(p, None) {
+            Status::NeedsApp => format!("  (needs raptaboard {})", p.min_app),
+            _ => String::new(),
+        };
+        say(
+            env,
+            &format!(
+                "  {} {}  {}: {} License: {}{needs}",
+                p.id, p.version, p.name, p.summary, p.license
+            ),
+        );
     }
     if !any {
         say(env, "  (none)");
@@ -285,31 +285,21 @@ fn agreed(pack: &Pack, yes: bool, env: &mut Env<'_>) -> bool {
     false
 }
 
-/// Install `pack` from `read`'s source. Prints what happened.
-fn put(read: &Read, pack: &Pack, env: &mut Env<'_>) -> bool {
+/// Install `pack` from `source`, saying what happened as the Content
+/// window does ([`Outcome::describe`]).
+fn put(read: &Read, source: &Source, pack: &Pack, env: &mut Env<'_>) -> bool {
     let fetch: &Fetch = if read.local {
         &pack_folder::read_file
     } else {
         env.fetch
     };
-    match env.store.install(&read.source, pack, fetch) {
-        Ok(()) => {
-            say(
-                env,
-                &format!(
-                    "Installed {} {} ({}).",
-                    pack.name,
-                    pack.version,
-                    pack.contents()
-                ),
-            );
-            true
-        }
-        Err(e) => {
-            say(env, &format!("Couldn't install {}: {e}", pack.id));
-            false
-        }
-    }
+    let outcome = Outcome {
+        action: Action::Install,
+        pack: pack.clone(),
+        result: env.store.install(&source.url, pack, fetch),
+    };
+    say(env, &outcome.describe());
+    outcome.result.is_ok()
 }
 
 /// The note after a change: a running raptaboard sees it when it starts again.
@@ -320,7 +310,7 @@ fn install(ids: &[String], from: &From, yes: bool, env: &mut Env<'_>) -> Result<
     let mut ids = ids.to_vec();
     if ids.is_empty() {
         // A folder's pack needs no id.
-        match (&from.package, reads.first().map(|r| &r.catalog)) {
+        match (&from.package, reads.checked.first().map(|c| &c.catalog)) {
             (Some(_), Some(Ok(c))) => ids = c.packs.iter().map(|p| p.id.clone()).collect(),
             (Some(_), Some(Err(e))) => return Err(e.clone()),
             _ => return Err("name the packs to install (see raptaboard packs list)".into()),
@@ -329,7 +319,7 @@ fn install(ids: &[String], from: &From, yes: bool, env: &mut Env<'_>) -> Result<
     let mut ok = true;
     let mut changed = false;
     for id in &ids {
-        let Some((r, pack)) = find(&reads, id) else {
+        let Some((source, pack)) = find(&reads, id) else {
             say(env, &format!("No source has a pack {id}."));
             ok = false;
             continue;
@@ -350,11 +340,11 @@ fn install(ids: &[String], from: &From, yes: bool, env: &mut Env<'_>) -> Result<
             ok = false;
             continue;
         }
-        let done = put(r, pack, env);
+        let done = put(&reads, source, pack, env);
         changed |= done;
         ok &= done;
     }
-    finish(&reads, ok, changed, env)
+    finish(Some(&reads), ok, changed, env)
 }
 
 fn update(ids: &[String], from: &From, yes: bool, env: &mut Env<'_>) -> Result<(), String> {
@@ -375,7 +365,7 @@ fn update(ids: &[String], from: &From, yes: bool, env: &mut Env<'_>) -> Result<(
         .filter(|i| ids.is_empty() || ids.contains(&i.pack.id))
     {
         let id = &i.pack.id;
-        let Some((r, pack)) = find(&reads, id) else {
+        let Some((source, pack)) = find(&reads, id) else {
             if !ids.is_empty() {
                 say(env, &format!("No source has {id} now."));
                 ok = false;
@@ -406,7 +396,7 @@ fn update(ids: &[String], from: &From, yes: bool, env: &mut Env<'_>) -> Result<(
                         env,
                         &format!("Updating {id} from {} to {}.", i.pack.version, pack.version),
                     );
-                    let done = put(r, pack, env);
+                    let done = put(&reads, source, pack, env);
                     changed |= done;
                     ok &= done;
                 } else {
@@ -418,13 +408,13 @@ fn update(ids: &[String], from: &From, yes: bool, env: &mut Env<'_>) -> Result<(
     if !any && ok && ids.is_empty() {
         say(env, "Every installed pack is up to date.");
     }
-    finish(&reads, ok, changed, env)
+    finish(Some(&reads), ok, changed, env)
 }
 
 /// Report unread sources, the restart note after a change, and whether it
 /// all worked.
-fn finish(reads: &[Read], ok: bool, changed: bool, env: &mut Env<'_>) -> Result<(), String> {
-    if !ok {
+fn finish(reads: Option<&Read>, ok: bool, changed: bool, env: &mut Env<'_>) -> Result<(), String> {
+    if !ok && let Some(reads) = reads {
         report_unread(reads, env);
     }
     if changed {
@@ -447,24 +437,23 @@ fn remove(ids: &[String], env: &mut Env<'_>) -> Result<(), String> {
             ok = false;
             continue;
         };
-        match env.store.remove(id) {
-            Ok(()) => {
-                say(env, &format!("Removed {} {}.", i.pack.name, i.pack.version));
-                changed = true;
-            }
-            Err(e) => {
-                say(env, &format!("Couldn't remove {id}: {e}"));
-                ok = false;
-            }
-        }
+        let outcome = Outcome {
+            action: Action::Remove,
+            pack: i.pack.clone(),
+            result: env.store.remove(id),
+        };
+        say(env, &outcome.describe());
+        changed |= outcome.result.is_ok();
+        ok &= outcome.result.is_ok();
     }
-    finish(&[], ok, changed, env)
+    finish(None, ok, changed, env)
 }
 
 #[cfg(test)]
 mod tests {
     // Tests written by Claude.
     use super::*;
+    use crate::content::Catalog;
     use crate::content::tests::{Web, folder, sound_pack, test_key};
 
     /// The official catalog (signed): `fan-clips` 1.0.0 and `extra`.
@@ -557,7 +546,7 @@ mod tests {
         assert_eq!(ran.result, Ok(()));
         assert!(
             ran.out
-                .contains("Installed Pack fan-clips 1.0.0 (1 sound)."),
+                .contains("Installed Pack fan-clips 1.0.0. Its sounds: fire 1."),
             "{}",
             ran.out
         );
@@ -655,7 +644,7 @@ mod tests {
             .unwrap();
         let ran = run_in(&dir, &web, public, &["remove", "fan-clips"], false);
         assert_eq!(ran.result, Ok(()));
-        assert!(ran.out.contains("Removed Pack fan-clips 1.0.0."));
+        assert!(ran.out.contains("Removed Pack fan-clips."));
         assert!(installed(&dir).is_empty());
         let ran = run_in(&dir, &web, public, &["remove", "fan-clips"], false);
         assert!(ran.result.is_err() && ran.out.contains("fan-clips isn't installed."));
@@ -764,5 +753,39 @@ mod tests {
             std::fs::read(store.pack_dir("horns").join("horn.mp3")).unwrap(),
             b"honk"
         );
+    }
+
+    #[test]
+    fn an_older_release_in_use_is_noted_as_the_window_notes_it() {
+        use crate::content::tests::{release_url, releases};
+        let (key, public) = test_key();
+        let (web, dir) = (Web::default(), folder("cli-note"));
+        // The latest release (v2) has no catalog; v1's is used.
+        let v1 = Catalog {
+            format: content::FORMAT,
+            release: "v1".into(),
+            packs: vec![sound_pack(
+                "beeps",
+                "1.0.0",
+                &[("beep", "beep.mp3")],
+                "https://x",
+            )],
+        };
+        web.serve(&release_url("v1"), &v1, Some(&key));
+        web.files.lock().unwrap().insert(
+            content::OFFICIAL_RELEASES.into(),
+            releases(&[("v2", false), ("v1", true)]),
+        );
+        let ran = run_in(&dir, &web, public, &["list"], false);
+        assert_eq!(ran.result, Ok(()));
+        let note = Source {
+            url: OFFICIAL.into(),
+            official: true,
+        }
+        .read(&[public], &*web.fetch())
+        .note
+        .unwrap();
+        assert!(ran.out.contains(&format!("Note: {note}")), "{}", ran.out);
+        assert!(ran.out.contains("beeps 1.0.0"), "{}", ran.out);
     }
 }
