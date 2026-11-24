@@ -2,15 +2,16 @@
 //!
 //! A plugin is a folder holding `plugin.toml` and `widget.wasm`. This crate
 //! reads the manifest and decides which NT tables a plugin can draw. Running
-//! the WASM itself (wasmtime, fuel and memory limits) is milestone 4; the
-//! interface it will implement is `wit/dashboard.wit` at the repo root.
+//! the WASM itself (wasmtime, time and memory limits) comes next (`docs/spec.md`,
+//! "Plugin system"); the interface it implements is `wit/dashboard.wit` at the
+//! repo root.
 //!
 //! ```
 //! use raptaboard_plugin_host::{Manifest, TableInfo};
 //! let manifest = Manifest::from_toml(r#"
 //!     name = "arm"
 //!     version = "0.1.0"
-//!     api = "0.1"
+//!     api = "0.2"
 //!     [match]
 //!     type = "Arm"
 //! "#).unwrap();
@@ -25,7 +26,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 /// Host API version this build of raptaboard implements.
-pub const HOST_API: &str = "0.1";
+pub const HOST_API: &str = "0.2";
 
 /// Errors reading a plugin manifest.
 #[derive(Debug, thiserror::Error)]
@@ -46,7 +47,7 @@ pub enum ManifestError {
 pub struct Manifest {
     pub name: String,
     pub version: String,
-    /// Host API version the plugin was built against, like `"0.1"`.
+    /// Host API version the plugin was built against, like `"0.2"`.
     pub api: String,
     #[serde(rename = "match")]
     pub match_rules: MatchRules,

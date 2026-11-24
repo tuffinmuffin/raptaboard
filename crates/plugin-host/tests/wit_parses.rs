@@ -10,6 +10,19 @@ fn dashboard_wit_parses() {
         .push_dir(&wit)
         .expect("wit/dashboard.wit should parse");
     let package = &resolve.packages[pkg];
-    assert_eq!(package.name.to_string(), "raptaboard:dashboard@0.1.0");
-    assert!(package.worlds.contains_key("widget"));
+    // The WIT package version and HOST_API move together.
+    let expected = format!(
+        "raptaboard:dashboard@{}.0",
+        raptaboard_plugin_host::HOST_API
+    );
+    assert_eq!(package.name.to_string(), expected);
+    let world = &resolve.worlds[package.worlds["widget"]];
+    let exports: Vec<String> = world
+        .exports
+        .keys()
+        .map(|k| resolve.name_world_key(k))
+        .collect();
+    for name in ["subscriptions", "update", "render", "tab-mark", "on-input"] {
+        assert!(exports.iter().any(|e| e == name), "widget exports {name}");
+    }
 }

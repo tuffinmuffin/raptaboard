@@ -86,14 +86,15 @@ draw:
 ```toml
 name = "arm"
 version = "0.1.0"
-api = "0.1"
+api = "0.2"
 
 [match]
 type = "Arm"        # the table's .type topic
 ```
 
-The WASM module implements the `widget` world from `wit/dashboard.wit`: it reads values with
-`get("angle_rad")` and returns shapes to draw. Running plugins arrives in milestone 4.
+The WASM component implements the `widget` world from `wit/dashboard.wit`: the dashboard pushes it
+the values it asked for, and it returns shapes to draw. Running plugins is the next milestone
+(`docs/spec.md`, "Plugin system").
 
 ## Contributing
 

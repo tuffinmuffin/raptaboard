@@ -8,7 +8,7 @@
 //! Every widget type is one file implementing [`WidgetType`], listed in
 //! [`TYPES`]. The grid and the settings dialog only talk to that trait, so
 //! a widget's drawing, settings and setting keys all live in its own file.
-//! Plugin widgets (milestone 4) will implement the same trait.
+//! Plugin widgets will implement the same trait, through an adapter.
 //!
 //! Folders: [`builtin`] holds the widget types themselves, one file each;
 //! [`shared`] holds what they share: [`card`] draws the card around a body,
