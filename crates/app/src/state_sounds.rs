@@ -131,7 +131,9 @@ async fn run(client: Client, shared: Shared) {
             watch = Watch::default();
         }
         let now: HashMap<&str, &Value> = values.iter().map(|(k, v)| (k.as_str(), v)).collect();
-        let found = watch.update(connected, robot_state::read(&plan.table, &now));
+        let state = robot_state::read(&plan.table, &now);
+        player.saw(state);
+        let found = watch.update(connected, state);
         if let Some(clip) = plan.sound_for(&found) {
             player.play_event(clip.clone(), plan.volume);
         }

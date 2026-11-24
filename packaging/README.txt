@@ -47,13 +47,19 @@ Content packs from a terminal
 Extra sounds (content packs) can be listed, installed, updated and removed
 without opening the dashboard (Settings > Content packs does the same):
 
-  Windows:        raptaboard-cli packs list
-  macOS, Linux:   raptaboard packs list
+  raptaboard-cli packs list
 
 Then "packs install <id>", "packs update", "packs remove <id>"; add --help to
-any of them for more. On Windows, raptaboard-cli is on the PATH after the
-Microsoft Store or the installer adds it (an option while installing, on by
-default); from the zip, run it from its folder.
+any of them for more. raptaboard-cli comes with raptaboard:
+
+  Windows:  on the PATH after the Microsoft Store or the installer adds it
+            (an option while installing, on by default); from the zip, run
+            it from its folder.
+  macOS:    inside the app. To type it by name, link it into a folder on
+            your PATH once, for example:
+              ln -s /Applications/raptaboard.app/Contents/MacOS/raptaboard-cli ~/.local/bin/
+  Linux:    install.sh puts it beside raptaboard in ~/.local/bin; from the
+            .tar.gz, run ./raptaboard-cli.
 
 Where things are kept
 ---------------------

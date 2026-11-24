@@ -580,6 +580,9 @@ pub struct SoundPlayer {
     send: Option<Sender<Request>>,
     /// Every sound asked for, with its volume (for tests).
     played: Arc<Mutex<Vec<(Clip, f32)>>>,
+    /// The last robot state the state sound task read (for tests: to know
+    /// it has seen a state before the next one is sent).
+    seen: Arc<Mutex<Option<crate::types::robot_state::RobotState>>>,
 }
 
 impl SoundPlayer {
@@ -591,6 +594,14 @@ impl SoundPlayer {
         }
         if let Some(send) = &self.send {
             let _ = send.send(Request::Event { clip, volume });
+        }
+    }
+
+    /// Note the robot state the state sound task just read (`None`: none
+    /// to read). Only tests look at it ([`Sound::state_seen`]).
+    pub fn saw(&self, state: Option<crate::types::robot_state::RobotState>) {
+        if let Ok(mut seen) = self.seen.lock() {
+            *seen = state;
         }
     }
 
@@ -685,6 +696,7 @@ impl Sound {
             player: SoundPlayer {
                 send: sound.clone(),
                 played: Arc::default(),
+                seen: Arc::default(),
             },
             sound,
             played: 0,
@@ -704,6 +716,7 @@ impl Sound {
             player: SoundPlayer {
                 send: None,
                 played: Arc::default(),
+                seen: Arc::default(),
             },
             files: SoundFiles::default(),
         }
@@ -764,6 +777,12 @@ impl Sound {
             .lock()
             .map(|p| p.clone())
             .unwrap_or_default()
+    }
+
+    /// The last robot state the state sound task read, if any
+    /// ([`SoundPlayer::saw`]).
+    pub fn state_seen(&self) -> Option<crate::types::robot_state::RobotState> {
+        self.player.seen.lock().ok().and_then(|s| *s)
     }
 
     /// A handle that plays robot state sounds from another thread.
