@@ -241,6 +241,10 @@ fn register(loaded: Loaded) -> String {
 /// the same folder again with its `.wasm` unchanged does nothing, so its
 /// widgets keep running.
 pub fn load(folder: &Path) -> Result<String, String> {
+    // One load at a time, so two loads of one folder at once (tests) compile
+    // it once: the second finds the first's.
+    static LOADING: Mutex<()> = Mutex::new(());
+    let _one_at_a_time = LOADING.lock().unwrap_or_else(|e| e.into_inner());
     let (files, name) = folder_files(folder)?;
     let type_name = format!("{TYPE_PREFIX}{name}");
     if let Some(ty) = find(&type_name) {
