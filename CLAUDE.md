@@ -72,6 +72,7 @@ from `tuffinmuffin/raptaboard-content` (its signed `catalog.json`, its own repo 
 or sources the user adds. `content.rs` is the catalog, signature (`OFFICIAL_KEYS`, raptaboard-content's
 `catalog-key.pub`), checksums, the store in `~/.raptaboard/content/` and the download thread (`Content`; tests use
 `Content::with_fetch` and `content::tests::Web`, never the network; the one real-network test is ignored);
+`packs_cli.rs` is `raptaboard packs list|install|update|remove|sources` (docs/spec.md "Command line");
 `ui/content_window.rs` the Content window (⚙ Settings → Content packs…) and the list offered on the first start and
 after an upgrade (`content::State`: `last_version`, `offer_pending`, `shown`). `upgrade.rs` holds the one-time tasks
 for a new version's first start: add any migration there. The background check (`content_check_minutes`, hourly by
@@ -125,7 +126,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   tree rows and menu items by label and clicks or drags them;
   `DashboardApp::show` is one frame without an `eframe::Frame`), `connection.rs` the robot address modes,
   `cli.rs` the startup flags (`clap` derive, `cli::Args`: `--team`, `--address`, `--port`,
-  `--hide-tree`; this run only),
+  `--hide-tree`; this run only) and `cli::Command` (`raptaboard packs …`, in `packs_cli.rs`, with `pack_folder.rs`
+  for `--package`; `main.rs` runs it instead of the window, and on Windows release builds joins the terminal),
   `settings.rs` settings kept between runs (command line, then `./.raptaboard/settings.toml`, then
   `~/.raptaboard/settings.toml`, made on the first run, then defaults; changes saved to the local file
   if there is one, else the home file, by `settings::Tracker`; `ui/` only says what the current

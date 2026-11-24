@@ -368,8 +368,19 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   an optional signing key (so a team's own source can be signed), and when it was last checked
   and how; a Repositories section in the Content window to add, rename, turn off, check and
   remove them, with each one's packs and errors (the official source first, never removed).
-  After that, managing packs from the command line (asked for by the user
-  2026-11-23): list, install, update and remove without opening the window.
+  The command line could then add and remove sources too (`raptaboard packs sources` only lists
+  them for now).
+- **Command line** (done 2026-11-23; `packs_cli.rs`): `raptaboard packs list | install <id>… |
+  update [<id>…] | remove <id>… | sources` works without opening the window, on the same packs
+  folder and checks, and exits non-zero if anything wasn't done. `install` installs or reinstalls
+  what the source has; `update` only a newer version. Packs come from the settings' sources, or
+  only from `--url <catalog>` or `--package <folder>` (a pack folder as the content repo keeps it,
+  checked as its `build_catalog.py` does: `pack_folder.rs`). `--package` and any `--url` but the
+  official catalog need `--unsigned`; the official catalog's signature is always checked, and so
+  are HTTPS certificates. Each pack's license and credits are shown and the user asked first,
+  unless `--yes`. A running raptaboard sees the change when it next starts. A Windows release
+  build (a window program) joins the terminal it was started from to print, but can't ask (the
+  terminal doesn't wait for it and keeps reading the keyboard), so it needs `--yes` to install.
 
 ## Milestones
 

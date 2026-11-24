@@ -20,6 +20,8 @@ pub mod images;
 pub mod input_log;
 pub mod layout_file;
 pub mod nt;
+pub mod pack_folder;
+pub mod packs_cli;
 pub mod sampling;
 pub mod settings;
 pub mod sound;
