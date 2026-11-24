@@ -59,8 +59,9 @@ About window's list), plus a `-debug` archive. Nothing is code-signed yet (decid
 (the Release workflow's Windows job) `package.py` also makes an unsigned MSIX for the Store, which signs it
 (`packaging/windows/msix/`: the manifest, and `store.json` with the identity from Partner Center), in
 `dist-store/` and its own `store-msix` artifact, never on the GitHub release; it holds the same `raptaboard.exe`
-and `raptaboard-cli.exe` as the other Windows packages (the second a hidden console application with a
-`raptaboard-cli` execution alias: mention it in the submission's notes for certification). Each release's `.msix` is uploaded in Partner Center by hand for now.
+as the other Windows packages, and not `raptaboard-cli.exe` (decided 2026-11-23: Partner Center refused 0.3.0's
+second, hidden application as a "headless app" needing a waiver; an execution alias on the main application
+worked in testing, but the Store package stays as simple as 0.2.1's; Store users get the CLI from GitHub). Each release's `.msix` is uploaded in Partner Center by hand for now.
 `PRIVACY.md` is the privacy policy the Store listing links to (its GitHub URL on `main`, from the release after 0.2.1;
 0.2.1's listing had the text pasted in), built into the About window's Privacy page
 (`credits::PRIVACY`, drawn from its Markdown by `credits::policy_blocks`) (raptaboard collects nothing, connects only to the
@@ -130,7 +131,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `--hide-tree`; this run only) and `cli::Command` (`raptaboard packs …`, in `packs_cli.rs`, with `pack_folder.rs`
   for `--package`; `main.rs` runs it instead of the window, and on Windows release builds joins the terminal;
   `src/bin/raptaboard-cli.rs` is the same commands as a console program, shipped in every package (Windows: on
-  the PATH from the Store's alias or the installer; macOS: inside the app; Linux: `install.sh` puts it in
+  the PATH from the installer, not in the Store package; macOS: inside the app; Linux: `install.sh` puts it in
   `~/.local/bin`): `cargo run --bin raptaboard-cli -- packs list`),
   `settings.rs` settings kept between runs (command line, then `./.raptaboard/settings.toml`, then
   `~/.raptaboard/settings.toml`, made on the first run, then defaults; changes saved to the local file

@@ -16,8 +16,8 @@ given (--target aarch64-apple-darwin --target x86_64-apple-darwin). Linux: a
 info (keep it to decode crash reports).
 
 With --msix (Windows), also an MSIX for the Microsoft Store in dist-store/,
-not dist/: the same raptaboard.exe and raptaboard-cli.exe as the other Windows
-packages (the manifest puts raptaboard-cli on the PATH), unsigned
+not dist/: the same raptaboard.exe as the other Windows packages (not
+raptaboard-cli, which the Store package leaves out), unsigned
 (the Store signs it), from packaging/windows/msix/
 (the manifest, and store.json with the identity from Partner Center), with
 makeappx from the Windows SDK. It's uploaded to Partner Center, never
@@ -190,7 +190,8 @@ def package_msix(ver: str, out: Path) -> None:
     """The Microsoft Store's MSIX, into `out`, from the program already built."""
     identity = json.loads((PACKAGING / "windows" / "msix" / "store.json").read_text(encoding="utf-8"))
     stage = fresh(out / "stage" / "msix")
-    add_windows_programs(build_dir(None), stage)
+    # Only the dashboard: raptaboard-cli is in the installer and zip.
+    shutil.copy(built(build_dir(None) / "raptaboard.exe"), stage)
     add_docs(stage, ver)
     shutil.copytree(ICONS / "msix", stage / "Assets")
     manifest = (PACKAGING / "windows" / "msix" / "AppxManifest.xml").read_text(encoding="utf-8")

@@ -386,9 +386,9 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   and its output lands after the next prompt. So Windows packages also ship **`raptaboard-cli.exe`**
   (2026-11-23; `src/bin/raptaboard-cli.rs`): the same commands (`raptaboard-cli packs list`) as a
   console program, which a terminal waits for, so it prints in order and asks. Both programs run
-  `packs_cli::run_in_home`. The Store's MSIX has it as a second application, hidden from the Start
-  menu, with an app execution alias (`raptaboard-cli`, a console subsystem) that puts it on the
-  PATH; the installer adds its folder to this user's PATH (a task, ticked by default; uninstalling
+  `packs_cli::run_in_home`. The Store's MSIX leaves it out (2026-11-23: Partner Center refused a
+  second, hidden application as a "headless app"; Store users get it from GitHub, or use
+  `raptaboard packs` with `--yes`); the installer adds its folder to this user's PATH (a task, ticked by default; uninstalling
   takes it off); the zip just has it. macOS and Linux packages ship it too (2026-11-23), so the
   command is the same everywhere, though `raptaboard packs` works in a terminal there: macOS inside
   the app (`raptaboard.app/Contents/MacOS/raptaboard-cli`, universal like `raptaboard`, signed with

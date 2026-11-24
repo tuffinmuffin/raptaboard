@@ -20,8 +20,8 @@ and a command line to manage them.
   play a pack's sound.
 - **raptaboard-cli** (also `raptaboard packs …`): `raptaboard-cli packs list`, `install`,
   `update`, `remove`, from a pack folder (`--package`) or another catalog (`--url`) too. On
-  Windows the installer can add it to the PATH (on by default) and the Store puts it there;
-  on macOS it's inside the app, on Linux `install.sh` installs it.
+  Windows the installer can add it to the PATH (on by default); the Microsoft Store version
+  doesn't include it. On macOS it's inside the app, on Linux `install.sh` installs it.
 - **Privacy policy** in ⚙ Settings → About and licenses → Privacy, and online at
   <https://github.com/tuffinmuffin/raptaboard/blob/main/PRIVACY.md>.
 
