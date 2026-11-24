@@ -77,7 +77,8 @@ pub enum LoadError {
     #[error("{}: {source}", path.display())]
     Manifest {
         path: PathBuf,
-        source: ManifestError,
+        // Boxed: a TOML error is large, and this keeps every LoadError small.
+        source: Box<ManifestError>,
     },
     #[error("{}: not a raptaboard widget: {message}", path.display())]
     Wasm { path: PathBuf, message: String },
@@ -149,7 +150,7 @@ impl Runtime {
         let text = String::from_utf8_lossy(&read("plugin.toml")?).into_owned();
         let manifest = Manifest::from_toml(&text).map_err(|source| LoadError::Manifest {
             path: toml_path,
-            source,
+            source: Box::new(source),
         })?;
         let wasm = read("widget.wasm")?;
         self.compile(manifest, &wasm, folder)
