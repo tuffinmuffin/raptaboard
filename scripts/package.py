@@ -6,9 +6,10 @@
     python scripts/package.py --msix         # Windows: also the Microsoft Store package
 
 Windows: a portable zip (with its own .raptaboard settings folder) and a
-per-user installer (Inno Setup's iscc must be installed), each with
-raptaboard.exe (the dashboard, a window program) and raptaboard-cli.exe (its
-commands, such as `packs`, as a console program a terminal waits for). macOS: a zipped
+per-user installer (Inno Setup's iscc must be installed). Every package has
+both programs: raptaboard (the dashboard) and raptaboard-cli (its commands,
+such as `packs`, as a terminal program; on Windows, where raptaboard.exe is
+a window program, the only way a terminal waits for them). macOS: a zipped
 raptaboard.app, one program for Apple Silicon and Intel when both targets are
 given (--target aarch64-apple-darwin --target x86_64-apple-darwin). Linux: a
 .tar.gz with install.sh. Each also gets a -debug archive holding the debug
@@ -79,31 +80,41 @@ def build_dir(target: str | None) -> Path:
     return (base / target if target else base) / "release"
 
 
-# The programs each system's packages hold. raptaboard-cli is only needed on
-# Windows, where raptaboard.exe is a window program; elsewhere raptaboard
-# already works in a terminal, and each program is a long optimized build.
-PROGRAMS = {
-    "windows": ["raptaboard", "raptaboard-cli"],
-    "macos": ["raptaboard"],
-    "linux": ["raptaboard"],
-}
+# The programs every package holds: the dashboard, and raptaboard-cli, its
+# commands (`raptaboard-cli packs list`) as a terminal program. Windows needs
+# it (raptaboard.exe is a window program there); macOS and Linux ship it too,
+# so the command is the same everywhere.
+PROGRAMS = ["raptaboard", "raptaboard-cli"]
 
 
 def build(targets: list[str | None]) -> None:
-    bins = [arg for name in PROGRAMS[system()] for arg in ("--bin", name)]
+    bins = [arg for name in PROGRAMS for arg in ("--bin", name)]
     for target in targets:
         extra = ["--target", target] if target else []
         run("cargo", "build", "--release", "--locked", "-p", "raptaboard", *bins, *extra)
 
 
+def built(path: Path) -> Path:
+    """`path`, a program that must have been built: stops if it's missing (a
+    package without raptaboard-cli would build fine and be wrong)."""
+    if not path.is_file():
+        sys.exit(f"{path} wasn't built")
+    return path
+
+
+def debug_file(folder: Path, program: str, suffix: str) -> Path:
+    """Where a program's debug info is in `folder` (`.pdb`, `.dSYM`, `.dwp`):
+    named after the program, or with its dashes as underscores, as Cargo
+    names it on some systems (raptaboard_cli.pdb). If neither is there, the
+    first name, which the archive notes as missing and skips."""
+    names = [folder / f"{n}{suffix}" for n in (program, program.replace("-", "_"))]
+    return next((p for p in names if p.exists()), names[0])
+
+
 def add_windows_programs(release: Path, stage: Path) -> None:
-    """Copy each Windows program into `stage`, stopping if one is missing (a
-    package without raptaboard-cli.exe would build fine and be wrong)."""
-    for name in PROGRAMS["windows"]:
-        exe = release / f"{name}.exe"
-        if not exe.is_file():
-            sys.exit(f"{exe} wasn't built")
-        shutil.copy(exe, stage)
+    """Copy each program (.exe) into `stage`."""
+    for name in PROGRAMS:
+        shutil.copy(built(release / f"{name}.exe"), stage)
 
 
 def fresh(path: Path) -> Path:
@@ -213,16 +224,6 @@ def find_iscc() -> str | None:
     return None
 
 
-def windows_pdb(release: Path, program: str) -> Path:
-    """A Windows program's debug info: Cargo names it after the program with
-    its dashes as underscores (raptaboard_cli.pdb)."""
-    for name in (program.replace("-", "_"), program):
-        pdb = release / f"{name}.pdb"
-        if pdb.is_file():
-            return pdb
-    sys.exit(f"no debug info for {program} in {release}")
-
-
 def package_windows(ver: str, out: Path, installer: bool) -> None:
     name = f"raptaboard-{ver}-windows-x64"
     release = build_dir(None)
@@ -246,12 +247,11 @@ def package_windows(ver: str, out: Path, installer: bool) -> None:
     settings.mkdir()
     (settings / "settings.toml").write_text(PORTABLE_SETTINGS, encoding="utf-8")
     zip_folder(stage, out / f"{name}.zip")
-    debug_archive([windows_pdb(release, p) for p in PROGRAMS["windows"]], out / f"{name}-debug.zip")
+    debug_archive([debug_file(release, p, ".pdb") for p in PROGRAMS], out / f"{name}-debug.zip")
 
 
 def package_macos(ver: str, out: Path, targets: list[str | None]) -> None:
-    binaries = [build_dir(t) / "raptaboard" for t in targets]
-    if len(binaries) > 1:
+    if len(targets) > 1:
         arch = "universal"
     else:
         arch = {"arm64": "arm64", "x86_64": "x64"}.get(platform.machine(), platform.machine())
@@ -262,17 +262,22 @@ def package_macos(ver: str, out: Path, targets: list[str | None]) -> None:
     app = stage / "raptaboard.app" / "Contents"
     (app / "MacOS").mkdir(parents=True)
     (app / "Resources").mkdir()
-    program = app / "MacOS" / "raptaboard"
-    if len(binaries) > 1:
-        run("lipo", "-create", "-output", program, *binaries)
-    else:
-        shutil.copy(binaries[0], program)
-    program.chmod(0o755)
+    # Both programs inside the app (Contents/MacOS), each one program for
+    # every target given (lipo makes Apple Silicon and Intel into one).
+    for program_name in PROGRAMS:
+        binaries = [built(build_dir(t) / program_name) for t in targets]
+        program = app / "MacOS" / program_name
+        if len(binaries) > 1:
+            run("lipo", "-create", "-output", program, *binaries)
+        else:
+            shutil.copy(binaries[0], program)
+        program.chmod(0o755)
     plist = (PACKAGING / "macos" / "Info.plist").read_text(encoding="utf-8")
     (app / "Info.plist").write_text(plist.replace("{VERSION}", ver), encoding="utf-8")
     shutil.copy(ICONS / "raptaboard.icns", app / "Resources" / "raptaboard.icns")
     # An ad-hoc signature (no Apple account): Apple Silicon needs one to run
-    # the program at all; Gatekeeper still asks on the first open.
+    # the program at all; Gatekeeper still asks on the first open. --deep
+    # signs raptaboard-cli too.
     run("codesign", "--force", "--deep", "--sign", "-", stage / "raptaboard.app")
     add_docs(stage, ver)
     # ditto keeps the app bundle's permissions in the zip; no resource forks
@@ -285,17 +290,19 @@ def package_macos(ver: str, out: Path, targets: list[str | None]) -> None:
 
 
 def debug_each(targets: list[str | None], out: Path) -> None:
-    """The macOS debug info: each target's raptaboard.dSYM, in a folder
-    named for the target when there are two (both have the same name)."""
+    """The macOS debug info: each program's .dSYM for each target, in a
+    folder named for the target when there are two (both have the same
+    names)."""
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for t in targets:
-            dsym = build_dir(t) / "raptaboard.dSYM"
-            if not dsym.exists():
-                print("no debug info at", dsym)
-                continue
-            top = Path(t) if t and len(targets) > 1 else Path()
-            for item in sorted(dsym.rglob("*")):
-                z.write(item, top / item.relative_to(dsym.parent))
+            for program in PROGRAMS:
+                dsym = debug_file(build_dir(t), program, ".dSYM")
+                if not dsym.exists():
+                    print("no debug info at", dsym)
+                    continue
+                top = Path(t) if t and len(targets) > 1 else Path()
+                for item in sorted(dsym.rglob("*")):
+                    z.write(item, top / item.relative_to(dsym.parent))
     print("wrote", out)
 
 
@@ -303,8 +310,9 @@ def package_linux(ver: str, out: Path) -> None:
     name = f"raptaboard-{ver}-linux-x64"
     release = build_dir(None)
     stage = fresh(out / "stage" / name)
-    shutil.copy(release / "raptaboard", stage)
-    (stage / "raptaboard").chmod(0o755)
+    for program in PROGRAMS:
+        shutil.copy(built(release / program), stage)
+        (stage / program).chmod(0o755)
     shutil.copy(ICONS / "raptaboard.png", stage)
     shutil.copy(PACKAGING / "linux" / "raptaboard.desktop", stage)
     shutil.copy(PACKAGING / "linux" / "install.sh", stage)
@@ -314,7 +322,7 @@ def package_linux(ver: str, out: Path) -> None:
     with tarfile.open(tar, "w:gz") as t:
         t.add(stage, arcname=name)
     print("wrote", tar)
-    debug_archive([release / "raptaboard.dwp"], out / f"{name}-debug.zip")
+    debug_archive([debug_file(release, p, ".dwp") for p in PROGRAMS], out / f"{name}-debug.zip")
 
 
 def main() -> None:
