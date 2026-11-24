@@ -2,6 +2,29 @@
 
 What changes in each raptaboard release. Newest first.
 
+## 0.3.0
+
+Content packs: extra sounds (and later plugins, fields and layouts) to download when you choose,
+and a command line to manage them.
+
+- **Content packs** from raptaboard-content on GitHub: offered with each pack's license on the
+  first start and after an update, never downloaded without asking. ⚙ Settings → Content packs
+  installs, updates and removes them, and can add other sources. Every download is checked
+  (the official list is signed); without internet nothing changes.
+- **The IT Crowd clips** are now a pack ("IT Crowd clips"), not built in; every package, the
+  Microsoft Store's too, can install it. "disabled 1/2" and "fire 1/2" play tones until it is.
+- **Update check:** about once an hour while the robot isn't enabled (change or turn off in
+  ⚙ Settings), a dismissible "📦 Content" notice in the bar says when there's something new.
+- **Sound pickers** (FMSInfo's sounds, the Alerts tone) list the packs' sounds too: "fire 1"
+  plays the newest pack's, or pick one pack's or the built-in one. An Alerts widget can now
+  play a pack's sound.
+- **raptaboard-cli** (also `raptaboard packs …`): `raptaboard-cli packs list`, `install`,
+  `update`, `remove`, from a pack folder (`--package`) or another catalog (`--url`) too. On
+  Windows the installer can add it to the PATH (on by default) and the Store puts it there;
+  on macOS it's inside the app, on Linux `install.sh` installs it.
+- **Privacy policy** in ⚙ Settings → About and licenses → Privacy, and online at
+  <https://github.com/tuffinmuffin/raptaboard/blob/main/PRIVACY.md>.
+
 ## 0.2.1
 
 - **Microsoft Store package:** an MSIX the Store signs, so Windows trusts it. The Store build
