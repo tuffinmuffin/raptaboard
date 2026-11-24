@@ -1,5 +1,6 @@
-//! Plugin widgets in the window: the Number plugin from `plugins/` on the
-//! grid beside the built-in Text Display, and a plugin that stops.
+//! Plugin widgets in the window: the Number and Alerts plugins from
+//! `plugins/` on the grid beside the built-ins they copy, and a plugin that
+//! stops.
 
 // Tests written by Claude.
 
@@ -117,4 +118,122 @@ fn a_deleted_plugin_widget_stops_its_worker() {
         .clear();
     settle(&mut harness);
     assert!(!crate::plugins::has_worker(&ctx, &gone));
+}
+
+/// An alerts widget of `type_name` on the group `topic`, titled `title`, with
+/// settings `extra`.
+fn alerts(
+    type_name: &str,
+    topic: &str,
+    title: &str,
+    x: f64,
+    extra: serde_json::Value,
+) -> WidgetContainer {
+    let mut w = widget(type_name, topic, "", at(x));
+    w.properties.remove("data_type");
+    w.title = title.into();
+    w.rect.height = 256.0;
+    for (k, v) in extra.as_object().unwrap() {
+        w.properties.insert(k.clone(), v.clone());
+    }
+    w
+}
+
+#[test]
+fn the_alerts_plugin_counts_and_sounds_like_the_built_in() {
+    let plugin = load("alerts");
+    assert_eq!(plugin, "plugin:alerts");
+    // Offered for alert groups' tables, like the built-in.
+    let ty = crate::plugins::find(&plugin).unwrap();
+    assert_eq!(widgets::WidgetType::table_types(ty), ["Alerts"]);
+
+    let robot = Robot::start();
+    let mut harness = harness_with(
+        &robot,
+        vec![
+            alerts("Alerts", "/Test/Alerts", "Built in", 0.0, json!({})),
+            alerts(
+                &plugin,
+                "/Test/Alerts",
+                "Plugin",
+                256.0,
+                json!({"sound": true}),
+            ),
+            alerts(
+                &plugin,
+                "/Test/Alerts",
+                "Every group",
+                512.0,
+                json!({"all_groups": true}),
+            ),
+        ],
+    );
+    harness.state_mut().alert_sound = true;
+    labelled_soon(&mut harness, "Built in: 0 errors, 1 warning, 1 info");
+    labelled_soon(&mut harness, "Plugin: 0 errors, 1 warning, 1 info");
+    labelled_soon(&mut harness, "Every group: 0 errors, 1 warning, 1 info");
+    // Already active when it first looked: no tone for those.
+    assert!(harness.state().sound.tones().is_empty());
+    // A new error: the same count, and one tone (only the plugin sounds).
+    robot.alert_errors.set(vec!["Encoder lost".into()]);
+    labelled_soon(&mut harness, "Built in: 1 error, 1 warning, 1 info");
+    labelled_soon(&mut harness, "Plugin: 1 error, 1 warning, 1 info");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while harness.state().sound.tones().is_empty() {
+        assert!(Instant::now() < deadline, "no tone");
+        settle(&mut harness);
+    }
+    assert_eq!(harness.state().sound.tones(), [crate::sound::Tone::Beep]);
+    // Every group: the arm's errors too.
+    robot.arm_errors.set(vec!["Arm motor fault".into()]);
+    labelled_soon(&mut harness, "Every group: 2 errors, 1 warning, 1 info");
+    labelled_soon(&mut harness, "Plugin: 1 error, 1 warning, 1 info");
+    // The robot goes away: the last alerts seen stay, marked.
+    drop(robot);
+    labelled_soon(
+        &mut harness,
+        "Built in: 1 error, 1 warning, 1 info (disconnected)",
+    );
+    labelled_soon(
+        &mut harness,
+        "Plugin: 1 error, 1 warning, 1 info (disconnected)",
+    );
+}
+
+#[test]
+fn the_alerts_plugin_marks_its_tab_while_it_is_closed() {
+    let plugin = load("alerts");
+    let robot = Robot::start();
+    let mut harness = harness_with(&robot, vec![]);
+    let mut closed = Tab::new("Arm tab");
+    closed.grid_layout.containers = vec![alerts(&plugin, "/Test/Arm", "Arm", 0.0, json!({}))];
+    harness.state_mut().layout.tabs.push(closed);
+    use crate::types::alerts::Level;
+    let mark = |h: &mut Harness| {
+        settle(h);
+        let app = h.state();
+        let topics = app.nt.topics();
+        let values: std::collections::HashMap<&str, &nt4::Value> = topics
+            .iter()
+            .filter_map(|t| Some((&*t.name, &t.value.as_ref()?.value)))
+            .collect();
+        app.tab_marks(&values)[1]
+    };
+    let wait_for = |h: &mut Harness, want: Option<Level>| {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while mark(h) != want {
+            assert!(Instant::now() < deadline, "the mark never became {want:?}");
+        }
+    };
+    wait_for(&mut harness, None);
+    robot.arm_errors.set(vec!["Arm motor fault".into()]);
+    wait_for(&mut harness, Some(Level::Error));
+    robot.arm_errors.set(vec![]);
+    robot.arm_warnings.set(vec!["Arm hot".into()]);
+    wait_for(&mut harness, Some(Level::Warning));
+    assert_eq!(
+        harness.state().current_tab,
+        0,
+        "the arm's tab stayed closed"
+    );
 }

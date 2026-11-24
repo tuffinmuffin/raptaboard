@@ -37,6 +37,8 @@ pub mod bindings {
         world: "widget",
         pub_export_macro: true,
         default_bindings_module: "raptaboard_plugin::bindings",
+        // So plugins can compare values and shapes in their tests.
+        additional_derives: [PartialEq],
     });
 }
 

@@ -119,7 +119,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   a `Host`; a trap, a panic, running past `Limits::call_ms` or `memory_bytes` stops it for good, as `Stopped`;
   WASI with no files, network or environment, stdout to the log); `dev.rs` builds a plugins workspace
   (`repo_plugins()`: `plugins/`, once per test run). `tests/runtime.rs` runs them. `docs/spec.md` "Plugin system"
-  has the plan (next the Alerts plugin and plugin packs, then Doom, graphs, a 3D robot viewer, a log viewer).
+  has the plan (next plugin packs, then Doom, graphs, a 3D robot viewer, a log viewer).
 - `crates/app/src/plugins/`: plugins in the app. `mod.rs` the registry (plugins loaded with `--plugin`, saved in
   layouts as `plugin:<name>`, found by `widgets::find`; listed by `widgets::types_showing` and the settings dialog's
   widget choice after the built-ins; a changed `.wasm` is loaded again within a second and its widgets restart) and
@@ -131,11 +131,12 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `PluginType`, the `WidgetType` adapter (card, picture, regions as accessible controls, the summary as the widget's
   label, "Plugin stopped" with Restart, settings rows from `plugin.toml`); `draw.rs` the shapes in egui (images not
   yet); `convert.rs` values, settings and the theme in the plugin interface's types. `ui/tests/plugins.rs` runs the
-  Number plugin beside a Text Display.
+  Number plugin beside a Text Display and the Alerts plugin beside the built-in Alerts.
 - `plugins/`: a workspace of its own, built for WebAssembly (`cd plugins && cargo build --release --target
   wasm32-wasip2`; needs `rustup target add wasm32-wasip2`): `sdk` is `raptaboard-plugin` (the `Widget` trait and
   `widget!` macro over the wit-bindgen bindings, and helpers), `number` the first example plugin (a number topic
-  as text, with the Text Display's setting names), `limits-test` a plugin that misbehaves on purpose for the
+  as text, with the Text Display's setting names), `alerts` the second (the built-in Alerts widget remade: a
+  table plugin with a tab mark, a tone and a pulse, with the built-in's setting names), `limits-test` a plugin that misbehaves on purpose for the
   runtime tests. CI lints and tests it in the lint job.
 - `crates/app`: the eframe app. `ui/` holds the window (`DashboardApp` in `ui/mod.rs` with file open/save and the edit and tab
   actions; its state is grouped in `ui/state.rs`: `file` (`LayoutFile`), `address`, `tree` (`TreeView`), `grid`
