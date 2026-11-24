@@ -6,14 +6,17 @@
     python scripts/package.py --msix         # Windows: also the Microsoft Store package
 
 Windows: a portable zip (with its own .raptaboard settings folder) and a
-per-user installer (Inno Setup's iscc must be installed). macOS: a zipped
+per-user installer (Inno Setup's iscc must be installed), each with
+raptaboard.exe (the dashboard, a window program) and raptaboard-cli.exe (its
+commands, such as `packs`, as a console program a terminal waits for). macOS: a zipped
 raptaboard.app, one program for Apple Silicon and Intel when both targets are
 given (--target aarch64-apple-darwin --target x86_64-apple-darwin). Linux: a
 .tar.gz with install.sh. Each also gets a -debug archive holding the debug
 info (keep it to decode crash reports).
 
 With --msix (Windows), also an MSIX for the Microsoft Store in dist-store/,
-not dist/: the same raptaboard.exe as the other Windows packages, unsigned
+not dist/: the same raptaboard.exe and raptaboard-cli.exe as the other Windows
+packages (the manifest puts raptaboard-cli on the PATH), unsigned
 (the Store signs it), from packaging/windows/msix/
 (the manifest, and store.json with the identity from Partner Center), with
 makeappx from the Windows SDK. It's uploaded to Partner Center, never
@@ -76,10 +79,31 @@ def build_dir(target: str | None) -> Path:
     return (base / target if target else base) / "release"
 
 
+# The programs each system's packages hold. raptaboard-cli is only needed on
+# Windows, where raptaboard.exe is a window program; elsewhere raptaboard
+# already works in a terminal, and each program is a long optimized build.
+PROGRAMS = {
+    "windows": ["raptaboard", "raptaboard-cli"],
+    "macos": ["raptaboard"],
+    "linux": ["raptaboard"],
+}
+
+
 def build(targets: list[str | None]) -> None:
+    bins = [arg for name in PROGRAMS[system()] for arg in ("--bin", name)]
     for target in targets:
         extra = ["--target", target] if target else []
-        run("cargo", "build", "--release", "--locked", "-p", "raptaboard", *extra)
+        run("cargo", "build", "--release", "--locked", "-p", "raptaboard", *bins, *extra)
+
+
+def add_windows_programs(release: Path, stage: Path) -> None:
+    """Copy each Windows program into `stage`, stopping if one is missing (a
+    package without raptaboard-cli.exe would build fine and be wrong)."""
+    for name in PROGRAMS["windows"]:
+        exe = release / f"{name}.exe"
+        if not exe.is_file():
+            sys.exit(f"{exe} wasn't built")
+        shutil.copy(exe, stage)
 
 
 def fresh(path: Path) -> Path:
@@ -155,7 +179,7 @@ def package_msix(ver: str, out: Path) -> None:
     """The Microsoft Store's MSIX, into `out`, from the program already built."""
     identity = json.loads((PACKAGING / "windows" / "msix" / "store.json").read_text(encoding="utf-8"))
     stage = fresh(out / "stage" / "msix")
-    shutil.copy(build_dir(None) / "raptaboard.exe", stage)
+    add_windows_programs(build_dir(None), stage)
     add_docs(stage, ver)
     shutil.copytree(ICONS / "msix", stage / "Assets")
     manifest = (PACKAGING / "windows" / "msix" / "AppxManifest.xml").read_text(encoding="utf-8")
@@ -189,11 +213,21 @@ def find_iscc() -> str | None:
     return None
 
 
+def windows_pdb(release: Path, program: str) -> Path:
+    """A Windows program's debug info: Cargo names it after the program with
+    its dashes as underscores (raptaboard_cli.pdb)."""
+    for name in (program.replace("-", "_"), program):
+        pdb = release / f"{name}.pdb"
+        if pdb.is_file():
+            return pdb
+    sys.exit(f"no debug info for {program} in {release}")
+
+
 def package_windows(ver: str, out: Path, installer: bool) -> None:
     name = f"raptaboard-{ver}-windows-x64"
     release = build_dir(None)
     stage = fresh(out / "stage" / name)
-    shutil.copy(release / "raptaboard.exe", stage)
+    add_windows_programs(release, stage)
     add_docs(stage, ver)
     # The installer takes the files it lists, so the portable settings
     # folder only goes in the zip.
@@ -212,7 +246,7 @@ def package_windows(ver: str, out: Path, installer: bool) -> None:
     settings.mkdir()
     (settings / "settings.toml").write_text(PORTABLE_SETTINGS, encoding="utf-8")
     zip_folder(stage, out / f"{name}.zip")
-    debug_archive([release / "raptaboard.pdb"], out / f"{name}-debug.zip")
+    debug_archive([windows_pdb(release, p) for p in PROGRAMS["windows"]], out / f"{name}-debug.zip")
 
 
 def package_macos(ver: str, out: Path, targets: list[str | None]) -> None:

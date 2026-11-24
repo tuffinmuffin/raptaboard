@@ -59,7 +59,8 @@ About window's list), plus a `-debug` archive. Nothing is code-signed yet (decid
 (the Release workflow's Windows job) `package.py` also makes an unsigned MSIX for the Store, which signs it
 (`packaging/windows/msix/`: the manifest, and `store.json` with the identity from Partner Center), in
 `dist-store/` and its own `store-msix` artifact, never on the GitHub release; it holds the same `raptaboard.exe`
-as the other Windows packages. Each release's `.msix` is uploaded in Partner Center by hand for now.
+and `raptaboard-cli.exe` as the other Windows packages (the second a hidden console application with a
+`raptaboard-cli` execution alias: mention it in the submission's notes for certification). Each release's `.msix` is uploaded in Partner Center by hand for now.
 `PRIVACY.md` is the privacy policy the Store listing links to (its GitHub URL on `main`, from the release after 0.2.1;
 0.2.1's listing had the text pasted in), built into the About window's Privacy page
 (`credits::PRIVACY`, drawn from its Markdown by `credits::policy_blocks`) (raptaboard collects nothing, connects only to the
@@ -127,7 +128,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `DashboardApp::show` is one frame without an `eframe::Frame`), `connection.rs` the robot address modes,
   `cli.rs` the startup flags (`clap` derive, `cli::Args`: `--team`, `--address`, `--port`,
   `--hide-tree`; this run only) and `cli::Command` (`raptaboard packs …`, in `packs_cli.rs`, with `pack_folder.rs`
-  for `--package`; `main.rs` runs it instead of the window, and on Windows release builds joins the terminal),
+  for `--package`; `main.rs` runs it instead of the window, and on Windows release builds joins the terminal;
+  `src/bin/raptaboard-cli.rs` is the same commands as a console program, shipped in the Windows packages and
+  on the PATH from the Store's alias or the installer: `cargo run --bin raptaboard-cli -- packs list`),
   `settings.rs` settings kept between runs (command line, then `./.raptaboard/settings.toml`, then
   `~/.raptaboard/settings.toml`, made on the first run, then defaults; changes saved to the local file
   if there is one, else the home file, by `settings::Tracker`; `ui/` only says what the current

@@ -41,6 +41,20 @@ The "Locked" / "Unlocked" button in the settings bar switches between them:
 unlocked, widgets can be moved, resized and edited; lock it for driving so
 nothing moves by accident.
 
+Content packs from a terminal
+-----------------------------
+
+Extra sounds (content packs) can be listed, installed, updated and removed
+without opening the dashboard (Settings > Content packs does the same):
+
+  Windows:        raptaboard-cli packs list
+  macOS, Linux:   raptaboard packs list
+
+Then "packs install <id>", "packs update", "packs remove <id>"; add --help to
+any of them for more. On Windows, raptaboard-cli is on the PATH after the
+Microsoft Store or the installer adds it (an option while installing, on by
+default); from the zip, run it from its folder.
+
 Where things are kept
 ---------------------
 
