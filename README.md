@@ -70,7 +70,7 @@ On Linux you also need the windowing libraries:
 | `crates/plugin-host` | Plugin manifests (`plugin.toml`), matching plugins to NT tables, topic path helpers |
 | `crates/app` | The eframe/egui desktop app (binary `raptaboard`) |
 | `wit/dashboard.wit` | The plugin interface: what a WASM widget imports and exports |
-| `plugins/arm` | Example plugin manifest for an arm table tagged `.type = "Arm"` |
+| `plugins/` | The plugin SDK (`raptaboard-plugin`) and example plugins, built for WebAssembly in their own workspace |
 | `docs/spec.md` | The spec: Elastic feature list, requirements, plugin design, milestones |
 | `packaging/`, `scripts/package.py` | Release packages: the Windows installer, macOS app and Linux install script |
 | `media/icon/` | The app icon (`raptaboard.svg`; the other files are made from it) |

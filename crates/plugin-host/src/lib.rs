@@ -20,6 +20,7 @@
 //! ```
 
 pub mod path;
+pub mod runtime;
 
 use std::collections::BTreeMap;
 
@@ -37,8 +38,10 @@ pub enum ManifestError {
     Pattern(String, glob::PatternError),
     #[error("plugin needs host API {needed}, this dashboard has {HOST_API}")]
     Api { needed: String },
-    #[error("[match] needs at least one of type, path or has")]
+    #[error("[match] needs topic_types, or at least one of type, path or has")]
     EmptyMatch,
+    #[error("[match] has topic_types and table rules: a plugin shows a topic or a table, not both")]
+    MixedMatch,
 }
 
 /// Contents of a plugin's `plugin.toml`.
@@ -60,10 +63,15 @@ pub struct Manifest {
     pub permissions: Permissions,
 }
 
-/// Which NT tables a plugin can draw. Every rule given must pass.
+/// What a plugin can draw: one topic of the given types, or a table that passes
+/// every table rule given.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MatchRules {
+    /// NT types of a single topic the plugin can show, like `["double", "int"]`.
+    /// A plugin with these is bound to a topic, not a table.
+    #[serde(default)]
+    pub topic_types: Vec<String>,
     /// The table's `.type` string must equal this.
     #[serde(rename = "type")]
     pub type_tag: Option<String>,
@@ -118,6 +126,11 @@ pub enum PropertySpec {
         default: String,
         options: Vec<String>,
     },
+    /// A sound from the shared sound picker, like `"fire 1"` or
+    /// `"pack:fan-clips/disabled"`; `""` for none.
+    Sound {
+        default: String,
+    },
 }
 
 /// What a plugin is allowed to do beyond drawing.
@@ -127,6 +140,13 @@ pub struct Permissions {
     /// May write NT values inside its bound table.
     #[serde(default)]
     pub publish: bool,
+    /// May play sounds (`play-sound`).
+    #[serde(default)]
+    pub sound: bool,
+    /// Keeps getting values, and so setting its tab's mark, while its tab is
+    /// closed.
+    #[serde(default)]
+    pub background: bool,
 }
 
 /// What the dashboard knows about one NT table when matching plugins.
@@ -154,8 +174,12 @@ impl Manifest {
 
     fn validate(&self) -> Result<(), ManifestError> {
         let m = &self.match_rules;
-        if m.type_tag.is_none() && m.path.is_none() && m.has.is_empty() {
+        let table_rules = m.type_tag.is_some() || m.path.is_some() || !m.has.is_empty();
+        if !table_rules && m.topic_types.is_empty() {
             return Err(ManifestError::EmptyMatch);
+        }
+        if table_rules && !m.topic_types.is_empty() {
+            return Err(ManifestError::MixedMatch);
         }
         if let Some(p) = &m.path {
             glob::Pattern::new(p).map_err(|e| ManifestError::Pattern(p.clone(), e))?;
@@ -173,6 +197,9 @@ impl Manifest {
     /// path pattern, then each required key.
     pub fn matches(&self, table: &TableInfo<'_>) -> Option<Specificity> {
         let m = &self.match_rules;
+        if !m.topic_types.is_empty() {
+            return None;
+        }
         let mut score = 0;
         if let Some(t) = &m.type_tag {
             if table.type_tag != Some(t.as_str()) {
@@ -194,6 +221,28 @@ impl Manifest {
             score += 1;
         }
         Some(Specificity(score))
+    }
+}
+
+impl Manifest {
+    /// Whether this plugin shows single topics (rather than tables).
+    ///
+    /// ```
+    /// use raptaboard_plugin_host::Manifest;
+    /// let m = Manifest::from_toml(
+    ///     "name='n'\nversion='0'\napi='0.2'\n[match]\ntopic_types=['double']\n",
+    /// ).unwrap();
+    /// assert!(m.shows_topics());
+    /// assert!(m.matches_topic("double"));
+    /// assert!(!m.matches_topic("string"));
+    /// ```
+    pub fn shows_topics(&self) -> bool {
+        !self.match_rules.topic_types.is_empty()
+    }
+
+    /// Whether this plugin can show a topic of this NT type, like `"double"`.
+    pub fn matches_topic(&self, nt_type: &str) -> bool {
+        self.match_rules.topic_types.iter().any(|t| t == nt_type)
     }
 }
 
@@ -260,6 +309,39 @@ mod tests {
         assert_eq!(m.matches(&ok), Some(Specificity(11)));
         assert_eq!(m.matches(&wrong_path), None);
         assert_eq!(m.matches(&missing_key), None);
+    }
+
+    #[test]
+    fn a_topic_plugin_matches_topics_not_tables() {
+        let m = Manifest::from_toml(
+            "name='n'\nversion='0'\napi='0.2'\n[match]\ntopic_types=['double','int']\n",
+        )
+        .unwrap();
+        assert!(m.matches_topic("int"));
+        let table = TableInfo {
+            path: "/Arm",
+            type_tag: Some("Arm"),
+            keys: &[],
+        };
+        assert_eq!(m.matches(&table), None);
+        let mixed = Manifest::from_toml(
+            "name='n'\nversion='0'\napi='0.2'\n[match]\ntopic_types=['double']\ntype='Arm'\n",
+        );
+        assert!(matches!(mixed, Err(ManifestError::MixedMatch)));
+    }
+
+    #[test]
+    fn sound_properties_and_permissions_load() {
+        let m = Manifest::from_toml(
+            "name='a'\nversion='0'\napi='0.2'\n[match]\ntype='Alerts'\n\
+             [properties]\ntone={type='sound',default='fire 1'}\n\
+             [permissions]\nsound=true\nbackground=true\n",
+        )
+        .unwrap();
+        assert!(
+            matches!(&m.properties["tone"], PropertySpec::Sound { default } if default == "fire 1")
+        );
+        assert!(m.permissions.sound && m.permissions.background && !m.permissions.publish);
     }
 
     #[test]

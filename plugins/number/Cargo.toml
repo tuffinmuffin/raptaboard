@@ -1,0 +1,15 @@
+[package]
+name = "number"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+raptaboard-plugin.workspace = true
+
+[lints]
+workspace = true

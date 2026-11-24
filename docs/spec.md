@@ -289,8 +289,10 @@ content pack (`[[plugin]]`, signed like sounds), or during development from a lo
 when the `.wasm` changes. `plugin.toml` gives:
 
 1. Name, version, the host API version (`api = "0.2"`).
-2. Match rules: `type` (the table's `.type`), `path` (glob) and `has` (required child keys). All the
-   rules given must pass; a `.type` match is the most specific. Implemented in `crates/plugin-host`.
+2. Match rules: for a plugin bound to a table, `type` (the table's `.type`), `path` (glob) and `has`
+   (required child keys). All the rules given must pass; a `.type` match is the most specific. A plugin
+   bound to one topic gives `topic_types` (NT types, like `["double", "int"]`) instead, and subscribes to
+   it as `bound`. Implemented in `crates/plugin-host`.
 3. Size in grid cells (default and minimum).
 4. Properties: the edit dialog is made from them and they're saved in the layout. The types are `number`,
    `bool`, `string`, `color`, `enum`, plus `sound` (the shared sound picker) and, later, `table`
@@ -327,7 +329,7 @@ on a plugin.
   it), and the dashboard's own shortcuts are off meanwhile.
 - Host calls: `get`, `unit`, `publish`, `property`, `measure-text`, `play-sound` (through
   raptaboard's own sounds, honoring mute) and `log`.
-- Limits: wasmtime epoch interruption gives each call a time budget (better than fuel for work that
+- Limits (100 ms a call and 64 MiB by default, `runtime::Limits`): wasmtime epoch interruption gives each call a time budget (better than fuel for work that
   must keep a frame rate), and each instance has a memory cap. WASI gives clocks and random only, no
   files or network. A plugin that traps or runs over shows a "plugin stopped" card with Restart, and
   the rest of the dashboard keeps going.
@@ -358,7 +360,9 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
 
 ### Order
 
-1. **Runtime and the two example plugins** (next). The wasmtime host with the limits above, API 0.2,
+1. **Runtime and the two example plugins** (started 2026-11-23: `crates/plugin-host` `runtime.rs` runs
+   plugins with the limits, the `plugins/` workspace has the SDK crate and the Number plugin, and
+   plugin-host's tests run them; next is the adapter in the app, then Alerts). The wasmtime host with the limits above, API 0.2,
    the adapter, loading from packs and from a local folder, the SDK crate and the test harness. Then two plugins in
    `plugins/` (built in CI, shipped as an `example-widgets` pack in raptaboard-content), each set beside
    its built-in to show plugins can match them:

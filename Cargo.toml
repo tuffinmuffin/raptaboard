@@ -1,13 +1,15 @@
 [workspace]
 resolver = "3"
 members = ["crates/layout", "crates/plugin-host", "crates/app", "crates/win-console"]
+# The plugins (and their SDK) build for WebAssembly in their own workspace.
+exclude = ["plugins"]
 
 [workspace.package]
 version = "0.3.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/tuffinmuffin/raptaboard"
-rust-version = "1.95"
+rust-version = "1.97"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

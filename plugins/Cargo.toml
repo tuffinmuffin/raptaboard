@@ -1,0 +1,30 @@
+# raptaboard's own plugins and the SDK for writing them. They build for
+# WebAssembly (`--target wasm32-wasip2`), so they're a workspace of their own
+# rather than part of the dashboard's.
+[workspace]
+resolver = "3"
+members = ["sdk", "number", "limits-test"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/tuffinmuffin/raptaboard"
+rust-version = "1.97"
+
+[workspace.dependencies]
+raptaboard-plugin = { path = "sdk" }
+wit-bindgen = "0.63.0"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+# Plugins are downloaded and loaded into the dashboard: keep them small.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

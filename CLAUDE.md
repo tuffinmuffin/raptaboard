@@ -41,6 +41,8 @@ cargo test -p raptaboard --lib record_store_screenshots -- --ignored --nocapture
 # Log pointer and touch input to the terminal (input_log.rs: egui's events each frame and what the
 # Field's target made of them), for odd clicks and taps:
 RAPTABOARD_LOG_INPUT=1 cargo run -p raptaboard -- --address sim layouts/robot2027_sim.json
+# Plugins (their own workspace, for WebAssembly; plugin-host's tests build them too):
+(cd plugins && cargo build --release --target wasm32-wasip2 && cargo clippy --target wasm32-wasip2 --all-targets -- -D warnings)
 # Milestone 1 CPU test (opens a window, ~40 s; keep it visible):
 cargo test -p raptaboard --release --test cpu_load -- --ignored --nocapture
 ```
@@ -110,9 +112,19 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
 - `crates/layout`: Elastic v1 model. Unknown fields go in `extra` maps so files round-trip.
   `ElasticLayout::sanitize` fixes values the app can't show (run on every opened file) and leaves
   valid layouts unchanged (`tests/sanitize.rs`).
-- `crates/plugin-host`: manifest parsing and matching; `path` has topic path helpers
-  (`.type` tables). wasmtime hosting is next: `docs/spec.md` "Plugin system" has the plan (API 0.2,
-  then Number and Alerts plugins matching the built-ins, then Doom, graphs, a 3D robot viewer, a log viewer).
+- `crates/plugin-host`: manifest parsing and matching (`plugin.toml`: a table plugin's `type`/`path`/`has`, or a
+  topic plugin's `topic_types`); `path` has topic path helpers (`.type` tables); `runtime.rs` runs plugins with
+  wasmtime (`Runtime` compiles and keeps the clock behind the time limits, `Plugin` one compiled folder,
+  `Instance` one widget: `subscriptions`, `update`, `render`, `tab_mark`, `on_input`, answering the plugin through
+  a `Host`; a trap, a panic, running past `Limits::call_ms` or `memory_bytes` stops it for good, as `Stopped`;
+  WASI with no files, network or environment, stdout to the log). `tests/runtime.rs` builds `plugins/` for
+  `wasm32-wasip2` and runs them. The app doesn't use the runtime yet: `docs/spec.md` "Plugin system" has the plan
+  (next the adapter to `WidgetType` and the Alerts plugin, then Doom, graphs, a 3D robot viewer, a log viewer).
+- `plugins/`: a workspace of its own, built for WebAssembly (`cd plugins && cargo build --release --target
+  wasm32-wasip2`; needs `rustup target add wasm32-wasip2`): `sdk` is `raptaboard-plugin` (the `Widget` trait and
+  `widget!` macro over the wit-bindgen bindings, and helpers), `number` the first example plugin (a number topic
+  as text, with the Text Display's setting names), `limits-test` a plugin that misbehaves on purpose for the
+  runtime tests. CI lints and tests it in the lint job.
 - `crates/app`: the eframe app. `ui/` holds the window (`DashboardApp` in `ui/mod.rs` with file open/save and the edit and tab
   actions; its state is grouped in `ui/state.rs`: `file` (`LayoutFile`), `address`, `tree` (`TreeView`), `grid`
   (`GridState`: drags, where the grid was), `alerts` (the history and its panel) and `sends` (failed sends),
@@ -276,7 +288,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   Layout children.
 - `wit/dashboard.wit`: plugin ABI (0.2, a draft until the host runs it). Bump the package version and
   `HOST_API` in plugin-host together.
-- `plugins/arm`: example plugin; its `plugin.toml` is a test fixture.
+- `plugins/arm`: a manifest only (no code); its `plugin.toml` is a test fixture.
 
 ## Conventions
 

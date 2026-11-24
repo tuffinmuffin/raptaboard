@@ -12,6 +12,8 @@ serde.workspace = true
 toml.workspace = true
 glob.workspace = true
 thiserror.workspace = true
+wasmtime = { version = "50.0.3", default-features = false, features = ["cranelift", "component-model", "runtime", "std", "parallel-compilation"] }
+wasmtime-wasi = { version = "50.0.3", default-features = false }
 
 [lints]
 workspace = true
