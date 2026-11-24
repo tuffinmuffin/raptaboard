@@ -52,9 +52,11 @@ without opening the dashboard (Settings > Content packs does the same):
 Then "packs install <id>", "packs update", "packs remove <id>"; add --help to
 any of them for more. raptaboard-cli comes with raptaboard:
 
-  Windows:  on the PATH after the Microsoft Store or the installer adds it
-            (an option while installing, on by default); from the zip, run
-            it from its folder.
+  Windows:  on the PATH after the installer adds it (an option while
+            installing, on by default); from the zip, run it from its folder.
+            The Microsoft Store version doesn't include it: get the installer
+            or zip from GitHub, or use "raptaboard packs ..." (it needs --yes
+            to install, and prints after the next prompt).
   macOS:    inside the app. To type it by name, link it into a folder on
             your PATH once, for example:
               ln -s /Applications/raptaboard.app/Contents/MacOS/raptaboard-cli ~/.local/bin/
