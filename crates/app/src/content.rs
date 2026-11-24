@@ -846,6 +846,41 @@ pub fn sources(added: &[String]) -> Vec<Source> {
     .collect()
 }
 
+impl Source {
+    /// Read this source's catalog: the official one signed with one of
+    /// `keys` (an older release's, with a note, if the latest has none:
+    /// [`fetch_official`]), any other unsigned. The Content window's
+    /// checks and `raptaboard packs` both read sources this way.
+    pub fn read(self, keys: &[[u8; 32]], fetch: &Fetch) -> Checked {
+        let (catalog, note) = if self.official {
+            match fetch_official(keys, fetch) {
+                Ok((c, note)) => (Ok(c), note),
+                Err(e) => (Err(e), None),
+            }
+        } else {
+            (fetch_catalog(&self.url, &[], fetch), None)
+        };
+        Checked {
+            source: self,
+            catalog,
+            note,
+        }
+    }
+}
+
+/// Every pack the sources `checked` offer, with its source: where two
+/// sources have a pack of one id, the first source's (the official one
+/// comes first).
+pub fn offers(checked: &[Checked]) -> Vec<(&Source, &Pack)> {
+    let mut seen = HashSet::new();
+    checked
+        .iter()
+        .filter_map(|c| c.catalog.as_ref().ok().map(|cat| (&c.source, cat)))
+        .flat_map(|(s, cat)| cat.packs.iter().map(move |p| (s, p)))
+        .filter(|(_, p)| seen.insert(p.id.clone()))
+        .collect()
+}
+
 /// A source as last checked.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Checked {
@@ -988,21 +1023,7 @@ impl Content {
                         Job::Check(sources) => Done::Checked(
                             sources
                                 .into_iter()
-                                .map(|source| {
-                                    let (catalog, note) = if source.official {
-                                        match fetch_official(&keys, &*fetch) {
-                                            Ok((c, note)) => (Ok(c), note),
-                                            Err(e) => (Err(e), None),
-                                        }
-                                    } else {
-                                        (fetch_catalog(&source.url, &[], &*fetch), None)
-                                    };
-                                    Checked {
-                                        catalog,
-                                        note,
-                                        source,
-                                    }
-                                })
+                                .map(|s| s.read(&keys, &*fetch))
                                 .collect(),
                         ),
                         Job::Install(source, pack) => {
@@ -1176,14 +1197,7 @@ impl Content {
     /// Every pack the checked sources offer, with the source it's from,
     /// the first source listing an id winning.
     pub fn offered(&self) -> Vec<(&Source, &Pack)> {
-        let mut seen = HashSet::new();
-        self.checked
-            .iter()
-            .flatten()
-            .filter_map(|c| c.catalog.as_ref().ok().map(|cat| (&c.source, cat)))
-            .flat_map(|(s, cat)| cat.packs.iter().map(move |p| (s, p)))
-            .filter(|(_, p)| seen.insert(p.id.clone()))
-            .collect()
+        self.checked.as_deref().map_or_else(Vec::new, offers)
     }
 
     /// What's remembered between runs.
@@ -1413,7 +1427,7 @@ pub(crate) mod tests {
 
     /// GitHub's list of releases, newest first: each tag and whether it
     /// has the catalog's two files.
-    fn releases(tags: &[(&str, bool)]) -> Vec<u8> {
+    pub fn releases(tags: &[(&str, bool)]) -> Vec<u8> {
         let list: Vec<serde_json::Value> = tags
             .iter()
             .map(|(tag, whole)| {
@@ -1431,13 +1445,45 @@ pub(crate) mod tests {
         serde_json::to_vec(&list).unwrap()
     }
 
-    fn release_url(tag: &str) -> String {
+    pub fn release_url(tag: &str) -> String {
         format!("https://github.com/{OFFICIAL_REPO}/releases/download/{tag}/catalog.json")
     }
 
     #[test]
     fn the_official_urls_name_the_same_repo() {
         assert!(OFFICIAL.contains(OFFICIAL_REPO) && OFFICIAL_RELEASES.contains(OFFICIAL_REPO));
+    }
+
+    #[test]
+    fn a_pack_two_sources_have_is_offered_once_from_the_first() {
+        let checked = |url: &str, version: &str| Checked {
+            source: Source {
+                url: url.into(),
+                official: false,
+            },
+            catalog: Ok(catalog(vec![sound_pack(
+                "beeps",
+                version,
+                &[],
+                "https://x",
+            )])),
+            note: None,
+        };
+        let unread = Checked {
+            catalog: Err("offline".into()),
+            ..checked("https://down", "9.0.0")
+        };
+        let all = [
+            unread,
+            checked("https://a", "1.0.0"),
+            checked("https://b", "2.0.0"),
+        ];
+        let offered = offers(&all);
+        assert_eq!(offered.len(), 1);
+        assert_eq!(
+            (offered[0].0.url.as_str(), offered[0].1.version.as_str()),
+            ("https://a", "1.0.0")
+        );
     }
 
     #[test]

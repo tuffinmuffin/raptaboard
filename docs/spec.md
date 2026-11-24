@@ -378,7 +378,9 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   checked as its `build_catalog.py` does: `pack_folder.rs`). `--package` and any `--url` but the
   official catalog need `--unsigned`; the official catalog's signature is always checked, and so
   are HTTPS certificates. Each pack's license and credits are shown and the user asked first,
-  unless `--yes`. A running raptaboard sees the change when it next starts. A Windows release
+  unless `--yes`. It reads sources (`content::Source::read`), picks a pack from the first source
+  that has it (`content::offers`) and words what it did (`content::Outcome::describe`) exactly as
+  the Content window does, sharing that code. A running raptaboard sees the change when it next starts. A Windows release
   build (a window program) joins the terminal it was started from to print, but can't ask (the
   terminal doesn't wait for it and keeps reading the keyboard), so it needs `--yes` to install.
 
