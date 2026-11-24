@@ -36,7 +36,7 @@
         Square44x44Logo="Assets\Square44x44Logo.png" />
     </Application>
     <Application Id="raptaboardcli" Executable="raptaboard-cli.exe" EntryPoint="Windows.FullTrustApplication"
-      desktop4:Subsystem="console">
+      desktop4:Subsystem="console" desktop4:SupportsMultipleInstances="true">
       <uap:VisualElements
         DisplayName="{DISPLAY_NAME} command line"
         Description="raptaboard's commands, such as content packs, in a terminal."
