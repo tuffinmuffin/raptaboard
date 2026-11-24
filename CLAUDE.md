@@ -127,7 +127,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `DashboardApp::show` is one frame without an `eframe::Frame`), `connection.rs` the robot address modes,
   `cli.rs` the startup flags (`clap` derive, `cli::Args`: `--team`, `--address`, `--port`,
   `--hide-tree`; this run only) and `cli::Command` (`raptaboard packs …`, in `packs_cli.rs`, with `pack_folder.rs`
-  for `--package`; `main.rs` runs it instead of the window, and on Windows release builds joins the terminal),
+  for `--package`; `main.rs` runs it instead of the window, and on Windows release builds joins the terminal;
+  `src/bin/raptaboard-cli.rs` is the same commands as a console program, shipped in the Windows packages and
+  on the PATH from the Store's alias or the installer: `cargo run --bin raptaboard-cli -- packs list`),
   `settings.rs` settings kept between runs (command line, then `./.raptaboard/settings.toml`, then
   `~/.raptaboard/settings.toml`, made on the first run, then defaults; changes saved to the local file
   if there is one, else the home file, by `settings::Tracker`; `ui/` only says what the current

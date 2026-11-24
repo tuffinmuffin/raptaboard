@@ -136,6 +136,52 @@ pub fn run(command: &Packs, env: &mut Env<'_>) -> Result<(), String> {
     }
 }
 
+/// Run `command` for a program's `main` (`raptaboard` or `raptaboard-cli`):
+/// on the packs folder under `home`, with the settings' added `sources`,
+/// printing to the terminal and asking with `ask`. The exit code: 0 if it
+/// all worked, else 1, after printing why as `program: …`.
+pub fn run_in_home(
+    program: &str,
+    command: &Packs,
+    sources: Vec<String>,
+    home: Option<&std::path::Path>,
+    ask: &mut dyn FnMut(&str) -> bool,
+) -> i32 {
+    let Some(home) = home else {
+        eprintln!("{program}: no home folder to keep packs in");
+        return 1;
+    };
+    let dir = home.join(crate::settings::DIR_NAME).join(content::DIR_NAME);
+    let mut out = std::io::stdout();
+    let mut env = Env {
+        store: Store::new(dir),
+        sources,
+        keys: content::OFFICIAL_KEYS,
+        fetch: &content::http_get,
+        out: &mut out,
+        ask,
+    };
+    let code = match run(command, &mut env) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("{program}: {e}");
+            1
+        }
+    };
+    let _ = std::io::stdout().flush();
+    code
+}
+
+/// Ask `question` on the terminal (stdin): whether the answer was yes.
+/// No answer (stdin closed) is no.
+pub fn ask_terminal(question: &str) -> bool {
+    print!("{question}");
+    let _ = std::io::stdout().flush();
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line).is_ok_and(|n| n > 0)
+        && matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+}
+
 /// Print a line (a closed output is no reason to stop).
 fn say(env: &mut Env<'_>, line: &str) {
     let _ = writeln!(env.out, "{line}");

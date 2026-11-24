@@ -6,6 +6,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+# `cargo run -p raptaboard` runs the dashboard; `--bin raptaboard-cli` the
+# console program for its commands (src/bin/raptaboard-cli.rs).
+default-run = "raptaboard"
 
 [dependencies]
 eframe = "0.37.0"

@@ -382,7 +382,15 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   that has it (`content::offers`) and words what it did (`content::Outcome::describe`) exactly as
   the Content window does, sharing that code. A running raptaboard sees the change when it next starts. A Windows release
   build (a window program) joins the terminal it was started from to print, but can't ask (the
-  terminal doesn't wait for it and keeps reading the keyboard), so it needs `--yes` to install.
+  terminal doesn't wait for it and keeps reading the keyboard), so it needs `--yes` to install,
+  and its output lands after the next prompt. So Windows packages also ship **`raptaboard-cli.exe`**
+  (2026-11-23; `src/bin/raptaboard-cli.rs`): the same commands (`raptaboard-cli packs list`) as a
+  console program, which a terminal waits for, so it prints in order and asks. Both programs run
+  `packs_cli::run_in_home`. The Store's MSIX has it as a second application, hidden from the Start
+  menu, with an app execution alias (`raptaboard-cli`, a console subsystem) that puts it on the
+  PATH; the installer adds its folder to this user's PATH (a task, ticked by default; uninstalling
+  takes it off); the zip just has it. `scripts/package.py` builds it only on Windows (macOS and
+  Linux `raptaboard` already works in a terminal) and stops if it's missing from a package.
 
 ## Milestones
 
