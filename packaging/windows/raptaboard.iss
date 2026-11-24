@@ -64,10 +64,6 @@ Source: "{#SourceDir}\README.txt"; DestDir: "{app}"; Flags: ignoreversion isread
 Name: "{autoprograms}\raptaboard"; Filename: "{app}\raptaboard.exe"
 Name: "{autodesktop}\raptaboard"; Filename: "{app}\raptaboard.exe"; Tasks: desktopicon
 
-[Registry]
-; This user's PATH (no administrator rights needed), only if it isn't there.
-Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NotOnPath(ExpandConstant('{app}'))
-
 [Code]
 { Whether `Dir` is one of the entries of this user's PATH. }
 function OnPath(Dir: string): Boolean;
@@ -79,9 +75,23 @@ begin
   Result := Pos(';' + Uppercase(Dir) + ';', ';' + Uppercase(Path) + ';') > 0;
 end;
 
-function NotOnPath(Dir: string): Boolean;
+{ Installed with the addtopath task: put the install folder on this user's
+  PATH (no administrator rights needed), unless it's there, with a ; before
+  it only if the PATH doesn't end in one already. }
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Path, Dir: string;
 begin
-  Result := not OnPath(Dir);
+  if (CurStep <> ssPostInstall) or not WizardIsTaskSelected('addtopath') then
+    exit;
+  Dir := ExpandConstant('{app}');
+  if OnPath(Dir) then
+    exit;
+  if not RegQueryStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', Path) then
+    Path := '';
+  if (Length(Path) > 0) and (Path[Length(Path)] <> ';') then
+    Path := Path + ';';
+  RegWriteExpandStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', Path + Dir);
 end;
 
 { Uninstalling: take the install folder off this user's PATH (every copy of
