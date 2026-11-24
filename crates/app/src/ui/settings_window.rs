@@ -181,6 +181,29 @@ impl DashboardApp {
             self.robot.look = look;
         }
         ui.separator();
+        ui.strong("Content packs");
+        ui.horizontal(|ui| {
+            ui.label("Check for updates every");
+            ui.add(
+                egui::DragValue::new(&mut self.content_check_minutes)
+                    .range(0..=24 * 60)
+                    .suffix(" min"),
+            )
+            .on_hover_text(
+                "How often to look for new content packs and updates, only while the robot \
+                 isn't enabled. 0 never checks.",
+            )
+            .widget_info(|| {
+                egui::WidgetInfo::labeled(
+                    egui::accesskit::Role::SpinButton,
+                    true,
+                    "Content update check, minutes",
+                )
+            });
+            if self.content_check_minutes == 0 {
+                ui.weak("(never)");
+            }
+        });
         ui.horizontal(|ui| {
             if ui
                 .button("Content packs…")
@@ -253,9 +276,20 @@ fn about_privacy(ui: &mut egui::Ui) {
                 credits::PolicyBlock::Paragraph(p) => {
                     ui.label(p);
                 }
+                credits::PolicyBlock::Subheading(h) => {
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new(h).strong().italics());
+                }
                 credits::PolicyBlock::Item(i) => {
                     ui.horizontal_wrapped(|ui| {
                         ui.label("•");
+                        ui.label(i);
+                    });
+                }
+                credits::PolicyBlock::SubItem(i) => {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(16.0);
+                        ui.label("◦");
                         ui.label(i);
                     });
                 }

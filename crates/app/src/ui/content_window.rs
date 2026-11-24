@@ -16,6 +16,10 @@ use crate::types::robot_state::Mode;
 
 use super::DashboardApp;
 
+/// How long after starting the first background check for updates waits,
+/// so it never holds up opening the window.
+pub(super) const FIRST_CHECK_DELAY: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// The Content window and the first-run list: what's open and picked.
 #[derive(Default)]
 pub(super) struct ContentWindows {
@@ -180,6 +184,23 @@ impl DashboardApp {
         if !content.idle() {
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
+        // The background check for updates: every content_check_minutes,
+        // only while the robot isn't enabled and no list is showing. If it
+        // can't reach a source, it says nothing (the Content window shows
+        // why, if opened) and tries again next time.
+        let quiet = !matches!(
+            self.robot.mode,
+            Some(Mode::Autonomous | Mode::Teleop | Mode::Test)
+        ) && self.packs.offer.is_none();
+        let every = (self.content_check_minutes > 0)
+            .then(|| std::time::Duration::from_secs(u64::from(self.content_check_minutes) * 60));
+        if content.idle()
+            && self
+                .content_timer
+                .due(std::time::Instant::now(), every, quiet)
+        {
+            content.check(content::sources(&self.content_sources));
+        }
         self.first_run_list(ctx);
         if self.packs.open {
             self.content_window(ctx);
@@ -271,10 +292,55 @@ impl DashboardApp {
         if let Err(e) = answered(content, &packs) {
             self.status = format!("Couldn't save the content packs' state: {e}");
         }
+        content.refresh_news();
         // Downloading: the window stays, showing each pack until Done.
         match &mut self.packs.offer {
             Some(offer) if !chosen.is_empty() => offer.installing = chosen,
             _ => self.packs.offer = None,
+        }
+    }
+
+    /// The update notice in the bar, when a check found something: "📦 1
+    /// update · Review · ✕". Review opens the Content window; ✕ hides it
+    /// until something newer. Not shown while the robot is enabled.
+    pub(super) fn content_notice(&mut self, ui: &mut egui::Ui) {
+        if self.robot_running() || self.packs.offer.is_some() {
+            return;
+        }
+        let Some(content) = &mut self.content else {
+            return;
+        };
+        let words = content::news_text(content.news());
+        if words.is_empty() {
+            return;
+        }
+        let names: Vec<String> = content
+            .news()
+            .iter()
+            .map(|n| match n {
+                content::News::Update { pack, from } => {
+                    format!("{} {} (installed: {from})", pack.name, pack.version)
+                }
+                content::News::New(pack) => format!("{} (new)", pack.name),
+            })
+            .collect();
+        ui.separator();
+        ui.label(format!("📦 Content: {words}"))
+            .on_hover_text(names.join("\n"));
+        if ui
+            .small_button("Review")
+            .on_hover_text("Open the Content packs window")
+            .clicked()
+        {
+            self.packs.open = true;
+        }
+        if ui
+            .small_button("✕")
+            .on_hover_text("Hide this until something newer comes")
+            .clicked()
+            && let Err(e) = content.dismiss_news()
+        {
+            self.status = format!("Couldn't save the content packs' state: {e}");
         }
     }
 

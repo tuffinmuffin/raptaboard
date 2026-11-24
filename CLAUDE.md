@@ -60,7 +60,8 @@ About window's list), plus a `-debug` archive. Nothing is code-signed yet (decid
 (`packaging/windows/msix/`: the manifest, and `store.json` with the identity from Partner Center), in
 `dist-store/` and its own `store-msix` artifact, never on the GitHub release; it holds the same `raptaboard.exe`
 as the other Windows packages. Each release's `.msix` is uploaded in Partner Center by hand for now.
-`PRIVACY.md` is the privacy policy the Store listing links to, built into the About window's Privacy page
+`PRIVACY.md` is the privacy policy the Store listing links to (its GitHub URL on `main`, from the release after 0.2.1;
+0.2.1's listing had the text pasted in), built into the About window's Privacy page
 (`credits::PRIVACY`, drawn from its Markdown by `credits::policy_blocks`) (raptaboard collects nothing, connects only to the
 NetworkTables server chosen and, when asked, the content sources, and stores only its settings, saved layouts,
 imported images and content packs): update it, and its date, in the same PR as anything that makes raptaboard
@@ -73,7 +74,9 @@ or sources the user adds. `content.rs` is the catalog, signature (`OFFICIAL_KEYS
 `Content::with_fetch` and `content::tests::Web`, never the network; the one real-network test is ignored);
 `ui/content_window.rs` the Content window (⚙ Settings → Content packs…) and the list offered on the first start and
 after an upgrade (`content::State`: `last_version`, `offer_pending`, `shown`). `upgrade.rs` holds the one-time tasks
-for a new version's first start: add any migration there. A pack holds sections
+for a new version's first start: add any migration there. The background check (`content_check_minutes`, hourly by
+default, only while the robot isn't enabled: `content::CheckTimer`) feeds `Content::news`, the bar's dismissible
+"📦 Content: …" notice (`content_notice`). A pack holds sections
 (`[[sound]]`, `[[image]]`, `[[field]]`, `[[plugin]]`, `[[layout]]`; only sounds are used so far). A pack's sound may be new or use a
 built-in name to replace it, the newest install winning (`sound::SoundLayers`, `installed_at`); a setting picks
 `fire 1`, `pack:<id>/fire 1` or `builtin:fire 1` (`sound::SoundRef`). That's how the IT Crowd clips (the
