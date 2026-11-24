@@ -1,0 +1,19 @@
+[package]
+name = "raptaboard-win-console"
+description = "raptaboard's one unsafe call: a Windows window program joining its terminal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+# Not the workspace's lints: they forbid unsafe code, and this crate is the
+# one place it's allowed, for one Windows call behind a safe function.
+# Everything else stays as strict.
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "deny"
