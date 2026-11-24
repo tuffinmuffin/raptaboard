@@ -389,8 +389,12 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   `packs_cli::run_in_home`. The Store's MSIX has it as a second application, hidden from the Start
   menu, with an app execution alias (`raptaboard-cli`, a console subsystem) that puts it on the
   PATH; the installer adds its folder to this user's PATH (a task, ticked by default; uninstalling
-  takes it off); the zip just has it. `scripts/package.py` builds it only on Windows (macOS and
-  Linux `raptaboard` already works in a terminal) and stops if it's missing from a package.
+  takes it off); the zip just has it. macOS and Linux packages ship it too (2026-11-23), so the
+  command is the same everywhere, though `raptaboard packs` works in a terminal there: macOS inside
+  the app (`raptaboard.app/Contents/MacOS/raptaboard-cli`, universal like `raptaboard`, signed with
+  it; the README shows a symlink to type it by name), Linux beside `raptaboard` in the `.tar.gz`,
+  and `install.sh` puts it in `~/.local/bin` (and `--uninstall` removes it). `scripts/package.py`
+  builds both programs everywhere (`PROGRAMS`) and stops if either is missing from a package.
 
 ## Milestones
 

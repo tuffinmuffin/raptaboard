@@ -5,6 +5,7 @@
 
 use super::*;
 use crate::sound::{Clip, Tone};
+use crate::types::robot_state::Mode;
 
 /// A layout whose open tab has no FMSInfo: tab 1 has the first one (its
 /// default sounds), tab 2 a second on the other year's table whose teleop
@@ -46,8 +47,9 @@ fn sounds_soon(harness: &Harness, n: usize) {
     while harness.state().sound.events().len() < n {
         assert!(
             Instant::now() < deadline,
-            "{n} sounds, got {:?}",
-            harness.state().sound.events()
+            "{n} sounds, got {:?}; the sound task last read {:?}",
+            harness.state().sound.events(),
+            harness.state().sound.state_seen()
         );
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -85,14 +87,19 @@ fn state_sounds_play_from_a_closed_tab_without_frames_and_only_for_changes() {
     }
     .write_to(&mut app.layout);
     wait_a_while(&mut harness);
-    // The sound task has seen it disabled (values arrive in order, so it
-    // sees the change next); on a slow machine the first state it saw could
-    // otherwise be the enabled one, which is quiet, as at connect.
-    dashboard_has(
-        &mut harness,
-        "/FMSInfo/FMSControlData",
-        nt4::Value::Int(0x20),
-    );
+    // The sound task itself has read it disabled: only then is enabling it
+    // a change. (Waiting for the dashboard's own copy wasn't enough: on a
+    // slow machine the task's first reading could be the enabled one, which
+    // is quiet, as at connect.)
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while harness.state().sound.state_seen().map(|s| s.mode) != Some(Mode::Disabled) {
+        assert!(
+            Instant::now() < deadline,
+            "the sound task never saw it disabled"
+        );
+        settle(&mut harness);
+        std::thread::sleep(Duration::from_millis(20));
+    }
     // Disabled when it connected: no sound for that.
     assert!(harness.state().sound.events().is_empty());
     // Enabled in teleop, with no frames drawn (a window in the background):
