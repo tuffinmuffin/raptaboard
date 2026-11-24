@@ -362,7 +362,9 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
 
 1. **Runtime and the two example plugins** (started 2026-11-23: `crates/plugin-host` `runtime.rs` runs
    plugins with the limits, the `plugins/` workspace has the SDK crate and the Number plugin, and
-   plugin-host's tests run them; next is the adapter in the app, then Alerts). The wasmtime host with the limits above, API 0.2,
+   plugin-host's tests run them; the app runs plugins loaded with `--plugin <folder>`, reloading a
+   changed `.wasm`, through `crates/app/src/plugins/`; next the Alerts plugin and loading plugins from
+   packs. Not yet: images in pictures, focus and keys, struct values). The wasmtime host with the limits above, API 0.2,
    the adapter, loading from packs and from a local folder, the SDK crate and the test harness. Then two plugins in
    `plugins/` (built in CI, shipped as an `example-widgets` pack in raptaboard-content), each set beside
    its built-in to show plugins can match them:

@@ -19,6 +19,7 @@
 //! assert!(manifest.matches(&table).is_some());
 //! ```
 
+pub mod dev;
 pub mod path;
 pub mod runtime;
 

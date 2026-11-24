@@ -47,6 +47,11 @@ pub struct Args {
     /// Start with the NetworkTables tree panel hidden.
     #[arg(long)]
     pub hide_tree: bool,
+    /// Load a widget plugin from this folder (its plugin.toml and
+    /// widget.wasm), for this run; may be given more than once. The plugin
+    /// is loaded again whenever its .wasm changes, for developing one.
+    #[arg(long = "plugin", value_name = "FOLDER")]
+    pub plugins: Vec<PathBuf>,
     /// An Elastic layout file to open. If it doesn't exist yet, the app
     /// starts with an empty layout and Save writes it there.
     #[arg(value_name = "LAYOUT.json")]
@@ -194,9 +199,36 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Settings, clap::E
 pub fn parse_command(
     args: impl IntoIterator<Item = String>,
 ) -> Result<(Settings, Option<Command>), clap::Error> {
+    let parsed = parse_all(args)?;
+    Ok((parsed.settings, parsed.command))
+}
+
+/// Everything the command line gives.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Parsed {
+    /// The settings it gives.
+    pub settings: Settings,
+    /// A command to run instead of opening the dashboard.
+    pub command: Option<Command>,
+    /// Plugin folders to load for this run (`--plugin`).
+    pub plugins: Vec<PathBuf>,
+}
+
+/// Read the whole command line.
+///
+/// ```
+/// use raptaboard::cli::parse_all;
+/// let parsed = parse_all(["--plugin", "a", "--plugin", "b"].map(String::from)).unwrap();
+/// assert_eq!(parsed.plugins.len(), 2);
+/// ```
+pub fn parse_all(args: impl IntoIterator<Item = String>) -> Result<Parsed, clap::Error> {
     let args = std::iter::once("raptaboard".to_owned()).chain(args);
     let args = Args::try_parse_from(args)?;
-    Ok((args.settings(), args.command))
+    Ok(Parsed {
+        settings: args.settings(),
+        plugins: args.plugins.clone(),
+        command: args.command,
+    })
 }
 
 /// `path` made absolute against the current folder, so a remembered layout

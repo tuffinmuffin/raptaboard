@@ -438,6 +438,7 @@ pub fn find(type_name: &str) -> Option<&'static dyn WidgetType> {
         .iter()
         .copied()
         .find(|t| t.names().contains(&type_name))
+        .or_else(|| crate::plugins::find(type_name).map(|t| t as &'static dyn WidgetType))
 }
 
 /// Bring the widgets in a layout just opened up to date. Elastic's Large
@@ -615,7 +616,12 @@ pub fn types_showing(nt_type: &str) -> Vec<&'static str> {
         .filter(|t| t.shows(nt_type) || t.table_types().contains(&nt_type))
         .map(|t| t.names()[0])
         .filter(|name| Some(*name) != default);
-    default.into_iter().chain(others).collect()
+    // Then loaded plugins that can show it.
+    let plugins = crate::plugins::all()
+        .into_iter()
+        .filter(|t| t.shows(nt_type) || t.table_types().contains(&nt_type))
+        .map(|t| t.names()[0]);
+    default.into_iter().chain(others).chain(plugins).collect()
 }
 
 /// The title a widget gets from what it shows: the last part of the topic

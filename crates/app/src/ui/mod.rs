@@ -593,6 +593,8 @@ impl DashboardApp {
         crate::input_log::log_frame(ui.ctx());
         // The sound pickers in settings dialogs list the installed packs'.
         crate::sound::share_files(ui.ctx(), &self.sound.files());
+        // Plugin widgets: reload changed plugins, stop those of deleted widgets.
+        crate::plugins::frame_started(ui.ctx(), &self.layout);
         // One copy of every topic per frame, shared by the tab marks, the tree
         // and the grid.
         let topics = self.nt.topics();
