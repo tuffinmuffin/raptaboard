@@ -363,7 +363,8 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
 1. **Runtime and the two example plugins** (started 2026-11-23: `crates/plugin-host` `runtime.rs` runs
    plugins with the limits, the `plugins/` workspace has the SDK crate and the Number plugin, and
    plugin-host's tests run them; the app runs plugins loaded with `--plugin <folder>`, reloading a
-   changed `.wasm`, through `crates/app/src/plugins/`; next the Alerts plugin and loading plugins from
+   changed `.wasm`, through `crates/app/src/plugins/`; the Alerts plugin (2026-11-24) draws what the
+   built-in does, and `ui/tests/plugins.rs` sets both beside their built-ins; next loading plugins from
    packs. Not yet: images in pictures, focus and keys, struct values). The wasmtime host with the limits above, API 0.2,
    the adapter, loading from packs and from a local folder, the SDK crate and the test harness. Then two plugins in
    `plugins/` (built in CI, shipped as an `example-widgets` pack in raptaboard-content), each set beside
@@ -371,9 +372,8 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
    - **Number**: a Text Display for a number (decimals, unit, font size or fit, color by value).
    - **Alerts**: the built-in Alerts widget (`builtin/alerts.rs`): the circle with its three
      signs and counts, the text list beside or below, `all_groups`, the pulse on a new error, its
-     tone (a `sound` property), the bell mute region, greyed when disconnected, and the tab mark,
-     also while its tab is closed. It reads the same layout properties, and the Alerts UI tests run
-     against it too.
+     tone (a `sound` property, muted by the top bar's bell like the built-in's), greyed when
+     disconnected, and the tab mark, also while its tab is closed. It reads the same layout properties.
 
    The arm plugin (`plugins/arm`) stays as the manifest fixture.
 

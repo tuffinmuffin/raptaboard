@@ -97,18 +97,18 @@ decimal_places = { type = "number", default = -1 }
 
 The WASM component implements the `widget` world from `wit/dashboard.wit`: the dashboard pushes it
 the values it asked for, and it returns shapes to draw. In Rust, the SDK in `plugins/sdk` does the
-plumbing: implement its `Widget` trait and pass the type to `widget!` (`plugins/number` is an
-example). To try one, build it and start the dashboard with it:
+plumbing: implement its `Widget` trait and pass the type to `widget!` (`plugins/number` is a
+small example; `plugins/alerts`, the built-in Alerts widget remade, a bigger one). To try one, build it and start the dashboard with it:
 
 ```sh
 rustup target add wasm32-wasip2
 (cd plugins && cargo build --release --target wasm32-wasip2)
-cargo run -p raptaboard -- --plugin plugins/number --address sim
+cargo run -p raptaboard -- --plugin plugins/number --plugin plugins/alerts --address sim
 ```
 
-Its widget type (`plugin:number`) is then in "Add as" and the settings dialog's widget choice for
-the topics it shows, after the built-in ones. Rebuild it while the dashboard runs and its widgets
-restart with the new build. See `docs/spec.md`, "Plugin system", for what's coming.
+Their widget types (`plugin:number`, `plugin:alerts`) are then in "Add as" and the settings dialog's widget choice for
+the topics and tables they show, after the built-in ones. Rebuild one while the dashboard runs and its
+widgets restart with the new build. See `docs/spec.md`, "Plugin system", for what's coming.
 
 ## Contributing
 
