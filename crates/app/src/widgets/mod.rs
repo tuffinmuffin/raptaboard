@@ -128,8 +128,8 @@ pub struct Place {
 /// Something a widget asks the app to do, through [`Frame::effects`].
 #[derive(Debug, Clone, PartialEq)]
 pub enum Effect {
-    /// Play a tone (unless sounds are turned off with the bell button).
-    Tone(crate::sound::Tone),
+    /// Play a sound (unless sounds are turned off with the bell button).
+    Sound(crate::sound::Clip),
     /// Write `value` to `topic`, a topic besides the widget's own (a
     /// Field's target set), publishing it as `ty` if nobody has.
     Write {

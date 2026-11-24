@@ -79,7 +79,8 @@ default, only while the robot isn't enabled: `content::CheckTimer`) feeds `Conte
 "📦 Content: …" notice (`content_notice`). A pack holds sections
 (`[[sound]]`, `[[image]]`, `[[field]]`, `[[plugin]]`, `[[layout]]`; only sounds are used so far). A pack's sound may be new or use a
 built-in name to replace it, the newest install winning (`sound::SoundLayers`, `installed_at`); a setting picks
-`fire 1`, `pack:<id>/fire 1` or `builtin:fire 1` (`sound::SoundRef`). That's how the IT Crowd clips (the
+`fire 1`, `pack:<id>/fire 1` or `builtin:fire 1` (`sound::SoundRef`), from the shared sound picker
+(`widgets/shared/sound_pick.rs`, FMSInfo and Alerts; `sound::sound_choices`). That's how the IT Crowd clips (the
 `fan-clips` pack, not built in since 2026-11-23) come back. The signing key's private half is the content repo's
 `CONTENT_SIGNING_KEY` secret, with a copy kept outside the repos by the user.
 
@@ -196,7 +197,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   with `tap_burst`, mouse on another widget; a Windows touchscreen laptop worked without issues, tested by the
   user 2026-11-22), `format.rs` (number and
   enum text, `EnumDisplay`), `alert_sign.rs` (alert level colors and signs, for the widget, tab marks
-  and history), `props.rs` (period, font size, colors, a topic picker), `value_colors.rs` (color by value: thresholds or a gradient), `scale.rs` (bars' and gauges' shared settings,
+  and history), `props.rs` (period, font size, colors, a topic picker), `sound_pick.rs` (the sound dropdown:
+  built-in and installed packs' sounds), `value_colors.rs` (color by value: thresholds or a gradient), `scale.rs` (bars' and gauges' shared settings,
   autoscale, and their `show`/`show_body`), `stats.rs` (min, max and average under a number), `robot_view.rs` (a robot from above with
   speed and spin arrows, for the swerve view and Chassis Speeds) and `settings.rs` (the settings dialog's shared
   rows; the dialog window is in `ui/dialogs.rs`); setting keys are constants in the file that owns them,

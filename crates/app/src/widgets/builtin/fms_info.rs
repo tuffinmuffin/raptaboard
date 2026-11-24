@@ -11,7 +11,8 @@
 //! one.
 //!
 //! It also has a sound for each change of state ([`crate::state_sounds`]):
-//! `sound_<event>` is `off`, a built-in [`Tone`]'s name, or the path of an
+//! `sound_<event>` is `off`, a sound's name ([`crate::sound::SoundRef`]: a
+//! built-in [`crate::sound::Tone`] or an installed pack's), or the path of an
 //! MP3 or WAV file; not set, the event's [`default_sound`]. `volume`, from
 //! 0 to 1, is how loud. Only the first FMSInfo in the layout plays them, from
 //! any tab, and only on a real change (never for the state found at
@@ -25,10 +26,10 @@ use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
 
 use crate::images;
-use crate::sound::{Clip, Tone};
+use crate::sound::{self, Clip};
 use crate::state_sounds::{self, Plan};
 use crate::types::robot_state::{self, Event, MatchInfo, Mode, RobotState};
-use crate::widgets::shared::{card, props};
+use crate::widgets::shared::{card, props, sound_pick};
 use crate::widgets::{Live, Server, ValueInfo, WidgetType};
 
 /// How loud its sounds are, 0 to 1 (raptaboard).
@@ -208,16 +209,36 @@ pub fn default_sound(event: Event) -> &'static str {
 /// assert_eq!(sound_for(&p, Event::Test), None);
 /// p.insert("sound_test".into(), "/sounds/horn.mp3".into());
 /// assert_eq!(sound_for(&p, Event::Test), Some(Clip::File("/sounds/horn.mp3".into())));
+/// // A pack's sound, by name.
+/// p.insert("sound_test".into(), "pack:fan-clips/fire 1".into());
+/// assert!(matches!(sound_for(&p, Event::Test), Some(Clip::Sound(_))));
 /// ```
 pub fn sound_for(p: &Map<String, Json>, event: Event) -> Option<Clip> {
     let setting = props::text(p, sound_key(event), default_sound(event)).trim();
     if setting.is_empty() || setting == OFF {
         return None;
     }
-    match Tone::CHOICES.iter().find(|(_, name)| *name == setting) {
-        Some((tone, _)) => Some(Clip::Tone(*tone)),
-        None => Some(Clip::File(PathBuf::from(setting))),
+    if is_file(setting) {
+        return Some(Clip::File(PathBuf::from(setting)));
     }
+    Clip::named(setting)
+}
+
+/// Whether a sound setting is a file the team picked rather than a
+/// sound's name: a path, or a name ending in .mp3 or .wav. A pack's sound
+/// (`pack:` or `builtin:`) never is.
+///
+/// ```
+/// use raptaboard::widgets::builtin::fms_info::is_file;
+/// assert!(is_file("/sounds/horn.mp3") && is_file(r"C:\sounds\horn.wav") && is_file("horn.MP3"));
+/// assert!(!is_file("horn") && !is_file("fire 1") && !is_file("pack:fan-clips/fire 1"));
+/// ```
+pub fn is_file(setting: &str) -> bool {
+    if setting.starts_with("pack:") || setting.starts_with("builtin:") {
+        return false;
+    }
+    let lower = setting.to_ascii_lowercase();
+    setting.contains(['/', '\\']) || lower.ends_with(".mp3") || lower.ends_with(".wav")
 }
 
 /// The widget's volume, 0 to 1.
@@ -587,37 +608,40 @@ impl WidgetType for FmsInfo {
     }
 }
 
-/// A settings row picking `event`'s sound: Off, a built-in clip or tone, or
-/// a file (File… opens a file dialog), with ▶ to hear it.
+/// A settings row picking `event`'s sound: Off, a built-in or installed
+/// pack's sound ([`sound_pick`]), or a file (File… opens a file dialog),
+/// with ▶ to hear it.
 fn sound_row(ui: &mut egui::Ui, p: &mut Map<String, Json>, event: Event) {
     let key = sound_key(event);
     let default = default_sound(event);
     ui.label(format!("Sound: {}", event_label(event)));
     let current = props::text(p, key, default).to_owned();
     let mut picked = current.clone();
+    let layers = sound_pick::installed(ui);
+    let mut found = true;
     let shown = match sound_for(p, event) {
         None => "Off".to_owned(),
-        Some(Clip::Tone(_)) => current.clone(),
         Some(Clip::File(path)) => file_name(&path),
+        Some(_) => {
+            let (label, there) = sound::sound_label(current.trim(), &layers);
+            found = there;
+            label
+        }
     };
     ui.horizontal(|ui| {
-        egui::ComboBox::from_id_salt(key)
-            .selected_text(shown)
-            .width(170.0)
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut picked, OFF.to_owned(), "Off");
-                for (_, name) in Tone::CHOICES {
-                    ui.selectable_value(&mut picked, name.to_owned(), name);
-                }
-                ui.separator();
-                if ui.selectable_label(false, "File… (MP3 or WAV)").clicked()
-                    && let Some(path) = rfd::FileDialog::new()
-                        .add_filter("Sound", &["mp3", "wav"])
-                        .pick_file()
-                {
-                    picked = path.display().to_string();
-                }
-            });
+        let name = format!("Sound: {}", event_label(event));
+        sound_pick::sound_combo(ui, key, &name, &shown, |ui| {
+            ui.selectable_value(&mut picked, OFF.to_owned(), "Off");
+            sound_pick::sound_menu(ui, &mut picked, &layers);
+            ui.separator();
+            if ui.selectable_label(false, "File… (MP3 or WAV)").clicked()
+                && let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Sound", &["mp3", "wav"])
+                    .pick_file()
+            {
+                picked = path.display().to_string();
+            }
+        });
         let clip = sound_for(p, event);
         if ui
             .add_enabled(clip.is_some(), egui::Button::new("▶").small())
@@ -626,6 +650,9 @@ fn sound_row(ui: &mut egui::Ui, p: &mut Map<String, Json>, event: Event) {
             && let Some(clip) = clip
         {
             state_sounds::request_preview(ui.ctx(), clip, volume(p));
+        }
+        if !found {
+            sound_pick::missing_note(ui, current.trim());
         }
         if let Some(Clip::File(path)) = sound_for(p, event)
             && !path.exists()
@@ -652,6 +679,7 @@ fn file_name(path: &Path) -> String {
 mod tests {
     // Tests written by Claude.
     use super::*;
+    use crate::sound::Tone;
 
     fn widget(props: serde_json::Value) -> WidgetContainer {
         let mut w: WidgetContainer = serde_json::from_value(serde_json::json!({

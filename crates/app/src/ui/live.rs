@@ -79,9 +79,9 @@ impl DashboardApp {
     /// value (a failure goes in the status line).
     pub(super) fn apply_effect(&mut self, effect: widgets::Effect) {
         match effect {
-            widgets::Effect::Tone(tone) => {
+            widgets::Effect::Sound(clip) => {
                 if self.alert_sound {
-                    self.sound.play_tone(tone);
+                    self.sound.play_sound(clip);
                 }
             }
             widgets::Effect::Write { topic, value, ty } => {

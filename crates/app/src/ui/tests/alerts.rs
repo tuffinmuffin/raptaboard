@@ -279,3 +279,24 @@ fn a_changing_alert_is_one_row_and_can_be_left_out_of_the_history() {
     settle(&mut harness);
     assert!(rows(&harness).is_empty());
 }
+
+#[test]
+fn an_alerts_widget_can_sound_a_packs_sound() {
+    let robot = Robot::start();
+    let mut harness = alerts_harness(&robot);
+    harness.state_mut().layout.tabs[0].grid_layout.containers[0]
+        .properties
+        .insert("tone".into(), "pack:fan-clips/horn".into());
+    labelled_soon(&mut harness, "Alerts: 0 errors, 1 warning, 1 info");
+    robot.alert_errors.set(vec!["Encoder lost".into()]);
+    labelled_soon(&mut harness, "Alerts: 1 error, 1 warning, 1 info");
+    let horn = crate::sound::SoundRef::Pack {
+        pack: "fan-clips".into(),
+        name: "horn".into(),
+    };
+    assert_eq!(
+        harness.state().sound.sounds(),
+        [crate::sound::Clip::Sound(horn)]
+    );
+    assert!(harness.state().sound.tones().is_empty());
+}

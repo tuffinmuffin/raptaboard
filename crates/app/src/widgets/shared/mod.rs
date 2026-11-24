@@ -15,5 +15,6 @@ pub mod props;
 pub mod robot_view;
 pub mod scale;
 pub mod settings;
+pub mod sound_pick;
 pub mod stats;
 pub mod value_colors;
