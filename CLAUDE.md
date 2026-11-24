@@ -117,9 +117,21 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   wasmtime (`Runtime` compiles and keeps the clock behind the time limits, `Plugin` one compiled folder,
   `Instance` one widget: `subscriptions`, `update`, `render`, `tab_mark`, `on_input`, answering the plugin through
   a `Host`; a trap, a panic, running past `Limits::call_ms` or `memory_bytes` stops it for good, as `Stopped`;
-  WASI with no files, network or environment, stdout to the log). `tests/runtime.rs` builds `plugins/` for
-  `wasm32-wasip2` and runs them. The app doesn't use the runtime yet: `docs/spec.md` "Plugin system" has the plan
-  (next the adapter to `WidgetType` and the Alerts plugin, then Doom, graphs, a 3D robot viewer, a log viewer).
+  WASI with no files, network or environment, stdout to the log); `dev.rs` builds a plugins workspace
+  (`repo_plugins()`: `plugins/`, once per test run). `tests/runtime.rs` runs them. `docs/spec.md` "Plugin system"
+  has the plan (next the Alerts plugin and plugin packs, then Doom, graphs, a 3D robot viewer, a log viewer).
+- `crates/app/src/plugins/`: plugins in the app. `mod.rs` the registry (plugins loaded with `--plugin`, saved in
+  layouts as `plugin:<name>`, found by `widgets::find`; listed by `widgets::types_showing` and the settings dialog's
+  widget choice after the built-ins; a changed `.wasm` is loaded again within a second and its widgets restart) and
+  the workers, one per widget, by window (egui context) and the widget's type and settings, so a moved widget keeps its
+  worker and a changed setting starts a new one; `frame_started` (from `ui/mod.rs` each frame) drops a window's workers
+  whose widgets are gone. `worker.rs` runs a plugin on its own thread (values, frames and input in; the newest picture,
+  tab mark, what stopped it and its requests (sounds, publishing, log lines) out; a new picture is asked for only when
+  values, input, size, theme, connection or lock changed or the plugin's `redraw-in-s` came). `widget.rs` is
+  `PluginType`, the `WidgetType` adapter (card, picture, regions as accessible controls, the summary as the widget's
+  label, "Plugin stopped" with Restart, settings rows from `plugin.toml`); `draw.rs` the shapes in egui (images not
+  yet); `convert.rs` values, settings and the theme in the plugin interface's types. `ui/tests/plugins.rs` runs the
+  Number plugin beside a Text Display.
 - `plugins/`: a workspace of its own, built for WebAssembly (`cd plugins && cargo build --release --target
   wasm32-wasip2`; needs `rustup target add wasm32-wasip2`): `sdk` is `raptaboard-plugin` (the `Widget` trait and
   `widget!` macro over the wit-bindgen bindings, and helpers), `number` the first example plugin (a number topic
@@ -141,7 +153,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   tree rows and menu items by label and clicks or drags them;
   `DashboardApp::show` is one frame without an `eframe::Frame`), `connection.rs` the robot address modes,
   `cli.rs` the startup flags (`clap` derive, `cli::Args`: `--team`, `--address`, `--port`,
-  `--hide-tree`; this run only) and `cli::Command` (`raptaboard packs …`, in `packs_cli.rs`, with `pack_folder.rs`
+  `--hide-tree`, `--plugin <folder>`; this run only; `cli::parse_all`) and `cli::Command` (`raptaboard packs …`, in `packs_cli.rs`, with `pack_folder.rs`
   for `--package`; `main.rs` runs it instead of the window, and on Windows release builds joins the terminal;
   `src/bin/raptaboard-cli.rs` is the same commands as a console program, shipped in every package (Windows: on
   the PATH from the installer, not in the Store package; macOS: inside the app; Linux: `install.sh` puts it in

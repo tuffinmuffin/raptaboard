@@ -22,6 +22,7 @@ pub mod layout_file;
 pub mod nt;
 pub mod pack_folder;
 pub mod packs_cli;
+pub mod plugins;
 pub mod sampling;
 pub mod settings;
 pub mod sound;

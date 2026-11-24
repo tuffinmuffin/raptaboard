@@ -80,21 +80,35 @@ structs, time sync and reconnect.
 
 ## Writing a plugin (preview)
 
-A plugin is a folder with `plugin.toml` and `widget.wasm`. The manifest says which tables it can
-draw:
+A plugin is a folder with `plugin.toml` and `widget.wasm`. The manifest says what it can show,
+one topic or a table:
 
 ```toml
-name = "arm"
+name = "number"
 version = "0.1.0"
 api = "0.2"
 
 [match]
-type = "Arm"        # the table's .type topic
+topic_types = ["double", "float", "int"]   # or, for a table: type = "Arm" (its .type topic)
+
+[properties]
+decimal_places = { type = "number", default = -1 }
 ```
 
 The WASM component implements the `widget` world from `wit/dashboard.wit`: the dashboard pushes it
-the values it asked for, and it returns shapes to draw. Running plugins is the next milestone
-(`docs/spec.md`, "Plugin system").
+the values it asked for, and it returns shapes to draw. In Rust, the SDK in `plugins/sdk` does the
+plumbing: implement its `Widget` trait and pass the type to `widget!` (`plugins/number` is an
+example). To try one, build it and start the dashboard with it:
+
+```sh
+rustup target add wasm32-wasip2
+(cd plugins && cargo build --release --target wasm32-wasip2)
+cargo run -p raptaboard -- --plugin plugins/number --address sim
+```
+
+Its widget type (`plugin:number`) is then in "Add as" and the settings dialog's widget choice for
+the topics it shows, after the built-in ones. Rebuild it while the dashboard runs and its widgets
+restart with the new build. See `docs/spec.md`, "Plugin system", for what's coming.
 
 ## Contributing
 

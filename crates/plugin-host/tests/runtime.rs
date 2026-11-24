@@ -3,7 +3,6 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -14,35 +13,9 @@ fn plugins_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins")
 }
 
-/// Build the plugins workspace once, and return the folder with the `.wasm`s.
+/// The `plugins/` workspace's `.wasm` files, built once.
 fn built() -> &'static Path {
-    static BUILT: OnceLock<PathBuf> = OnceLock::new();
-    BUILT.get_or_init(|| {
-        let dir = plugins_dir();
-        let mut cargo = Command::new(std::env::var("CARGO").unwrap_or("cargo".into()));
-        cargo
-            .current_dir(&dir)
-            .args(["build", "--release", "--target", "wasm32-wasip2"]);
-        // Don't pass this build's settings (a coverage run's flags, its
-        // target folder) on to the WebAssembly build.
-        for (key, _) in std::env::vars() {
-            if (key.starts_with("CARGO_") && key != "CARGO_HOME")
-                || key.starts_with("RUSTC")
-                || key.starts_with("RUSTFLAGS")
-                || key == "RUSTDOCFLAGS"
-                || key.starts_with("LLVM_PROFILE")
-            {
-                cargo.env_remove(key);
-            }
-        }
-        let status = cargo.status().expect("cargo runs");
-        assert!(
-            status.success(),
-            "building plugins/ failed (is the wasm32-wasip2 target installed? \
-             rustup target add wasm32-wasip2)"
-        );
-        dir.join("target/wasm32-wasip2/release")
-    })
+    raptaboard_plugin_host::dev::repo_plugins()
 }
 
 fn runtime() -> &'static Runtime {

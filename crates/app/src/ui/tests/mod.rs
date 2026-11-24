@@ -17,6 +17,7 @@ mod fms_info;
 mod grid_scroll;
 mod gyro;
 mod mechanism;
+mod plugins;
 mod pose3d;
 mod robot_state_view;
 mod sliders;

@@ -25,7 +25,11 @@ fn main() -> eframe::Result {
         raptaboard_win_console::attach_parent();
     }
     // Bad options, --help and --version print and exit here.
-    let (given, command) = cli::parse_command(args).unwrap_or_else(|e| e.exit());
+    let cli::Parsed {
+        settings: given,
+        command,
+        plugins,
+    } = cli::parse_all(args).unwrap_or_else(|e| e.exit());
     let start = std::env::current_dir().ok();
     let home = std::env::home_dir();
     let loaded = settings::load(given, start.as_deref(), home.as_deref());
@@ -36,6 +40,12 @@ fn main() -> eframe::Result {
         let sources = loaded.settings.content_sources.clone().unwrap_or_default();
         let code = packs_cli::run_in_home("raptaboard", &packs, sources, home.as_deref(), &mut ask);
         std::process::exit(code);
+    }
+    for folder in &plugins {
+        match raptaboard::plugins::load(folder) {
+            Ok(name) => eprintln!("raptaboard: loaded {name} from {}", folder.display()),
+            Err(e) => eprintln!("raptaboard: plugin not loaded: {e}"),
+        }
     }
     let window = loaded.settings.window;
     let mut options = StartupOptions::from(loaded);
