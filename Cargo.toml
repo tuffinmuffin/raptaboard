@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/layout", "crates/plugin-host", "crates/app"]
+members = ["crates/layout", "crates/plugin-host", "crates/app", "crates/win-console"]
 
 [workspace.package]
 version = "0.2.1"
@@ -19,6 +19,7 @@ nt4 = "0.3"
 tokio = { version = "1.47", features = ["rt-multi-thread"] }
 raptaboard-layout = { path = "crates/layout" }
 raptaboard-plugin-host = { path = "crates/plugin-host" }
+raptaboard-win-console = { path = "crates/win-console" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

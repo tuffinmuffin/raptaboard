@@ -22,7 +22,7 @@ fn main() -> eframe::Result {
     let args: Vec<String> = std::env::args().skip(1).collect();
     #[cfg(all(windows, not(debug_assertions)))]
     if prints(&args) {
-        console::attach();
+        raptaboard_win_console::attach_parent();
     }
     // Bad options, --help and --version print and exit here.
     let (given, command) = cli::parse_command(args).unwrap_or_else(|e| e.exit());
@@ -124,25 +124,4 @@ fn prints(args: &[String]) -> bool {
             "packs" | "--help" | "-h" | "help" | "--version" | "-V"
         )
     })
-}
-
-/// A Windows window program's printing goes nowhere, unless it joins the
-/// console (terminal) it was started from.
-#[cfg(all(windows, not(debug_assertions)))]
-mod console {
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn AttachConsole(process: u32) -> i32;
-    }
-    /// The console of the program that started this one.
-    const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
-
-    /// Print to the terminal raptaboard was started from, if any.
-    pub fn attach() {
-        // SAFETY: AttachConsole takes a process id and nothing else; it
-        // fails harmlessly when there's no console to join.
-        unsafe {
-            AttachConsole(ATTACH_PARENT_PROCESS);
-        }
-    }
 }
