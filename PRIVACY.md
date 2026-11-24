@@ -26,12 +26,14 @@ network.
 raptaboard can download **content packs**: extra sounds, and later widget plugins, fields and
 layouts. They come from raptaboard-content on GitHub, or from another source you add yourself.
 
-- **Packs download only when you choose them**: from the list raptaboard offers, or with Install
-  or Update in ⚙ Settings → Content packs.
+- **Packs download only when you choose them**: from the list raptaboard offers, with Install
+  or Update in ⚙ Settings → Content packs, or with `packs install` or `packs update` on the
+  command line (`raptaboard-cli` on Windows, `raptaboard` elsewhere).
 - **The list of packs** (a small file, the same for everyone) is read so raptaboard can tell you
   about new packs and updates:
   - on its first start, and on the first start after raptaboard is updated;
-  - when you open the Content packs window or press "Check for packs";
+  - when you open the Content packs window or press "Check for packs", or run a `packs`
+    command on the command line;
   - in the background about once an hour, only while the robot isn't enabled. Change how often,
     or turn this off, in ⚙ Settings ("Check for updates every … min"; 0 for never).
 - **What these requests send:** nothing about you. Like any download, the server sees your IP
