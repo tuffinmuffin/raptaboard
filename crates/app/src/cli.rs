@@ -5,11 +5,12 @@
 //! ```text
 //! raptaboard [--team N] [--address ds|team|mdns|wifi|sim|<host>] [--port N] [--hide-tree] [layout.json]
 //! raptaboard --help
+//! raptaboard packs list|install|update|remove|sources …   (see crate::packs_cli)
 //! ```
 
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 use crate::connection::AddressMode;
 use crate::settings::{self, Loaded, Settings};
@@ -50,6 +51,18 @@ pub struct Args {
     /// starts with an empty layout and Save writes it there.
     #[arg(value_name = "LAYOUT.json")]
     pub layout: Option<PathBuf>,
+    /// Something to do instead of opening the dashboard.
+    #[command(subcommand)]
+    pub command: Option<Command>,
+}
+
+/// What raptaboard can do instead of opening the dashboard.
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+pub enum Command {
+    /// List, install, update and remove content packs (extra sounds, and
+    /// later plugins), without opening the window.
+    #[command(subcommand)]
+    Packs(crate::packs_cli::Packs),
 }
 
 impl Args {
@@ -164,8 +177,26 @@ impl From<Loaded> for StartupOptions {
 /// assert!(given.layout.unwrap().ends_with("layout.json"));
 /// ```
 pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Settings, clap::Error> {
+    Ok(parse_command(args)?.0)
+}
+
+/// Read the command line: its settings, and the command given instead of
+/// opening the dashboard, if any.
+///
+/// ```
+/// use raptaboard::cli::{parse_command, Command};
+/// use raptaboard::packs_cli::Packs;
+/// let (_, command) = parse_command(["packs", "remove", "fan-clips"].map(String::from)).unwrap();
+/// assert_eq!(command, Some(Command::Packs(Packs::Remove { ids: vec!["fan-clips".into()] })));
+/// let (_, command) = parse_command(["layout.json"].map(String::from)).unwrap();
+/// assert_eq!(command, None);
+/// ```
+pub fn parse_command(
+    args: impl IntoIterator<Item = String>,
+) -> Result<(Settings, Option<Command>), clap::Error> {
     let args = std::iter::once("raptaboard".to_owned()).chain(args);
-    Ok(Args::try_parse_from(args)?.settings())
+    let args = Args::try_parse_from(args)?;
+    Ok((args.settings(), args.command))
 }
 
 /// `path` made absolute against the current folder, so a remembered layout
