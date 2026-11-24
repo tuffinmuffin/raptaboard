@@ -35,6 +35,11 @@ sha2 = "0.11.1"
 [lints]
 workspace = true
 
+# A Windows release build joins the terminal it was started from to print
+# (`raptaboard packs …`): the one unsafe call, in a crate of its own.
+[target.'cfg(windows)'.dependencies]
+raptaboard-win-console.workspace = true
+
 # Puts the icon into the Windows program (build.rs).
 [target.'cfg(windows)'.build-dependencies]
 embed-resource = "3.0.12"

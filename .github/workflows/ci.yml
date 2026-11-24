@@ -40,6 +40,13 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev
       - run: cargo test --workspace
+      # Code only a Windows release build has (main.rs's
+      # `all(windows, not(debug_assertions))`: joining the terminal for
+      # `raptaboard packs`) isn't in the debug build tested above; check it
+      # here rather than finding out in the Release workflow.
+      - name: Windows release-only code
+        if: runner.os == 'Windows'
+        run: cargo clippy --release -p raptaboard --bin raptaboard -- -D warnings
 
   # Test coverage (cargo-llvm-cov) of every workspace crate. The report goes
   # in the job summary; on a PR it also shows the change from the base

@@ -3389,6 +3389,7 @@ dependencies = [
  "nt4",
  "raptaboard-layout",
  "raptaboard-plugin-host",
+ "raptaboard-win-console",
  "resvg",
  "rfd",
  "rodio",
@@ -3420,6 +3421,10 @@ dependencies = [
  "toml 0.8.23",
  "wit-parser",
 ]
+
+[[package]]
+name = "raptaboard-win-console"
+version = "0.2.1"
 
 [[package]]
 name = "raw-window-handle"
