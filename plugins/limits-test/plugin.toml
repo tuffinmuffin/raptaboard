@@ -1,0 +1,11 @@
+# A plugin that misbehaves on purpose, for the plugin-host tests: its `mode`
+# property picks what it does when drawn.
+name = "limits-test"
+version = "0.1.0"
+api = "0.2"
+
+[match]
+topic_types = ["double"]
+
+[properties]
+mode = { type = "enum", default = "ok", options = ["ok", "spin", "panic", "grow", "publish", "sound", "print"] }

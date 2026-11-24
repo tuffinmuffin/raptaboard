@@ -60,6 +60,9 @@ interface types {
 
     /// Which values a widget wants pushed to `update`.
     variant subscription {
+        /// The topic itself, for a widget bound to one topic rather than a
+        /// table (plugin.toml's `topic_types`). Its samples have topic "".
+        bound,
         /// A key under the bound table, like "angle_rad" or "Module/0/speed".
         key(string),
         /// Every key under the bound table, at any depth.
@@ -72,8 +75,9 @@ interface types {
 
     /// One change to a value the widget subscribed to.
     record sample {
-        /// The key under the bound table ("angle_rad"), or the full path
-        /// (starting with "/") for a `tables-of-type` subscription.
+        /// The key under the bound table ("angle_rad"), "" for the bound
+        /// topic itself, or the full path (starting with "/") for a
+        /// `tables-of-type` subscription.
         topic: string,
         /// The new value; `none` when the topic stopped being published.
         value: option<nt-value>,
@@ -97,8 +101,10 @@ interface types {
     record circle { center: point, radius: f32, stroke: option<stroke>, fill: option<color> }
 
     enum align { left, center, right }
-    /// Text in the dashboard's font. With `max-width` it wraps onto more lines
-    /// at that width (`host.measure-text` says how tall it gets).
+    /// Text in the dashboard's font, `size` pixels high. `pos` is the top of
+    /// the first line: its left end, middle or right end, as `align` says.
+    /// With `max-width` it wraps onto more lines at that width
+    /// (`host.measure-text` says how tall it gets).
     record text {
         pos: point,
         text: string,
@@ -209,8 +215,9 @@ interface types {
 interface host {
     use types.{nt-value, size};
 
-    /// Latest value of a key the widget subscribed to: relative to the bound
-    /// table ("angle_rad"), or a full path from a `tables-of-type` subscription.
+    /// Latest value of a topic the widget subscribed to, named as in `sample`:
+    /// relative to the bound table ("angle_rad"), "" for the bound topic, or a
+    /// full path from a `tables-of-type` subscription.
     get: func(topic: string) -> option<nt-value>;
     /// The key's `unit` topic property, like "rad" or "m", if the robot set one.
     unit: func(topic: string) -> option<string>;
