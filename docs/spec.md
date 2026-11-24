@@ -16,6 +16,7 @@ Elastic layouts is a convenience, not a requirement.
 | UI framework | egui / eframe | 2026-11-14 |
 | NT client | our own NT4.1 client, published as the [`nt4`](https://crates.io/crates/nt4) crate (`tuffinmuffin/nt4-rs`) | 2026-11-17 |
 | Plugins | WebAssembly components only, run by wasmtime, interface in `wit/dashboard.wit` | 2026-11-14 |
+| Plugin design | API 0.2: one instance per widget on its own thread, values pushed, shapes and accessible regions out; then tabs, pixels, audio, 3D scenes and UI elements ("Plugin system"). API 0.1 was a placeholder and is dropped | 2026-11-23 |
 | Dynamic-library plugins | rejected: a crash would take down the dashboard during a match | 2026-11-14 |
 | Layout files | ~~read and write Elastic `version 1.0` JSON unchanged~~ (2026-11-14); replaced 2026-11-18: no need to keep Elastic's file format. Teams aren't expected to switch back and forth; working with Elastic files is nice to have when it's cheap. Files are Elastic-shaped today and may become raptaboard's own format; if they do, an import tool converts Elastic layouts into it (one way) | 2026-11-18 |
 | Elastic's role | the starting point, not the limit: add features beyond it; keep Elastic's names where robot code depends on them (`.type`, `/Elastic/` topics) | 2026-11-18 |
@@ -245,8 +246,8 @@ its `setting_keys`), listed in `widgets::TYPES`. The grid and the settings dialo
 trait. The trait's default `draw` puts `draw_body` inside the standard card (`shared/card.rs`: rounded
 box, title on top); a widget that needs another frame or none (a camera view edge to edge)
 overrides `draw`, using `shared/card.rs`'s pieces as it likes. `shared/settings.rs` has the dialog's shared rows (title,
-period) and "Reset settings". Milestone 4 plugin widgets implement the same trait through an
-adapter: WIT `render` shapes drawn with egui, settings rows from `plugin.toml`.
+period) and "Reset settings". Plugin widgets implement the same trait through an
+adapter ("Plugin system"): WIT `render` shapes drawn with egui, settings rows from `plugin.toml`.
 
 ### Remote layouts
 
@@ -275,23 +276,136 @@ under 5% CPU on a DS laptop with 30 widgets at 50 Hz.
 
 ## Plugin system
 
-A plugin is a folder with `plugin.toml` and `widget.wasm` (a WASM component exporting the `widget`
-world in `wit/dashboard.wit`).
+Planned with the user 2026-11-23, when plugin work started. Until then `wit/dashboard.wit` and
+`plugin.toml` were placeholders, so API 0.1 was dropped rather than kept working. Plugins remain WebAssembly
+components run by wasmtime (no dynamic libraries, no scripting). The aim is that anyone can write a
+widget outside this repo, install it at runtime, and have it look and behave like a built-in one.
 
-1. Manifest: name, version, host API version, match rules, size, properties schema, permissions.
-2. Match rules: `type` (the table's `.type`), `path` (glob), `has` (required child keys). All given
-   rules must pass; a `.type` match is most specific. Implemented in `crates/plugin-host`.
-3. Binding: the plugin reads keys relative to the table it was dropped on.
-4. Render: called when a bound value changes; returns shapes (line, polyline, arc, rect, circle,
-   text, image) in widget pixels. Only the host draws.
-5. Input: click, drag, key go to `on-input`. Publishing needs `publish = true` and stays inside the
-   bound table.
-6. Properties: the schema becomes the edit dialog and is saved in the layout.
-7. Limits: wasmtime fuel and memory caps; a trapped plugin shows a "plugin stopped" tile and the rest
-   of the dashboard keeps running.
+### What a plugin is
 
-Example: `plugins/arm/plugin.toml` matches `.type = "Arm"` and draws `angle_rad`, `setpoint_rad`,
-`extension_m`, `at_goal`. The planned Rust source is in the Claude Doc.
+A folder with `plugin.toml` and `widget.wasm` (a component exporting a world from
+`wit/dashboard.wit`), plus any files it reads (images, models, a game's data). It reaches users in a
+content pack (`[[plugin]]`, signed like sounds), or during development from a local folder that reloads
+when the `.wasm` changes. `plugin.toml` gives:
+
+1. Name, version, the host API version (`api = "0.2"`).
+2. Match rules: `type` (the table's `.type`), `path` (glob) and `has` (required child keys). All the
+   rules given must pass; a `.type` match is the most specific. Implemented in `crates/plugin-host`.
+3. Size in grid cells (default and minimum).
+4. Properties: the edit dialog is made from them and they're saved in the layout. The types are `number`,
+   `bool`, `string`, `color`, `enum`, plus `sound` (the shared sound picker) and, later, `table`
+   (bind another table).
+5. Permissions: `publish` (write NT values, only under the bound table), `sound` (`play-sound`) and
+   `background` (keep getting values, and so set its tab's mark, while its tab is closed). Packs
+   show a plugin's permissions before installing, as they show licenses, in the window and in
+   `raptaboard packs install`.
+
+A plugin widget is saved in the layout as type `plugin:<name>` with its properties. With the plugin
+missing, the widget shows a "missing plugin: <name>" card and keeps its properties. Installing a
+plugin pack while the dashboard runs makes it available at once, in Add as and the widget type
+choices, without a restart.
+
+### How it runs (API 0.2: grid widgets)
+
+The interface is `wit/dashboard.wit`. One instance runs per widget, each on its own worker thread.
+The window sends it values and input and draws the newest picture it has finished, so it never waits
+on a plugin.
+
+- `subscriptions()`: which values to push: keys under the bound table, every key under it, or every
+  table on the server with a given `.type` (the Alerts widget's `all_groups`). Asked again when a
+  property changes.
+- `update(samples)`: every change since the last call, oldest first, with the server's time. A graph
+  plugin misses no points between frames.
+- `render(frame)`: the size, time, connection state, lock and theme colors in. Out come shapes (line,
+  polyline, arc, rect, circle, text that can wrap, images from the plugin's folder) and *regions*. A
+  region is a clickable part with a label and role, which the dashboard turns into an accessible
+  control (screen readers, and the kittest tests find it by label). It also returns `redraw-in-s` for
+  animations and pulses, and a screen-reader summary.
+- `tab-mark()`: the alert level for the mark on its tab.
+- `on-input(event)`: a region activated, pointer down/up/move, wheel, focus, key down/up and text.
+  Keys go to a widget only while it has focus (a click into it; Escape or a click elsewhere ends
+  it), and the dashboard's own shortcuts are off meanwhile.
+- Host calls: `get`, `unit`, `publish`, `property`, `measure-text`, `play-sound` (through
+  raptaboard's own sounds, honoring mute) and `log`.
+- Limits: wasmtime epoch interruption gives each call a time budget (better than fuel for work that
+  must keep a frame rate), and each instance has a memory cap. WASI gives clocks and random only, no
+  files or network. A plugin that traps or runs over shows a "plugin stopped" card with Restart, and
+  the rest of the dashboard keeps going.
+- In the app, an adapter implements `widgets::WidgetType` for every plugin, so the grid, the settings
+  dialog, tab marks and `background_topics` treat it like a built-in.
+- For authors: a `raptaboard-plugin` Rust crate (wit-bindgen bindings and helpers, target
+  `wasm32-wasip2`) and a template. Other languages can build components too, but only Rust is
+  supported.
+
+### Developing and testing plugins
+
+Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to see a plugin work.
+
+- **Test harness** (`raptaboard-plugin-test`, with the SDK): loads a built `widget.wasm` in the real
+  host runtime and limits, for `cargo test`. A test sets values (one at a time or a timed script),
+  sizes, the connection state and the theme, and sends input (`activate("bell")`, keys). It then
+  checks what came back: shapes, regions found by label, the tab mark, redraw requests, sounds asked
+  for and log lines, and optionally a rendered PNG snapshot. Our own Number and Alerts plugins are
+  checked against the built-ins with it.
+- **Sandbox window** (`raptaboard plugin dev <folder>`): the dashboard with its own NT server inside
+  (the in-process `nt4::Server` the UI tests use) instead of a robot. The plugin from the folder is
+  placed on a tab and reloads when the `.wasm` is rebuilt. A values panel types values, drags
+  sliders, adds and removes topics, and plays scripted sequences (later, a `.wpilog` replay). A dev
+  overlay shows the regions' outlines, time and memory per call against the limits, the plugin's
+  log and any trap with Restart, with switches for theme, connected and locked and preset widget
+  sizes. `--address` points it at the sim or a robot instead. It doubles as a demo of a plugin
+  without a robot.
+
+### Order
+
+1. **Runtime and the two example plugins** (next). The wasmtime host with the limits above, API 0.2,
+   the adapter, loading from packs and from a local folder, the SDK crate and the test harness. Then two plugins in
+   `plugins/` (built in CI, shipped as an `example-widgets` pack in raptaboard-content), each set beside
+   its built-in to show plugins can match them:
+   - **Number**: a Text Display for a number (decimals, unit, font size or fit, color by value).
+   - **Alerts**: the built-in Alerts widget (`builtin/alerts.rs`): the circle with its three
+     signs and counts, the text list beside or below, `all_groups`, the pulse on a new error, its
+     tone (a `sound` property), the bell mute region, greyed when disconnected, and the tab mark,
+     also while its tab is closed. It reads the same layout properties, and the Alerts UI tests run
+     against it too.
+
+   The arm plugin (`plugins/arm`) stays as the manifest fixture.
+
+   Then the sandbox window, before Doom (whose keys, ticks and sound need a live window most).
+2. **Doom**, the easter egg (doomMod, `tuffinmuffin/raptaboard-doom`): API additions for a plugin
+   that fills a tab (a manifest can claim a tab title, `tab = "Doom"`, so a tab of that name
+   becomes the game when the pack is installed), an RGBA pixel frame drawn as a scaled texture,
+   `tick(dt)` at a set rate (35 Hz), an audio stream (PCM into the mixer, silent while the tab is
+   hidden), and read-only files from the plugin's pack (the WAD). Hidden tabs don't tick, so the
+   game pauses.
+3. **Custom graphs**: binding several tables (the `table` property) and history from the host.
+4. **3D scene and a robot viewer**: the host renders and the plugin describes a scene it keeps.
+   Meshes come from the pack's GLB files, as a part tree whose transforms the plugin sets. There are
+   simple objects (lines, spheres, boxes, cones and frusta, flat tags) with color, opacity and
+   visibility per part, and the host's camera views (orbit, top-down, a camera's own view; more
+   than one at once). Ray casts against the scene, picks and bounding boxes are queries the plugin
+   can make. The reference is Robot-2026's `host/camera_visualizer` (Three.js: CAD part trees,
+   AprilTag coverage with FOV cones and line-of-sight). Here it would run on live data: the robot
+   publishes its camera and mechanism mounts as `Transform3d` topics, and the viewer shows the robot
+   at its estimated pose, mechanisms moving, and which tags the cameras should see against which they
+   do. One generic plugin reads a GLB and a mapping file (node `arm` turns by `/Arm/angle_rad`), so
+   teams don't write code for their robot. GLBs are cleaned up when the pack is built (Draco decoded,
+   draw calls merged per part, plain materials, units and Onshape's axes fixed), not at runtime.
+   Check the AdvantageScope field models' license before shipping any in a pack.
+5. **UI elements and a log viewer**: a set of elements the host draws with egui (a table with
+   columns, sorting, a filter box, buttons, scrolling), asking the plugin only for the rows on
+   screen. Plus a file the user picks, handed over as a handle, never a path. The first user is a
+   spreadsheet of robot logs (`.wpilog`) to filter.
+6. **Picking and measuring in the robot viewer** (points, transforms to copy), with a clipboard
+   permission.
+
+Each step adds to the WIT as a new minor version. The host keeps running plugins built for older
+minor versions.
+
+Open questions:
+- Without the Doom pack, does a "Doom" tab stay plain or offer the pack?
+- Is a picked log file enough at first, or should the host fetch logs from the roboRIO (SFTP)?
+- Is the generic robot-model plugin plus a mapping file the right shape for the CAD view?
 
 ## Content packs
 
@@ -945,7 +1059,9 @@ chooses, never needed at an event: packs are installed beforehand and used from 
    state and the e-stop pop-up, the Group widget, X/Y and polar graphs, partial overlap, reflow
    while dragging, the text style
    dialog, regex alert filters, and plugins.
-4. Plugins v1: wasmtime host, limits, hot reload, the arm plugin, plugin template and SDK crate.
+4. Plugins v1: wasmtime host, limits, hot reload, plugin template and SDK crate, and Number and Alerts
+   plugins matching the built-ins; then Doom, graphs, the 3D robot viewer and a log viewer ("Plugin
+   system", "Order").
 5. Robot hooks and the rest: ElasticLib hooks, layout download, remaining widgets, units, MJPEG
    cameras (Mechanism2d was done in milestone 3).
    Low priority, after the other features (asked for by the user 2026-11-20), both for the Field:

@@ -111,7 +111,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `ElasticLayout::sanitize` fixes values the app can't show (run on every opened file) and leaves
   valid layouts unchanged (`tests/sanitize.rs`).
 - `crates/plugin-host`: manifest parsing and matching; `path` has topic path helpers
-  (`.type` tables). wasmtime hosting comes in milestone 4.
+  (`.type` tables). wasmtime hosting is next: `docs/spec.md` "Plugin system" has the plan (API 0.2,
+  then Number and Alerts plugins matching the built-ins, then Doom, graphs, a 3D robot viewer, a log viewer).
 - `crates/app`: the eframe app. `ui/` holds the window (`DashboardApp` in `ui/mod.rs` with file open/save and the edit and tab
   actions; its state is grouped in `ui/state.rs`: `file` (`LayoutFile`), `address`, `tree` (`TreeView`), `grid`
   (`GridState`: drags, where the grid was), `alerts` (the history and its panel) and `sends` (failed sends),
@@ -273,7 +274,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   layout turns on the window border by state (cyan with no robot, none while disabled) and the red flash after a
   disable (its `"robot_state"` object). "Writing in a list" holds the toggles and a slider as List
   Layout children.
-- `wit/dashboard.wit`: plugin ABI. Bump the package version and `HOST_API` in plugin-host together.
+- `wit/dashboard.wit`: plugin ABI (0.2, a draft until the host runs it). Bump the package version and
+  `HOST_API` in plugin-host together.
 - `plugins/arm`: example plugin; its `plugin.toml` is a test fixture.
 
 ## Conventions
