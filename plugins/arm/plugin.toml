@@ -2,7 +2,7 @@
 # The robot publishes angle_rad, setpoint_rad, extension_m and at_goal under it.
 name = "arm"
 version = "0.1.0"
-api = "0.2"
+api = "0.3"
 
 [match]
 type = "Arm"

@@ -158,3 +158,82 @@ fn the_overlay_shows_usage_the_log_and_a_stop_with_restart() {
     settle(&mut harness);
     assert!(crate::plugins::outline_regions(&ctx));
 }
+
+/// The tab-test square's left edge in `widget`'s newest picture, in frame
+/// pixels: the first column that isn't the background.
+fn square_x(ctx: &egui::Context, widget: &raptaboard_layout::WidgetContainer) -> Option<i64> {
+    let p = crate::plugins::newest_pixels(ctx, widget)?;
+    let width = p.width as usize;
+    (0..p.height as usize)
+        .flat_map(|y| (0..width).map(move |x| (x, y)))
+        .filter(|(x, y)| p.rgba[(y * width + x) * 4..][..3] != [10, 20, 60])
+        .map(|(x, _)| x as i64)
+        .min()
+}
+
+#[test]
+fn an_animation_keeps_its_rate_when_the_window_draws_only_when_asked() {
+    use std::sync::{Arc, Mutex};
+    // As eframe does: the window sleeps until a repaint is asked for (now or
+    // after a delay, from its own frames or other threads), then draws at the
+    // next 120 Hz refresh, a little late. tab-test asks for 35 frames a
+    // second and moves its square one 3-pixel step a frame.
+    let mut harness = sandbox_for("tab-test");
+    let widget = harness.state().layout.tabs[0].grid_layout.containers[0].clone();
+    let ctx = harness.ctx.clone();
+    let wake: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(Some(Instant::now())));
+    let asked = wake.clone();
+    ctx.set_request_repaint_callback(move |info| {
+        let at = Instant::now() + info.delay;
+        let mut w = asked.lock().unwrap();
+        *w = Some(w.map_or(at, |x| x.min(at)));
+    });
+    let start = Instant::now();
+    let refresh_us = 8_333;
+    let (mut xs, mut frames) = (Vec::new(), 0u64);
+    while start.elapsed() < Duration::from_millis(1500) {
+        let at = loop {
+            let soonest = *wake.lock().unwrap();
+            match soonest {
+                Some(at) if at <= Instant::now() => break at,
+                _ if start.elapsed() > Duration::from_secs(5) => break Instant::now(),
+                _ => std::thread::sleep(Duration::from_millis(1)),
+            }
+        };
+        wake.lock().unwrap().take();
+        let since = at.saturating_duration_since(start).as_micros() as u64;
+        let late = (frames * 2_654_435_761) % 6_000;
+        let draw_at = start + Duration::from_micros(since.div_ceil(refresh_us) * refresh_us + late);
+        if let Some(wait) = draw_at.checked_duration_since(Instant::now()) {
+            std::thread::sleep(wait);
+        }
+        xs.extend(square_x(&ctx, &widget));
+        harness.step();
+        frames += 1;
+        let delay = harness
+            .output()
+            .viewport_output
+            .values()
+            .map(|v| v.repaint_delay)
+            .min();
+        if let Some(d) = delay.filter(|d| *d < Duration::from_secs(10)) {
+            let at = Instant::now() + d;
+            let mut w = wake.lock().unwrap();
+            *w = Some(w.map_or(at, |x| x.min(at)));
+        }
+    }
+    let mut moves: Vec<i64> = xs
+        .windows(2)
+        .map(|w| (w[1] - w[0]).abs())
+        .filter(|m| *m > 0)
+        .collect();
+    moves.sort_unstable();
+    // About 52 in 1.5 s; when the window slept between pictures, about 6,
+    // each jumping 30 pixels.
+    assert!(
+        moves.len() >= 25,
+        "only {} new pictures: {moves:?}",
+        moves.len()
+    );
+    assert_eq!(moves[moves.len() / 2], 3, "{moves:?}");
+}

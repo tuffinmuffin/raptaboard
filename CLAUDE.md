@@ -118,7 +118,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   wasmtime (`Runtime` compiles and keeps the clock behind the time limits, `Plugin` one compiled folder,
   `Instance` one widget: `subscriptions`, `update`, `render`, `tab_mark`, `on_input`, answering the plugin through
   a `Host`; a trap, a panic, running past `Limits::call_ms` or `memory_bytes` stops it for good, as `Stopped`;
-  WASI with no files, network or environment, stdout to the log); `dev.rs` builds a plugins workspace
+  WASI with no network or environment and no files but the plugin's own folder, read-only at `/pack`, stdout to the
+  log; `Instance::usage` its call times and memory); `dev.rs` builds a plugins workspace
   (`repo_plugins()`: `plugins/`, once per test run). `tests/runtime.rs` runs them. `docs/spec.md` "Plugin system"
   has the plan (next the example-widgets pack, then Doom, graphs, a 3D robot viewer, a log viewer).
 - `crates/plugin-test`: `raptaboard-plugin-test`, the harness for testing a plugin with `cargo test`: `Harness::build`
@@ -155,7 +156,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `widget!` macro over the wit-bindgen bindings, and helpers), `number` the first example plugin (a number topic
   as text, with the Text Display's setting names), `alerts` the second (the built-in Alerts widget remade: a
   table plugin with a tab mark, a tone and a pulse, with the built-in's setting names), `limits-test` a plugin that misbehaves on purpose for the
-  runtime and harness tests (its `region` mode draws a "Bell" button). Each example plugin has harness tests in its `tests/`. CI lints and tests it in the lint job.
+  runtime and harness tests (its `region` mode draws a "Bell" button, `files` tries files in and out of `/pack`), and
+  `tab-test` a plugin that fills a tab ("Tab test": a bouncing pixel frame at 35 Hz, keys, a beep through
+  `play-audio`, a file from `/pack`), the small stand-in for Doom. Each example plugin has harness tests in its `tests/`. CI lints and tests it in the lint job.
 - `crates/app`: the eframe app. `ui/` holds the window (`DashboardApp` in `ui/mod.rs` with file open/save and the edit and tab
   actions; its state is grouped in `ui/state.rs`: `file` (`LayoutFile`), `address`, `tree` (`TreeView`), `grid`
   (`GridState`: drags, where the grid was), `alerts` (the history and its panel) and `sends` (failed sends),
@@ -317,8 +320,10 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   layout turns on the window border by state (cyan with no robot, none while disabled) and the red flash after a
   disable (its `"robot_state"` object). "Writing in a list" holds the toggles and a slider as List
   Layout children.
-- `wit/dashboard.wit`: plugin ABI (0.2, a draft until the host runs it). Bump the package version and
-  `HOST_API` in plugin-host together.
+- `wit/dashboard.wit`: plugin ABI (0.3: widgets and tab plugins, shapes including `pixels`, regions, input,
+  `play-audio`, the plugin's folder read-only at `/pack`). Bump the package version and `HOST_API` in plugin-host
+  together; before 1.0 a plugin runs only on the same 0.x (`api_compatible`), so rebuild the plugins and the
+  content repo's `example-widgets` pack with it.
 - `plugins/arm`: a manifest only (no code); its `plugin.toml` is a test fixture.
 
 ## Conventions

@@ -16,7 +16,7 @@ Elastic layouts is a convenience, not a requirement.
 | UI framework | egui / eframe | 2026-11-14 |
 | NT client | our own NT4.1 client, published as the [`nt4`](https://crates.io/crates/nt4) crate (`tuffinmuffin/nt4-rs`) | 2026-11-17 |
 | Plugins | WebAssembly components only, run by wasmtime, interface in `wit/dashboard.wit` | 2026-11-14 |
-| Plugin design | API 0.2: one instance per widget on its own thread, values pushed, shapes and accessible regions out; then tabs, pixels, audio, 3D scenes and UI elements ("Plugin system"). API 0.1 was a placeholder and is dropped | 2026-11-23 |
+| Plugin design | API 0.3 (0.2 on 2026-11-23): one instance per widget on its own thread, values pushed, shapes and accessible regions out; then tabs, pixels, audio, 3D scenes and UI elements ("Plugin system"). API 0.1 was a placeholder and is dropped | 2026-11-23 |
 | Dynamic-library plugins | rejected: a crash would take down the dashboard during a match | 2026-11-14 |
 | Layout files | ~~read and write Elastic `version 1.0` JSON unchanged~~ (2026-11-14); replaced 2026-11-18: no need to keep Elastic's file format. Teams aren't expected to switch back and forth; working with Elastic files is nice to have when it's cheap. Files are Elastic-shaped today and may become raptaboard's own format; if they do, an import tool converts Elastic layouts into it (one way) | 2026-11-18 |
 | Elastic's role | the starting point, not the limit: add features beyond it; keep Elastic's names where robot code depends on them (`.type`, `/Elastic/` topics) | 2026-11-18 |
@@ -307,7 +307,7 @@ missing, the widget shows a "missing plugin: <name>" card and keeps its properti
 plugin pack while the dashboard runs makes it available at once, in Add as and the widget type
 choices, without a restart.
 
-### How it runs (API 0.2: grid widgets)
+### How it runs (API 0.3: grid widgets and tabs)
 
 The interface is `wit/dashboard.wit`. One instance runs per widget, each on its own worker thread.
 The window sends it values and input and draws the newest picture it has finished, so it never waits
@@ -391,7 +391,18 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
    becomes the game when the pack is installed), an RGBA pixel frame drawn as a scaled texture,
    `tick(dt)` at a set rate (35 Hz), an audio stream (PCM into the mixer, silent while the tab is
    hidden), and read-only files from the plugin's pack (the WAD). Hidden tabs don't tick, so the
-   game pauses.
+   game pauses. Without the pack, a tab named "Doom" stays a plain tab: nothing hints at the easter
+   egg or offers the pack (decided with the user 2026-11-25). The engine isn't settled: doomMod's
+   room4doom build was a proof of concept for making the WAD, and another engine, library or
+   method is fine (the user, 2026-11-25); the API is engine-neutral, so it comes first, tried with a
+   small test plugin. API 0.3 (2026-11-25): a `pixels` shape (RGBA, sharp or smooth), `play-audio`
+   (16-bit PCM queued, needs `sound`), the plugin's folder read-only at `/pack` (WASI; nothing else),
+   and `tab = "…"` in plugin.toml (such a plugin isn't a widget). No `tick` export: a game asks for
+   `redraw-in-s` 1/35 and steps in `render`, and a closed tab isn't drawn, so it pauses.
+   `plugins/tab-test` uses all of it. Next: the app's side (the claimed tab drawn full size, keys
+   while it has focus with the dashboard's shortcuts off, the audio stream into the mixer, the sandbox
+   for tab plugins), then choosing the engine. Before 1.0 a plugin runs only on the same 0.x, so the
+   content repo's `example-widgets` pack (0.2) is rebuilt for 0.3 before the next release.
 3. **Custom graphs**: binding several tables (the `table` property) and history from the host.
 4. **3D scene and a robot viewer**: the host renders and the plugin describes a scene it keeps.
    Meshes come from the pack's GLB files, as a part tree whose transforms the plugin sets. There are
@@ -417,7 +428,6 @@ Each step adds to the WIT as a new minor version. The host keeps running plugins
 minor versions.
 
 Open questions:
-- Without the Doom pack, does a "Doom" tab stay plain or offer the pack?
 - Is a picked log file enough at first, or should the host fetch logs from the roboRIO (SFTP)?
 - Is the generic robot-model plugin plus a mapping file the right shape for the CAD view?
 

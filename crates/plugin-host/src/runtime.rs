@@ -9,9 +9,10 @@
 //! time limit, asking for too much memory) is stopped for good: every call
 //! after that returns the same [`Stopped`]. Making a new instance restarts it.
 //!
-//! Plugins get WASI with no files, no network, no environment and no stdin;
-//! what they print to stdout and stderr goes to the dashboard log, and the last
-//! of stderr (a Rust panic's message) is kept in [`Stopped`].
+//! Plugins get WASI with no network, no environment and no stdin, and no
+//! files but their own folder, read-only at `/pack`; what they print to
+//! stdout and stderr goes to the dashboard log, and the last of stderr (a
+//! Rust panic's message) is kept in [`Stopped`].
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -22,7 +23,13 @@ use std::time::{Duration, Instant as Clock};
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
 use wasmtime::{Config, Engine, ResourceLimiter, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
-use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
+use wasmtime_wasi::{FsPerms, WasiCtx, WasiCtxView, WasiView};
+
+/// Where a plugin finds its own folder (its pack's files), read-only.
+pub const PACK_DIR: &str = "/pack";
+
+/// The audio sample rates a plugin may send, a second.
+pub const AUDIO_RATES: std::ops::RangeInclusive<u32> = 8_000..=96_000;
 
 use crate::{Manifest, ManifestError};
 
@@ -37,8 +44,8 @@ mod bindings {
 pub use bindings::raptaboard::dashboard::types::Image as ImageShape;
 pub use bindings::raptaboard::dashboard::types::{
     Align, Arc as ArcShape, Circle, Color, Field, FrameInfo, Input, Key, Level, Line, Modifiers,
-    NtValue, Picture, Point, Polyline, Rect, Region, Role, Sample, ScalarValue, Shape, Size,
-    Stroke, Subscription, Text, Theme,
+    NtValue, Picture, Pixels, Point, Polyline, Rect, Region, Role, Sample, ScalarValue, Shape,
+    Size, Stroke, Subscription, Text, Theme,
 };
 
 use bindings::Widget;
@@ -52,7 +59,7 @@ const TICK: Duration = Duration::from_millis(5);
 ///
 /// ```
 /// use raptaboard_plugin_host::{Manifest, runtime::{default_properties, NtValue}};
-/// let m = Manifest::from_toml("name='n'\nversion='0'\napi='0.2'\n[match]\ntopic_types=['double']\n\
+/// let m = Manifest::from_toml("name='n'\nversion='0'\napi='0.3'\n[match]\ntopic_types=['double']\n\
 ///     [properties]\nfont_size={type='number',default=14}\n").unwrap();
 /// assert_eq!(default_properties(&m)["font_size"], NtValue::Double(14.0));
 /// ```
@@ -187,6 +194,13 @@ pub trait Host: Send {
     fn measure_text(&self, text: &str, size: f32, max_width: Option<f32>, monospace: bool) -> Size;
     /// Play a sound the user picked in a `sound` property. Only called when
     /// the plugin has the `sound` permission.
+    /// Queue sound: 16-bit samples, `channels` (1 or 2) interleaved, `rate`
+    /// a second (checked before this is called). Only called with
+    /// `sound = true` in plugin.toml.
+    fn play_audio(&mut self, _samples: &[i16], _rate: u32, _channels: u8) -> Result<(), String> {
+        Err("this dashboard plays no audio".into())
+    }
+
     fn play_sound(&mut self, _sound: &str) -> Result<(), String> {
         Err("sound isn't available here".into())
     }
@@ -268,12 +282,16 @@ impl Runtime {
     ) -> Result<Instance, Stopped> {
         let stderr = MemoryOutputPipe::new(16 << 10);
         let stdout = MemoryOutputPipe::new(16 << 10);
-        let wasi = WasiCtx::builder()
-            .stdout(stdout.clone())
+        let mut wasi = WasiCtx::builder();
+        wasi.stdout(stdout.clone())
             .stderr(stderr.clone())
             .allow_tcp(false)
-            .allow_udp(false)
-            .build();
+            .allow_udp(false);
+        // Its own folder, to read (a game's data). Without it (gone), no files.
+        if plugin.folder.is_dir() {
+            let _ = wasi.preopened_dir(&plugin.folder, PACK_DIR, FsPerms::ReadOnly);
+        }
+        let wasi = wasi.build();
         let state = State {
             wasi,
             table: ResourceTable::new(),
@@ -576,6 +594,23 @@ impl wit_host::Host for State {
             return Err("plugin.toml doesn't have sound = true".into());
         }
         self.host.play_sound(&sound)
+    }
+
+    fn play_audio(&mut self, samples: Vec<i16>, rate: u32, channels: u8) -> Result<(), String> {
+        if !self.sound {
+            return Err("plugin.toml doesn't have sound = true".into());
+        }
+        if !(1..=2).contains(&channels) {
+            return Err(format!("{channels} channels: 1 or 2"));
+        }
+        if !AUDIO_RATES.contains(&rate) {
+            return Err(format!(
+                "{rate} samples a second: {} to {}",
+                AUDIO_RATES.start(),
+                AUDIO_RATES.end()
+            ));
+        }
+        self.host.play_audio(&samples, rate, channels)
     }
 
     fn log(&mut self, message: String) {

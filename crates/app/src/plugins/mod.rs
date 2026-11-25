@@ -17,7 +17,7 @@
 //! whose widgets are gone from its layout.
 
 pub mod convert;
-mod draw;
+pub mod draw;
 mod widget;
 pub mod worker;
 
@@ -353,6 +353,14 @@ pub fn all() -> Vec<&'static PluginType> {
     registry().types.read().unwrap().clone()
 }
 
+/// The loaded plugins that are widgets: not those that fill a tab.
+pub fn widget_types() -> Vec<&'static PluginType> {
+    all()
+        .into_iter()
+        .filter(|t| t.loaded().plugin.manifest.tab.is_none())
+        .collect()
+}
+
 /// The worker for `widget`'s key: its type, the plugin's build, and its
 /// settings.
 fn key(ty: &PluginType, generation: u64, widget: &WidgetContainer) -> String {
@@ -482,6 +490,34 @@ pub fn dev_view(ctx: &egui::Context, widget: &WidgetContainer) -> Option<DevView
         log: latest.log.iter().cloned().collect(),
         stopped: latest.stopped.as_ref().map(|s| s.reason.clone()),
     })
+}
+
+/// The first pixel image in `widget`'s newest picture in the window `ctx`
+/// (for tests).
+#[cfg(test)]
+pub(crate) fn newest_pixels(
+    ctx: &egui::Context,
+    widget: &WidgetContainer,
+) -> Option<raptaboard_plugin_host::runtime::Pixels> {
+    let ty = find(&widget.widget_type)?;
+    let key = key(ty, ty.loaded().generation, widget);
+    let worker = registry()
+        .workers
+        .lock()
+        .unwrap()
+        .get(&owner(ctx))?
+        .get(&key)?
+        .clone();
+    let latest = worker.latest.lock().unwrap();
+    latest
+        .picture
+        .as_ref()?
+        .shapes
+        .iter()
+        .find_map(|s| match s {
+            raptaboard_plugin_host::runtime::Shape::Pixels(p) => Some(p.clone()),
+            _ => None,
+        })
 }
 
 /// Start `widget`'s plugin again from scratch in the window `ctx`.

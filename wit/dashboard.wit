@@ -1,4 +1,5 @@
-// raptaboard plugin interface (host API 0.2, a draft: nothing runs it yet).
+// raptaboard plugin interface (host API 0.3). Before 1.0 each minor version
+// may change it: a plugin runs on a host of the same 0.x.
 //
 // A widget plugin is a WebAssembly component that exports the `widget` world.
 // The dashboard makes one instance per widget and runs it on a thread of its
@@ -14,15 +15,23 @@
 // 4. `on-input` gets clicks, pointer moves and, while the widget has focus,
 //    keys.
 //
-// Plugins can't open files, sockets or windows. Everything outside the plugin
-// goes through `host`, and some of it needs a permission in plugin.toml, which
-// the user sees before installing the pack.
+// Plugins can't open sockets or windows, or any file but their own: the
+// plugin's folder (its pack's files, like a game's data) is open read-only at
+// `/pack` through WASI, and nothing else is. Everything else goes through
+// `host`, and some of it needs a permission in plugin.toml, which the user
+// sees before installing the pack.
 //
-// This version is for widgets on the grid, enough to remake the built-in Text
-// Display and Alerts as plugins. Tabs, pixels, audio streams, UI elements and
-// 3D scenes come in later versions: see docs/spec.md "Plugin system".
+// A plugin is a widget on the grid (plugin.toml's [match]), or fills a tab
+// (`tab = "Doom"`): an empty tab of that name shows it instead of the grid,
+// at the tab's size, sending it keys while it has focus. A tab plugin that
+// animates (a game) asks to be drawn again with `redraw-in-s` (1/35 s) and
+// steps in `render`; a closed tab isn't drawn, so it pauses.
+//
+// 0.3 added pixel images, an audio stream, the `/pack` folder and tabs. UI
+// elements and 3D scenes come in later versions: see docs/spec.md "Plugin
+// system".
 
-package raptaboard:dashboard@0.2.0;
+package raptaboard:dashboard@0.3.0;
 
 interface types {
     /// A plain NetworkTables value.
@@ -118,6 +127,19 @@ interface types {
     /// An image from the plugin's own folder, like "arm.png".
     record image { path: string, min: point, max: point }
 
+    /// An image the plugin made, like a game's frame: `width` × `height`
+    /// pixels, RGBA (4 bytes each), the top row first, drawn stretched over
+    /// `min`..`max`. `smooth` blends between pixels when scaled; off, each
+    /// pixel stays a sharp square (pixel art, a game).
+    record pixels {
+        min: point,
+        max: point,
+        width: u32,
+        height: u32,
+        rgba: list<u8>,
+        smooth: bool,
+    }
+
     variant shape {
         line(line),
         polyline(polyline),
@@ -126,6 +148,7 @@ interface types {
         circle(circle),
         text(text),
         image(image),
+        pixels(pixels),
     }
 
     /// What a region is, for screen readers and tests.
@@ -232,6 +255,12 @@ interface host {
     /// an installed pack's). Muted when the dashboard's sound is off. Needs
     /// `sound = true` in plugin.toml.
     play-sound: func(sound: string) -> result<_, string>;
+    /// Queue sound to play after what's queued already: 16-bit samples,
+    /// `channels` interleaved (1 or 2), `rate` a second (like 44100). Send a
+    /// little at a time, about each frame's worth, to stay in step; what's
+    /// queued past half a second is dropped. Muted when the dashboard's sound
+    /// is off. Needs `sound = true` in plugin.toml.
+    play-audio: func(samples: list<s16>, rate: u32, channels: u8) -> result<_, string>;
     /// Write a line to the dashboard log.
     log: func(message: string);
 }

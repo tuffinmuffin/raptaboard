@@ -86,7 +86,7 @@ one topic or a table:
 ```toml
 name = "number"
 version = "0.1.0"
-api = "0.2"
+api = "0.3"
 
 [match]
 topic_types = ["double", "float", "int"]   # or, for a table: type = "Arm" (its .type topic)

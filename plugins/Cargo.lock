@@ -1184,6 +1184,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tab-test"
+version = "0.1.0"
+dependencies = [
+ "raptaboard-plugin",
+ "raptaboard-plugin-test",
+]
+
+[[package]]
 name = "target-lexicon"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

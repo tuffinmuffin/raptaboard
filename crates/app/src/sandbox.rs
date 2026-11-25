@@ -423,7 +423,7 @@ mod tests {
     use super::*;
 
     fn manifest(text: &str) -> Manifest {
-        Manifest::from_toml(&format!("name='trial'\nversion='0.1.0'\napi='0.2'\n{text}")).unwrap()
+        Manifest::from_toml(&format!("name='trial'\nversion='0.1.0'\napi='0.3'\n{text}")).unwrap()
     }
 
     #[test]

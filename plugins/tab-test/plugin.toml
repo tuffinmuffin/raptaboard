@@ -1,0 +1,12 @@
+# A plugin that fills a tab, for the plugin-host and harness tests and the
+# sandbox: everything a game like Doom needs, small. An empty tab named
+# "Tab test" shows it. It reads hello.txt from its own folder (/pack), draws a
+# square bouncing across a pixel frame 35 times a second, counts keys, and
+# beeps (play-audio) when Space is pressed.
+name = "tab-test"
+version = "0.1.0"
+api = "0.3"
+tab = "Tab test"
+
+[permissions]
+sound = true

@@ -11,7 +11,7 @@
 //! let manifest = Manifest::from_toml(r#"
 //!     name = "arm"
 //!     version = "0.1.0"
-//!     api = "0.2"
+//!     api = "0.3"
 //!     [match]
 //!     type = "Arm"
 //! "#).unwrap();
@@ -28,7 +28,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 /// Host API version this build of raptaboard implements.
-pub const HOST_API: &str = "0.2";
+pub const HOST_API: &str = "0.3";
 
 /// Errors reading a plugin manifest.
 #[derive(Debug, thiserror::Error)]
@@ -39,8 +39,14 @@ pub enum ManifestError {
     Pattern(String, glob::PatternError),
     #[error("plugin needs host API {needed}, this dashboard has {HOST_API}")]
     Api { needed: String },
-    #[error("[match] needs topic_types, or at least one of type, path or has")]
+    #[error(
+        "[match] needs topic_types, or at least one of type, path or has (or the plugin claims a tab: tab = \"Doom\")"
+    )]
     EmptyMatch,
+    #[error("a plugin that claims a tab (tab = …) isn't a widget too: leave out [match]")]
+    TabAndMatch,
+    #[error("tab needs a name")]
+    EmptyTab,
     #[error("[match] has topic_types and table rules: a plugin shows a topic or a table, not both")]
     MixedMatch,
 }
@@ -51,10 +57,16 @@ pub enum ManifestError {
 pub struct Manifest {
     pub name: String,
     pub version: String,
-    /// Host API version the plugin was built against, like `"0.2"`.
+    /// Host API version the plugin was built against, like `"0.3"`.
     pub api: String,
-    #[serde(rename = "match")]
+    /// What it shows as a widget: a topic of some types, or a table. Left
+    /// out for a plugin that claims a tab.
+    #[serde(rename = "match", default)]
     pub match_rules: MatchRules,
+    /// A tab the plugin fills (`tab = "Doom"`): an empty tab of this name
+    /// shows the plugin, filling it, instead of the grid. Such a plugin isn't
+    /// a widget (no `[match]`).
+    pub tab: Option<String>,
     #[serde(default)]
     pub size: Size,
     /// Settings shown in the widget's edit dialog, by name.
@@ -223,8 +235,13 @@ impl Manifest {
     fn validate(&self) -> Result<(), ManifestError> {
         let m = &self.match_rules;
         let table_rules = m.type_tag.is_some() || m.path.is_some() || !m.has.is_empty();
-        if !table_rules && m.topic_types.is_empty() {
-            return Err(ManifestError::EmptyMatch);
+        let any_match = table_rules || !m.topic_types.is_empty();
+        match &self.tab {
+            Some(tab) if tab.trim().is_empty() => return Err(ManifestError::EmptyTab),
+            Some(_) if any_match => return Err(ManifestError::TabAndMatch),
+            Some(_) => {}
+            None if !any_match => return Err(ManifestError::EmptyMatch),
+            None => {}
         }
         if table_rules && !m.topic_types.is_empty() {
             return Err(ManifestError::MixedMatch);
@@ -278,7 +295,7 @@ impl Manifest {
     /// ```
     /// use raptaboard_plugin_host::Manifest;
     /// let m = Manifest::from_toml(
-    ///     "name='n'\nversion='0'\napi='0.2'\n[match]\ntopic_types=['double']\n",
+    ///     "name='n'\nversion='0'\napi='0.3'\n[match]\ntopic_types=['double']\n",
     /// ).unwrap();
     /// assert!(m.shows_topics());
     /// assert!(m.matches_topic("double"));
@@ -294,13 +311,17 @@ impl Manifest {
     }
 }
 
-/// Same major version, and a minor version no newer than ours.
+/// Whether a plugin built for host API `needed` runs here: the same major
+/// version and a minor version no newer than ours; before 1.0, the same
+/// minor version (each 0.x may change the interface, and a plugin built for
+/// another imports interfaces this host doesn't have).
 fn api_compatible(needed: &str) -> bool {
     let parse = |s: &str| -> Option<(u32, u32)> {
         let (a, b) = s.split_once('.')?;
         Some((a.parse().ok()?, b.parse().ok()?))
     };
     match (parse(needed), parse(HOST_API)) {
+        (Some((0, nmin)), Some((0, hmin))) => nmin == hmin,
         (Some((nmaj, nmin)), Some((hmaj, hmin))) => nmaj == hmaj && nmin <= hmin,
         _ => false,
     }
@@ -328,7 +349,7 @@ mod tests {
     fn type_match_beats_key_match() {
         let by_type = Manifest::from_toml(ARM).unwrap();
         let by_keys =
-            Manifest::from_toml("name='k'\nversion='0'\napi='0.1'\n[match]\nhas=['angle_rad']\n")
+            Manifest::from_toml("name='k'\nversion='0'\napi='0.3'\n[match]\nhas=['angle_rad']\n")
                 .unwrap();
         let table = TableInfo {
             path: "/Arm",
@@ -341,7 +362,7 @@ mod tests {
     #[test]
     fn path_glob_and_keys_must_all_pass() {
         let m = Manifest::from_toml(
-            "name='m'\nversion='0'\napi='0.1'\n[match]\npath='/Drive/Module/*'\nhas=['drive_velocity_mps']\n",
+            "name='m'\nversion='0'\napi='0.3'\n[match]\npath='/Drive/Module/*'\nhas=['drive_velocity_mps']\n",
         )
         .unwrap();
         let ok = TableInfo {
@@ -362,7 +383,7 @@ mod tests {
     #[test]
     fn a_topic_plugin_matches_topics_not_tables() {
         let m = Manifest::from_toml(
-            "name='n'\nversion='0'\napi='0.2'\n[match]\ntopic_types=['double','int']\n",
+            "name='n'\nversion='0'\napi='0.3'\n[match]\ntopic_types=['double','int']\n",
         )
         .unwrap();
         assert!(m.matches_topic("int"));
@@ -373,7 +394,7 @@ mod tests {
         };
         assert_eq!(m.matches(&table), None);
         let mixed = Manifest::from_toml(
-            "name='n'\nversion='0'\napi='0.2'\n[match]\ntopic_types=['double']\ntype='Arm'\n",
+            "name='n'\nversion='0'\napi='0.3'\n[match]\ntopic_types=['double']\ntype='Arm'\n",
         );
         assert!(matches!(mixed, Err(ManifestError::MixedMatch)));
     }
@@ -381,7 +402,7 @@ mod tests {
     #[test]
     fn sound_properties_and_permissions_load() {
         let m = Manifest::from_toml(
-            "name='a'\nversion='0'\napi='0.2'\n[match]\ntype='Alerts'\n\
+            "name='a'\nversion='0'\napi='0.3'\n[match]\ntype='Alerts'\n\
              [properties]\ntone={type='sound',default='fire 1'}\n\
              [permissions]\nsound=true\nbackground=true\n",
         )
@@ -393,10 +414,28 @@ mod tests {
     }
 
     #[test]
-    fn rejects_empty_match_and_newer_api() {
-        let empty = Manifest::from_toml("name='e'\nversion='0'\napi='0.1'\n[match]\n");
+    fn rejects_empty_match_and_another_api() {
+        let empty = Manifest::from_toml("name='e'\nversion='0'\napi='0.3'\n[match]\n");
         assert!(matches!(empty, Err(ManifestError::EmptyMatch)));
-        let newer = Manifest::from_toml("name='n'\nversion='0'\napi='0.9'\n[match]\ntype='X'\n");
-        assert!(matches!(newer, Err(ManifestError::Api { .. })));
+        // Before 1.0, only the same minor version: newer and older alike.
+        for api in ["0.9", "0.2", "1.0"] {
+            let other = Manifest::from_toml(&format!(
+                "name='n'\nversion='0'\napi='{api}'\n[match]\ntype='X'\n"
+            ));
+            assert!(matches!(other, Err(ManifestError::Api { .. })), "{api}");
+        }
+    }
+
+    #[test]
+    fn a_tab_plugin_claims_a_tab_and_isnt_a_widget() {
+        let m = Manifest::from_toml("name='doom'\nversion='0'\napi='0.3'\ntab='Doom'\n").unwrap();
+        assert_eq!(m.tab.as_deref(), Some("Doom"));
+        assert!(!m.shows_topics() && m.match_rules.type_tag.is_none());
+        let both = Manifest::from_toml(
+            "name='d'\nversion='0'\napi='0.3'\ntab='Doom'\n[match]\ntype='X'\n",
+        );
+        assert!(matches!(both, Err(ManifestError::TabAndMatch)));
+        let blank = Manifest::from_toml("name='d'\nversion='0'\napi='0.3'\ntab=' '\n");
+        assert!(matches!(blank, Err(ManifestError::EmptyTab)));
     }
 }

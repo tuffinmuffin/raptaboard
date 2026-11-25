@@ -35,6 +35,8 @@ pub struct Latest {
     pub subscriptions: Option<Vec<Subscription>>,
     /// The newest picture finished.
     pub picture: Option<Picture>,
+    /// Counts pictures, so pixel images are sent to the GPU only when new.
+    pub picture_number: u64,
     /// The mark for the tab, from after the last update.
     pub tab_mark: Option<Level>,
     /// Why the plugin stopped, if it has.
@@ -43,6 +45,10 @@ pub struct Latest {
     pub requests: Vec<Request>,
     /// When the plugin asked to be drawn again (`redraw-in-s`).
     pub redraw_at: Option<Instant>,
+    /// When the frame being drawn now was due, if it was drawn because its
+    /// time came: the next is due `redraw-in-s` after that, not after it
+    /// finished, so an animation keeps the rate it asked for.
+    pub drawing_due: Option<Instant>,
     /// What it has used (call times, memory), as of its last call.
     pub usage: Option<Usage>,
     /// Its last [`LOG_LINES`] log lines (and printed lines), oldest first.
@@ -120,22 +126,35 @@ impl Worker {
 
     /// Ask for a new picture if anything changed since the last: values or
     /// input sent since, a different `drawn`, or the time the plugin asked
-    /// to be drawn again has come. `frame` makes the frame's details.
-    pub fn render_if_needed(&self, drawn: Drawn, frame: impl FnOnce(f64) -> FrameInfo) {
-        let due = {
+    /// to be drawn again has come. `frame` makes the frame's details from
+    /// its time: when it was due, for one drawn because its time came (so an
+    /// animation moves evenly however late the window woke), else now.
+    ///
+    /// Returns when the plugin wants drawing next, for the window to wake
+    /// then: asked from the window's frame, so it isn't lost (a wake asked
+    /// from the worker's thread right after "show this now" is dropped).
+    pub fn render_if_needed(
+        &self,
+        drawn: Drawn,
+        frame: impl FnOnce(f64) -> FrameInfo,
+    ) -> Option<Instant> {
+        let (due, pending) = {
             let mut latest = self.latest.lock().unwrap();
-            let due = latest.redraw_at.is_some_and(|at| at <= Instant::now());
-            if due {
+            let due = latest.redraw_at.filter(|at| *at <= Instant::now());
+            if due.is_some() {
                 latest.redraw_at = None;
+                latest.drawing_due = due;
             }
-            due
+            (due, latest.redraw_at)
         };
         let mut state = self.drawn.lock().unwrap();
-        if state.1 || state.0 != Some(drawn) || due {
+        if state.1 || state.0 != Some(drawn) || due.is_some() {
             *state = (Some(drawn), false);
-            let time_s = self.started.elapsed().as_secs_f64();
+            let at = due.unwrap_or_else(Instant::now);
+            let time_s = at.saturating_duration_since(self.started).as_secs_f64();
             let _ = self.sender.send(Message::Render(frame(time_s)));
         }
+        pending
     }
 
     /// Pass on input.
@@ -200,6 +219,28 @@ impl Host for AppHost {
             latest.log.push_back(message.to_string());
         }
         self.request(Request::Log(message.to_string()));
+    }
+}
+
+/// When the next frame of an animation is due: `period` after the one just
+/// drawn was due (`was_due`), keeping the rate, or `period` from `now` if it
+/// wasn't drawn because its time came, or that's already gone by (a slow
+/// plugin or a busy window skips frames rather than racing to catch up).
+///
+/// ```
+/// use std::time::{Duration, Instant};
+/// use raptaboard::plugins::worker::next_due;
+/// let now = Instant::now();
+/// let ms = Duration::from_millis;
+/// // Drawn 5 ms late: the next is 28 ms after it was due, not after now.
+/// assert_eq!(next_due(Some(now - ms(5)), ms(28), now), now + ms(23));
+/// assert_eq!(next_due(None, ms(28), now), now + ms(28));
+/// assert_eq!(next_due(Some(now - ms(40)), ms(28), now), now + ms(28));
+/// ```
+pub fn next_due(was_due: Option<Instant>, period: Duration, now: Instant) -> Instant {
+    match was_due.map(|d| d + period) {
+        Some(next) if next > now => next,
+        _ => now + period,
     }
 }
 
@@ -272,13 +313,16 @@ fn run(
                     {
                         let mut latest = latest.lock().unwrap();
                         latest.picture = Some(picture);
-                        latest.redraw_at = again.map(|d| Instant::now() + d);
+                        latest.picture_number += 1;
+                        let now = Instant::now();
+                        let was_due = latest.drawing_due.take();
+                        latest.redraw_at = again.map(|d| next_due(was_due, d, now));
                         latest.usage = Some(instance.usage());
                     }
+                    // Show it. The window wakes for the next one itself
+                    // (`render_if_needed`): a delayed wake asked here, after
+                    // this one, would be dropped.
                     ctx.request_repaint();
-                    if let Some(d) = again {
-                        ctx.request_repaint_after(d);
-                    }
                 }
                 Err(stopped) => return stop(stopped, Some(instance.usage())),
             }

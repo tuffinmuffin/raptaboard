@@ -2,7 +2,9 @@
 //! plugin-host tests can check the limits: `spin` never returns, `panic`
 //! panics, `grow` keeps asking for memory, `publish` and `sound` try what
 //! plugin.toml doesn't allow, `print` writes to stdout, `region` draws a
-//! "Bell" button that logs when it's pressed. `ok` draws one line.
+//! "Bell" button that logs when it's pressed, `files` tries to read its own
+//! plugin.toml (allowed), a file outside its folder and to write in its
+//! folder (both refused), saying how each went. `ok` draws one line.
 
 use raptaboard_plugin::prelude::*;
 
@@ -38,6 +40,19 @@ impl Widget for LimitsTest {
                 picture.summary = Some(format!("{result:?}"));
             }
             "print" => println!("hello from limits-test"),
+            "files" => {
+                let own = pack_file("plugin.toml").map(|b| b.len());
+                let outside = std::fs::read("/etc/hosts").map(|b| b.len());
+                let up = std::fs::read("/pack/../Cargo.toml").map(|b| b.len());
+                let write = std::fs::write("/pack/written.txt", b"x");
+                picture.summary = Some(format!(
+                    "own {}; outside {}; up {}; write {}",
+                    own.is_ok(),
+                    outside.is_ok(),
+                    up.is_ok(),
+                    write.is_ok()
+                ));
+            }
             "region" => {
                 picture.text(centered_text(&frame, "bell", 14.0));
                 picture.regions.push(Region {

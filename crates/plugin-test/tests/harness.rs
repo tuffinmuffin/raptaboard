@@ -63,6 +63,20 @@ fn what_plugin_toml_doesnt_allow_is_refused_and_not_recorded() {
 }
 
 #[test]
+fn a_plugin_reads_its_own_folder_and_nothing_else() {
+    let mut w = limits_test();
+    w.property("mode", "files");
+    // Its plugin.toml at /pack; not /etc/hosts, not out of /pack with ..,
+    // and nothing written.
+    assert_eq!(
+        w.render().summary(),
+        Some("own true; outside false; up false; write false")
+    );
+    let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/limits-test");
+    assert!(!folder.join("written.txt").exists());
+}
+
+#[test]
 fn printing_goes_to_the_log() {
     let mut w = limits_test();
     w.property("mode", "print").render();
