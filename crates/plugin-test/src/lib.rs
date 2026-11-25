@@ -38,7 +38,9 @@ use raptaboard_plugin_host::runtime::{
     Shape, Size, Stopped, Subscription,
 };
 
-pub use raptaboard_plugin_host::runtime::{Input, Key, Level, Modifiers, NtValue, Pixels, Theme};
+pub use raptaboard_plugin_host::runtime::{
+    Input, Key, Level, Modifiers, MouseButton, NtValue, Pixels, Point, PointerButton, Theme,
+};
 
 /// A value a test can give a plugin: a number, a true/false, text, a list of
 /// them, or an [`NtValue`].

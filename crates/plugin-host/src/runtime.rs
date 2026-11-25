@@ -44,8 +44,8 @@ mod bindings {
 pub use bindings::raptaboard::dashboard::types::Image as ImageShape;
 pub use bindings::raptaboard::dashboard::types::{
     Align, Arc as ArcShape, Circle, Color, Field, FrameInfo, Input, Key, Level, Line, Modifiers,
-    NtValue, Picture, Pixels, Point, Polyline, Rect, Region, Role, Sample, ScalarValue, Shape,
-    Size, Stroke, Subscription, Text, Theme,
+    MouseButton, NtValue, Picture, Pixels, Point, PointerButton, Polyline, Rect, Region, Role,
+    Sample, ScalarValue, Shape, Size, Stroke, Subscription, Text, Theme,
 };
 
 use bindings::Widget;

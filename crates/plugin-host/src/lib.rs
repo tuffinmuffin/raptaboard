@@ -47,6 +47,8 @@ pub enum ManifestError {
     TabAndMatch,
     #[error("tab needs a name")]
     EmptyTab,
+    #[error("capture_mouse is for a plugin that fills a tab (tab = …)")]
+    CaptureNeedsTab,
     #[error("[match] has topic_types and table rules: a plugin shows a topic or a table, not both")]
     MixedMatch,
 }
@@ -67,6 +69,11 @@ pub struct Manifest {
     /// shows the plugin, filling it, instead of the grid. Such a plugin isn't
     /// a widget (no `[match]`).
     pub tab: Option<String>,
+    /// A tab plugin that holds the mouse while it has the keyboard (a game
+    /// turning with it): the cursor hidden and kept still, and its movement
+    /// sent as `mouse-motion`. Only with `tab`.
+    #[serde(default)]
+    pub capture_mouse: bool,
     #[serde(default)]
     pub size: Size,
     /// Settings shown in the widget's edit dialog, by name.
@@ -245,6 +252,9 @@ impl Manifest {
         }
         if table_rules && !m.topic_types.is_empty() {
             return Err(ManifestError::MixedMatch);
+        }
+        if self.capture_mouse && self.tab.is_none() {
+            return Err(ManifestError::CaptureNeedsTab);
         }
         if let Some(p) = &m.path {
             glob::Pattern::new(p).map_err(|e| ManifestError::Pattern(p.clone(), e))?;
@@ -437,5 +447,15 @@ mod tests {
         assert!(matches!(both, Err(ManifestError::TabAndMatch)));
         let blank = Manifest::from_toml("name='d'\nversion='0'\napi='0.3'\ntab=' '\n");
         assert!(matches!(blank, Err(ManifestError::EmptyTab)));
+        // Holding the mouse is for a tab plugin only.
+        let game = Manifest::from_toml(
+            "name='d'\nversion='0'\napi='0.3'\ntab='Doom'\ncapture_mouse=true\n",
+        )
+        .unwrap();
+        assert!(game.capture_mouse);
+        let widget = Manifest::from_toml(
+            "name='w'\nversion='0'\napi='0.3'\ncapture_mouse=true\n[match]\ntype='X'\n",
+        );
+        assert!(matches!(widget, Err(ManifestError::CaptureNeedsTab)));
     }
 }

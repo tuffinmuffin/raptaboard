@@ -10,7 +10,8 @@ use nt4::Value;
 use raptaboard_layout::WidgetContainer;
 use raptaboard_plugin_host::PropertySpec;
 use raptaboard_plugin_host::runtime::{
-    FrameInfo, Input, Key, Modifiers, Point, Role, Sample, Size, Subscription,
+    FrameInfo, Input, Key, Modifiers, MouseButton, Point, PointerButton, Role, Sample, Size,
+    Subscription,
 };
 use serde_json::{Map, Value as Json};
 
@@ -205,13 +206,25 @@ fn modifiers(m: egui::Modifiers) -> Modifiers {
 /// focused; and the pointer moving, pressing and scrolling over it, in
 /// pixels from its top left. `held` is the modifiers the plugin was told
 /// are held, `now` those held now; losing the keyboard lets them all go.
+/// While it `holds_mouse` (and is focused), the mouse's movement comes as
+/// `mouse-motion` and every button as pressed or let go wherever it is (the
+/// cursor is hidden and kept still).
 pub fn tab_inputs(
     events: &[egui::Event],
     rect: Rect,
     focused: bool,
+    holds_mouse: bool,
     held: egui::Modifiers,
     now: egui::Modifiers,
 ) -> Vec<Input> {
+    let holds_mouse = holds_mouse && focused;
+    let button = |b: &egui::PointerButton| match b {
+        egui::PointerButton::Primary => MouseButton::Primary,
+        egui::PointerButton::Secondary => MouseButton::Secondary,
+        egui::PointerButton::Middle => MouseButton::Middle,
+        egui::PointerButton::Extra1 => MouseButton::Extra1,
+        egui::PointerButton::Extra2 => MouseButton::Extra2,
+    };
     let local = |p: egui::Pos2| Point {
         x: p.x - rect.min.x,
         y: p.y - rect.min.y,
@@ -257,14 +270,29 @@ pub fn tab_inputs(
                 });
             }
             egui::Event::Text(text) if focused => out.push(Input::Text(text.clone())),
-            egui::Event::PointerMoved(p) if rect.contains(*p) => {
+            egui::Event::MouseMoved(delta) if holds_mouse => {
+                out.push(Input::MouseMotion(Point {
+                    x: delta.x,
+                    y: delta.y,
+                }));
+            }
+            egui::Event::PointerMoved(p) if !holds_mouse && rect.contains(*p) => {
                 out.push(Input::PointerMove(local(*p)));
             }
-            egui::Event::PointerButton { pos, pressed, .. } if rect.contains(*pos) => {
+            egui::Event::PointerButton {
+                pos,
+                button: b,
+                pressed,
+                ..
+            } if holds_mouse || rect.contains(*pos) => {
+                let at = PointerButton {
+                    pos: local(*pos),
+                    button: button(b),
+                };
                 out.push(if *pressed {
-                    Input::PointerDown(local(*pos))
+                    Input::PointerDown(at)
                 } else {
-                    Input::PointerUp(local(*pos))
+                    Input::PointerUp(at)
                 });
             }
             egui::Event::MouseWheel { delta, .. } if focused => {
@@ -277,6 +305,14 @@ pub fn tab_inputs(
         }
     }
     out
+}
+
+/// Whether the tab plugin on the tab named `tab_name` holds the mouse now
+/// in the window `ctx` (for tests).
+#[cfg(test)]
+pub(crate) fn holds_mouse(ctx: &egui::Context, tab_name: &str) -> bool {
+    ctx.data(|d| d.get_temp(tab_focus_id(tab_name).with("holds mouse")))
+        .unwrap_or(false)
 }
 
 impl PluginType {
@@ -297,10 +333,29 @@ impl PluginType {
             response.request_focus();
         }
         let mut focused = response.has_focus();
-        // Shift+Escape gives the keyboard back, and isn't the plugin's.
+        // Shift+Escape gives the keyboard (and mouse) back, and isn't the
+        // plugin's.
         if focused && ui.input_mut(|i| i.consume_shortcut(&LEAVE_KEYS)) {
             ui.memory_mut(|m| m.surrender_focus(id));
             focused = false;
+        }
+        // Holding the mouse while it has the keyboard. While the window is in
+        // the background (another app), egui counts no widget focused, so the
+        // mouse is let go, and taken again when the window comes back.
+        let capture = self.loaded().plugin.manifest.capture_mouse;
+        let holds_mouse = focused && capture;
+        let holding = id.with("holds mouse");
+        let was_holding: bool = ui.data(|d| d.get_temp(holding)).unwrap_or(false);
+        if holds_mouse != was_holding {
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::CursorGrab(if holds_mouse {
+                    egui::CursorGrab::Locked
+                } else {
+                    egui::CursorGrab::None
+                }));
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::CursorVisible(!holds_mouse));
+            ui.data_mut(|d| d.insert_temp(holding, holds_mouse));
         }
         if focused {
             ui.memory_mut(|m| {
@@ -332,8 +387,13 @@ impl PluginType {
             let since: Option<f64> = ui.data(|d| d.get_temp(gained));
             if focused && since.is_some_and(|t| time - t < LEAVE_HINT_S) {
                 let hint = format!(
-                    "{} gives the keyboard back",
-                    ui.ctx().format_shortcut(&LEAVE_KEYS)
+                    "{} gives the {} back",
+                    ui.ctx().format_shortcut(&LEAVE_KEYS),
+                    if capture {
+                        "keyboard and mouse"
+                    } else {
+                        "keyboard"
+                    }
                 );
                 // Drawn over the plugin's picture, after it.
                 let layer = egui::LayerId::new(egui::Order::Foreground, id.with("hint"));
@@ -357,7 +417,7 @@ impl PluginType {
                     egui::Color32::WHITE,
                 );
             }
-            for input in tab_inputs(&events, rect, focused, held, now) {
+            for input in tab_inputs(&events, rect, focused, holds_mouse, held, now) {
                 worker.input(input);
             }
             ui.data_mut(|d| {
@@ -724,7 +784,7 @@ mod tests {
             egui::Event::PointerMoved(egui::pos2(10.0, 10.0)),
         ];
         let none = egui::Modifiers::NONE;
-        let got = tab_inputs(&events, rect, true, none, egui::Modifiers::CTRL);
+        let got = tab_inputs(&events, rect, true, false, none, egui::Modifiers::CTRL);
         let names: Vec<String> = got
             .iter()
             .map(|i| match i {
@@ -742,10 +802,10 @@ mod tests {
             ["down Ctrl", "down W", "up W", "text w", "move 10,10"]
         );
         // Not focused: the pointer only.
-        let got = tab_inputs(&events, rect, false, none, egui::Modifiers::CTRL);
+        let got = tab_inputs(&events, rect, false, false, none, egui::Modifiers::CTRL);
         assert!(matches!(got.as_slice(), [Input::PointerMove(_)]));
         // Ctrl let go.
-        let got = tab_inputs(&[], rect, true, egui::Modifiers::CTRL, none);
+        let got = tab_inputs(&[], rect, true, false, egui::Modifiers::CTRL, none);
         assert!(matches!(got.as_slice(), [Input::KeyUp(k)] if k.name == "Ctrl"));
         // The keyboard lost with Ctrl still held: let go, as far as the
         // plugin knows.
@@ -753,10 +813,49 @@ mod tests {
             &[],
             rect,
             false,
+            false,
             egui::Modifiers::CTRL,
             egui::Modifiers::CTRL,
         );
         assert!(matches!(got.as_slice(), [Input::KeyUp(k)] if k.name == "Ctrl"));
+    }
+
+    #[test]
+    fn a_tab_plugin_holding_the_mouse_gets_its_motion_and_every_button() {
+        let rect = Rect::from_min_size(egui::pos2(100.0, 50.0), egui::vec2(200.0, 100.0));
+        let events = [
+            egui::Event::MouseMoved(egui::vec2(3.0, -2.0)),
+            egui::Event::PointerMoved(egui::pos2(110.0, 60.0)),
+            egui::Event::PointerButton {
+                pos: egui::pos2(5.0, 5.0),
+                button: egui::PointerButton::Secondary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ];
+        let none = egui::Modifiers::NONE;
+        // Holding it: the motion, and a button even off the area; no pointer
+        // positions (the cursor is held still).
+        let got = tab_inputs(&events, rect, true, true, none, none);
+        assert!(
+            matches!(
+                got.as_slice(),
+                [
+                    Input::MouseMotion(Point { x: 3.0, y: -2.0 }),
+                    Input::PointerDown(PointerButton {
+                        button: MouseButton::Secondary,
+                        ..
+                    })
+                ]
+            ),
+            "{got:?}"
+        );
+        // Not holding it: no motion, the pointer over the area only.
+        let got = tab_inputs(&events, rect, true, false, none, none);
+        assert!(matches!(got.as_slice(), [Input::PointerMove(_)]), "{got:?}");
+        // Holding it needs the keyboard too.
+        let got = tab_inputs(&events, rect, false, true, none, none);
+        assert!(matches!(got.as_slice(), [Input::PointerMove(_)]), "{got:?}");
     }
 
     #[test]
