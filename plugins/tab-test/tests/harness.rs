@@ -39,7 +39,7 @@ fn it_draws_a_pixel_frame_that_moves_35_times_a_second() {
     let pixels = first.pixels();
     assert_eq!(pixels.len(), 1);
     let p = pixels[0];
-    assert_eq!((p.width, p.height, p.rgba.len()), (64, 40, 64 * 40 * 4));
+    assert_eq!((p.width, p.height, p.rgba.len()), (320, 200, 320 * 200 * 4));
     assert!(!p.smooth, "sharp pixels");
     assert_eq!((p.max.x, p.max.y), (640.0, 400.0));
     let rate = first.redraw_in_s().unwrap();

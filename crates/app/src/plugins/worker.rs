@@ -45,6 +45,10 @@ pub struct Latest {
     pub requests: Vec<Request>,
     /// When the plugin asked to be drawn again (`redraw-in-s`).
     pub redraw_at: Option<Instant>,
+    /// When the frame being drawn now was due, if it was drawn because its
+    /// time came: the next is due `redraw-in-s` after that, not after it
+    /// finished, so an animation keeps the rate it asked for.
+    pub drawing_due: Option<Instant>,
     /// What it has used (call times, memory), as of its last call.
     pub usage: Option<Usage>,
     /// Its last [`LOG_LINES`] log lines (and printed lines), oldest first.
@@ -126,11 +130,12 @@ impl Worker {
     pub fn render_if_needed(&self, drawn: Drawn, frame: impl FnOnce(f64) -> FrameInfo) {
         let due = {
             let mut latest = self.latest.lock().unwrap();
-            let due = latest.redraw_at.is_some_and(|at| at <= Instant::now());
-            if due {
+            let due = latest.redraw_at.filter(|at| *at <= Instant::now());
+            if due.is_some() {
                 latest.redraw_at = None;
+                latest.drawing_due = due;
             }
-            due
+            due.is_some()
         };
         let mut state = self.drawn.lock().unwrap();
         if state.1 || state.0 != Some(drawn) || due {
@@ -205,6 +210,28 @@ impl Host for AppHost {
     }
 }
 
+/// When the next frame of an animation is due: `period` after the one just
+/// drawn was due (`was_due`), keeping the rate, or `period` from `now` if it
+/// wasn't drawn because its time came, or that's already gone by (a slow
+/// plugin or a busy window skips frames rather than racing to catch up).
+///
+/// ```
+/// use std::time::{Duration, Instant};
+/// use raptaboard::plugins::worker::next_due;
+/// let now = Instant::now();
+/// let ms = Duration::from_millis;
+/// // Drawn 5 ms late: the next is 28 ms after it was due, not after now.
+/// assert_eq!(next_due(Some(now - ms(5)), ms(28), now), now + ms(23));
+/// assert_eq!(next_due(None, ms(28), now), now + ms(28));
+/// assert_eq!(next_due(Some(now - ms(40)), ms(28), now), now + ms(28));
+/// ```
+pub fn next_due(was_due: Option<Instant>, period: Duration, now: Instant) -> Instant {
+    match was_due.map(|d| d + period) {
+        Some(next) if next > now => next,
+        _ => now + period,
+    }
+}
+
 fn run(
     runtime: Arc<Runtime>,
     plugin: Arc<Plugin>,
@@ -275,7 +302,9 @@ fn run(
                         let mut latest = latest.lock().unwrap();
                         latest.picture = Some(picture);
                         latest.picture_number += 1;
-                        latest.redraw_at = again.map(|d| Instant::now() + d);
+                        let now = Instant::now();
+                        let was_due = latest.drawing_due.take();
+                        latest.redraw_at = again.map(|d| next_due(was_due, d, now));
                         latest.usage = Some(instance.usage());
                     }
                     ctx.request_repaint();

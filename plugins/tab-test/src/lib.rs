@@ -1,14 +1,17 @@
 //! A plugin that fills a tab: everything a game like Doom needs, small. It
 //! reads `hello.txt` from its own folder (`/pack`), draws a square bouncing
-//! across a pixel frame 35 times a second, counts the keys pressed, and beeps
-//! through `play-audio` when Space is pressed.
+//! across a 320 × 200 pixel frame (Doom's size) 35 times a second, moving a
+//! whole number of pixels each step as a game does, counts the keys pressed,
+//! and beeps through `play-audio` when Space is pressed.
 
 use raptaboard_plugin::prelude::*;
 
-/// The pixel frame's size, in pixels.
-const FRAME: (u32, u32) = (64, 40);
+/// The pixel frame's size, in pixels: Doom's.
+const FRAME: (u32, u32) = (320, 200);
 /// The square's side, in pixels.
-const SQUARE: u32 = 8;
+const SQUARE: u32 = 24;
+/// How far the square moves each step, in pixels (across; down is less).
+const STEP: (u32, u32) = (3, 2);
 /// Frames a second, as Doom's tics.
 const RATE: f64 = 35.0;
 /// The beep: its pitch (Hz), length (s) and sample rate.
@@ -23,16 +26,18 @@ struct TabTest {
 }
 
 /// Where the square's top-left corner is at `time_s`: bouncing between the
-/// frame's edges, `per_s` pixels a second each way.
-fn square_at(time_s: f64, per_s: f64) -> (u32, u32) {
-    let bounce = |span: u32, speed: f64| -> u32 {
-        let span = f64::from(span.max(1));
-        let t = (time_s * speed) % (2.0 * span);
-        (if t < span { t } else { 2.0 * span - t }) as u32
+/// frame's edges, moving [`STEP`] pixels every 35th of a second (a step, as a
+/// game's tic), so each frame moves it the same whole number of pixels.
+fn square_at(time_s: f64) -> (u32, u32) {
+    let step = (time_s * RATE).floor() as u64;
+    let bounce = |span: u32, by: u32| -> u32 {
+        let span = u64::from(span.max(1));
+        let t = (step * u64::from(by)) % (2 * span);
+        (if t < span { t } else { 2 * span - t }) as u32
     };
     (
-        bounce(FRAME.0 - SQUARE, per_s),
-        bounce(FRAME.1 - SQUARE, per_s * 0.7),
+        bounce(FRAME.0 - SQUARE, STEP.0),
+        bounce(FRAME.1 - SQUARE, STEP.1),
     )
 }
 
@@ -89,7 +94,7 @@ impl Widget for TabTest {
             max: Point { x: w, y: h - 40.0 },
             width: FRAME.0,
             height: FRAME.1,
-            rgba: frame_pixels(square_at(frame.time_s, 20.0), frame.theme.accent),
+            rgba: frame_pixels(square_at(frame.time_s), frame.theme.accent),
             smooth: false,
         }));
         let line = format!("{hello} Keys: {}", self.keys);
@@ -131,11 +136,14 @@ mod tests {
 
     #[test]
     fn the_square_bounces_inside_the_frame() {
-        for t in 0..200 {
-            let (x, y) = square_at(f64::from(t) * 0.37, 20.0);
+        for t in 0..2000 {
+            let (x, y) = square_at(f64::from(t) * 0.037);
             assert!(x + SQUARE <= FRAME.0 && y + SQUARE <= FRAME.1, "{t}");
         }
-        assert_ne!(square_at(0.0, 20.0), square_at(1.0, 20.0));
+        // One step: a whole step's pixels; within a step, nothing.
+        let (a, b) = (square_at(0.0), square_at(1.0 / RATE + 1e-9));
+        assert_eq!((b.0 - a.0, b.1 - a.1), STEP);
+        assert_eq!(square_at(0.0), square_at(0.5 / RATE));
     }
 
     #[test]
