@@ -7,6 +7,7 @@ mod drag;
 mod grid_view;
 mod live;
 mod panels;
+mod plugin_tab;
 pub mod robot_state_view;
 mod sandbox_panel;
 mod settings_window;
@@ -598,7 +599,8 @@ impl DashboardApp {
         // The sound pickers in settings dialogs list the installed packs'.
         crate::sound::share_files(ui.ctx(), &self.sound.files());
         // Plugin widgets: reload changed plugins, stop those of deleted widgets.
-        crate::plugins::frame_started(ui.ctx(), &self.layout);
+        self.sound.audio().set_enabled(self.alert_sound);
+        crate::plugins::frame_started(ui.ctx(), &self.layout, &self.sound.audio());
         // One copy of every topic per frame, shared by the tab marks, the tree
         // and the grid.
         let topics = self.nt.topics();
@@ -614,10 +616,13 @@ impl DashboardApp {
             })
             .inner;
         let ctx = ui.ctx().clone();
+        // A dialog, or a tab plugin with the keyboard (a game): the
+        // dashboard's shortcuts are off.
         let dialog_open = self.confirm_close.is_some()
             || self.file.unsaved_prompt.is_some()
             || self.file.load_problem.is_some()
-            || self.editing.is_some();
+            || self.editing.is_some()
+            || self.plugin_has_keys(&ctx);
         let pressed = if dialog_open {
             None
         } else {
@@ -685,7 +690,14 @@ impl DashboardApp {
         }
         self.record_traces(&topics);
         let now = Instant::now();
-        egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values, now));
+        match self.tab_plugin() {
+            Some(ty) => {
+                egui::CentralPanel::default().show(ui, |ui| self.plugin_tab(ui, ty, &values));
+            }
+            None => {
+                egui::CentralPanel::default().show(ui, |ui| self.grid(ui, &values, now));
+            }
+        }
         let next_value = self.sampler.finish_frame(now);
         let closing = ctx.input(|i| i.viewport().close_requested());
         let now = self.current_settings(settings::window_of(&ctx));

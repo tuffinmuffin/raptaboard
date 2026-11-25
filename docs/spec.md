@@ -399,9 +399,16 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
    (16-bit PCM queued, needs `sound`), the plugin's folder read-only at `/pack` (WASI; nothing else),
    and `tab = "…"` in plugin.toml (such a plugin isn't a widget). No `tick` export: a game asks for
    `redraw-in-s` 1/35 and steps in `render`, and a closed tab isn't drawn, so it pauses.
-   `plugins/tab-test` uses all of it. Next: the app's side (the claimed tab drawn full size, keys
-   while it has focus with the dashboard's shortcuts off, the audio stream into the mixer, the sandbox
-   for tab plugins), then choosing the engine. Before 1.0 a plugin runs only on the same 0.x, so the
+   `plugins/tab-test` uses all of it. The app's side (2026-11-25): an empty tab whose name a plugin
+   claims (any case) shows it at the tab's size (`ui/plugin_tab.rs`, `PluginType::show_tab`); clicked,
+   it takes the keyboard (Tab, arrows and Escape too), the dashboard's shortcuts are off until
+   Shift+Escape (asked for by the user; a hint says so for 3 s) or a click elsewhere, and it gets keys (modifiers as keys of their own: "Ctrl", "Shift", "Alt",
+   "Command"), text, the pointer and focus changes. Its worker runs while the tab exists (a closed
+   tab isn't drawn, so a game pauses). `play-audio` streams into the sound thread's mixer
+   (`sound::AudioOut`/`AudioStream`: a queue per plugin, silence when empty, half a second at most,
+   off with the bell). The sandbox opens a tab plugin as its tab. Animations wake the window
+   themselves (`render_if_needed`) and get their due time, so they keep their rate. Next: choosing
+   the engine. Before 1.0 a plugin runs only on the same 0.x, so the
    content repo's `example-widgets` pack (0.2) is rebuilt for 0.3 before the next release.
 3. **Custom graphs**: binding several tables (the `table` property) and history from the host.
 4. **3D scene and a robot viewer**: the host renders and the plugin describes a scene it keeps.

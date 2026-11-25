@@ -532,11 +532,154 @@ fn playable(clip: &Clip, packs: &SoundFiles) -> Playable {
     }
 }
 
-/// What the sound thread is asked to play.
+/// The most sound a plugin's stream holds before more is dropped, in
+/// seconds: enough to ride out an uneven frame, little enough to stay in
+/// step with the picture.
+pub const STREAM_HOLDS_S: f64 = 0.5;
+
+/// Samples waiting to be played on one stream, shared between whoever adds
+/// them (a plugin's thread) and the sound thread.
+#[derive(Debug, Default)]
+struct Queue {
+    samples: std::collections::VecDeque<f32>,
+    /// The sender is gone: play what's left, then end.
+    closed: bool,
+}
+
+/// A stream of sound a plugin makes as it goes (a game's), from
+/// [`AudioOut::stream`]: 16-bit samples added a little at a time, played as
+/// they come, silence when there are none. Dropping it ends the stream.
 #[derive(Debug)]
+pub struct AudioStream {
+    queue: Arc<Mutex<Queue>>,
+    /// Samples a second, and channels interleaved.
+    pub rate: u32,
+    pub channels: u8,
+    out: AudioOut,
+}
+
+impl AudioStream {
+    /// Queue `samples` (interleaved), after what's queued. While sound is
+    /// off they're dropped; past [`STREAM_HOLDS_S`] queued, the rest are.
+    pub fn push(&self, samples: &[i16]) {
+        if let Ok(mut heard) = self.out.heard.lock() {
+            *heard += samples.len();
+        }
+        if !self.out.enabled.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+        let most = (STREAM_HOLDS_S * f64::from(self.rate) * f64::from(self.channels)) as usize;
+        if let Ok(mut q) = self.queue.lock() {
+            let room = most.saturating_sub(q.samples.len());
+            q.samples
+                .extend(samples.iter().take(room).map(|s| f32::from(*s) / 32768.0));
+        }
+    }
+
+    /// How many samples are queued now, not yet played.
+    pub fn queued(&self) -> usize {
+        self.queue.lock().map_or(0, |q| q.samples.len())
+    }
+}
+
+impl Drop for AudioStream {
+    fn drop(&mut self) {
+        if let Ok(mut q) = self.queue.lock() {
+            q.closed = true;
+        }
+    }
+}
+
+/// A stream as the sound thread plays it.
+struct StreamSource {
+    queue: Arc<Mutex<Queue>>,
+    rate: rodio::SampleRate,
+    channels: rodio::ChannelCount,
+}
+
+impl Iterator for StreamSource {
+    type Item = f32;
+    fn next(&mut self) -> Option<f32> {
+        let mut q = self.queue.lock().ok()?;
+        match q.samples.pop_front() {
+            Some(s) => Some(s),
+            None if q.closed => None,
+            None => Some(0.0),
+        }
+    }
+}
+
+impl Source for StreamSource {
+    fn current_span_len(&self) -> Option<usize> {
+        None
+    }
+    fn channels(&self) -> rodio::ChannelCount {
+        self.channels
+    }
+    fn sample_rate(&self) -> rodio::SampleRate {
+        self.rate
+    }
+    fn total_duration(&self) -> Option<Duration> {
+        None
+    }
+}
+
+/// Where plugins' sound streams go: the sound thread, unless silent. On or
+/// off with the dashboard's sound (the bell), [`AudioOut::set_enabled`].
+#[derive(Debug, Clone)]
+pub struct AudioOut {
+    send: Option<Sender<Request>>,
+    enabled: Arc<std::sync::atomic::AtomicBool>,
+    /// Every sample offered so far, played or not (for tests).
+    heard: Arc<Mutex<usize>>,
+}
+
+impl AudioOut {
+    /// A new stream at `rate` samples a second, `channels` (1 or 2)
+    /// interleaved.
+    pub fn stream(&self, rate: u32, channels: u8) -> AudioStream {
+        let queue = Arc::new(Mutex::new(Queue::default()));
+        if let (Some(send), Some(r), Some(c)) = (
+            &self.send,
+            std::num::NonZeroU32::new(rate),
+            std::num::NonZeroU16::new(u16::from(channels)),
+        ) {
+            let _ = send.send(Request::Stream(StreamSource {
+                queue: queue.clone(),
+                rate: r,
+                channels: c,
+            }));
+        }
+        AudioStream {
+            queue,
+            rate,
+            channels,
+            out: self.clone(),
+        }
+    }
+
+    /// Play plugins' streams (true) or drop what they send (false).
+    pub fn set_enabled(&self, on: bool) {
+        self.enabled.store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Every sample plugins have offered so far, played or not.
+    pub fn heard(&self) -> usize {
+        self.heard.lock().map_or(0, |h| *h)
+    }
+
+    /// Whether this is the same output as `other`.
+    pub fn same_as(&self, other: &AudioOut) -> bool {
+        Arc::ptr_eq(&self.heard, &other.heard)
+    }
+}
+
+/// What the sound thread is asked to play.
 enum Request {
     /// A sound on its own (alerts, failed sends): mixed with whatever plays.
     Mix(Clip),
+    /// A plugin's stream, mixed in until it ends.
+    Stream(StreamSource),
     /// A robot state sound at `volume` (0 to 1), stopping the last one.
     Event { clip: Clip, volume: f32 },
 }
@@ -569,6 +712,18 @@ pub struct Sound {
     player: SoundPlayer,
     /// Sounds from installed packs, which the sound thread plays.
     files: SoundFiles,
+    /// Plugins' sound streams.
+    audio: AudioOut,
+}
+
+impl std::fmt::Debug for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Request::Mix(c) => write!(f, "Mix({c:?})"),
+            Request::Stream(_) => write!(f, "Stream"),
+            Request::Event { clip, volume } => write!(f, "Event({clip:?}, {volume})"),
+        }
+    }
 }
 
 /// Plays robot state sounds from any thread ([`Sound::player`]): the
@@ -646,6 +801,10 @@ impl Sound {
                     let Some(sink) = &sink else { continue };
                     let clip = match request {
                         Request::Mix(clip) => clip,
+                        Request::Stream(stream) => {
+                            sink.mixer().add(stream);
+                            continue;
+                        }
                         Request::Event { clip, volume } => {
                             if let Some(old) = event_player.take() {
                                 old.stop();
@@ -698,6 +857,11 @@ impl Sound {
                 played: Arc::default(),
                 seen: Arc::default(),
             },
+            audio: AudioOut {
+                send: sound.clone(),
+                enabled: Arc::new(true.into()),
+                heard: Arc::default(),
+            },
             sound,
             played: 0,
             tones: Vec::new(),
@@ -719,7 +883,17 @@ impl Sound {
                 seen: Arc::default(),
             },
             files: SoundFiles::default(),
+            audio: AudioOut {
+                send: None,
+                enabled: Arc::new(true.into()),
+                heard: Arc::default(),
+            },
         }
+    }
+
+    /// Where plugins' sound streams go.
+    pub fn audio(&self) -> AudioOut {
+        self.audio.clone()
     }
 
     /// The installed packs' sounds this plays, for
@@ -895,5 +1069,33 @@ mod tests {
             let samples = clip.take(rate).count();
             assert!(samples >= rate / 10, "{name}: only {samples} samples");
         }
+    }
+
+    #[test]
+    fn a_plugins_stream_plays_what_comes_then_silence_and_holds_half_a_second() {
+        let out = Sound::silent().audio();
+        let stream = out.stream(100, 1);
+        let mut source = StreamSource {
+            queue: stream.queue.clone(),
+            rate: std::num::NonZeroU32::new(100).unwrap(),
+            channels: std::num::NonZeroU16::new(1).unwrap(),
+        };
+        stream.push(&[16384, -16384]);
+        assert_eq!(source.next(), Some(0.5));
+        assert_eq!(source.next(), Some(-0.5));
+        // Nothing queued: silence, not the end.
+        assert_eq!(source.next(), Some(0.0));
+        // At 100 a second, half a second is 50 samples: the rest dropped.
+        stream.push(&[1; 80]);
+        assert_eq!(stream.queued(), 50);
+        assert_eq!(out.heard(), 82);
+        // Sound off: dropped.
+        out.set_enabled(false);
+        stream.push(&[1; 10]);
+        assert_eq!(stream.queued(), 50);
+        // The plugin's side gone: what's left plays, then it ends.
+        drop(stream);
+        assert_eq!(source.by_ref().count(), 50);
+        assert_eq!(source.next(), None);
     }
 }

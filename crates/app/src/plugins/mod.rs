@@ -18,7 +18,7 @@
 
 pub mod convert;
 pub mod draw;
-mod widget;
+pub mod widget;
 pub mod worker;
 
 use std::collections::HashMap;
@@ -104,6 +104,8 @@ struct Registry {
     types: RwLock<Vec<&'static PluginType>>,
     /// By window (its [`owner`] number), then by [`key`].
     workers: Mutex<HashMap<u64, HashMap<String, Arc<Worker>>>>,
+    /// Where each window's plugins' sound goes, by [`owner`].
+    audio: Mutex<HashMap<u64, crate::sound::AudioOut>>,
     last_check: Mutex<Option<Instant>>,
 }
 
@@ -353,6 +355,41 @@ pub fn all() -> Vec<&'static PluginType> {
     registry().types.read().unwrap().clone()
 }
 
+/// The plugin that fills `tab`, if one is loaded: one whose plugin.toml
+/// claims the tab's name (`tab = "Doom"`, any case), when the tab has no
+/// widgets. A tab of that name with widgets stays the user's.
+pub fn tab_plugin(tab: &raptaboard_layout::Tab) -> Option<&'static PluginType> {
+    if !tab.grid_layout.containers.is_empty() || !tab.grid_layout.layouts.is_empty() {
+        return None;
+    }
+    let name = tab.name.trim();
+    all().into_iter().find(|t| {
+        t.loaded()
+            .plugin
+            .manifest
+            .tab
+            .as_deref()
+            .is_some_and(|claimed| claimed.trim().eq_ignore_ascii_case(name))
+    })
+}
+
+/// The stand-in widget a tab plugin runs as: its type, no topic, titled
+/// with the tab's name. The same each frame, so its worker is kept.
+pub fn tab_widget(ty: &PluginType, tab_name: &str) -> WidgetContainer {
+    WidgetContainer {
+        title: tab_name.to_string(),
+        rect: raptaboard_layout::Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        },
+        widget_type: ty.names[0].to_string(),
+        properties: Default::default(),
+        extra: Default::default(),
+    }
+}
+
 /// The loaded plugins that are widgets: not those that fill a tab.
 pub fn widget_types() -> Vec<&'static PluginType> {
     all()
@@ -393,11 +430,19 @@ fn worker_for(
     }
     let runtime = runtime().ok()?;
     let properties = convert::properties(&loaded.plugin.manifest.properties, &widget.properties);
+    let audio = reg
+        .audio
+        .lock()
+        .unwrap()
+        .get(&owner)
+        .cloned()
+        .unwrap_or_else(|| crate::sound::Sound::silent().audio());
     let worker = Arc::new(Worker::start(
         runtime,
         loaded.plugin.clone(),
         properties,
         ctx,
+        audio,
     ));
     workers.insert(key, worker.clone());
     Some(worker)
@@ -414,8 +459,15 @@ fn restart(ty: &PluginType, widget: &WidgetContainer, ctx: &egui::Context) {
 /// Once a frame of the window `ctx`: remember it for starting workers outside
 /// drawing (tab marks), load again any plugin whose `.wasm` changed (once a
 /// second), and drop the window's workers of widgets no longer in `layout`.
-pub fn frame_started(ctx: &egui::Context, layout: &ElasticLayout) {
+pub fn frame_started(ctx: &egui::Context, layout: &ElasticLayout, audio: &crate::sound::AudioOut) {
     let reg = registry();
+    {
+        let mut outs = reg.audio.lock().unwrap();
+        let owner = owner(ctx);
+        if outs.get(&owner).is_none_or(|o| !o.same_as(audio)) {
+            outs.insert(owner, audio.clone());
+        }
+    }
     let types = all();
     // Nothing loaded and nothing running (a pack's plugin removed leaves
     // workers to drop).
@@ -449,8 +501,16 @@ pub fn frame_started(ctx: &egui::Context, layout: &ElasticLayout) {
             }
         }
     }
+    // The widgets' workers, and those of tabs a plugin fills (kept while the
+    // tab is there, so a game pauses when its tab is closed).
+    let tab_widgets: Vec<WidgetContainer> = layout
+        .tabs
+        .iter()
+        .filter_map(|t| tab_plugin(t).map(|ty| tab_widget(ty, &t.name)))
+        .collect();
     let wanted: Vec<String> = layout
         .widgets()
+        .chain(tab_widgets.iter())
         .filter_map(|w| {
             let ty = find(&w.widget_type)?;
             Some(key(ty, ty.loaded().generation, w))

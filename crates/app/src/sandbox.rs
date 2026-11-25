@@ -64,6 +64,8 @@ pub struct Sandbox {
     pub bound_type: Option<String>,
     /// The widget's size, in grid cells.
     pub cells: (u32, u32),
+    /// The tab the plugin fills, for a plugin that fills one (no widget).
+    pub tab: Option<String>,
     /// The server's port, when the sandbox has its own server.
     pub port: Option<u16>,
     /// The topics served, by name.
@@ -292,6 +294,7 @@ impl Sandbox {
             bound,
             bound_type,
             cells: (manifest.size.default[0], manifest.size.default[1]),
+            tab: manifest.tab.clone(),
             port: None,
             topics: Vec::new(),
             served: None,
@@ -407,9 +410,14 @@ impl Sandbox {
         }
     }
 
-    /// The sandbox's layout: one tab with the widget.
+    /// The sandbox's layout: one tab with the widget, or for a plugin that
+    /// fills a tab, that tab, empty, so the plugin fills it.
     pub fn layout(&self) -> ElasticLayout {
         let mut layout = ElasticLayout::default();
+        if let Some(tab) = &self.tab {
+            layout.tabs = vec![Tab::new(tab)];
+            return layout;
+        }
         let mut tab = Tab::new("Plugin sandbox");
         tab.grid_layout.containers = vec![self.widget(f64::from(layout.grid_size()))];
         layout.tabs = vec![tab];

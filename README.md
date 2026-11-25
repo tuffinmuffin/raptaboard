@@ -133,6 +133,12 @@ widget.unit("", "m").set("", 1.5);
 assert!(widget.render().has_text("1.5 m"));
 ```
 
+A plugin can fill a tab instead of being a widget: with `tab = "Doom"` in its `plugin.toml`, an
+empty tab named Doom shows it at the tab's size, and clicking it gives it the keyboard (the
+dashboard's shortcuts are off until Shift+Esc or a click elsewhere). It can draw its own pixels (a game's
+frame), stream sound, and read its own folder at `/pack`. `plugins/tab-test` is a small example:
+`cargo run -p raptaboard -- plugin dev plugins/tab-test`.
+
 To share a plugin, put it in a content pack: its `.wasm` and its `plugin.toml`, renamed for it
 (`alerts.wasm` and `alerts.toml`), with a `[[plugin]]` naming the `.wasm` in the pack's `pack.toml`.
 Try a pack folder with `raptaboard packs install --package <folder> --unsigned`. Installed packs'
