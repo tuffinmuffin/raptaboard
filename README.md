@@ -113,7 +113,9 @@ widgets restart with the new build.
 To try one by hand without a robot, open it in the sandbox: the dashboard with only that plugin's
 widget and a NetworkTables server of its own, serving the sample values from `[sandbox]` in its
 `plugin.toml`. A side panel changes, adds and removes values and sets the widget's size, the
-theme, the connection and the lock; the widget restarts whenever the `.wasm` is rebuilt. Nothing
+theme, the connection and the lock. It also shows the plugin's clickable regions outlined, how
+long each kind of call takes and how much memory it uses against the limits, its log, and why it
+stopped, with Restart; the widget restarts whenever the `.wasm` is rebuilt. Nothing
 is saved. (`--address sim --topic <path>` shows the sim's values instead.)
 
 ```sh

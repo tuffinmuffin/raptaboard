@@ -1,7 +1,8 @@
 //! Misbehaves on purpose when drawn, as its `mode` property says, so the
 //! plugin-host tests can check the limits: `spin` never returns, `panic`
 //! panics, `grow` keeps asking for memory, `publish` and `sound` try what
-//! plugin.toml doesn't allow, `print` writes to stdout. `ok` draws one line.
+//! plugin.toml doesn't allow, `print` writes to stdout, `region` draws a
+//! "Bell" button that logs when it's pressed. `ok` draws one line.
 
 use raptaboard_plugin::prelude::*;
 
@@ -37,11 +38,31 @@ impl Widget for LimitsTest {
                 picture.summary = Some(format!("{result:?}"));
             }
             "print" => println!("hello from limits-test"),
+            "region" => {
+                picture.text(centered_text(&frame, "bell", 14.0));
+                picture.regions.push(Region {
+                    id: "bell".into(),
+                    min: Point { x: 10.0, y: 10.0 },
+                    max: Point {
+                        x: frame.size.width - 10.0,
+                        y: frame.size.height - 10.0,
+                    },
+                    label: "Bell".into(),
+                    role: Role::Button,
+                    checked: None,
+                });
+            }
             _ => {
                 picture.text(centered_text(&frame, "ok", 14.0));
             }
         }
         picture
+    }
+
+    fn on_input(&mut self, event: Input) {
+        if let Input::Activate(id) = event {
+            host::log(&format!("{id} pressed"));
+        }
     }
 }
 

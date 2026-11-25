@@ -352,8 +352,10 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
   checked against the built-ins with it.
 - **Sandbox window** (`raptaboard plugin dev <folder>`; started 2026-11-25: the server, the plugin's
   `[sandbox]` sample values, the values panel (type, add, remove), size presets and the theme,
-  connected and locked switches, and `--address` with `--topic`; still to come: sliders, scripted
-  sequences and the dev overlay): the dashboard with its own NT server inside
+  connected and locked switches, and `--address` with `--topic`; the dev overlay 2026-11-25: regions
+  outlined with their labels, each kind of call's last and longest time and the memory against the
+  limits (`runtime::Usage`), the plugin's last 200 log lines, why it stopped, and Restart; still to
+  come: sliders and scripted sequences): the dashboard with its own NT server inside
   (the in-process `nt4::Server` the UI tests use) instead of a robot. The plugin from the folder is
   placed on a tab and reloads when the `.wasm` is rebuilt. A values panel types values, drags
   sliders, adds and removes topics, and plays scripted sequences (later, a `.wpilog` replay). A dev
@@ -371,7 +373,7 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
    built-in does, and `ui/tests/plugins.rs` sets both beside their built-ins; plugins load from
    installed packs (2026-11-24, see "Content packs"); next the `example-widgets` pack in
    raptaboard-content and the test harness (with tests for both plugins in their `tests/`); the
-   sandbox window started (2026-11-25); next its dev overlay. Not yet: images in pictures, focus and keys, struct values). The wasmtime host with the limits above, API 0.2,
+   sandbox window and its dev overlay (2026-11-25); next Doom. Not yet: images in pictures, focus and keys, struct values). The wasmtime host with the limits above, API 0.2,
    the adapter, loading from packs and from a local folder, the SDK crate and the test harness. Then two plugins in
    `plugins/` (built in CI, shipped as an `example-widgets` pack in raptaboard-content), each set beside
    its built-in to show plugins can match them:

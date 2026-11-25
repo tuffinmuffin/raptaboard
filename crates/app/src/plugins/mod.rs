@@ -453,6 +453,60 @@ pub fn frame_started(ctx: &egui::Context, layout: &ElasticLayout) {
     }
 }
 
+/// What the plugin sandbox's overlay shows about one plugin widget.
+#[derive(Debug, Clone, Default)]
+pub struct DevView {
+    /// What it has used (call times, memory) against its limits.
+    pub usage: Option<raptaboard_plugin_host::runtime::Usage>,
+    /// Its last log lines, oldest first.
+    pub log: Vec<String>,
+    /// Why it stopped, if it has.
+    pub stopped: Option<String>,
+}
+
+/// What the sandbox's overlay shows about `widget` in the window `ctx`, if
+/// it's a plugin widget with a worker running.
+pub fn dev_view(ctx: &egui::Context, widget: &WidgetContainer) -> Option<DevView> {
+    let ty = find(&widget.widget_type)?;
+    let key = key(ty, ty.loaded().generation, widget);
+    let worker = registry()
+        .workers
+        .lock()
+        .unwrap()
+        .get(&owner(ctx))?
+        .get(&key)?
+        .clone();
+    let latest = worker.latest.lock().unwrap();
+    Some(DevView {
+        usage: latest.usage,
+        log: latest.log.iter().cloned().collect(),
+        stopped: latest.stopped.as_ref().map(|s| s.reason.clone()),
+    })
+}
+
+/// Start `widget`'s plugin again from scratch in the window `ctx`.
+pub fn restart_widget(ctx: &egui::Context, widget: &WidgetContainer) {
+    if let Some(ty) = find(&widget.widget_type) {
+        restart(ty, widget, ctx);
+        ctx.request_repaint();
+    }
+}
+
+/// Outline plugin widgets' clickable regions in the window `ctx`, each with
+/// its label (the sandbox's overlay), or not.
+pub fn set_outline_regions(ctx: &egui::Context, on: bool) {
+    ctx.data_mut(|d| d.insert_temp(outline_id(), on));
+}
+
+/// Whether plugin widgets' regions are outlined in the window `ctx`.
+pub fn outline_regions(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp(outline_id())).unwrap_or(false)
+}
+
+fn outline_id() -> egui::Id {
+    egui::Id::unique("raptaboard plugin region outlines")
+}
+
 /// Whether `widget` has a worker running now in the window `ctx` (for tests).
 #[cfg(test)]
 pub(crate) fn has_worker(ctx: &egui::Context, widget: &WidgetContainer) -> bool {

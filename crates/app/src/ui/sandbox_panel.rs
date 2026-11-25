@@ -1,10 +1,13 @@
 //! The plugin sandbox's side panel (`raptaboard plugin dev`): the widget's
-//! size, the theme, the connection and the lock, and the values the
-//! sandbox's own server serves, to edit, add and remove
-//! ([`crate::sandbox`]).
+//! size, the theme, the connection and the lock; the plugin's overlay (its
+//! regions outlined, the time each kind of call takes and its memory against
+//! the limits, its log, Restart); and the values the sandbox's own server
+//! serves, to edit, add and remove ([`crate::sandbox`]).
 
 use eframe::egui;
 use nt4::{NtType, Value};
+
+use raptaboard_plugin_host::runtime::{CallTime, Usage};
 
 use super::DashboardApp;
 use crate::connection::AddressMode;
@@ -72,6 +75,15 @@ impl DashboardApp {
                     );
                     ui.separator();
                     widget_section(ui, view, &mut self.layout, &mut self.locked);
+                    if let Some(widget) = self
+                        .layout
+                        .tabs
+                        .first()
+                        .and_then(|t| t.grid_layout.containers.first())
+                    {
+                        ui.separator();
+                        plugin_section(ui, widget);
+                    }
                     if view.sandbox.serves() {
                         ui.separator();
                         values_section(ui, view);
@@ -158,6 +170,105 @@ fn widget_section(
     }
 }
 
+/// One kind of call's time for people: "0.42 ms, most 1.10, of 100".
+pub(super) fn call_text(t: &CallTime, limit_ms: u64) -> String {
+    if t.calls == 0 {
+        return "not called yet".into();
+    }
+    format!("{:.2} ms, most {:.2}, of {limit_ms}", t.last_ms, t.max_ms)
+}
+
+/// Memory for people: "1.3 MiB of 64".
+pub(super) fn memory_text(bytes: usize, limit: usize) -> String {
+    let mib = |b: usize| b as f64 / (1 << 20) as f64;
+    format!("{:.1} MiB of {:.0}", mib(bytes), mib(limit))
+}
+
+/// Whether `used` is over half of `limit`: shown in the warning color.
+fn near(used: f64, limit: f64) -> bool {
+    limit > 0.0 && used > limit / 2.0
+}
+
+/// The plugin's overlay: outline its regions, what it has used against its
+/// limits, why it stopped, Restart, and its log.
+fn plugin_section(ui: &mut egui::Ui, widget: &raptaboard_layout::WidgetContainer) {
+    ui.strong("Plugin");
+    let mut outline = crate::plugins::outline_regions(ui.ctx());
+    if ui.checkbox(&mut outline, "Outline its regions").changed() {
+        crate::plugins::set_outline_regions(ui.ctx(), outline);
+    }
+    let Some(dev) = crate::plugins::dev_view(ui.ctx(), widget) else {
+        ui.label(egui::RichText::new("Not running").weak());
+        return;
+    };
+    if let Some(why) = &dev.stopped {
+        ui.colored_label(ui.visuals().error_fg_color, format!("Stopped: {why}"));
+    }
+    if ui
+        .button("Restart")
+        .on_hover_text("Start it again from scratch")
+        .clicked()
+    {
+        crate::plugins::restart_widget(ui.ctx(), widget);
+    }
+    if let Some(u) = dev.usage {
+        usage_grid(ui, &u);
+    }
+    ui.label("Log");
+    egui::Frame::new()
+        .fill(ui.visuals().extreme_bg_color)
+        .inner_margin(4.0)
+        .show(ui, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("sandbox_log")
+                .max_height(150.0)
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
+                    if dev.log.is_empty() {
+                        ui.label(egui::RichText::new("Nothing logged yet").weak().small());
+                    }
+                    for line in &dev.log {
+                        ui.label(egui::RichText::new(line).monospace().small());
+                    }
+                });
+        });
+}
+
+/// Each kind of call's time and the memory, against the limits.
+fn usage_grid(ui: &mut egui::Ui, u: &Usage) {
+    let warn = ui.visuals().warn_fg_color;
+    let limit_ms = u.limits.call_ms;
+    egui::Grid::new("sandbox_usage")
+        .num_columns(2)
+        .show(ui, |ui| {
+            for (name, t) in [
+                ("Render", &u.render),
+                ("Update", &u.update),
+                ("Input", &u.input),
+                ("Tab mark", &u.tab_mark),
+            ] {
+                ui.label(name);
+                let text = egui::RichText::new(call_text(t, limit_ms)).small();
+                if near(t.max_ms, limit_ms as f64) {
+                    ui.colored_label(warn, text);
+                } else {
+                    ui.label(text);
+                }
+                ui.end_row();
+            }
+            ui.label("Memory");
+            let text =
+                egui::RichText::new(memory_text(u.memory_bytes, u.limits.memory_bytes)).small();
+            if near(u.memory_bytes as f64, u.limits.memory_bytes as f64) {
+                ui.colored_label(warn, text);
+            } else {
+                ui.label(text);
+            }
+            ui.end_row();
+        });
+}
+
 /// The values the sandbox serves: each with an editor for its type and a
 /// remove button, then a row to add one.
 fn values_section(ui: &mut egui::Ui, view: &mut SandboxView) {
@@ -165,11 +276,15 @@ fn values_section(ui: &mut egui::Ui, view: &mut SandboxView) {
     let mut set: Vec<(String, Value)> = Vec::new();
     let mut remove: Option<String> = None;
     for topic in &mut view.sandbox.topics {
-        let short = topic
-            .name
-            .strip_prefix(&format!("{}/", view.sandbox.bound))
-            .unwrap_or(&topic.name)
-            .to_string();
+        let short = if topic.name == view.sandbox.bound {
+            "the widget's topic".to_string()
+        } else {
+            topic
+                .name
+                .strip_prefix(&format!("{}/", view.sandbox.bound))
+                .unwrap_or(&topic.name)
+                .to_string()
+        };
         ui.horizontal(|ui| {
             ui.label(&short)
                 .on_hover_text(format!("{} ({})", topic.name, topic.ty));
@@ -302,5 +417,24 @@ fn edit_value(
             let parsed = sandbox::from_text(ty, text);
             parsed.filter(|v| v != value)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Tests written by Claude.
+    use super::*;
+
+    #[test]
+    fn usage_reads_against_the_limits() {
+        let t = CallTime {
+            calls: 2,
+            last_ms: 0.42,
+            max_ms: 1.1,
+        };
+        assert_eq!(call_text(&t, 100), "0.42 ms, most 1.10, of 100");
+        assert_eq!(call_text(&CallTime::default(), 100), "not called yet");
+        assert_eq!(memory_text(3 << 19, 64 << 20), "1.5 MiB of 64");
+        assert!(near(60.0, 100.0) && !near(40.0, 100.0));
     }
 }

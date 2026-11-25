@@ -335,8 +335,12 @@ impl WidgetType for PluginType {
             )
             .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Image, true, &text));
         }
+        let outline = super::outline_regions(ui.ctx());
         for region in regions {
             let area = draw::region_rect(rect.min, &region.min, &region.max);
+            if outline {
+                draw::outline(ui.painter(), area, &region.label);
+            }
             let response = ui.interact(area, ui.scope_id().with(&region.id), egui::Sense::click());
             let role = match region.role {
                 Role::Button => egui::accesskit::Role::Button,
