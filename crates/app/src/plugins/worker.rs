@@ -53,6 +53,8 @@ pub struct Latest {
     pub usage: Option<Usage>,
     /// Its last [`LOG_LINES`] log lines (and printed lines), oldest first.
     pub log: VecDeque<String>,
+    /// It asked to give the keyboard and mouse back (`release-focus`).
+    pub release_focus: bool,
 }
 
 /// What the last picture was drawn for, so the window asks for a new one
@@ -228,6 +230,11 @@ impl Host for AppHost {
         }
         self.request(Request::Sound(sound.to_string()));
         Ok(())
+    }
+
+    fn release_focus(&mut self) {
+        self.latest.lock().unwrap().release_focus = true;
+        self.ctx.request_repaint();
     }
 
     fn log(&mut self, message: &str) {

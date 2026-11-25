@@ -289,6 +289,9 @@ interface host {
     play-audio: func(samples: list<s16>, rate: u32, channels: u8) -> result<_, string>;
     /// Write a line to the dashboard log.
     log: func(message: string);
+    /// Give the keyboard (and the mouse, if held) back to the dashboard, as
+    /// Shift+Escape does: a game's Quit. The plugin gets `focus(false)`.
+    release-focus: func();
 }
 
 world widget {

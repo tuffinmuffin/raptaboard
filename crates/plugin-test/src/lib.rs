@@ -194,6 +194,8 @@ struct Asked {
     units: HashMap<String, String>,
     sounds: Vec<String>,
     audio: Vec<Audio>,
+    /// Times it gave the keyboard back (`release-focus`).
+    releases: u32,
     published: Vec<(String, NtValue)>,
     logs: Vec<String>,
 }
@@ -229,6 +231,9 @@ impl Host for TestHost {
     }
     fn log(&mut self, message: &str) {
         self.0.lock().unwrap().logs.push(message.to_string());
+    }
+    fn release_focus(&mut self) {
+        self.0.lock().unwrap().releases += 1;
     }
 }
 
@@ -637,6 +642,12 @@ impl Harness {
     /// The sounds it asked to play since the last look.
     pub fn take_sounds(&mut self) -> Vec<String> {
         std::mem::take(&mut self.asked.lock().unwrap().sounds)
+    }
+
+    /// How many times it gave the keyboard back (`release-focus`) since the
+    /// last look.
+    pub fn take_releases(&mut self) -> u32 {
+        std::mem::take(&mut self.asked.lock().unwrap().releases)
     }
 
     /// The sound it queued with `play-audio` since the last look.

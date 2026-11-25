@@ -234,6 +234,9 @@ pub trait Host: Send {
     }
     /// A line for the dashboard log, from the plugin's `log` or its stdout.
     fn log(&mut self, _message: &str) {}
+
+    /// Give the keyboard and mouse back to the dashboard (a game's Quit).
+    fn release_focus(&mut self) {}
 }
 
 /// Compiles plugins and runs the clock behind their time limits. Make one and
@@ -659,6 +662,10 @@ impl wit_host::Host for State {
 
     fn log(&mut self, message: String) {
         self.host.log(&message);
+    }
+
+    fn release_focus(&mut self) {
+        self.host.release_focus();
     }
 }
 

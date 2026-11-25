@@ -334,8 +334,11 @@ impl PluginType {
         }
         let mut focused = response.has_focus();
         // Shift+Escape gives the keyboard (and mouse) back, and isn't the
-        // plugin's.
-        if focused && ui.input_mut(|i| i.consume_shortcut(&LEAVE_KEYS)) {
+        // plugin's; so does the plugin asking (`release-focus`: a game's Quit).
+        let asked = self
+            .worker(widget, ui.ctx())
+            .is_some_and(|w| std::mem::take(&mut w.latest.lock().unwrap().release_focus));
+        if focused && (asked || ui.input_mut(|i| i.consume_shortcut(&LEAVE_KEYS))) {
             ui.memory_mut(|m| m.surrender_focus(id));
             focused = false;
         }

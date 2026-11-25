@@ -2,7 +2,8 @@
 //! reads `hello.txt` from its own folder (`/pack`), draws a square bouncing
 //! across a 320 × 200 pixel frame (Doom's size) 35 times a second, moving a
 //! whole number of pixels each step as a game does, counts the keys pressed,
-//! and beeps through `play-audio` when Space is pressed.
+//! and beeps through `play-audio` when Space is pressed. Q gives the
+//! keyboard back (`release-focus`), as a game's Quit would.
 
 use raptaboard_plugin::prelude::*;
 
@@ -140,6 +141,9 @@ impl Widget for TabTest {
                 && let Err(e) = host::play_audio(&beep(), BEEP.2, 1)
             {
                 host::log(&format!("no beep: {e}"));
+            }
+            if key.name == "Q" {
+                host::release_focus();
             }
         }
     }

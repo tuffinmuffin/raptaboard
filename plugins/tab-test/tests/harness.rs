@@ -83,3 +83,12 @@ fn it_counts_the_held_mouse_and_clicks_while_focused() {
         w.render().summary()
     );
 }
+
+#[test]
+fn q_gives_the_keyboard_back() {
+    let mut w = tab_test();
+    w.input(key("A"));
+    assert_eq!(w.take_releases(), 0);
+    w.input(key("Q"));
+    assert_eq!(w.take_releases(), 1);
+}

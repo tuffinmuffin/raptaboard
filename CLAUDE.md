@@ -143,7 +143,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `tab_widget` its stand-in widget (its worker kept while the tab exists); `ui/plugin_tab.rs` draws it in place of the
   grid and turns the dashboard's shortcuts off while it has focus (`plugin_has_keys`); `PluginType::show_tab` and
   `widget::tab_inputs` turn egui's events into its input (with `capture_mouse` in plugin.toml, the cursor grabbed and hidden
-  while it has focus, egui's raw `MouseMoved` as `mouse-motion`). Key names are egui's: "Up", "1", "Enter". Plugins' `play-audio` streams through `sound::AudioOut`
+  while it has focus, egui's raw `MouseMoved` as `mouse-motion`). Key names are egui's: "Up", "1", "Enter".
+  A plugin gives the keyboard and mouse back itself with `release-focus` (a game's Quit; `Latest::release_focus`). Plugins' `play-audio` streams through `sound::AudioOut`
   (per window, set by `frame_started`; on and off with the bell).
 - `crates/app/src/plugins/`: plugins in the app. `mod.rs` the registry (plugins from installed packs, `use_packs`, run by
   `ui/content_window.rs` at the first frame and after each install or remove; and from `--plugin`, which wins; saved in
