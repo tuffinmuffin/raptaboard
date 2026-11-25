@@ -3,7 +3,8 @@
 //! across a 320 × 200 pixel frame (Doom's size) 35 times a second, moving a
 //! whole number of pixels each step as a game does, counts the keys pressed,
 //! and beeps through `play-audio` when Space is pressed. Q gives the
-//! keyboard back (`release-focus`), as a game's Quit would.
+//! keyboard back (`release-focus`), as a game's Quit would, and P panics, as a
+//! game's bug would (the window gives the keyboard and mouse back then too).
 
 use raptaboard_plugin::prelude::*;
 
@@ -144,6 +145,9 @@ impl Widget for TabTest {
             }
             if key.name == "Q" {
                 host::release_focus();
+            }
+            if key.name == "P" {
+                panic!("P pressed: tab-test panics, as a buggy game would");
             }
         }
     }

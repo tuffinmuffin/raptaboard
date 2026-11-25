@@ -329,16 +329,21 @@ impl PluginType {
     ) {
         let id = tab_focus_id(&widget.title);
         let response = ui.interact(rect, id, egui::Sense::click());
-        if response.clicked() {
+        // Shift+Escape gives the keyboard (and mouse) back, and isn't the
+        // plugin's; so does the plugin asking (`release-focus`: a game's Quit),
+        // and its stopping (a crash, or a limit), when it can't take input.
+        let (asked, stopped) = self.worker(widget, ui.ctx()).map_or((false, false), |w| {
+            let mut latest = w.latest.lock().unwrap();
+            (
+                std::mem::take(&mut latest.release_focus),
+                latest.stopped.is_some(),
+            )
+        });
+        if response.clicked() && !stopped {
             response.request_focus();
         }
         let mut focused = response.has_focus();
-        // Shift+Escape gives the keyboard (and mouse) back, and isn't the
-        // plugin's; so does the plugin asking (`release-focus`: a game's Quit).
-        let asked = self
-            .worker(widget, ui.ctx())
-            .is_some_and(|w| std::mem::take(&mut w.latest.lock().unwrap().release_focus));
-        if focused && (asked || ui.input_mut(|i| i.consume_shortcut(&LEAVE_KEYS))) {
+        if focused && (asked || stopped || ui.input_mut(|i| i.consume_shortcut(&LEAVE_KEYS))) {
             ui.memory_mut(|m| m.surrender_focus(id));
             focused = false;
         }
