@@ -155,19 +155,23 @@ impl Default for Limits {
 }
 
 impl Limits {
-    /// The limits a plugin runs under: the defaults, with the memory its
-    /// plugin.toml asks for (`[limits] memory_mb`).
+    /// The limits a plugin runs under: the defaults, with the memory and
+    /// call time its plugin.toml asks for (`[limits] memory_mb`, `call_ms`).
     ///
     /// ```
     /// use raptaboard_plugin_host::{Manifest, runtime::Limits};
     /// let m = Manifest::from_toml("name='g'\nversion='0'\napi='0.3'\ntab='Game'\n\
-    ///     [limits]\nmemory_mb=192\n").unwrap();
+    ///     [limits]\nmemory_mb=192\ncall_ms=500\n").unwrap();
     /// assert_eq!(Limits::for_manifest(&m).memory_bytes, 192 << 20);
+    /// assert_eq!(Limits::for_manifest(&m).call_ms, 500);
     /// ```
     pub fn for_manifest(manifest: &Manifest) -> Limits {
         let mut limits = Limits::default();
         if let Some(mb) = manifest.limits.memory_mb {
             limits.memory_bytes = (mb as usize) << 20;
+        }
+        if let Some(ms) = manifest.limits.call_ms {
+            limits.call_ms = u64::from(ms);
         }
         limits
     }

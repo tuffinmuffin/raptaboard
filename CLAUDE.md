@@ -120,7 +120,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   a `Host`; a trap, a panic, running past `Limits::call_ms` or `memory_bytes` stops it for good, as `Stopped`;
   WASI with no network or environment and no files but the plugin's own folder, read-only at `/pack`, stdout to the
   log; `Instance::usage` its call times and memory; `Limits::for_manifest`: 100 ms a call, 3 s for the first render
-  (loading), 64 MiB unless plugin.toml's `[limits] memory_mb` asks for more, at most 512); `dev.rs` builds a plugins workspace
+  (loading), 64 MiB, unless plugin.toml's `[limits]` asks for more: `memory_mb` at most 512, `call_ms` at most 1000); `dev.rs` builds a plugins workspace
   (`repo_plugins()`: `plugins/`, once per test run). `tests/runtime.rs` runs them. `docs/spec.md` "Plugin system"
   has the plan (next the example-widgets pack, then Doom, graphs, a 3D robot viewer, a log viewer).
 - `crates/plugin-test`: `raptaboard-plugin-test`, the harness for testing a plugin with `cargo test`: `Harness::build`

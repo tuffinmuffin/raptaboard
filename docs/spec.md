@@ -418,7 +418,8 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
    limits too tight for a game: the first `render` now may take `Limits::first_render_ms` (3 s;
    loading the WADs took 67 ms in a release build, about 200 ms in a debug one) and a plugin may ask
    for up to 512 MiB (`[limits] memory_mb` in plugin.toml; Doom runs at about 105 MiB, each frame
-   about 1 ms). Not yet shown before installing a pack (the catalog would carry it). Next: Doom's
+   about 1 ms) and longer calls, up to 1 s (`call_ms`: Doom loads a level whenever one ends, over
+   100 ms). Not yet shown before installing a pack (the catalog would carry it). Next: Doom's
    sound (a mixer in the plugin), then the pack. Before 1.0 a plugin runs only on the same 0.x, so the
    content repo's `example-widgets` pack (0.2) is rebuilt for 0.3 before the next release.
 3. **Custom graphs**: binding several tables (the `table` property) and history from the host.

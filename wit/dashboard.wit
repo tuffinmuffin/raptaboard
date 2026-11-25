@@ -29,8 +29,9 @@
 //
 // Each call into a plugin may take 100 ms, but the first `render` may take
 // 3 s: load what it needs (a game's data) there. A plugin gets 64 MiB of
-// memory unless its plugin.toml asks for more (`[limits] memory_mb`, at most
-// 512).
+// memory, and each call 100 ms, unless its plugin.toml asks for more
+// (`[limits] memory_mb`, at most 512; `call_ms`, at most 1000: a game loads
+// a level whenever one ends).
 //
 // 0.3 added pixel images, an audio stream, the `/pack` folder and tabs. UI
 // elements and 3D scenes come in later versions: see docs/spec.md "Plugin
