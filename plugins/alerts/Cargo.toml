@@ -11,5 +11,9 @@ crate-type = ["cdylib"]
 [dependencies]
 raptaboard-plugin.workspace = true
 
+# Tests in tests/ run the built plugin with the harness, natively.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+raptaboard-plugin-test.workspace = true
+
 [lints]
 workspace = true

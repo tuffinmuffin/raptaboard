@@ -15,6 +15,8 @@ rust-version = "1.97"
 [workspace.dependencies]
 raptaboard-plugin = { path = "sdk" }
 wit-bindgen = "0.63.0"
+# The test harness (native only: it runs plugins in the dashboard's runtime).
+raptaboard-plugin-test = { path = "../crates/plugin-test" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

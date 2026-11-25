@@ -176,6 +176,18 @@ mod tests {
     }
 
     #[test]
+    fn the_plugin_test_harness_draws_in_the_dashboards_themes() {
+        assert_eq!(
+            raptaboard_plugin_test::dark_theme(),
+            theme(&egui::Visuals::dark())
+        );
+        assert_eq!(
+            raptaboard_plugin_test::light_theme(),
+            theme(&egui::Visuals::light())
+        );
+    }
+
+    #[test]
     fn colors_round_trip() {
         let c = Color32::from_rgba_unmultiplied(10, 20, 30, 200);
         assert_eq!(egui_color(&color(c)), c);

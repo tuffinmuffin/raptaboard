@@ -47,6 +47,36 @@ use bindings::raptaboard::dashboard::{host as wit_host, types as wit_types};
 /// How often the time-limit clock ticks.
 const TICK: Duration = Duration::from_millis(5);
 
+/// A property's default value, as the plugin gets it from `property`: a
+/// number property as a double, a bool as a boolean, the rest as text.
+///
+/// ```
+/// use raptaboard_plugin_host::{Manifest, runtime::{default_properties, NtValue}};
+/// let m = Manifest::from_toml("name='n'\nversion='0'\napi='0.2'\n[match]\ntopic_types=['double']\n\
+///     [properties]\nfont_size={type='number',default=14}\n").unwrap();
+/// assert_eq!(default_properties(&m)["font_size"], NtValue::Double(14.0));
+/// ```
+pub fn default_value(spec: &crate::PropertySpec) -> NtValue {
+    use crate::PropertySpec as P;
+    match spec {
+        P::Number { default } => NtValue::Double(*default),
+        P::Bool { default } => NtValue::Boolean(*default),
+        P::String { default }
+        | P::Color { default }
+        | P::Sound { default }
+        | P::Enum { default, .. } => NtValue::Str(default.clone()),
+    }
+}
+
+/// Every property in `manifest`, at its default value.
+pub fn default_properties(manifest: &Manifest) -> HashMap<String, NtValue> {
+    manifest
+        .properties
+        .iter()
+        .map(|(name, spec)| (name.clone(), default_value(spec)))
+        .collect()
+}
+
 /// The limits each widget instance runs under.
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {

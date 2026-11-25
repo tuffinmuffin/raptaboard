@@ -3769,6 +3769,7 @@ dependencies = [
  "nt4",
  "raptaboard-layout",
  "raptaboard-plugin-host",
+ "raptaboard-plugin-test",
  "raptaboard-win-console",
  "resvg",
  "rfd",
@@ -3802,6 +3803,14 @@ dependencies = [
  "wasmtime",
  "wasmtime-wasi",
  "wit-parser 0.263.0",
+]
+
+[[package]]
+name = "raptaboard-plugin-test"
+version = "0.3.0"
+dependencies = [
+ "raptaboard-plugin-host",
+ "serde_json",
 ]
 
 [[package]]

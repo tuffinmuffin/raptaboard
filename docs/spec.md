@@ -343,7 +343,8 @@ on a plugin.
 
 Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to see a plugin work.
 
-- **Test harness** (`raptaboard-plugin-test`, with the SDK): loads a built `widget.wasm` in the real
+- **Test harness** (`raptaboard-plugin-test`, `crates/plugin-test`; done 2026-11-24 apart from
+  timed scripts and PNG snapshots, which come with the sandbox window's renderer): loads a built `widget.wasm` in the real
   host runtime and limits, for `cargo test`. A test sets values (one at a time or a timed script),
   sizes, the connection state and the theme, and sends input (`activate("bell")`, keys). It then
   checks what came back: shapes, regions found by label, the tab mark, redraw requests, sounds asked
@@ -366,7 +367,8 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
    changed `.wasm`, through `crates/app/src/plugins/`; the Alerts plugin (2026-11-24) draws what the
    built-in does, and `ui/tests/plugins.rs` sets both beside their built-ins; plugins load from
    installed packs (2026-11-24, see "Content packs"); next the `example-widgets` pack in
-   raptaboard-content, then the test harness and the sandbox window. Not yet: images in pictures, focus and keys, struct values). The wasmtime host with the limits above, API 0.2,
+   raptaboard-content and the test harness (with tests for both plugins in their `tests/`); next the
+   sandbox window. Not yet: images in pictures, focus and keys, struct values). The wasmtime host with the limits above, API 0.2,
    the adapter, loading from packs and from a local folder, the SDK crate and the test harness. Then two plugins in
    `plugins/` (built in CI, shipped as an `example-widgets` pack in raptaboard-content), each set beside
    its built-in to show plugins can match them:

@@ -110,6 +110,17 @@ Their widget types (`plugin:number`, `plugin:alerts`) are then in "Add as" and t
 the topics and tables they show, after the built-in ones. Rebuild one while the dashboard runs and its
 widgets restart with the new build.
 
+To test one without the dashboard, `crates/plugin-test` (`raptaboard-plugin-test`) runs its built
+`.wasm` in the dashboard's own plugin runtime from `cargo test`: set values, the size and the
+connection, click its regions, and check the text it drew, its tab mark and the sounds it asked for.
+`plugins/number/tests/harness.rs` and `plugins/alerts/tests/harness.rs` are examples:
+
+```rust
+let mut widget = raptaboard_plugin_test::Harness::build(env!("CARGO_MANIFEST_DIR"));
+widget.unit("", "m").set("", 1.5);
+assert!(widget.render().has_text("1.5 m"));
+```
+
 To share a plugin, put it in a content pack: its `.wasm` and its `plugin.toml`, renamed for it
 (`alerts.wasm` and `alerts.toml`), with a `[[plugin]]` naming the `.wasm` in the pack's `pack.toml`.
 Try a pack folder with `raptaboard packs install --package <folder> --unsigned`. Installed packs'
