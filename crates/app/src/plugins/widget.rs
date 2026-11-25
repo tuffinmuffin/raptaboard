@@ -306,7 +306,7 @@ impl WidgetType for PluginType {
             locked: live.place.locked,
             dark: visuals.dark_mode,
         };
-        worker.render_if_needed(drawn, |time_s| FrameInfo {
+        let next = worker.render_if_needed(drawn, |time_s| FrameInfo {
             size: Size {
                 width: rect.width(),
                 height: rect.height(),
@@ -316,6 +316,11 @@ impl WidgetType for PluginType {
             locked: live.place.locked,
             theme: convert::theme(&visuals),
         });
+        // An animation: wake when its next frame is due.
+        if let Some(at) = next {
+            ui.ctx()
+                .request_repaint_after(at.saturating_duration_since(std::time::Instant::now()));
+        }
 
         let latest = worker.latest.lock().unwrap();
         let Some(picture) = &latest.picture else {

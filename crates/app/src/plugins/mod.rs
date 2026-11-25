@@ -492,6 +492,34 @@ pub fn dev_view(ctx: &egui::Context, widget: &WidgetContainer) -> Option<DevView
     })
 }
 
+/// The first pixel image in `widget`'s newest picture in the window `ctx`
+/// (for tests).
+#[cfg(test)]
+pub(crate) fn newest_pixels(
+    ctx: &egui::Context,
+    widget: &WidgetContainer,
+) -> Option<raptaboard_plugin_host::runtime::Pixels> {
+    let ty = find(&widget.widget_type)?;
+    let key = key(ty, ty.loaded().generation, widget);
+    let worker = registry()
+        .workers
+        .lock()
+        .unwrap()
+        .get(&owner(ctx))?
+        .get(&key)?
+        .clone();
+    let latest = worker.latest.lock().unwrap();
+    latest
+        .picture
+        .as_ref()?
+        .shapes
+        .iter()
+        .find_map(|s| match s {
+            raptaboard_plugin_host::runtime::Shape::Pixels(p) => Some(p.clone()),
+            _ => None,
+        })
+}
+
 /// Start `widget`'s plugin again from scratch in the window `ctx`.
 pub fn restart_widget(ctx: &egui::Context, widget: &WidgetContainer) {
     if let Some(ty) = find(&widget.widget_type) {

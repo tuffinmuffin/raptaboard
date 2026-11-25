@@ -126,23 +126,35 @@ impl Worker {
 
     /// Ask for a new picture if anything changed since the last: values or
     /// input sent since, a different `drawn`, or the time the plugin asked
-    /// to be drawn again has come. `frame` makes the frame's details.
-    pub fn render_if_needed(&self, drawn: Drawn, frame: impl FnOnce(f64) -> FrameInfo) {
-        let due = {
+    /// to be drawn again has come. `frame` makes the frame's details from
+    /// its time: when it was due, for one drawn because its time came (so an
+    /// animation moves evenly however late the window woke), else now.
+    ///
+    /// Returns when the plugin wants drawing next, for the window to wake
+    /// then: asked from the window's frame, so it isn't lost (a wake asked
+    /// from the worker's thread right after "show this now" is dropped).
+    pub fn render_if_needed(
+        &self,
+        drawn: Drawn,
+        frame: impl FnOnce(f64) -> FrameInfo,
+    ) -> Option<Instant> {
+        let (due, pending) = {
             let mut latest = self.latest.lock().unwrap();
             let due = latest.redraw_at.filter(|at| *at <= Instant::now());
             if due.is_some() {
                 latest.redraw_at = None;
                 latest.drawing_due = due;
             }
-            due.is_some()
+            (due, latest.redraw_at)
         };
         let mut state = self.drawn.lock().unwrap();
-        if state.1 || state.0 != Some(drawn) || due {
+        if state.1 || state.0 != Some(drawn) || due.is_some() {
             *state = (Some(drawn), false);
-            let time_s = self.started.elapsed().as_secs_f64();
+            let at = due.unwrap_or_else(Instant::now);
+            let time_s = at.saturating_duration_since(self.started).as_secs_f64();
             let _ = self.sender.send(Message::Render(frame(time_s)));
         }
+        pending
     }
 
     /// Pass on input.
@@ -307,10 +319,10 @@ fn run(
                         latest.redraw_at = again.map(|d| next_due(was_due, d, now));
                         latest.usage = Some(instance.usage());
                     }
+                    // Show it. The window wakes for the next one itself
+                    // (`render_if_needed`): a delayed wake asked here, after
+                    // this one, would be dropped.
                     ctx.request_repaint();
-                    if let Some(d) = again {
-                        ctx.request_repaint_after(d);
-                    }
                 }
                 Err(stopped) => return stop(stopped, Some(instance.usage())),
             }
