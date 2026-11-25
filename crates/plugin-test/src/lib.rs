@@ -420,7 +420,7 @@ impl Harness {
         let plugin = compiled(manifest, wasm, folder)?;
         let asked = Arc::new(Mutex::new(Asked::default()));
         let properties = runtime::default_properties(&plugin.manifest);
-        let limits = Limits::default();
+        let limits = Limits::for_manifest(&plugin.manifest);
         let instance = shared_runtime()
             .instantiate(
                 &plugin,
@@ -619,6 +619,12 @@ impl Harness {
         self.instance
             .tab_mark()
             .unwrap_or_else(|s| panic!("the plugin stopped: {}", s.reason))
+    }
+
+    /// What it has used so far: each kind of call's time and its memory,
+    /// against its limits.
+    pub fn usage(&self) -> runtime::Usage {
+        self.instance.usage()
     }
 
     /// Why the plugin stopped, if it has.

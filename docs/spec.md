@@ -407,8 +407,15 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
    tab isn't drawn, so a game pauses). `play-audio` streams into the sound thread's mixer
    (`sound::AudioOut`/`AudioStream`: a queue per plugin, silence when empty, half a second at most,
    off with the bell). The sandbox opens a tab plugin as its tab. Animations wake the window
-   themselves (`render_if_needed`) and get their due time, so they keep their rate. Next: choosing
-   the engine. Before 1.0 a plugin runs only on the same 0.x, so the
+   themselves (`render_if_needed`) and get their due time, so they keep their rate. Engine chosen
+   (2026-11-25): room4doom (its core crates build for wasm32-wasip2 unchanged; MIT; it interpolates
+   between steps, so it draws smoothly at the screen's rate); the plugin lives in raptaboard-doom
+   (`plugin/`, `make plugin`), the standalone game kept working beside it. Running it showed the
+   limits too tight for a game: the first `render` now may take `Limits::first_render_ms` (3 s;
+   loading the WADs took 67 ms in a release build, about 200 ms in a debug one) and a plugin may ask
+   for up to 512 MiB (`[limits] memory_mb` in plugin.toml; Doom runs at about 105 MiB, each frame
+   about 1 ms). Not yet shown before installing a pack (the catalog would carry it). Next: Doom's
+   sound (a mixer in the plugin), then the pack. Before 1.0 a plugin runs only on the same 0.x, so the
    content repo's `example-widgets` pack (0.2) is rebuilt for 0.3 before the next release.
 3. **Custom graphs**: binding several tables (the `table` property) and history from the host.
 4. **3D scene and a robot viewer**: the host renders and the plugin describes a scene it keeps.
