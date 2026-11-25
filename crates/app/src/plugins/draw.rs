@@ -86,6 +86,20 @@ pub fn shapes(painter: &egui::Painter, origin: Pos2, shapes: &[Shape]) {
     }
 }
 
+/// A region's outline and label, for the plugin sandbox's overlay: a
+/// magenta box no plugin is likely to draw, its label inside its top left.
+pub fn outline(painter: &egui::Painter, area: Rect, label: &str) {
+    let color = egui::Color32::from_rgb(255, 0, 200);
+    painter.rect_stroke(area, 0, Stroke::new(1.0, color), StrokeKind::Inside);
+    painter.text(
+        area.left_top() + Vec2::new(2.0, 1.0),
+        egui::Align2::LEFT_TOP,
+        label,
+        egui::FontId::monospace(9.0),
+        color,
+    );
+}
+
 /// A plugin region's rectangle, in the window.
 pub fn region_rect(origin: Pos2, min: &Point, max: &Point) -> Rect {
     Rect::from_two_pos(

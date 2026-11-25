@@ -2,7 +2,7 @@
 //! a plugin: the window sends it values, frames to draw and input, and draws
 //! the newest picture it has finished.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -10,8 +10,11 @@ use std::time::{Duration, Instant};
 use eframe::egui;
 use raptaboard_plugin_host::runtime::{
     FrameInfo, Host, Input, Level, Limits, NtValue, Picture, Plugin, Runtime, Sample, Size,
-    Stopped, Subscription,
+    Stopped, Subscription, Usage,
 };
+
+/// How many of a plugin's log lines are kept, for the sandbox's overlay.
+pub const LOG_LINES: usize = 200;
 
 /// What the plugin asked the dashboard to do, for the window to carry out on
 /// its next frame.
@@ -40,6 +43,10 @@ pub struct Latest {
     pub requests: Vec<Request>,
     /// When the plugin asked to be drawn again (`redraw-in-s`).
     pub redraw_at: Option<Instant>,
+    /// What it has used (call times, memory), as of its last call.
+    pub usage: Option<Usage>,
+    /// Its last [`LOG_LINES`] log lines (and printed lines), oldest first.
+    pub log: VecDeque<String>,
 }
 
 /// What the last picture was drawn for, so the window asks for a new one
@@ -185,6 +192,13 @@ impl Host for AppHost {
     }
 
     fn log(&mut self, message: &str) {
+        {
+            let mut latest = self.latest.lock().unwrap();
+            if latest.log.len() == LOG_LINES {
+                latest.log.pop_front();
+            }
+            latest.log.push_back(message.to_string());
+        }
         self.request(Request::Log(message.to_string()));
     }
 }
@@ -201,18 +215,20 @@ fn run(
         ctx: ctx.clone(),
         latest: latest.clone(),
     };
-    let stop = |stopped: Stopped| {
-        latest.lock().unwrap().stopped = Some(stopped);
+    let stop = |stopped: Stopped, usage: Option<Usage>| {
+        let mut latest = latest.lock().unwrap();
+        latest.stopped = Some(stopped);
+        latest.usage = usage.or(latest.usage);
         ctx.request_repaint();
     };
     let mut instance =
         match runtime.instantiate(&plugin, Box::new(host), properties, Limits::default()) {
             Ok(i) => i,
-            Err(stopped) => return stop(stopped),
+            Err(stopped) => return stop(stopped, None),
         };
     match instance.subscriptions() {
         Ok(s) => latest.lock().unwrap().subscriptions = Some(s),
-        Err(stopped) => return stop(stopped),
+        Err(stopped) => return stop(stopped, Some(instance.usage())),
     }
     ctx.request_repaint();
     // Each turn: everything that's waiting, in order, but only the newest
@@ -238,12 +254,12 @@ fn run(
             }
         }
         if let Err(stopped) = result {
-            return stop(stopped);
+            return stop(stopped, Some(instance.usage()));
         }
         if updated {
             match instance.tab_mark() {
                 Ok(mark) => latest.lock().unwrap().tab_mark = mark,
-                Err(stopped) => return stop(stopped),
+                Err(stopped) => return stop(stopped, Some(instance.usage())),
             }
         }
         if let Some(frame) = frame {
@@ -257,14 +273,17 @@ fn run(
                         let mut latest = latest.lock().unwrap();
                         latest.picture = Some(picture);
                         latest.redraw_at = again.map(|d| Instant::now() + d);
+                        latest.usage = Some(instance.usage());
                     }
                     ctx.request_repaint();
                     if let Some(d) = again {
                         ctx.request_repaint_after(d);
                     }
                 }
-                Err(stopped) => return stop(stopped),
+                Err(stopped) => return stop(stopped, Some(instance.usage())),
             }
+        } else {
+            latest.lock().unwrap().usage = Some(instance.usage());
         }
     }
 }

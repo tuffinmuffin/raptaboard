@@ -133,7 +133,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   or `/Sandbox/<type>` with its `.type`), with the plugin's sample values (`[sandbox]` in `plugin.toml`,
   `plugin_host::SandboxValues`) and any added; `ui/sandbox_panel.rs` is its side panel (`DashboardApp::open_sandbox`:
   size presets, theme, the Connected switch (the address pointed at a closed port), locked, and the values to edit,
-  add and remove). `main.rs` starts it with nowhere to save settings and no content packs. With `--address`, no
+  add and remove; and the plugin's overlay: its regions outlined (`plugins::set_outline_regions`), each kind of call's
+  time and its memory against the limits (`runtime::Instance::usage`, kept by the worker), its log, why it stopped,
+  Restart; `plugins::dev_view`). `main.rs` starts it with nowhere to save settings and no content packs. With `--address`, no
   server: the widget is bound to `--topic`. `ui/tests/sandbox.rs` runs it with Number and Alerts.
 - `crates/app/src/plugins/`: plugins in the app. `mod.rs` the registry (plugins from installed packs, `use_packs`, run by
   `ui/content_window.rs` at the first frame and after each install or remove; and from `--plugin`, which wins; saved in
@@ -153,7 +155,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `widget!` macro over the wit-bindgen bindings, and helpers), `number` the first example plugin (a number topic
   as text, with the Text Display's setting names), `alerts` the second (the built-in Alerts widget remade: a
   table plugin with a tab mark, a tone and a pulse, with the built-in's setting names), `limits-test` a plugin that misbehaves on purpose for the
-  runtime and harness tests. Each example plugin has harness tests in its `tests/`. CI lints and tests it in the lint job.
+  runtime and harness tests (its `region` mode draws a "Bell" button). Each example plugin has harness tests in its `tests/`. CI lints and tests it in the lint job.
 - `crates/app`: the eframe app. `ui/` holds the window (`DashboardApp` in `ui/mod.rs` with file open/save and the edit and tab
   actions; its state is grouped in `ui/state.rs`: `file` (`LayoutFile`), `address`, `tree` (`TreeView`), `grid`
   (`GridState`: drags, where the grid was), `alerts` (the history and its panel) and `sends` (failed sends),

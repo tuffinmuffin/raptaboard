@@ -272,6 +272,32 @@ fn a_plugin_past_its_memory_limit_is_stopped() {
 }
 
 #[test]
+fn usage_counts_calls_and_memory_against_the_limits() {
+    let limits = Limits {
+        call_ms: 100,
+        memory_bytes: 8 << 20,
+    };
+    let (mut w, _) = start(&plugin("limits-test"), &mode("ok"), None, limits);
+    let before = w.usage();
+    assert_eq!(before.limits, limits);
+    assert_eq!(before.render.calls, 0);
+    // Its memory from the start (a WebAssembly page is 64 KiB).
+    assert!(before.memory_bytes >= 64 << 10, "{before:?}");
+    for _ in 0..3 {
+        w.render(frame(10.0, 10.0, true)).unwrap();
+    }
+    w.update(&[]).unwrap();
+    let after = w.usage();
+    assert_eq!((after.render.calls, after.update.calls), (3, 1));
+    assert!(after.render.max_ms >= after.render.last_ms && after.render.last_ms >= 0.0);
+    // Growing until refused: up near the limit, never past it.
+    let (mut grows, _) = start(&plugin("limits-test"), &mode("grow"), None, limits);
+    assert!(grows.render(frame(10.0, 10.0, true)).is_err());
+    let used = grows.usage().memory_bytes;
+    assert!(used > (4 << 20) && used <= limits.memory_bytes, "{used}");
+}
+
+#[test]
 fn a_restarted_plugin_runs_again() {
     let p = plugin("limits-test");
     let (mut w, _) = start(&p, &mode("panic"), None, Limits::default());

@@ -75,6 +75,16 @@ fn printing_goes_to_the_log() {
 }
 
 #[test]
+fn a_region_is_clicked_by_its_label() {
+    let mut w = limits_test();
+    w.property("mode", "region");
+    let drawn = w.render();
+    assert_eq!(drawn.region("Bell").map(|r| r.id.as_str()), Some("bell"));
+    w.activate("Bell");
+    assert_eq!(w.take_logs(), ["bell pressed"]);
+}
+
+#[test]
 #[should_panic(expected = "no region labelled \"bell\"")]
 fn activating_a_region_that_isnt_there_says_so() {
     limits_test().activate("bell");

@@ -17,10 +17,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant as Clock};
 
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
-use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
+use wasmtime::{Config, Engine, ResourceLimiter, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
@@ -77,8 +77,55 @@ pub fn default_properties(manifest: &Manifest) -> HashMap<String, NtValue> {
         .collect()
 }
 
+/// How long one kind of call into a plugin has taken.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct CallTime {
+    /// How many calls there have been.
+    pub calls: u64,
+    /// The last one's time, in milliseconds.
+    pub last_ms: f64,
+    /// The longest, in milliseconds.
+    pub max_ms: f64,
+}
+
+impl CallTime {
+    fn record(&mut self, ms: f64) {
+        self.calls += 1;
+        self.last_ms = ms;
+        self.max_ms = self.max_ms.max(ms);
+    }
+}
+
+/// What a widget instance has used, against its [`Limits`]: for the plugin
+/// sandbox's overlay, and for spotting a plugin near a limit.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Usage {
+    /// `update` calls (new values).
+    pub update: CallTime,
+    /// `render` calls.
+    pub render: CallTime,
+    /// `on-input` calls.
+    pub input: CallTime,
+    /// `tab-mark` calls.
+    pub tab_mark: CallTime,
+    /// Its memory now, in bytes.
+    pub memory_bytes: usize,
+    /// Its limits.
+    pub limits: Limits,
+}
+
+/// The kind of call, for [`Usage`].
+#[derive(Clone, Copy)]
+enum Call {
+    Subscriptions,
+    Update,
+    Render,
+    Input,
+    TabMark,
+}
+
 /// The limits each widget instance runs under.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Limits {
     /// Longest a single call into the plugin may take, in milliseconds.
     pub call_ms: u64,
@@ -230,13 +277,16 @@ impl Runtime {
         let state = State {
             wasi,
             table: ResourceTable::new(),
-            limits: StoreLimitsBuilder::new()
-                .memory_size(limits.memory_bytes)
-                .instances(16)
-                .tables(64)
-                .memories(4)
-                .trap_on_grow_failure(true)
-                .build(),
+            limits: Limiter {
+                limits: StoreLimitsBuilder::new()
+                    .memory_size(limits.memory_bytes)
+                    .instances(16)
+                    .tables(64)
+                    .memories(4)
+                    .trap_on_grow_failure(true)
+                    .build(),
+                memory_bytes: 0,
+            },
             host,
             values: HashMap::new(),
             properties,
@@ -257,6 +307,10 @@ impl Runtime {
             stderr,
             stdout,
             printed: 0,
+            usage: Usage {
+                limits,
+                ..Usage::default()
+            },
         };
         match Widget::instantiate(&mut instance.store, &plugin.component, &self.linker) {
             Ok(widget) => instance.widget = Some(widget),
@@ -285,12 +339,22 @@ pub struct Instance {
     stderr: MemoryOutputPipe,
     stdout: MemoryOutputPipe,
     printed: usize,
+    usage: Usage,
 }
 
 impl Instance {
+    /// What it has used so far: each kind of call's time, and its memory
+    /// now, against its limits.
+    pub fn usage(&self) -> Usage {
+        Usage {
+            memory_bytes: self.store.data().limits.memory_bytes,
+            ..self.usage
+        }
+    }
+
     /// What values the widget wants.
     pub fn subscriptions(&mut self) -> Result<Vec<Subscription>, Stopped> {
-        self.call(|w, s| w.call_subscriptions(s))
+        self.call(Call::Subscriptions, |w, s| w.call_subscriptions(s))
     }
 
     /// Send the changes since the last call, oldest first. Each sample's value
@@ -303,22 +367,22 @@ impl Instance {
                 None => values.remove(&sample.topic),
             };
         }
-        self.call(|w, s| w.call_update(s, samples))
+        self.call(Call::Update, |w, s| w.call_update(s, samples))
     }
 
     /// Draw the widget.
     pub fn render(&mut self, frame: FrameInfo) -> Result<Picture, Stopped> {
-        self.call(|w, s| w.call_render(s, frame))
+        self.call(Call::Render, |w, s| w.call_render(s, frame))
     }
 
     /// The mark for the widget's tab.
     pub fn tab_mark(&mut self) -> Result<Option<Level>, Stopped> {
-        self.call(|w, s| w.call_tab_mark(s))
+        self.call(Call::TabMark, |w, s| w.call_tab_mark(s))
     }
 
     /// Input inside the widget.
     pub fn on_input(&mut self, event: &Input) -> Result<(), Stopped> {
-        self.call(|w, s| w.call_on_input(s, event))
+        self.call(Call::Input, |w, s| w.call_on_input(s, event))
     }
 
     /// Change the widget's property values (after the edit dialog).
@@ -333,6 +397,7 @@ impl Instance {
 
     fn call<R>(
         &mut self,
+        kind: Call,
         f: impl FnOnce(&Widget, &mut Store<State>) -> wasmtime::Result<R>,
     ) -> Result<R, Stopped> {
         if let Some(stopped) = &self.stopped {
@@ -344,7 +409,16 @@ impl Instance {
             });
         };
         self.store.set_epoch_deadline(self.ticks);
+        let started = Clock::now();
         let result = f(widget, &mut self.store);
+        let ms = started.elapsed().as_secs_f64() * 1000.0;
+        match kind {
+            Call::Subscriptions => {}
+            Call::Update => self.usage.update.record(ms),
+            Call::Render => self.usage.render.record(ms),
+            Call::Input => self.usage.input.record(ms),
+            Call::TabMark => self.usage.tab_mark.record(ms),
+        }
         self.pass_on_stdout();
         result.map_err(|e| self.stop(e))
     }
@@ -393,11 +467,62 @@ impl Instance {
     }
 }
 
+/// wasmtime's limits, counting the memory they let the plugin have.
+struct Limiter {
+    limits: StoreLimits,
+    /// Every memory's size now, in bytes.
+    memory_bytes: usize,
+}
+
+impl ResourceLimiter for Limiter {
+    fn memory_growing(
+        &mut self,
+        current: usize,
+        desired: usize,
+        maximum: Option<usize>,
+    ) -> wasmtime::Result<bool> {
+        let allowed = self.limits.memory_growing(current, desired, maximum)?;
+        if allowed {
+            self.memory_bytes = (self.memory_bytes + desired).saturating_sub(current);
+        }
+        Ok(allowed)
+    }
+
+    fn table_growing(
+        &mut self,
+        current: usize,
+        desired: usize,
+        maximum: Option<usize>,
+    ) -> wasmtime::Result<bool> {
+        self.limits.table_growing(current, desired, maximum)
+    }
+
+    fn memory_grow_failed(&mut self, error: wasmtime::Error) -> wasmtime::Result<()> {
+        self.limits.memory_grow_failed(error)
+    }
+
+    fn table_grow_failed(&mut self, error: wasmtime::Error) -> wasmtime::Result<()> {
+        self.limits.table_grow_failed(error)
+    }
+
+    fn instances(&self) -> usize {
+        self.limits.instances()
+    }
+
+    fn tables(&self) -> usize {
+        self.limits.tables()
+    }
+
+    fn memories(&self) -> usize {
+        self.limits.memories()
+    }
+}
+
 /// The state behind one instance.
 struct State {
     wasi: WasiCtx,
     table: ResourceTable,
-    limits: StoreLimits,
+    limits: Limiter,
     host: Box<dyn Host>,
     values: HashMap<String, NtValue>,
     properties: HashMap<String, NtValue>,

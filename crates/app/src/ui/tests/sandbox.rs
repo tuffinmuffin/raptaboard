@@ -93,3 +93,68 @@ fn the_sandbox_sizes_a_topic_plugins_widget() {
     assert_eq!((widget.rect.width, widget.rect.height), (512.0, 384.0));
     assert!(!harness.state().unsaved());
 }
+
+/// Run frames until a label containing `text` shows.
+fn contains_soon(harness: &mut Harness, text: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while harness.query_all_by_label_contains(text).next().is_none() {
+        assert!(Instant::now() < deadline, "never showed {text:?}");
+        settle(harness);
+    }
+}
+
+/// The sandbox's widget's setting `key` set to `value` (its worker restarts).
+fn set_mode(harness: &mut Harness, mode: &str) {
+    harness.state_mut().layout.tabs[0].grid_layout.containers[0]
+        .properties
+        .insert("mode".into(), json!(mode));
+    settle(harness);
+}
+
+#[test]
+fn the_overlay_shows_usage_the_log_and_a_stop_with_restart() {
+    let mut harness = sandbox_for("limits-test");
+    // Its calls against the limits, once it has drawn.
+    contains_soon(&mut harness, "of 100");
+    contains_soon(&mut harness, "MiB of 64");
+    // What it prints is its log.
+    set_mode(&mut harness, "print");
+    contains_soon(&mut harness, "hello from limits-test");
+    // A region the plugin drew, used in the window: what it logs shows.
+    set_mode(&mut harness, "region");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while harness.query_by_label("Bell").is_none() {
+        assert!(Instant::now() < deadline, "no Bell region");
+        settle(&mut harness);
+    }
+    harness.get_by_label("Bell").click();
+    settle(&mut harness);
+    contains_soon(&mut harness, "bell pressed");
+    // A panic: why, in the panel, and Restart runs it again (it panics again).
+    set_mode(&mut harness, "panic");
+    contains_soon(&mut harness, "Stopped: ");
+    contains_soon(&mut harness, "panicked on purpose");
+    let widget = harness.state().layout.tabs[0].grid_layout.containers[0].clone();
+    let ctx = harness.ctx.clone();
+    // The panel's (the widget has one too, on its card).
+    let panel_restart = harness
+        .get_all_by_label("Restart")
+        .max_by(|a, b| a.rect().min.x.total_cmp(&b.rect().min.x))
+        .unwrap()
+        .rect()
+        .center();
+    click_at(
+        &mut harness,
+        panel_restart,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    settle(&mut harness);
+    contains_soon(&mut harness, "Stopped: ");
+    assert!(crate::plugins::dev_view(&ctx, &widget).is_some());
+    // The regions switch is the window's.
+    assert!(!crate::plugins::outline_regions(&ctx));
+    harness.get_by_label("Outline its regions").click();
+    settle(&mut harness);
+    assert!(crate::plugins::outline_regions(&ctx));
+}
