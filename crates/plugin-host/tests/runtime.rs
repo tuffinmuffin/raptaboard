@@ -338,13 +338,6 @@ fn the_first_render_may_take_longer_to_load() {
     let (mut w, _) = start(&plugin("limits-test"), &mode("slow-start"), None, tight);
     let stopped = w.render(frame(10.0, 10.0, true)).unwrap_err();
     assert_eq!(stopped.reason, "ran past its 20 ms time limit");
-    // A render the plugin said would load (slow-next) gets the longer limit
-    // too; the one after it doesn't.
-    let (mut w, _) = start(&plugin("limits-test"), &mode("slow-again"), None, limits);
-    assert!(w.render(frame(10.0, 10.0, true)).unwrap().slow_next);
-    w.render(frame(10.0, 10.0, true)).unwrap();
-    let stopped = w.render(frame(10.0, 10.0, true)).unwrap_err();
-    assert_eq!(stopped.reason, "ran past its 20 ms time limit");
     // And a spin after the first render: the call limit, not the first's.
     let (mut w, _) = start(&plugin("limits-test"), &mode("spin-later"), None, limits);
     w.render(frame(10.0, 10.0, true)).unwrap();

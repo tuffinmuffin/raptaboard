@@ -355,7 +355,6 @@ impl Runtime {
             call_ms: limits.call_ms,
             first_render_ms: limits.first_render_ms,
             limit_ms: limits.call_ms,
-            slow_next: false,
             stderr,
             stdout,
             printed: 0,
@@ -391,8 +390,6 @@ pub struct Instance {
     first_render_ms: u64,
     /// The time limit of the call running now, in milliseconds.
     limit_ms: u64,
-    /// The last picture said the next render loads (`slow-next`).
-    slow_next: bool,
     stderr: MemoryOutputPipe,
     stdout: MemoryOutputPipe,
     printed: usize,
@@ -429,9 +426,7 @@ impl Instance {
 
     /// Draw the widget.
     pub fn render(&mut self, frame: FrameInfo) -> Result<Picture, Stopped> {
-        let picture = self.call(Call::Render, |w, s| w.call_render(s, frame))?;
-        self.slow_next = picture.slow_next;
-        Ok(picture)
+        self.call(Call::Render, |w, s| w.call_render(s, frame))
     }
 
     /// The mark for the widget's tab.
@@ -468,9 +463,7 @@ impl Instance {
             });
         };
         // The first render loads what the plugin needs: a longer limit.
-        // The first render, or one the plugin said would load (`slow-next`).
-        let first_render = matches!(kind, Call::Render)
-            && (self.usage.render.calls == 0 || std::mem::take(&mut self.slow_next));
+        let first_render = matches!(kind, Call::Render) && self.usage.render.calls == 0;
         self.limit_ms = if first_render {
             self.first_render_ms.max(self.call_ms)
         } else {

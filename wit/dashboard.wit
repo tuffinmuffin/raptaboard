@@ -28,8 +28,7 @@
 // steps in `render`; a closed tab isn't drawn, so it pauses.
 //
 // Each call into a plugin may take 100 ms, but the first `render` may take
-// 3 s: load what it needs (a game's data) there, or in a later render after
-// a picture with `slow-next` (a title screen clicked). A plugin gets 64 MiB of
+// 3 s: load what it needs (a game's data) there. A plugin gets 64 MiB of
 // memory unless its plugin.toml asks for more (`[limits] memory_mb`, at most
 // 512).
 //
@@ -209,10 +208,6 @@ interface types {
         redraw-in-s: option<f64>,
         /// What a screen reader says for the whole widget, like "2 errors".
         summary: option<string>,
-        /// The next `render` will load (a game's data, after a title screen
-        /// is clicked): it may take as long as the first render may, not the
-        /// usual limit.
-        slow-next: bool,
     }
 
     /// How urgent a widget's state is, for the mark on its tab.

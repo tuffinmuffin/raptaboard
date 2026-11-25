@@ -122,7 +122,6 @@ impl Picture {
             regions: Vec::new(),
             redraw_in_s: None,
             summary: None,
-            slow_next: false,
         }
     }
 

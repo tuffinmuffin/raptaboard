@@ -8,4 +8,4 @@ api = "0.3"
 topic_types = ["double"]
 
 [properties]
-mode = { type = "enum", default = "ok", options = ["ok", "spin", "panic", "grow", "publish", "sound", "print", "region", "files", "slow-start", "spin-later", "slow-again"] }
+mode = { type = "enum", default = "ok", options = ["ok", "spin", "panic", "grow", "publish", "sound", "print", "region", "files", "slow-start", "spin-later"] }
