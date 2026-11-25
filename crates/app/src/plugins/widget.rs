@@ -174,6 +174,14 @@ pub fn tab_focus_id(tab_name: &str) -> egui::Id {
     egui::Id::unique(("raptaboard plugin tab", tab_name.trim().to_lowercase()))
 }
 
+/// The keys that give the keyboard back from a tab plugin: Shift+Escape
+/// (a game takes Escape alone for its menu).
+pub const LEAVE_KEYS: egui::KeyboardShortcut =
+    egui::KeyboardShortcut::new(egui::Modifiers::SHIFT, egui::Key::Escape);
+
+/// How long the hint saying so shows after a tab plugin takes the keyboard.
+const LEAVE_HINT_S: f64 = 3.0;
+
 /// Which modifier keys are held, as the plugin interface's flags.
 fn modifiers(m: egui::Modifiers) -> Modifiers {
     let mut out = Modifiers::empty();
@@ -195,8 +203,8 @@ fn modifiers(m: egui::Modifiers) -> Modifiers {
 /// repeats), typed text and modifier keys pressed or let go (as keys named
 /// "Shift", "Ctrl", "Alt" and "Command": a game fires with Ctrl) while
 /// focused; and the pointer moving, pressing and scrolling over it, in
-/// pixels from its top left. `held` is the modifiers held at the last frame,
-/// `now` those held now.
+/// pixels from its top left. `held` is the modifiers the plugin was told
+/// are held, `now` those held now; losing the keyboard lets them all go.
 pub fn tab_inputs(
     events: &[egui::Event],
     rect: Rect,
@@ -209,7 +217,9 @@ pub fn tab_inputs(
         y: p.y - rect.min.y,
     };
     let mut out = Vec::new();
-    if focused {
+    // Without the keyboard nothing is held, as far as the plugin knows.
+    let now = if focused { now } else { egui::Modifiers::NONE };
+    {
         for (name, was, is) in [
             ("Shift", held.shift, now.shift),
             ("Ctrl", held.ctrl, now.ctrl),
@@ -286,7 +296,12 @@ impl PluginType {
         if response.clicked() {
             response.request_focus();
         }
-        let focused = response.has_focus();
+        let mut focused = response.has_focus();
+        // Shift+Escape gives the keyboard back, and isn't the plugin's.
+        if focused && ui.input_mut(|i| i.consume_shortcut(&LEAVE_KEYS)) {
+            ui.memory_mut(|m| m.surrender_focus(id));
+            focused = false;
+        }
         if focused {
             ui.memory_mut(|m| {
                 m.set_focus_lock_filter(
@@ -307,6 +322,40 @@ impl PluginType {
             let (events, now) = ui.input(|i| (i.events.clone(), i.modifiers));
             if focused != was_focused {
                 worker.input(Input::Focus(focused));
+            }
+            // Just took the keyboard: say how to give it back, for a while.
+            let gained = id.with("gained");
+            let time = ui.input(|i| i.time);
+            if focused && !was_focused {
+                ui.data_mut(|d| d.insert_temp(gained, time));
+            }
+            let since: Option<f64> = ui.data(|d| d.get_temp(gained));
+            if focused && since.is_some_and(|t| time - t < LEAVE_HINT_S) {
+                let hint = format!(
+                    "{} gives the keyboard back",
+                    ui.ctx().format_shortcut(&LEAVE_KEYS)
+                );
+                // Drawn over the plugin's picture, after it.
+                let layer = egui::LayerId::new(egui::Order::Foreground, id.with("hint"));
+                let over = ui.ctx().layer_painter(layer).with_clip_rect(rect);
+                let at = rect.right_top() + egui::vec2(-8.0, 8.0);
+                let galley = over.layout_no_wrap(
+                    hint,
+                    egui::FontId::proportional(13.0),
+                    egui::Color32::WHITE,
+                );
+                let back =
+                    egui::Rect::from_min_size(at - egui::vec2(galley.size().x, 0.0), galley.size())
+                        .expand(4.0);
+                // Asked again until the hint's time is up, so it goes.
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(250));
+                over.rect_filled(back, 4.0, egui::Color32::from_black_alpha(180));
+                over.galley(
+                    back.min + egui::vec2(4.0, 4.0),
+                    galley,
+                    egui::Color32::WHITE,
+                );
             }
             for input in tab_inputs(&events, rect, focused, held, now) {
                 worker.input(input);
@@ -697,6 +746,16 @@ mod tests {
         assert!(matches!(got.as_slice(), [Input::PointerMove(_)]));
         // Ctrl let go.
         let got = tab_inputs(&[], rect, true, egui::Modifiers::CTRL, none);
+        assert!(matches!(got.as_slice(), [Input::KeyUp(k)] if k.name == "Ctrl"));
+        // The keyboard lost with Ctrl still held: let go, as far as the
+        // plugin knows.
+        let got = tab_inputs(
+            &[],
+            rect,
+            false,
+            egui::Modifiers::CTRL,
+            egui::Modifiers::CTRL,
+        );
         assert!(matches!(got.as_slice(), [Input::KeyUp(k)] if k.name == "Ctrl"));
     }
 

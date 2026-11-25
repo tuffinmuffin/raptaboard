@@ -102,7 +102,21 @@ fn an_empty_tab_of_its_name_shows_the_plugin_and_gives_it_the_keyboard() {
     settle(&mut harness);
     assert_eq!(harness.state().current_tab, 1);
     labelled_soon(&mut harness, &format!("{SHOWN}3"));
-    // A click elsewhere (the tab bar) gives the keyboard back.
+    // Shift+Escape gives the keyboard back (and isn't the plugin's key).
+    for event in key(Key::Escape, Modifiers::SHIFT) {
+        harness.event(event);
+    }
+    settle(&mut harness);
+    assert!(!harness.state().plugin_has_keys(&harness.ctx.clone()));
+    labelled_soon(&mut harness, &format!("{SHOWN}3"));
+    // So does a click elsewhere (the tab bar), after a click back in.
+    click_at(
+        &mut harness,
+        area,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert!(harness.state().plugin_has_keys(&harness.ctx.clone()));
     let bar = harness.get_by_label("Widgets").rect().right_center() + egui::vec2(300.0, 0.0);
     click_at(
         &mut harness,

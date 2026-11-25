@@ -226,9 +226,10 @@ interface types {
         pointer-move(point),
         /// The scroll wheel or a two-finger scroll, in pixels.
         wheel(point),
-        /// The widget got focus (clicked into) or lost it (Escape, or a click
-        /// elsewhere). Keys and text only come while it has focus, and the
-        /// dashboard's own shortcuts are off meanwhile.
+        /// The widget got focus (clicked into) or lost it (Shift+Escape, or a
+        /// click elsewhere). Keys and text only come while it has focus, and
+        /// the dashboard's own shortcuts are off meanwhile. Losing it, treat
+        /// every key as let go (keys let go elsewhere don't come).
         focus(bool),
         key-down(key),
         key-up(key),
