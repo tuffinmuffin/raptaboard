@@ -33,6 +33,10 @@ pub const HOST_API: &str = "0.3";
 /// The most memory a plugin may ask for (`[limits] memory_mb`), in MiB.
 pub const MAX_MEMORY_MB: u32 = 512;
 
+/// The longest a plugin may ask each call to take (`[limits] call_ms`), in
+/// milliseconds.
+pub const MAX_CALL_MS: u32 = 1000;
+
 /// Errors reading a plugin manifest.
 #[derive(Debug, thiserror::Error)]
 pub enum ManifestError {
@@ -50,8 +54,12 @@ pub enum ManifestError {
     TabAndMatch,
     #[error("tab needs a name")]
     EmptyTab,
+    #[error("capture_mouse is for a plugin that fills a tab (tab = …)")]
+    CaptureNeedsTab,
     #[error("[limits] memory_mb must be 1 to {MAX_MEMORY_MB}")]
     Memory,
+    #[error("[limits] call_ms must be 1 to {MAX_CALL_MS}")]
+    CallTime,
     #[error("[match] has topic_types and table rules: a plugin shows a topic or a table, not both")]
     MixedMatch,
 }
@@ -72,6 +80,11 @@ pub struct Manifest {
     /// shows the plugin, filling it, instead of the grid. Such a plugin isn't
     /// a widget (no `[match]`).
     pub tab: Option<String>,
+    /// A tab plugin that holds the mouse while it has the keyboard (a game
+    /// turning with it): the cursor hidden and kept still, and its movement
+    /// sent as `mouse-motion`. Only with `tab`.
+    #[serde(default)]
+    pub capture_mouse: bool,
     #[serde(default)]
     pub size: Size,
     /// Settings shown in the widget's edit dialog, by name.
@@ -93,12 +106,16 @@ pub struct Manifest {
 /// ```toml
 /// [limits]
 /// memory_mb = 192   # a game's data; 64 unless given, at most 512
+/// call_ms = 500     # a game loading a level; 100 unless given, at most 1000
 /// ```
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LimitsSpec {
     /// Memory, in MiB.
     pub memory_mb: Option<u32>,
+    /// The longest each call may take, in milliseconds (a game loads a
+    /// level whenever one ends).
+    pub call_ms: Option<u32>,
 }
 
 /// A plugin's sample values for the sandbox window, from `[sandbox]`:
@@ -267,12 +284,22 @@ impl Manifest {
         if table_rules && !m.topic_types.is_empty() {
             return Err(ManifestError::MixedMatch);
         }
+        if self.capture_mouse && self.tab.is_none() {
+            return Err(ManifestError::CaptureNeedsTab);
+        }
         if self
             .limits
             .memory_mb
             .is_some_and(|mb| mb == 0 || mb > MAX_MEMORY_MB)
         {
             return Err(ManifestError::Memory);
+        }
+        if self
+            .limits
+            .call_ms
+            .is_some_and(|ms| ms == 0 || ms > MAX_CALL_MS)
+        {
+            return Err(ManifestError::CallTime);
         }
         if let Some(p) = &m.path {
             glob::Pattern::new(p).map_err(|e| ManifestError::Pattern(p.clone(), e))?;
@@ -469,7 +496,17 @@ mod tests {
         for bad in ["[limits]\nmemory_mb=0\n", "[limits]\nmemory_mb=4096\n"] {
             assert!(matches!(with(bad), Err(ManifestError::Memory)), "{bad}");
         }
-        assert!(with("[limits]\ncpu=2\n").is_err(), "only memory");
+        assert!(
+            with("[limits]\ncpu=2\n").is_err(),
+            "only memory and call time"
+        );
+        assert_eq!(
+            with("[limits]\ncall_ms=500\n").unwrap().limits.call_ms,
+            Some(500)
+        );
+        for bad in ["[limits]\ncall_ms=0\n", "[limits]\ncall_ms=5000\n"] {
+            assert!(matches!(with(bad), Err(ManifestError::CallTime)), "{bad}");
+        }
     }
 
     #[test]
@@ -483,5 +520,15 @@ mod tests {
         assert!(matches!(both, Err(ManifestError::TabAndMatch)));
         let blank = Manifest::from_toml("name='d'\nversion='0'\napi='0.3'\ntab=' '\n");
         assert!(matches!(blank, Err(ManifestError::EmptyTab)));
+        // Holding the mouse is for a tab plugin only.
+        let game = Manifest::from_toml(
+            "name='d'\nversion='0'\napi='0.3'\ntab='Doom'\ncapture_mouse=true\n",
+        )
+        .unwrap();
+        assert!(game.capture_mouse);
+        let widget = Manifest::from_toml(
+            "name='w'\nversion='0'\napi='0.3'\ncapture_mouse=true\n[match]\ntype='X'\n",
+        );
+        assert!(matches!(widget, Err(ManifestError::CaptureNeedsTab)));
     }
 }

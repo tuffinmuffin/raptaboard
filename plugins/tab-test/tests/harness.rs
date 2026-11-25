@@ -58,3 +58,37 @@ fn keys_count_and_space_beeps() {
     assert_eq!(audio[0].samples.len(), 2205);
     assert!(w.render().summary().unwrap().ends_with("Keys: 2"));
 }
+
+#[test]
+fn it_counts_the_held_mouse_and_clicks_while_focused() {
+    use raptaboard_plugin_test::{MouseButton, Point, PointerButton};
+    let mut w = tab_test();
+    assert!(w.manifest().capture_mouse);
+    let click = || {
+        Input::PointerDown(PointerButton {
+            pos: Point { x: 1.0, y: 1.0 },
+            button: MouseButton::Primary,
+        })
+    };
+    // The click that gives it the keyboard doesn't count.
+    w.input(click()).input(Input::Focus(true));
+    w.input(Input::MouseMotion(Point { x: 12.0, y: 3.0 }))
+        .input(click());
+    assert!(
+        w.render()
+            .summary()
+            .unwrap()
+            .ends_with("Keys: 0, mouse 12, clicks 1"),
+        "{:?}",
+        w.render().summary()
+    );
+}
+
+#[test]
+fn q_gives_the_keyboard_back() {
+    let mut w = tab_test();
+    w.input(key("A"));
+    assert_eq!(w.take_releases(), 0);
+    w.input(key("Q"));
+    assert_eq!(w.take_releases(), 1);
+}

@@ -402,7 +402,11 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
    `plugins/tab-test` uses all of it. The app's side (2026-11-25): an empty tab whose name a plugin
    claims (any case) shows it at the tab's size (`ui/plugin_tab.rs`, `PluginType::show_tab`); clicked,
    it takes the keyboard (Tab, arrows and Escape too), the dashboard's shortcuts are off until
-   Shift+Escape (asked for by the user; a hint says so for 3 s) or a click elsewhere, and it gets keys (modifiers as keys of their own: "Ctrl", "Shift", "Alt",
+   Shift+Escape (asked for by the user; a hint says so for 3 s) or a click elsewhere; a plugin with
+   `capture_mouse = true` also holds the mouse meanwhile (cursor hidden and kept still, raw movement as
+   `mouse-motion`, every button as pressed or let go with which button; let go while the window is in
+   the background, taken again when it comes back); the plugin can give both back itself
+   (`release-focus`: a game's Quit), and it gets keys (modifiers as keys of their own: "Ctrl", "Shift", "Alt",
    "Command"), text, the pointer and focus changes. Its worker runs while the tab exists (a closed
    tab isn't drawn, so a game pauses). `play-audio` streams into the sound thread's mixer
    (`sound::AudioOut`/`AudioStream`: a queue per plugin, silence when empty, half a second at most,
@@ -414,7 +418,8 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
    limits too tight for a game: the first `render` now may take `Limits::first_render_ms` (3 s;
    loading the WADs took 67 ms in a release build, about 200 ms in a debug one) and a plugin may ask
    for up to 512 MiB (`[limits] memory_mb` in plugin.toml; Doom runs at about 105 MiB, each frame
-   about 1 ms). Not yet shown before installing a pack (the catalog would carry it). Next: Doom's
+   about 1 ms) and longer calls, up to 1 s (`call_ms`: Doom loads a level whenever one ends, over
+   100 ms). Not yet shown before installing a pack (the catalog would carry it). Next: Doom's
    sound (a mixer in the plugin), then the pack. Before 1.0 a plugin runs only on the same 0.x, so the
    content repo's `example-widgets` pack (0.2) is rebuilt for 0.3 before the next release.
 3. **Custom graphs**: binding several tables (the `table` property) and history from the host.
