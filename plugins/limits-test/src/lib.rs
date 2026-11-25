@@ -2,7 +2,7 @@
 //! plugin-host tests can check the limits: `spin` never returns, `panic`
 //! panics, `grow` keeps asking for memory, `publish` and `sound` try what
 //! plugin.toml doesn't allow, `print` writes to stdout, `region` draws a
-//! "Bell" button that logs when it's pressed, `slow-start` takes 60 ms on its
+//! "Bell" button that logs when it's pressed, `slow-start` takes 300 ms on its
 //! first render only, `spin-later` never returns after its first, `files`
 //! tries to read its own
 //! plugin.toml (allowed), a file outside its folder and to write in its
@@ -34,8 +34,8 @@ impl Widget for LimitsTest {
         let mut picture = Picture::empty();
         self.renders += 1;
         match property_string("mode", "ok").as_str() {
-            // Loads for 60 ms on its first render (a game's data), then quick.
-            "slow-start" if self.renders == 1 => busy(60),
+            // Loads for 300 ms on its first render (a game's data), then quick.
+            "slow-start" if self.renders == 1 => busy(300),
             // Quick on its first render, then never returns.
             "spin-later" if self.renders > 1 => loop {
                 std::hint::black_box(0);

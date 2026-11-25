@@ -320,10 +320,11 @@ fn audio_needs_the_sound_permission() {
 
 #[test]
 fn the_first_render_may_take_longer_to_load() {
-    // slow-start takes about 60 ms on its first render, little after.
+    // slow-start takes about 300 ms on its first render, little after: far
+    // from both limits, so a busy machine's late clock can't blur them.
     let limits = Limits {
         call_ms: 20,
-        first_render_ms: 1000,
+        first_render_ms: 3000,
         ..Limits::default()
     };
     let (mut w, _) = start(&plugin("limits-test"), &mode("slow-start"), None, limits);
