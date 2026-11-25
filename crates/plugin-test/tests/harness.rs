@@ -8,10 +8,21 @@ use std::path::PathBuf;
 use raptaboard_plugin_host::runtime::Limits;
 use raptaboard_plugin_test::Harness;
 
+/// The repo's `limits-test` plugin, from the `plugins/` build the app's tests
+/// use too (one build per CI job, not two).
 fn limits_test() -> Harness {
+    let built = raptaboard_plugin_host::dev::repo_plugins();
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/limits-test");
-    Harness::build(dir)
+    Harness::from_files(
+        &dir.join("plugin.toml"),
+        &built.join("limits_test.wasm"),
+        &dir,
+    )
+    .unwrap()
 }
+
+// `Harness::build` itself (building a plugin crate) is what the Number and
+// Alerts plugins' own tests use, in the plugins workspace.
 
 #[test]
 fn a_plugin_draws_with_its_property_defaults() {
