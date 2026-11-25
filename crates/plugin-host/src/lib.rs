@@ -30,6 +30,9 @@ use serde::Deserialize;
 /// Host API version this build of raptaboard implements.
 pub const HOST_API: &str = "0.3";
 
+/// The most memory a plugin may ask for (`[limits] memory_mb`), in MiB.
+pub const MAX_MEMORY_MB: u32 = 512;
+
 /// Errors reading a plugin manifest.
 #[derive(Debug, thiserror::Error)]
 pub enum ManifestError {
@@ -49,6 +52,8 @@ pub enum ManifestError {
     EmptyTab,
     #[error("capture_mouse is for a plugin that fills a tab (tab = …)")]
     CaptureNeedsTab,
+    #[error("[limits] memory_mb must be 1 to {MAX_MEMORY_MB}")]
+    Memory,
     #[error("[match] has topic_types and table rules: a plugin shows a topic or a table, not both")]
     MixedMatch,
 }
@@ -85,6 +90,22 @@ pub struct Manifest {
     /// plugin shows something there at once.
     #[serde(default)]
     pub sandbox: SandboxValues,
+    /// More than the usual resources, if the plugin needs them.
+    #[serde(default)]
+    pub limits: LimitsSpec,
+}
+
+/// What a plugin asks for beyond the usual limits, from `[limits]`:
+///
+/// ```toml
+/// [limits]
+/// memory_mb = 192   # a game's data; 64 unless given, at most 512
+/// ```
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LimitsSpec {
+    /// Memory, in MiB.
+    pub memory_mb: Option<u32>,
 }
 
 /// A plugin's sample values for the sandbox window, from `[sandbox]`:
@@ -255,6 +276,13 @@ impl Manifest {
         }
         if self.capture_mouse && self.tab.is_none() {
             return Err(ManifestError::CaptureNeedsTab);
+        }
+        if self
+            .limits
+            .memory_mb
+            .is_some_and(|mb| mb == 0 || mb > MAX_MEMORY_MB)
+        {
+            return Err(ManifestError::Memory);
         }
         if let Some(p) = &m.path {
             glob::Pattern::new(p).map_err(|e| ManifestError::Pattern(p.clone(), e))?;
@@ -434,6 +462,24 @@ mod tests {
             ));
             assert!(matches!(other, Err(ManifestError::Api { .. })), "{api}");
         }
+    }
+
+    #[test]
+    fn a_plugin_may_ask_for_more_memory_up_to_a_cap() {
+        let with = |limits: &str| {
+            Manifest::from_toml(&format!(
+                "name='g'\nversion='0'\napi='0.3'\ntab='Game'\n{limits}"
+            ))
+        };
+        assert_eq!(with("").unwrap().limits.memory_mb, None);
+        assert_eq!(
+            with("[limits]\nmemory_mb=192\n").unwrap().limits.memory_mb,
+            Some(192)
+        );
+        for bad in ["[limits]\nmemory_mb=0\n", "[limits]\nmemory_mb=4096\n"] {
+            assert!(matches!(with(bad), Err(ManifestError::Memory)), "{bad}");
+        }
+        assert!(with("[limits]\ncpu=2\n").is_err(), "only memory");
     }
 
     #[test]

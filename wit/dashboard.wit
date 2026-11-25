@@ -27,6 +27,11 @@
 // animates (a game) asks to be drawn again with `redraw-in-s` (1/35 s) and
 // steps in `render`; a closed tab isn't drawn, so it pauses.
 //
+// Each call into a plugin may take 100 ms, but the first `render` may take
+// 3 s: load what it needs (a game's data) there. A plugin gets 64 MiB of
+// memory unless its plugin.toml asks for more (`[limits] memory_mb`, at most
+// 512).
+//
 // 0.3 added pixel images, an audio stream, the `/pack` folder and tabs. UI
 // elements and 3D scenes come in later versions: see docs/spec.md "Plugin
 // system".

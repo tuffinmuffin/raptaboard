@@ -136,18 +136,46 @@ enum Call {
 pub struct Limits {
     /// Longest a single call into the plugin may take, in milliseconds.
     pub call_ms: u64,
+    /// Longest its first `render` may take, in milliseconds: the time to
+    /// load what it needs (a game's data) before its first picture.
+    pub first_render_ms: u64,
     /// Most memory the plugin may use, in bytes.
     pub memory_bytes: usize,
 }
 
 impl Default for Limits {
-    /// 100 ms a call and 64 MiB of memory.
+    /// 100 ms a call (3 s for the first render) and 64 MiB of memory.
     fn default() -> Self {
         Limits {
             call_ms: 100,
+            first_render_ms: 3000,
             memory_bytes: 64 << 20,
         }
     }
+}
+
+impl Limits {
+    /// The limits a plugin runs under: the defaults, with the memory its
+    /// plugin.toml asks for (`[limits] memory_mb`).
+    ///
+    /// ```
+    /// use raptaboard_plugin_host::{Manifest, runtime::Limits};
+    /// let m = Manifest::from_toml("name='g'\nversion='0'\napi='0.3'\ntab='Game'\n\
+    ///     [limits]\nmemory_mb=192\n").unwrap();
+    /// assert_eq!(Limits::for_manifest(&m).memory_bytes, 192 << 20);
+    /// ```
+    pub fn for_manifest(manifest: &Manifest) -> Limits {
+        let mut limits = Limits::default();
+        if let Some(mb) = manifest.limits.memory_mb {
+            limits.memory_bytes = (mb as usize) << 20;
+        }
+        limits
+    }
+}
+
+/// The epoch ticks a call of `ms` milliseconds may run.
+fn ticks_for(ms: u64) -> u64 {
+    ms.div_ceil(TICK.as_millis() as u64).max(1) + 1
 }
 
 /// Problems loading a plugin folder.
@@ -314,7 +342,7 @@ impl Runtime {
         let mut store = Store::new(&self.engine, state);
         store.limiter(|s| &mut s.limits);
         store.epoch_deadline_trap();
-        let ticks = limits.call_ms.div_ceil(TICK.as_millis() as u64).max(1) + 1;
+        let ticks = ticks_for(limits.call_ms);
         store.set_epoch_deadline(ticks);
         let mut instance = Instance {
             store,
@@ -322,6 +350,8 @@ impl Runtime {
             stopped: None,
             ticks,
             call_ms: limits.call_ms,
+            first_render_ms: limits.first_render_ms,
+            limit_ms: limits.call_ms,
             stderr,
             stdout,
             printed: 0,
@@ -354,6 +384,9 @@ pub struct Instance {
     stopped: Option<Stopped>,
     ticks: u64,
     call_ms: u64,
+    first_render_ms: u64,
+    /// The time limit of the call running now, in milliseconds.
+    limit_ms: u64,
     stderr: MemoryOutputPipe,
     stdout: MemoryOutputPipe,
     printed: usize,
@@ -426,7 +459,18 @@ impl Instance {
                 reason: "never started".into(),
             });
         };
-        self.store.set_epoch_deadline(self.ticks);
+        // The first render loads what the plugin needs: a longer limit.
+        let first_render = matches!(kind, Call::Render) && self.usage.render.calls == 0;
+        self.limit_ms = if first_render {
+            self.first_render_ms.max(self.call_ms)
+        } else {
+            self.call_ms
+        };
+        self.store.set_epoch_deadline(if first_render {
+            ticks_for(self.limit_ms)
+        } else {
+            self.ticks
+        });
         let started = Clock::now();
         let result = f(widget, &mut self.store);
         let ms = started.elapsed().as_secs_f64() * 1000.0;
@@ -455,7 +499,7 @@ impl Instance {
 
     fn stop(&mut self, error: wasmtime::Error) -> Stopped {
         let reason = if matches!(error.downcast_ref(), Some(wasmtime::Trap::Interrupt)) {
-            format!("ran past its {} ms time limit", self.call_ms)
+            format!("ran past its {} ms time limit", self.limit_ms)
         } else {
             // A Rust panic prints "thread '..' panicked at src/lib.rs:4:5:",
             // its message, then a "note:" about backtraces.

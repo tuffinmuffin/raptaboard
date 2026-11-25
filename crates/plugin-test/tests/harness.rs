@@ -40,6 +40,7 @@ fn a_panic_or_a_spin_stops_the_plugin_and_says_why() {
     assert!(w.stopped().is_some());
     w.property("mode", "spin").with_limits(Limits {
         call_ms: 20,
+        first_render_ms: 20,
         ..Limits::default()
     });
     let why = w.try_render().unwrap_err().reason;
