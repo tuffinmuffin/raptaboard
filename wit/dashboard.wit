@@ -17,9 +17,10 @@
 //
 // Plugins can't open sockets or windows, or any file but their own: the
 // plugin's folder (its pack's files, like a game's data) is open read-only at
-// `/pack` through WASI, and nothing else is. Everything else goes through
-// `host`, and some of it needs a permission in plugin.toml, which the user
-// sees before installing the pack.
+// `/pack` through WASI, and nothing else is. Small values it keeps between
+// runs (a setting, a recent file's path) go through `host`'s `storage-*`.
+// Everything else goes through `host` too, and some of it needs a permission
+// in plugin.toml, which the user sees before installing the pack.
 //
 // A plugin is a widget on the grid (plugin.toml's [match]), or fills a tab
 // (`tab = "Doom"`): an empty tab of that name shows it instead of the grid,
@@ -33,9 +34,9 @@
 // (`[limits] memory_mb`, at most 512; `call_ms`, at most 1000: a game loads
 // a level whenever one ends).
 //
-// 0.3 added pixel images, an audio stream, the `/pack` folder and tabs. UI
-// elements and 3D scenes come in later versions: see docs/spec.md "Plugin
-// system".
+// 0.3 added pixel images, an audio stream, the `/pack` folder, tabs and
+// storage. UI elements and 3D scenes come in later versions: see
+// docs/spec.md "Plugin system".
 
 package raptaboard:dashboard@0.3.0;
 
@@ -294,6 +295,23 @@ interface host {
     /// Give the keyboard (and the mouse, if held) back to the dashboard, as
     /// Shift+Escape does: a game's Quit. The plugin gets `focus(false)`.
     release-focus: func();
+
+    /// A value the plugin saved with `storage-set`, or `none`. Saved values
+    /// are kept on this computer between runs, one set per plugin (all its
+    /// widgets share them). A key is 1 to 64 letters, digits, `-`, `_` and
+    /// `.`, not starting with `.`. Needs `storage = true` in plugin.toml.
+    storage-get: func(key: string) -> result<option<list<u8>>, string>;
+    /// Save a small value (a setting, a recent file's path) under `key`,
+    /// replacing what was there. All of a plugin's values together may take
+    /// 64 KiB, or what plugin.toml asks for (`[limits] storage_kb`, at most
+    /// 1024); past that it's an error and nothing is saved.
+    storage-set: func(key: string, value: list<u8>) -> result<_, string>;
+    /// Forget `key`'s value (fine if there's none).
+    storage-remove: func(key: string) -> result<_, string>;
+    /// The keys with values, in order.
+    storage-keys: func() -> result<list<string>, string>;
+    // Larger data (saved images, recordings) would get a writable folder of
+    // the plugin's own at `/data`, beside the read-only `/pack`: not yet.
 }
 
 world widget {

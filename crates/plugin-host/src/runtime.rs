@@ -10,7 +10,8 @@
 //! after that returns the same [`Stopped`]. Making a new instance restarts it.
 //!
 //! Plugins get WASI with no network, no environment and no stdin, and no
-//! files but their own folder, read-only at `/pack`; what they print to
+//! files but their own folder, read-only at `/pack` (small values they keep
+//! go through `storage-*` to a [`crate::store::Store`]); what they print to
 //! stdout and stderr goes to the dashboard log, and the last of stderr (a
 //! Rust panic's message) is kept in [`Stopped`].
 
@@ -141,29 +142,35 @@ pub struct Limits {
     pub first_render_ms: u64,
     /// Most memory the plugin may use, in bytes.
     pub memory_bytes: usize,
+    /// Most its saved values (`storage-set`) may take in all, in bytes.
+    pub storage_bytes: u64,
 }
 
 impl Default for Limits {
-    /// 100 ms a call (3 s for the first render) and 64 MiB of memory.
+    /// 100 ms a call (3 s for the first render), 64 MiB of memory and
+    /// 64 KiB of saved values.
     fn default() -> Self {
         Limits {
             call_ms: 100,
             first_render_ms: 3000,
             memory_bytes: 64 << 20,
+            storage_bytes: u64::from(crate::store::DEFAULT_STORAGE_KB) << 10,
         }
     }
 }
 
 impl Limits {
-    /// The limits a plugin runs under: the defaults, with the memory and
-    /// call time its plugin.toml asks for (`[limits] memory_mb`, `call_ms`).
+    /// The limits a plugin runs under: the defaults, with the memory, call
+    /// time and storage its plugin.toml asks for (`[limits] memory_mb`,
+    /// `call_ms`, `storage_kb`).
     ///
     /// ```
     /// use raptaboard_plugin_host::{Manifest, runtime::Limits};
     /// let m = Manifest::from_toml("name='g'\nversion='0'\napi='0.3'\ntab='Game'\n\
-    ///     [limits]\nmemory_mb=192\ncall_ms=500\n").unwrap();
+    ///     [limits]\nmemory_mb=192\ncall_ms=500\nstorage_kb=256\n").unwrap();
     /// assert_eq!(Limits::for_manifest(&m).memory_bytes, 192 << 20);
     /// assert_eq!(Limits::for_manifest(&m).call_ms, 500);
+    /// assert_eq!(Limits::for_manifest(&m).storage_bytes, 256 << 10);
     /// ```
     pub fn for_manifest(manifest: &Manifest) -> Limits {
         let mut limits = Limits::default();
@@ -172,6 +179,9 @@ impl Limits {
         }
         if let Some(ms) = manifest.limits.call_ms {
             limits.call_ms = u64::from(ms);
+        }
+        if let Some(kb) = manifest.limits.storage_kb {
+            limits.storage_bytes = u64::from(kb) << 10;
         }
         limits
     }
@@ -224,8 +234,6 @@ pub trait Host: Send {
     }
     /// How big this text is drawn: one line, or wrapped at `max_width` pixels.
     fn measure_text(&self, text: &str, size: f32, max_width: Option<f32>, monospace: bool) -> Size;
-    /// Play a sound the user picked in a `sound` property. Only called when
-    /// the plugin has the `sound` permission.
     /// Queue sound: 16-bit samples, `channels` (1 or 2) interleaved, `rate`
     /// a second (checked before this is called). Only called with
     /// `sound = true` in plugin.toml.
@@ -233,6 +241,8 @@ pub trait Host: Send {
         Err("this dashboard plays no audio".into())
     }
 
+    /// Play a sound the user picked in a `sound` property. Only called when
+    /// the plugin has the `sound` permission.
     fn play_sound(&mut self, _sound: &str) -> Result<(), String> {
         Err("sound isn't available here".into())
     }
@@ -241,6 +251,14 @@ pub trait Host: Send {
 
     /// Give the keyboard and mouse back to the dashboard (a game's Quit).
     fn release_focus(&mut self) {}
+
+    /// The folder this plugin's saved values (`storage-set`) are kept in,
+    /// the same every run; `None` where there's nowhere to keep them. Asked
+    /// once, when the instance starts, and only for a plugin with
+    /// `storage = true`; the runtime checks keys and the size limit.
+    fn storage_dir(&self) -> Option<PathBuf> {
+        None
+    }
 }
 
 /// Compiles plugins and runs the clock behind their time limits. Make one and
@@ -326,7 +344,16 @@ impl Runtime {
         if plugin.folder.is_dir() {
             let _ = wasi.preopened_dir(&plugin.folder, PACK_DIR, FsPerms::ReadOnly);
         }
+        // Later, for larger data: a writable folder of its own at `/data`.
         let wasi = wasi.build();
+        let storage = if plugin.manifest.permissions.storage {
+            Storage::Allowed(
+                host.storage_dir()
+                    .map(|dir| crate::store::Store::new(dir, limits.storage_bytes)),
+            )
+        } else {
+            Storage::NotAsked
+        };
         let state = State {
             wasi,
             table: ResourceTable::new(),
@@ -345,6 +372,7 @@ impl Runtime {
             properties,
             publish: plugin.manifest.permissions.publish,
             sound: plugin.manifest.permissions.sound,
+            storage,
         };
         let mut store = Store::new(&self.engine, state);
         store.limiter(|s| &mut s.limits);
@@ -597,6 +625,25 @@ struct State {
     properties: HashMap<String, NtValue>,
     publish: bool,
     sound: bool,
+    storage: Storage,
+}
+
+/// Where a plugin's saved values go.
+enum Storage {
+    /// Its plugin.toml doesn't have `storage = true`.
+    NotAsked,
+    /// It does: in this store, or (`None`) nowhere here.
+    Allowed(Option<crate::store::Store>),
+}
+
+impl State {
+    fn store(&self) -> Result<&crate::store::Store, String> {
+        match &self.storage {
+            Storage::NotAsked => Err("plugin.toml doesn't have storage = true".into()),
+            Storage::Allowed(None) => Err("nowhere to save values here".into()),
+            Storage::Allowed(Some(store)) => Ok(store),
+        }
+    }
 }
 
 impl WasiView for State {
@@ -670,6 +717,22 @@ impl wit_host::Host for State {
 
     fn release_focus(&mut self) {
         self.host.release_focus();
+    }
+
+    fn storage_get(&mut self, key: String) -> Result<Option<Vec<u8>>, String> {
+        self.store()?.get(&key)
+    }
+
+    fn storage_set(&mut self, key: String, value: Vec<u8>) -> Result<(), String> {
+        self.store()?.set(&key, &value)
+    }
+
+    fn storage_remove(&mut self, key: String) -> Result<(), String> {
+        self.store()?.remove(&key)
+    }
+
+    fn storage_keys(&mut self) -> Result<Vec<String>, String> {
+        Ok(self.store()?.keys())
     }
 }
 

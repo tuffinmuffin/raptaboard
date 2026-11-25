@@ -176,6 +176,8 @@ struct AppHost {
     /// Its sound stream, once it has sent sound (a new one if the rate or
     /// channels change).
     stream: Option<crate::sound::AudioStream>,
+    /// Where its saved values go (`~/.raptaboard/plugin-data/<name>`).
+    storage_dir: Option<std::path::PathBuf>,
 }
 
 impl AppHost {
@@ -237,6 +239,10 @@ impl Host for AppHost {
         self.ctx.request_repaint();
     }
 
+    fn storage_dir(&self) -> Option<std::path::PathBuf> {
+        self.storage_dir.clone()
+    }
+
     fn log(&mut self, message: &str) {
         {
             let mut latest = self.latest.lock().unwrap();
@@ -285,6 +291,7 @@ fn run(
         latest: latest.clone(),
         audio,
         stream: None,
+        storage_dir: super::storage_dir(&plugin.manifest.name),
     };
     let stop = |stopped: Stopped, usage: Option<Usage>| {
         let mut latest = latest.lock().unwrap();

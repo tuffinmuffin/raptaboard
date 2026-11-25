@@ -4,9 +4,11 @@
 //! plugin.toml doesn't allow, `print` writes to stdout, `region` draws a
 //! "Bell" button that logs when it's pressed, `slow-start` takes 300 ms on its
 //! first render only, `spin-later` never returns after its first, `files`
-//! tries to read its own
-//! plugin.toml (allowed), a file outside its folder and to write in its
-//! folder (both refused), saying how each went. `ok` draws one line.
+//! tries to read its own plugin.toml (allowed), a file outside its folder and
+//! to write in its folder (both refused), saying how each went. `storage`
+//! counts its renders in a saved value (`renders`), across runs, and tries a
+//! key that's a path; `storage-big` tries to save 100 KiB. `ok` draws one
+//! line.
 
 use raptaboard_plugin::prelude::*;
 
@@ -59,6 +61,23 @@ impl Widget for LimitsTest {
                 picture.summary = Some(format!("{result:?}"));
             }
             "print" => println!("hello from limits-test"),
+            "storage" => {
+                let count = host::storage_get("renders").and_then(|v| {
+                    let before = v
+                        .and_then(|b| String::from_utf8(b).ok())
+                        .and_then(|s| s.parse::<u32>().ok())
+                        .unwrap_or(0);
+                    host::storage_set("renders", (before + 1).to_string().as_bytes())?;
+                    Ok(before + 1)
+                });
+                let path = host::storage_set("../escape", b"x").is_ok();
+                let keys = host::storage_keys().unwrap_or_default();
+                picture.summary = Some(format!("{count:?}; path {path}; keys {keys:?}"));
+            }
+            "storage-big" => {
+                let result = host::storage_set("big", &vec![0; 100 << 10]);
+                picture.summary = Some(format!("{result:?}"));
+            }
             "files" => {
                 let own = pack_file("plugin.toml").map(|b| b.len());
                 let outside = std::fs::read("/etc/hosts").map(|b| b.len());

@@ -419,8 +419,15 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
    loading the WADs took 67 ms in a release build, about 200 ms in a debug one) and a plugin may ask
    for up to 512 MiB (`[limits] memory_mb` in plugin.toml; Doom runs at about 105 MiB, each frame
    about 1 ms) and longer calls, up to 1 s (`call_ms`: Doom loads a level whenever one ends, over
-   100 ms). Not yet shown before installing a pack (the catalog would carry it). Next: Doom's
-   sound (a mixer in the plugin), then the pack. Before 1.0 a plugin runs only on the same 0.x, so the
+   100 ms). Not yet shown before installing a pack (the catalog would carry it). Doom's sound is
+   mixed in the plugin (effects and OPL2 music) and streamed through `play-audio`. Storage (in 0.3,
+   asked for by the user 2026-11-25): `storage-get`/`-set`/`-remove`/`-keys`, small values a plugin
+   keeps between runs (a setting, a CAD file's path; Doom's settings could use it), one set per
+   plugin shared by its widgets, needing `[permissions] storage`; kept as a file per key in
+   `~/.raptaboard/plugin-data/<plugin>/` (`plugin_host::store::Store`: keys are plain names, writes
+   whole or not at all), 64 KiB in all unless `[limits] storage_kb` asks for more (at most 1 MiB).
+   A writable `/data` folder for larger things (saved images, recordings) is the planned extension,
+   not built yet. Next: the pack. Before 1.0 a plugin runs only on the same 0.x, so the
    content repo's `example-widgets` pack (0.2) is rebuilt for 0.3 before the next release.
 3. **Custom graphs**: binding several tables (the `table` property) and history from the host.
 4. **3D scene and a robot viewer**: the host renders and the plugin describes a scene it keeps.
