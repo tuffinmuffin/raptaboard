@@ -226,3 +226,37 @@ fn a_tab_plugin_can_give_the_keyboard_and_mouse_back() {
     }
     assert!(!crate::plugins::widget::holds_mouse(&ctx, "tab test"));
 }
+
+#[test]
+fn a_tab_plugin_that_stops_gives_the_keyboard_and_mouse_back() {
+    load_tab_test();
+    let robot = Robot::start();
+    let mut harness = tabs_harness(&robot);
+    labelled_soon(&mut harness, &format!("{SHOWN}0"));
+    let ctx = harness.ctx.clone();
+    let area = plugin_area(&harness);
+    click_at(
+        &mut harness,
+        area,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert!(crate::plugins::widget::holds_mouse(&ctx, "tab test"));
+    // P: tab-test panics. The window isn't left without a cursor or keys.
+    press(&mut harness, Key::P);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while harness.state().plugin_has_keys(&ctx) {
+        assert!(Instant::now() < deadline, "still has the keyboard");
+        settle(&mut harness);
+    }
+    assert!(!crate::plugins::widget::holds_mouse(&ctx, "tab test"));
+    // Clicking the stopped plugin doesn't take them again.
+    click_at(
+        &mut harness,
+        area,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert!(!harness.state().plugin_has_keys(&ctx));
+    assert!(!crate::plugins::widget::holds_mouse(&ctx, "tab test"));
+}
