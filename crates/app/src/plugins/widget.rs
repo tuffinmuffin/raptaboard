@@ -9,7 +9,9 @@ use eframe::egui::{self, Rect};
 use nt4::Value;
 use raptaboard_layout::WidgetContainer;
 use raptaboard_plugin_host::PropertySpec;
-use raptaboard_plugin_host::runtime::{FrameInfo, Input, Role, Sample, Size, Subscription};
+use raptaboard_plugin_host::runtime::{
+    FrameInfo, Input, Key, Modifiers, Point, Role, Sample, Size, Subscription,
+};
 use serde_json::{Map, Value as Json};
 
 use super::worker::{Drawn, Request, Worker};
@@ -166,7 +168,161 @@ fn label(name: &str) -> String {
         .unwrap_or_default()
 }
 
+/// The id of the area a tab plugin fills on the tab named `tab_name`: it
+/// has the keyboard while this has focus.
+pub fn tab_focus_id(tab_name: &str) -> egui::Id {
+    egui::Id::unique(("raptaboard plugin tab", tab_name.trim().to_lowercase()))
+}
+
+/// Which modifier keys are held, as the plugin interface's flags.
+fn modifiers(m: egui::Modifiers) -> Modifiers {
+    let mut out = Modifiers::empty();
+    for (on, flag) in [
+        (m.shift, Modifiers::SHIFT),
+        (m.ctrl, Modifiers::CTRL),
+        (m.alt, Modifiers::ALT),
+        (m.mac_cmd, Modifiers::COMMAND),
+    ] {
+        if on {
+            out |= flag;
+        }
+    }
+    out
+}
+
+/// A tab plugin's input this frame from egui's `events`, for an area at
+/// `rect` that has the keyboard if `focused`: keys down and up (not
+/// repeats), typed text and modifier keys pressed or let go (as keys named
+/// "Shift", "Ctrl", "Alt" and "Command": a game fires with Ctrl) while
+/// focused; and the pointer moving, pressing and scrolling over it, in
+/// pixels from its top left. `held` is the modifiers held at the last frame,
+/// `now` those held now.
+pub fn tab_inputs(
+    events: &[egui::Event],
+    rect: Rect,
+    focused: bool,
+    held: egui::Modifiers,
+    now: egui::Modifiers,
+) -> Vec<Input> {
+    let local = |p: egui::Pos2| Point {
+        x: p.x - rect.min.x,
+        y: p.y - rect.min.y,
+    };
+    let mut out = Vec::new();
+    if focused {
+        for (name, was, is) in [
+            ("Shift", held.shift, now.shift),
+            ("Ctrl", held.ctrl, now.ctrl),
+            ("Alt", held.alt, now.alt),
+            ("Command", held.mac_cmd, now.mac_cmd),
+        ] {
+            let key = Key {
+                name: name.into(),
+                modifiers: modifiers(now),
+            };
+            match (was, is) {
+                (false, true) => out.push(Input::KeyDown(key)),
+                (true, false) => out.push(Input::KeyUp(key)),
+                _ => {}
+            }
+        }
+    }
+    for event in events {
+        match event {
+            egui::Event::Key {
+                key,
+                pressed,
+                repeat: false,
+                modifiers: m,
+                ..
+            } if focused => {
+                let key = Key {
+                    name: key.name().into(),
+                    modifiers: modifiers(*m),
+                };
+                out.push(if *pressed {
+                    Input::KeyDown(key)
+                } else {
+                    Input::KeyUp(key)
+                });
+            }
+            egui::Event::Text(text) if focused => out.push(Input::Text(text.clone())),
+            egui::Event::PointerMoved(p) if rect.contains(*p) => {
+                out.push(Input::PointerMove(local(*p)));
+            }
+            egui::Event::PointerButton { pos, pressed, .. } if rect.contains(*pos) => {
+                out.push(if *pressed {
+                    Input::PointerDown(local(*pos))
+                } else {
+                    Input::PointerUp(local(*pos))
+                });
+            }
+            egui::Event::MouseWheel { delta, .. } if focused => {
+                out.push(Input::Wheel(Point {
+                    x: delta.x,
+                    y: delta.y,
+                }));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 impl PluginType {
+    /// Show a tab plugin filling `rect` (the tab, `widget` its stand-in
+    /// from [`super::tab_widget`]): clicked, it takes the keyboard, keeping
+    /// Tab, the arrows and Escape, and gets keys, text, the pointer and
+    /// focus changes as input.
+    pub fn show_tab(
+        &self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        widget: &WidgetContainer,
+        live: &Live<'_>,
+    ) {
+        let id = tab_focus_id(&widget.title);
+        let response = ui.interact(rect, id, egui::Sense::click());
+        if response.clicked() {
+            response.request_focus();
+        }
+        let focused = response.has_focus();
+        if focused {
+            ui.memory_mut(|m| {
+                m.set_focus_lock_filter(
+                    id,
+                    egui::EventFilter {
+                        tab: true,
+                        horizontal_arrows: true,
+                        vertical_arrows: true,
+                        escape: true,
+                    },
+                )
+            });
+        }
+        if let Some(worker) = self.worker(widget, ui.ctx()) {
+            let state = id.with("input state");
+            let (was_focused, held): (bool, egui::Modifiers) =
+                ui.data(|d| d.get_temp(state)).unwrap_or_default();
+            let (events, now) = ui.input(|i| (i.events.clone(), i.modifiers));
+            if focused != was_focused {
+                worker.input(Input::Focus(focused));
+            }
+            for input in tab_inputs(&events, rect, focused, held, now) {
+                worker.input(input);
+            }
+            ui.data_mut(|d| {
+                d.insert_temp(
+                    state,
+                    (focused, if focused { now } else { egui::Modifiers::NONE }),
+                )
+            });
+        }
+        let mut inside = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+        inside.set_clip_rect(rect.intersect(ui.clip_rect()));
+        self.show_body(&mut inside, rect, widget, live);
+    }
+
     /// Carry out what the plugin asked for since the last frame.
     fn carry_out(&self, worker: &Worker, widget: &WidgetContainer, live: &Live<'_>) {
         let requests = std::mem::take(&mut worker.latest.lock().unwrap().requests);
@@ -498,6 +654,50 @@ mod tests {
         let mut keys: Vec<&str> = got.keys().map(String::as_str).collect();
         keys.sort();
         assert_eq!(keys, ["/A/.type", "/A/errors"]);
+    }
+
+    #[test]
+    fn a_tab_plugin_gets_keys_while_focused_and_the_pointer_over_it() {
+        let rect = Rect::from_min_size(egui::pos2(100.0, 50.0), egui::vec2(200.0, 100.0));
+        let key = |k, pressed, repeat| egui::Event::Key {
+            key: k,
+            physical_key: None,
+            pressed,
+            repeat,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let events = [
+            key(egui::Key::W, true, false),
+            key(egui::Key::W, true, true),
+            key(egui::Key::W, false, false),
+            egui::Event::Text("w".into()),
+            egui::Event::PointerMoved(egui::pos2(110.0, 60.0)),
+            egui::Event::PointerMoved(egui::pos2(10.0, 10.0)),
+        ];
+        let none = egui::Modifiers::NONE;
+        let got = tab_inputs(&events, rect, true, none, egui::Modifiers::CTRL);
+        let names: Vec<String> = got
+            .iter()
+            .map(|i| match i {
+                Input::KeyDown(k) => format!("down {}", k.name),
+                Input::KeyUp(k) => format!("up {}", k.name),
+                Input::Text(t) => format!("text {t}"),
+                Input::PointerMove(p) => format!("move {},{}", p.x, p.y),
+                other => format!("{other:?}"),
+            })
+            .collect();
+        // Ctrl pressed since last frame is a key; a repeat isn't; the
+        // pointer is in the area's own pixels, and only over it.
+        assert_eq!(
+            names,
+            ["down Ctrl", "down W", "up W", "text w", "move 10,10"]
+        );
+        // Not focused: the pointer only.
+        let got = tab_inputs(&events, rect, false, none, egui::Modifiers::CTRL);
+        assert!(matches!(got.as_slice(), [Input::PointerMove(_)]));
+        // Ctrl let go.
+        let got = tab_inputs(&[], rect, true, egui::Modifiers::CTRL, none);
+        assert!(matches!(got.as_slice(), [Input::KeyUp(k)] if k.name == "Ctrl"));
     }
 
     #[test]

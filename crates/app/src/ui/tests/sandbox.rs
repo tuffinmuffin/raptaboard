@@ -159,6 +159,32 @@ fn the_overlay_shows_usage_the_log_and_a_stop_with_restart() {
     assert!(crate::plugins::outline_regions(&ctx));
 }
 
+#[test]
+fn a_tab_plugin_opens_as_its_tab_in_the_sandbox() {
+    let mut harness = sandbox_for("tab-test");
+    let tabs: Vec<String> = harness
+        .state()
+        .layout
+        .tabs
+        .iter()
+        .map(|t| t.name.clone())
+        .collect();
+    assert_eq!(tabs, ["Tab test"]);
+    assert!(
+        harness.state().layout.tabs[0]
+            .grid_layout
+            .containers
+            .is_empty()
+    );
+    labelled_soon(
+        &mut harness,
+        "Tab test: Hello from the tab-test plugin's folder. Keys: 0",
+    );
+    // Its overlay: the stand-in's usage, once it has drawn.
+    contains_soon(&mut harness, "of 100");
+    assert!(harness.query_by_label("Size").is_none(), "no widget size");
+}
+
 /// The tab-test square's left edge in `widget`'s newest picture, in frame
 /// pixels: the first column that isn't the background.
 fn square_x(ctx: &egui::Context, widget: &raptaboard_layout::WidgetContainer) -> Option<i64> {
@@ -179,7 +205,9 @@ fn an_animation_keeps_its_rate_when_the_window_draws_only_when_asked() {
     // next 120 Hz refresh, a little late. tab-test asks for 35 frames a
     // second and moves its square one 3-pixel step a frame.
     let mut harness = sandbox_for("tab-test");
-    let widget = harness.state().layout.tabs[0].grid_layout.containers[0].clone();
+    // It fills its tab: its stand-in widget.
+    let ty = crate::plugins::find("plugin:tab-test").unwrap();
+    let widget = crate::plugins::tab_widget(ty, "Tab test");
     let ctx = harness.ctx.clone();
     let wake: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(Some(Instant::now())));
     let asked = wake.clone();

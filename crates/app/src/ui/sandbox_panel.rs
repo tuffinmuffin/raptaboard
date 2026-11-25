@@ -75,14 +75,20 @@ impl DashboardApp {
                     );
                     ui.separator();
                     widget_section(ui, view, &mut self.layout, &mut self.locked);
-                    if let Some(widget) = self
-                        .layout
-                        .tabs
-                        .first()
-                        .and_then(|t| t.grid_layout.containers.first())
-                    {
+                    // The plugin's widget, or for a tab plugin its stand-in.
+                    let widget = match &view.sandbox.tab {
+                        Some(tab) => crate::plugins::find(&view.sandbox.type_name)
+                            .map(|ty| crate::plugins::tab_widget(ty, tab)),
+                        None => self
+                            .layout
+                            .tabs
+                            .first()
+                            .and_then(|t| t.grid_layout.containers.first())
+                            .cloned(),
+                    };
+                    if let Some(widget) = widget {
                         ui.separator();
-                        plugin_section(ui, widget);
+                        plugin_section(ui, &widget);
                     }
                     if view.sandbox.serves() {
                         ui.separator();
@@ -115,23 +121,31 @@ fn widget_section(
     egui::Grid::new("sandbox_widget")
         .num_columns(2)
         .show(ui, |ui| {
-            ui.label("Size");
-            let (w, h) = view.sandbox.cells;
-            let shown = format!("{w} × {h} cells");
-            egui::ComboBox::from_id_salt("sandbox_size")
-                .selected_text(&shown)
-                .show_ui(ui, |ui| {
-                    for (cw, ch) in sandbox::SIZES {
-                        ui.selectable_value(
-                            &mut view.sandbox.cells,
-                            (cw, ch),
-                            format!("{cw} × {ch} cells"),
-                        );
-                    }
-                })
-                .response
-                .widget_info(|| combo_info("Size", &shown));
-            ui.end_row();
+            if let Some(tab) = &view.sandbox.tab {
+                ui.label("Fills");
+                ui.label(format!("the tab \"{tab}\" (click it for the keyboard)"));
+                ui.end_row();
+            }
+            let tab_plugin = view.sandbox.tab.is_some();
+            if !tab_plugin {
+                ui.label("Size");
+                let (w, h) = view.sandbox.cells;
+                let shown = format!("{w} × {h} cells");
+                egui::ComboBox::from_id_salt("sandbox_size")
+                    .selected_text(&shown)
+                    .show_ui(ui, |ui| {
+                        for (cw, ch) in sandbox::SIZES {
+                            ui.selectable_value(
+                                &mut view.sandbox.cells,
+                                (cw, ch),
+                                format!("{cw} × {ch} cells"),
+                            );
+                        }
+                    })
+                    .response
+                    .widget_info(|| combo_info("Size", &shown));
+                ui.end_row();
+            }
             ui.label("Theme");
             let mut dark = ui.visuals().dark_mode;
             ui.horizontal(|ui| {

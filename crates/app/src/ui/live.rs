@@ -127,6 +127,15 @@ impl DashboardApp {
             Some((_, names)) => names.extend(wanted),
             None => groups.push((period, wanted)),
         };
+        // A tab a plugin fills: what its subscriptions need (it has no
+        // topic of its own).
+        if let Some(ty) = crate::plugins::tab_plugin(tab) {
+            let widget = crate::plugins::tab_widget(ty, &tab.name);
+            add(
+                props::period_s(&widget),
+                widgets::WidgetType::extra_topics(ty, &widget.properties, server),
+            );
+        }
         for w in drawn(tab) {
             let Some(topic) = w.topic() else { continue };
             let mut wanted = vec![topic.to_owned()];

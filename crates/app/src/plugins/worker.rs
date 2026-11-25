@@ -88,12 +88,14 @@ pub struct Worker {
 
 impl Worker {
     /// Start `plugin` on a thread of its own with `properties`. `ctx` is for
-    /// measuring text and asking for repaints when a picture is ready.
+    /// measuring text and asking for repaints when a picture is ready; its
+    /// sound (`play-audio`) goes to `audio`.
     pub fn start(
         runtime: Arc<Runtime>,
         plugin: Arc<Plugin>,
         properties: HashMap<String, NtValue>,
         ctx: egui::Context,
+        audio: crate::sound::AudioOut,
     ) -> Worker {
         let (sender, receiver) = mpsc::channel();
         let latest = Arc::new(Mutex::new(Latest::default()));
@@ -101,7 +103,7 @@ impl Worker {
         let name = format!("plugin {}", plugin.manifest.name);
         let started = std::thread::Builder::new()
             .name(name)
-            .spawn(move || run(runtime, plugin, properties, ctx, receiver, shared));
+            .spawn(move || run(runtime, plugin, properties, ctx, audio, receiver, shared));
         if let Err(e) = started {
             latest.lock().unwrap().stopped = Some(Stopped {
                 reason: format!("couldn't start a thread: {e}"),
@@ -168,6 +170,10 @@ impl Worker {
 struct AppHost {
     ctx: egui::Context,
     latest: Arc<Mutex<Latest>>,
+    audio: crate::sound::AudioOut,
+    /// Its sound stream, once it has sent sound (a new one if the rate or
+    /// channels change).
+    stream: Option<crate::sound::AudioStream>,
 }
 
 impl AppHost {
@@ -200,6 +206,20 @@ impl Host for AppHost {
             width: galley.size().x,
             height: galley.size().y,
         }
+    }
+
+    fn play_audio(&mut self, samples: &[i16], rate: u32, channels: u8) -> Result<(), String> {
+        let fits = self
+            .stream
+            .as_ref()
+            .is_some_and(|s| s.rate == rate && s.channels == channels);
+        if !fits {
+            self.stream = Some(self.audio.stream(rate, channels));
+        }
+        if let Some(stream) = &self.stream {
+            stream.push(samples);
+        }
+        Ok(())
     }
 
     fn play_sound(&mut self, sound: &str) -> Result<(), String> {
@@ -249,12 +269,15 @@ fn run(
     plugin: Arc<Plugin>,
     properties: HashMap<String, NtValue>,
     ctx: egui::Context,
+    audio: crate::sound::AudioOut,
     receiver: Receiver<Message>,
     latest: Arc<Mutex<Latest>>,
 ) {
     let host = AppHost {
         ctx: ctx.clone(),
         latest: latest.clone(),
+        audio,
+        stream: None,
     };
     let stop = |stopped: Stopped, usage: Option<Usage>| {
         let mut latest = latest.lock().unwrap();

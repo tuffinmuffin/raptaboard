@@ -211,6 +211,8 @@ interface types {
     flags modifiers { shift, ctrl, alt, command }
 
     /// A key by egui's name for it: "A", "Num1", "ArrowUp", "Space", "Escape".
+    /// The modifier keys come as keys of their own too, pressed and let go:
+    /// "Shift", "Ctrl", "Alt" and "Command" (a game fires with Ctrl).
     record key {
         name: string,
         modifiers: modifiers,

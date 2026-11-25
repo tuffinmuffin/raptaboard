@@ -138,6 +138,11 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   time and its memory against the limits (`runtime::Instance::usage`, kept by the worker), its log, why it stopped,
   Restart; `plugins::dev_view`). `main.rs` starts it with nowhere to save settings and no content packs. With `--address`, no
   server: the widget is bound to `--topic`. `ui/tests/sandbox.rs` runs it with Number and Alerts.
+- Tab plugins (plugin.toml `tab = "…"`): `plugins::tab_plugin(tab)` finds the plugin claiming an empty tab's name,
+  `tab_widget` its stand-in widget (its worker kept while the tab exists); `ui/plugin_tab.rs` draws it in place of the
+  grid and turns the dashboard's shortcuts off while it has focus (`plugin_has_keys`); `PluginType::show_tab` and
+  `widget::tab_inputs` turn egui's events into its input. Plugins' `play-audio` streams through `sound::AudioOut`
+  (per window, set by `frame_started`; on and off with the bell).
 - `crates/app/src/plugins/`: plugins in the app. `mod.rs` the registry (plugins from installed packs, `use_packs`, run by
   `ui/content_window.rs` at the first frame and after each install or remove; and from `--plugin`, which wins; saved in
   layouts as `plugin:<name>`, found by `widgets::find`; listed by `widgets::types_showing` and the settings dialog's
