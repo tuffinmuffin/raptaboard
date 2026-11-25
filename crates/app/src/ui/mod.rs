@@ -8,6 +8,7 @@ mod grid_view;
 mod live;
 mod panels;
 pub mod robot_state_view;
+mod sandbox_panel;
 mod settings_window;
 mod state;
 mod style;
@@ -137,6 +138,8 @@ pub struct DashboardApp {
     content_timer: crate::content::CheckTimer,
     /// The Content window and the first-run list.
     packs: content_window::ContentWindows,
+    /// The plugin sandbox and its panel, in `raptaboard plugin dev`.
+    sandbox: Option<sandbox_panel::SandboxView>,
 }
 
 impl DashboardApp {
@@ -195,6 +198,7 @@ impl DashboardApp {
                 content_window::FIRST_CHECK_DELAY,
             ),
             packs: Default::default(),
+            sandbox: None,
         };
         if let Some(dir) = options.content_dir {
             app.content = Some(crate::content::Content::new(dir, app.sound.files()));
@@ -671,6 +675,7 @@ impl DashboardApp {
                 .default_size(460.0)
                 .show(ui, |ui| self.alert_history_panel(ui));
         }
+        self.sandbox_panel(ui);
         // "Add to grid" from the tree's right-click menu: widgets in the
         // free spots nearest the top left of the open tab.
         let add = std::mem::take(&mut self.tree.selection.add);

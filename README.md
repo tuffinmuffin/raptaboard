@@ -110,6 +110,16 @@ Their widget types (`plugin:number`, `plugin:alerts`) are then in "Add as" and t
 the topics and tables they show, after the built-in ones. Rebuild one while the dashboard runs and its
 widgets restart with the new build.
 
+To try one by hand without a robot, open it in the sandbox: the dashboard with only that plugin's
+widget and a NetworkTables server of its own, serving the sample values from `[sandbox]` in its
+`plugin.toml`. A side panel changes, adds and removes values and sets the widget's size, the
+theme, the connection and the lock; the widget restarts whenever the `.wasm` is rebuilt. Nothing
+is saved. (`--address sim --topic <path>` shows the sim's values instead.)
+
+```sh
+cargo run -p raptaboard -- plugin dev plugins/alerts
+```
+
 To test one without the dashboard, `crates/plugin-test` (`raptaboard-plugin-test`) runs its built
 `.wasm` in the dashboard's own plugin runtime from `cargo test`: set values, the size and the
 connection, click its regions, and check the text it drew, its tab mark and the sounds it asked for.

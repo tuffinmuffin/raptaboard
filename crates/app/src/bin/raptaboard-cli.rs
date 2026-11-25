@@ -53,6 +53,13 @@ fn main() {
             home.as_deref(),
             &mut packs_cli::ask_terminal,
         ),
+        // It opens a window, which this console program doesn't.
+        Command::Plugin(_) => {
+            eprintln!(
+                "raptaboard-cli: the plugin sandbox opens a window: run `raptaboard plugin dev …`"
+            );
+            2
+        }
     };
     std::process::exit(code);
 }

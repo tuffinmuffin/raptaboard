@@ -20,6 +20,7 @@ mod mechanism;
 mod plugins;
 mod pose3d;
 mod robot_state_view;
+mod sandbox;
 mod sliders;
 mod stats;
 mod struct_view;

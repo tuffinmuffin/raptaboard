@@ -30,6 +30,12 @@ pulse_seconds = { type = "number", default = 5 }
 sound = { type = "bool", default = false }
 tone = { type = "sound", default = "beep" }
 
+# What the sandbox window (raptaboard plugin dev) starts with.
+[sandbox.values]
+errors = ["Encoder lost"]
+warnings = ["Battery low", "Hot motor"]
+infos = ["Vision connected"]
+
 [permissions]
 # The sound for a new error.
 sound = true

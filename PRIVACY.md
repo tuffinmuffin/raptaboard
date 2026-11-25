@@ -1,6 +1,6 @@
 # raptaboard privacy policy
 
-Last updated: November 23, 2026
+Last updated: November 25, 2026
 
 raptaboard is a driver dashboard for FIRST Robotics Competition robots, made by Team 3200
 (Raptacon). This policy covers the raptaboard app, however you install it: from the Microsoft
@@ -19,7 +19,8 @@ raptaboard connects only to the robot, or another NetworkTables server you choos
 robot simulator), on your own network. It does this to show and send your robot's values. It
 finds the robot from the team number and address you set; this may include asking the FRC Driver
 Station on the same computer for the robot's address, or looking for the robot on your local
-network.
+network. The plugin sandbox for developers (`raptaboard plugin dev`) instead runs a NetworkTables
+server of its own that only your computer can reach, and connects to that.
 
 ### Content packs
 

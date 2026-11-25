@@ -18,3 +18,7 @@ decimal_places = { type = "number", default = -1 }
 font_size = { type = "number", default = 14 }
 fit_text = { type = "bool", default = false }
 show_unit = { type = "bool", default = true }
+
+# What the sandbox window (raptaboard plugin dev) starts with.
+[sandbox]
+value = 1.23456

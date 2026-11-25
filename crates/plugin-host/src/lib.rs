@@ -62,6 +62,33 @@ pub struct Manifest {
     pub properties: BTreeMap<String, PropertySpec>,
     #[serde(default)]
     pub permissions: Permissions,
+    /// Sample values for the sandbox window (`raptaboard plugin dev`), so the
+    /// plugin shows something there at once.
+    #[serde(default)]
+    pub sandbox: SandboxValues,
+}
+
+/// A plugin's sample values for the sandbox window, from `[sandbox]`:
+///
+/// ```toml
+/// [sandbox]
+/// value = 1.5                  # a topic plugin: its topic's value
+///
+/// [sandbox.values]             # a table plugin: keys under its table
+/// errors = ["Encoder lost"]
+/// warnings = []
+/// ```
+///
+/// A TOML float is a double, an integer an int, text a string, and a list a
+/// list of those (an empty list a string list).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SandboxValues {
+    /// A topic plugin's value.
+    pub value: Option<toml::Value>,
+    /// A table plugin's keys and values.
+    #[serde(default)]
+    pub values: BTreeMap<String, toml::Value>,
 }
 
 /// What a plugin can draw: one topic of the given types, or a table that passes
