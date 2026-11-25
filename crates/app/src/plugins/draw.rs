@@ -120,6 +120,32 @@ pub fn pixels_fit(width: u32, height: u32, bytes: usize) -> bool {
         && bytes == width as usize * height as usize * 4
 }
 
+/// How a pixel image is sampled. Smooth: blended both ways. Sharp (pixel
+/// art, a game): each pixel a crisp square when enlarged, but blended when
+/// shrunk, with mipmaps, since nearest-pixel shrinking drops whole rows and
+/// columns and small text breaks up.
+///
+/// ```
+/// use eframe::egui::TextureFilter;
+/// use raptaboard::plugins::draw::texture_options;
+/// let sharp = texture_options(false);
+/// assert_eq!(sharp.magnification, TextureFilter::Nearest);
+/// assert_eq!(sharp.minification, TextureFilter::Linear);
+/// ```
+pub fn texture_options(smooth: bool) -> egui::TextureOptions {
+    let filter = if smooth {
+        egui::TextureFilter::Linear
+    } else {
+        egui::TextureFilter::Nearest
+    };
+    egui::TextureOptions {
+        magnification: filter,
+        minification: egui::TextureFilter::Linear,
+        wrap_mode: egui::TextureWrapMode::ClampToEdge,
+        mipmap_mode: Some(egui::TextureFilter::Linear),
+    }
+}
+
 /// The GPU texture for pixel image `p`, kept under `at`: sent again only when
 /// `picture` (the picture's number) is new. `None` for an image that's the
 /// wrong size for its bytes.
@@ -140,11 +166,7 @@ fn pixels_texture(
     }
     let image =
         egui::ColorImage::from_rgba_unmultiplied([p.width as usize, p.height as usize], &p.rgba);
-    let options = if p.smooth {
-        egui::TextureOptions::LINEAR
-    } else {
-        egui::TextureOptions::NEAREST
-    };
+    let options = texture_options(p.smooth);
     let handle = match kept {
         Some((_, mut handle)) => {
             handle.set(image, options);

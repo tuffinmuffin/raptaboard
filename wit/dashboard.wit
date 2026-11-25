@@ -136,7 +136,8 @@ interface types {
     /// An image the plugin made, like a game's frame: `width` × `height`
     /// pixels, RGBA (4 bytes each), the top row first, drawn stretched over
     /// `min`..`max`. `smooth` blends between pixels when scaled; off, each
-    /// pixel stays a sharp square (pixel art, a game).
+    /// pixel stays a sharp square when enlarged (pixel art, a game), and is
+    /// blended when shrunk so small text stays readable.
     record pixels {
         min: point,
         max: point,
