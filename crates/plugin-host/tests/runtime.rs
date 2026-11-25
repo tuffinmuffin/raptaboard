@@ -222,6 +222,7 @@ fn mode(m: &str) -> [(&'static str, NtValue); 1] {
 fn a_plugin_that_never_returns_is_stopped_at_its_time_limit() {
     let limits = Limits {
         call_ms: 50,
+        first_render_ms: 50,
         ..Limits::default()
     };
     let (mut w, seen) = start(&plugin("limits-test"), &mode("spin"), None, limits);
@@ -276,6 +277,7 @@ fn usage_counts_calls_and_memory_against_the_limits() {
     let limits = Limits {
         call_ms: 100,
         memory_bytes: 8 << 20,
+        ..Limits::default()
     };
     let (mut w, _) = start(&plugin("limits-test"), &mode("ok"), None, limits);
     let before = w.usage();
@@ -314,6 +316,32 @@ fn audio_needs_the_sound_permission() {
     w.on_input(&space).unwrap();
     let logs = seen.lock().unwrap().logs.clone();
     assert_eq!(logs, ["no beep: plugin.toml doesn't have sound = true"]);
+}
+
+#[test]
+fn the_first_render_may_take_longer_to_load() {
+    // slow-start takes about 60 ms on its first render, little after.
+    let limits = Limits {
+        call_ms: 20,
+        first_render_ms: 1000,
+        ..Limits::default()
+    };
+    let (mut w, _) = start(&plugin("limits-test"), &mode("slow-start"), None, limits);
+    w.render(frame(10.0, 10.0, true)).unwrap();
+    w.render(frame(10.0, 10.0, true)).unwrap();
+    // Without the longer first render, it's stopped at the call limit.
+    let tight = Limits {
+        first_render_ms: 20,
+        ..limits
+    };
+    let (mut w, _) = start(&plugin("limits-test"), &mode("slow-start"), None, tight);
+    let stopped = w.render(frame(10.0, 10.0, true)).unwrap_err();
+    assert_eq!(stopped.reason, "ran past its 20 ms time limit");
+    // And a spin after the first render: the call limit, not the first's.
+    let (mut w, _) = start(&plugin("limits-test"), &mode("spin-later"), None, limits);
+    w.render(frame(10.0, 10.0, true)).unwrap();
+    let stopped = w.render(frame(10.0, 10.0, true)).unwrap_err();
+    assert_eq!(stopped.reason, "ran past its 20 ms time limit");
 }
 
 #[test]

@@ -2,7 +2,9 @@
 //! plugin-host tests can check the limits: `spin` never returns, `panic`
 //! panics, `grow` keeps asking for memory, `publish` and `sound` try what
 //! plugin.toml doesn't allow, `print` writes to stdout, `region` draws a
-//! "Bell" button that logs when it's pressed, `files` tries to read its own
+//! "Bell" button that logs when it's pressed, `slow-start` takes 60 ms on its
+//! first render only, `spin-later` never returns after its first, `files`
+//! tries to read its own
 //! plugin.toml (allowed), a file outside its folder and to write in its
 //! folder (both refused), saying how each went. `ok` draws one line.
 
@@ -11,6 +13,16 @@ use raptaboard_plugin::prelude::*;
 #[derive(Default)]
 struct LimitsTest {
     kept: Vec<Vec<u8>>,
+    /// Renders so far.
+    renders: u32,
+}
+
+/// Busy for about `ms` milliseconds (by the clock, which WASI has).
+fn busy(ms: u64) {
+    let until = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+    while std::time::Instant::now() < until {
+        std::hint::black_box(0);
+    }
 }
 
 impl Widget for LimitsTest {
@@ -20,7 +32,14 @@ impl Widget for LimitsTest {
 
     fn render(&mut self, frame: FrameInfo) -> Picture {
         let mut picture = Picture::empty();
+        self.renders += 1;
         match property_string("mode", "ok").as_str() {
+            // Loads for 60 ms on its first render (a game's data), then quick.
+            "slow-start" if self.renders == 1 => busy(60),
+            // Quick on its first render, then never returns.
+            "spin-later" if self.renders > 1 => loop {
+                std::hint::black_box(0);
+            },
             "spin" => {
                 let mut n: u64 = 0;
                 loop {

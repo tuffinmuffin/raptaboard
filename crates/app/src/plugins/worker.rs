@@ -285,11 +285,15 @@ fn run(
         latest.usage = usage.or(latest.usage);
         ctx.request_repaint();
     };
-    let mut instance =
-        match runtime.instantiate(&plugin, Box::new(host), properties, Limits::default()) {
-            Ok(i) => i,
-            Err(stopped) => return stop(stopped, None),
-        };
+    let mut instance = match runtime.instantiate(
+        &plugin,
+        Box::new(host),
+        properties,
+        Limits::for_manifest(&plugin.manifest),
+    ) {
+        Ok(i) => i,
+        Err(stopped) => return stop(stopped, None),
+    };
     match instance.subscriptions() {
         Ok(s) => latest.lock().unwrap().subscriptions = Some(s),
         Err(stopped) => return stop(stopped, Some(instance.usage())),
