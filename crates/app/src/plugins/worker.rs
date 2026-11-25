@@ -35,6 +35,8 @@ pub struct Latest {
     pub subscriptions: Option<Vec<Subscription>>,
     /// The newest picture finished.
     pub picture: Option<Picture>,
+    /// Counts pictures, so pixel images are sent to the GPU only when new.
+    pub picture_number: u64,
     /// The mark for the tab, from after the last update.
     pub tab_mark: Option<Level>,
     /// Why the plugin stopped, if it has.
@@ -272,6 +274,7 @@ fn run(
                     {
                         let mut latest = latest.lock().unwrap();
                         latest.picture = Some(picture);
+                        latest.picture_number += 1;
                         latest.redraw_at = again.map(|d| Instant::now() + d);
                         latest.usage = Some(instance.usage());
                     }

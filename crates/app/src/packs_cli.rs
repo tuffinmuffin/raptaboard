@@ -768,7 +768,7 @@ mod tests {
         std::fs::write(pack.join("honk.wasm"), b"wasm").unwrap();
         std::fs::write(
             pack.join("honk.toml"),
-            "name = \"honk\"\nversion = \"0.1.0\"\napi = \"0.2\"\n[match]\ntype = \"Horn\"\n\
+            "name = \"honk\"\nversion = \"0.1.0\"\napi = \"0.3\"\n[match]\ntype = \"Horn\"\n\
              [permissions]\npublish = true\n",
         )
         .unwrap();

@@ -346,7 +346,7 @@ credits = "Made by us."
     /// A plugin manifest named `name`, asking to play sounds.
     fn manifest(name: &str) -> String {
         format!(
-            "name = \"{name}\"\nversion = \"0.1.0\"\napi = \"0.2\"\n[match]\ntype = \"Arm\"\n\
+            "name = \"{name}\"\nversion = \"0.1.0\"\napi = \"0.3\"\n[match]\ntype = \"Arm\"\n\
              [permissions]\nsound = true\n"
         )
     }
@@ -369,7 +369,7 @@ credits = "Made by us."
         assert!(error(&toml, &[("arm.wasm", b"wasm")]).contains("needs its manifest beside it"));
         let named = toml.replace("file = ", "name = \"leg\"\nfile = ");
         assert!(error(&named, files).contains("is named \"arm\""));
-        let no_api = arm.replace("api = \"0.2\"\n", "");
+        let no_api = arm.replace("api = \"0.3\"\n", "");
         assert!(
             error(
                 &toml,

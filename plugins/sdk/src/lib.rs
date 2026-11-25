@@ -50,8 +50,8 @@ pub mod prelude {
     pub use crate::bindings::raptaboard::dashboard::host;
     pub use crate::bindings::raptaboard::dashboard::types::*;
     pub use crate::{
-        Widget, centered_text, color, format_number, number, property_bool, property_number,
-        property_string,
+        Widget, centered_text, color, format_number, number, pack_file, property_bool,
+        property_number, property_string,
     };
 }
 
@@ -136,6 +136,15 @@ impl Picture {
         self.shapes.push(shape);
         self
     }
+}
+
+/// Where the plugin's own folder (its pack's files) is, read-only.
+pub const PACK_DIR: &str = "/pack";
+
+/// A file from the plugin's own folder (its pack), like a game's data:
+/// `pack_file("doom1.wad")`. Plugins can read no other files.
+pub fn pack_file(name: &str) -> std::io::Result<Vec<u8>> {
+    std::fs::read(format!("{PACK_DIR}/{name}"))
 }
 
 /// A color from red, green and blue (0-255), fully opaque.

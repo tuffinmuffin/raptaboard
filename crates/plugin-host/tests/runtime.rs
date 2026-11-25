@@ -298,6 +298,25 @@ fn usage_counts_calls_and_memory_against_the_limits() {
 }
 
 #[test]
+fn audio_needs_the_sound_permission() {
+    let space = Input::KeyDown(Key {
+        name: "Space".into(),
+        modifiers: Modifiers::empty(),
+    });
+    // Allowed: it reaches the host (this one plays nothing, and says so).
+    let (mut w, seen) = start(&plugin("tab-test"), &[], None, Limits::default());
+    w.on_input(&space).unwrap();
+    let logs = seen.lock().unwrap().logs.clone();
+    assert_eq!(logs, ["no beep: this dashboard plays no audio"]);
+    // Without sound = true: refused before the host.
+    let quiet = plugin_with("tab-test", |m| m.permissions.sound = false);
+    let (mut w, seen) = start(&quiet, &[], None, Limits::default());
+    w.on_input(&space).unwrap();
+    let logs = seen.lock().unwrap().logs.clone();
+    assert_eq!(logs, ["no beep: plugin.toml doesn't have sound = true"]);
+}
+
+#[test]
 fn a_restarted_plugin_runs_again() {
     let p = plugin("limits-test");
     let (mut w, _) = start(&p, &mode("panic"), None, Limits::default());

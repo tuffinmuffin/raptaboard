@@ -38,7 +38,7 @@ use raptaboard_plugin_host::runtime::{
     Shape, Size, Stopped, Subscription,
 };
 
-pub use raptaboard_plugin_host::runtime::{Input, Key, Level, Modifiers, NtValue, Theme};
+pub use raptaboard_plugin_host::runtime::{Input, Key, Level, Modifiers, NtValue, Pixels, Theme};
 
 /// A value a test can give a plugin: a number, a true/false, text, a list of
 /// them, or an [`NtValue`].
@@ -175,11 +175,23 @@ pub fn measure_text(text: &str, size: f32, max_width: Option<f32>, monospace: bo
     }
 }
 
+/// Sound a plugin queued with `play-audio`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Audio {
+    /// 16-bit samples, `channels` interleaved.
+    pub samples: Vec<i16>,
+    /// Samples a second.
+    pub rate: u32,
+    /// 1 or 2.
+    pub channels: u8,
+}
+
 /// What the plugin asked the dashboard for, kept for the test to check.
 #[derive(Default)]
 struct Asked {
     units: HashMap<String, String>,
     sounds: Vec<String>,
+    audio: Vec<Audio>,
     published: Vec<(String, NtValue)>,
     logs: Vec<String>,
 }
@@ -203,6 +215,14 @@ impl Host for TestHost {
     }
     fn play_sound(&mut self, sound: &str) -> Result<(), String> {
         self.0.lock().unwrap().sounds.push(sound.to_string());
+        Ok(())
+    }
+    fn play_audio(&mut self, samples: &[i16], rate: u32, channels: u8) -> Result<(), String> {
+        self.0.lock().unwrap().audio.push(Audio {
+            samples: samples.to_vec(),
+            rate,
+            channels,
+        });
         Ok(())
     }
     fn log(&mut self, message: &str) {
@@ -352,6 +372,18 @@ impl Drawn {
     /// In how many seconds the plugin asked to be drawn again, if it did.
     pub fn redraw_in_s(&self) -> Option<f64> {
         self.picture.redraw_in_s
+    }
+
+    /// The pixel images drawn (a game's frame), in order.
+    pub fn pixels(&self) -> Vec<&Pixels> {
+        self.picture
+            .shapes
+            .iter()
+            .filter_map(|s| match s {
+                Shape::Pixels(p) => Some(p),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Its shapes.
@@ -597,6 +629,11 @@ impl Harness {
     /// The sounds it asked to play since the last look.
     pub fn take_sounds(&mut self) -> Vec<String> {
         std::mem::take(&mut self.asked.lock().unwrap().sounds)
+    }
+
+    /// The sound it queued with `play-audio` since the last look.
+    pub fn take_audio(&mut self) -> Vec<Audio> {
+        std::mem::take(&mut self.asked.lock().unwrap().audio)
     }
 
     /// The values it asked to publish since the last look: key and value.

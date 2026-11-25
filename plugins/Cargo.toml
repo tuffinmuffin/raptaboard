@@ -3,7 +3,7 @@
 # rather than part of the dashboard's.
 [workspace]
 resolver = "3"
-members = ["sdk", "number", "alerts", "limits-test"]
+members = ["sdk", "number", "alerts", "limits-test", "tab-test"]
 
 [workspace.package]
 version = "0.1.0"

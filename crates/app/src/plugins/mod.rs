@@ -17,7 +17,7 @@
 //! whose widgets are gone from its layout.
 
 pub mod convert;
-mod draw;
+pub mod draw;
 mod widget;
 pub mod worker;
 
@@ -351,6 +351,14 @@ pub fn find(type_name: &str) -> Option<&'static PluginType> {
 /// Every loaded plugin widget type.
 pub fn all() -> Vec<&'static PluginType> {
     registry().types.read().unwrap().clone()
+}
+
+/// The loaded plugins that are widgets: not those that fill a tab.
+pub fn widget_types() -> Vec<&'static PluginType> {
+    all()
+        .into_iter()
+        .filter(|t| t.loaded().plugin.manifest.tab.is_none())
+        .collect()
 }
 
 /// The worker for `widget`'s key: its type, the plugin's build, and its

@@ -321,7 +321,8 @@ impl WidgetType for PluginType {
         let Some(picture) = &latest.picture else {
             return None;
         };
-        draw::shapes(ui.painter(), rect.min, &picture.shapes);
+        let pixels = (ui.scope_id().with("plugin pixels"), latest.picture_number);
+        draw::shapes(ui.painter(), rect.min, &picture.shapes, pixels);
         let summary = picture.summary.clone();
         let regions = picture.regions.clone();
         drop(latest);

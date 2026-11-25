@@ -2,10 +2,10 @@
 # property picks what it does when drawn.
 name = "limits-test"
 version = "0.1.0"
-api = "0.2"
+api = "0.3"
 
 [match]
 topic_types = ["double"]
 
 [properties]
-mode = { type = "enum", default = "ok", options = ["ok", "spin", "panic", "grow", "publish", "sound", "print", "region"] }
+mode = { type = "enum", default = "ok", options = ["ok", "spin", "panic", "grow", "publish", "sound", "print", "region", "files"] }

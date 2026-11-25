@@ -59,7 +59,7 @@ pub fn from_plugin(value: &NtValue) -> Option<(Value, nt4::NtType)> {
 /// ```
 /// use raptaboard::plugins::convert::properties;
 /// use raptaboard_plugin_host::{Manifest, runtime::NtValue};
-/// let m = Manifest::from_toml("name='n'\nversion='0'\napi='0.2'\n[match]\ntopic_types=['double']\n\
+/// let m = Manifest::from_toml("name='n'\nversion='0'\napi='0.3'\n[match]\ntopic_types=['double']\n\
 ///     [properties]\ndecimal_places={type='number',default=-1}\nfit_text={type='bool',default=false}\n").unwrap();
 /// let props = serde_json::json!({"decimal_places": 2, "fit_text": "yes"});
 /// let values = properties(&m.properties, props.as_object().unwrap());
@@ -163,7 +163,7 @@ mod tests {
     #[test]
     fn an_enum_property_keeps_only_its_options() {
         let m = raptaboard_plugin_host::Manifest::from_toml(
-            "name='n'\nversion='0'\napi='0.2'\n[match]\ntopic_types=['double']\n\
+            "name='n'\nversion='0'\napi='0.3'\n[match]\ntopic_types=['double']\n\
              [properties]\nmode={type='enum',default='a',options=['a','b']}\n",
         )
         .unwrap();

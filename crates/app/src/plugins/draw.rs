@@ -2,16 +2,22 @@
 //! left of the widget's body.
 
 use eframe::egui::{self, Pos2, Rect, Stroke, StrokeKind, Vec2, epaint};
-use raptaboard_plugin_host::runtime::{Align, Point, Shape, Stroke as PluginStroke};
+use raptaboard_plugin_host::runtime::{Align, Pixels, Point, Shape, Stroke as PluginStroke};
 
 use super::convert::egui_color;
 
 /// How many straight pieces an arc is drawn with, per radian.
 const ARC_STEPS_PER_RADIAN: f32 = 12.0;
 
+/// The largest pixel image a plugin may send, a side, in pixels.
+pub const MAX_PIXELS_SIDE: u32 = 4096;
+
 /// Draw `shapes` with `painter`, `origin` being the body's top-left corner.
-/// Images aren't drawn yet.
-pub fn shapes(painter: &egui::Painter, origin: Pos2, shapes: &[Shape]) {
+/// `pixels` names the widget's pixel images on the GPU and says which
+/// picture these shapes are from (they're sent again only for a new one).
+/// Images from files aren't drawn yet.
+pub fn shapes(painter: &egui::Painter, origin: Pos2, shapes: &[Shape], pixels: (egui::Id, u64)) {
+    let mut pixels_seen = 0;
     let at = |p: &Point| origin + Vec2::new(p.x, p.y);
     let stroke = |s: &PluginStroke| Stroke::new(s.width.max(0.0), egui_color(&s.color));
     for shape in shapes {
@@ -82,8 +88,73 @@ pub fn shapes(painter: &egui::Painter, origin: Pos2, shapes: &[Shape]) {
                 painter.galley(Pos2::new(left, pos.y), galley, egui_color(&t.color));
             }
             Shape::Image(_) => {}
+            Shape::Pixels(p) => {
+                let at = pixels.0.with(pixels_seen);
+                pixels_seen += 1;
+                if let Some(texture) = pixels_texture(painter.ctx(), at, pixels.1, p) {
+                    let rect = Rect::from_two_pos(origin + v(&p.min), origin + v(&p.max));
+                    let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+                    painter.image(texture, rect, uv, egui::Color32::WHITE);
+                }
+            }
         }
     }
+}
+
+fn v(p: &Point) -> Vec2 {
+    Vec2::new(p.x, p.y)
+}
+
+/// Whether a pixel image is one the dashboard draws: a size up to
+/// [`MAX_PIXELS_SIDE`] each way, with 4 bytes for every pixel.
+///
+/// ```
+/// use raptaboard::plugins::draw::pixels_fit;
+/// assert!(pixels_fit(2, 1, 8));
+/// assert!(!pixels_fit(2, 1, 7));
+/// assert!(!pixels_fit(0, 1, 0));
+/// ```
+pub fn pixels_fit(width: u32, height: u32, bytes: usize) -> bool {
+    (1..=MAX_PIXELS_SIDE).contains(&width)
+        && (1..=MAX_PIXELS_SIDE).contains(&height)
+        && bytes == width as usize * height as usize * 4
+}
+
+/// The GPU texture for pixel image `p`, kept under `at`: sent again only when
+/// `picture` (the picture's number) is new. `None` for an image that's the
+/// wrong size for its bytes.
+fn pixels_texture(
+    ctx: &egui::Context,
+    at: egui::Id,
+    picture: u64,
+    p: &Pixels,
+) -> Option<egui::TextureId> {
+    if !pixels_fit(p.width, p.height, p.rgba.len()) {
+        return None;
+    }
+    let kept: Option<(u64, egui::TextureHandle)> = ctx.data(|d| d.get_temp(at));
+    if let Some((number, handle)) = &kept
+        && *number == picture
+    {
+        return Some(handle.id());
+    }
+    let image =
+        egui::ColorImage::from_rgba_unmultiplied([p.width as usize, p.height as usize], &p.rgba);
+    let options = if p.smooth {
+        egui::TextureOptions::LINEAR
+    } else {
+        egui::TextureOptions::NEAREST
+    };
+    let handle = match kept {
+        Some((_, mut handle)) => {
+            handle.set(image, options);
+            handle
+        }
+        None => ctx.load_texture("plugin pixels", image, options),
+    };
+    let id = handle.id();
+    ctx.data_mut(|d| d.insert_temp(at, (picture, handle)));
+    Some(id)
 }
 
 /// A region's outline and label, for the plugin sandbox's overlay: a

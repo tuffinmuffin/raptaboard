@@ -131,7 +131,7 @@ pub fn show(
                         ui.selectable_value(&mut picked, current.clone(), &current);
                     }
                     let fits = nt_type.map(crate::widgets::types_showing);
-                    let plugins = crate::plugins::all();
+                    let plugins = crate::plugins::widget_types();
                     let plugin_types = plugins
                         .iter()
                         .map(|t| *t as &dyn crate::widgets::WidgetType);
