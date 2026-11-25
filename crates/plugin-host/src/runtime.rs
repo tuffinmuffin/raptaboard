@@ -44,8 +44,8 @@ mod bindings {
 pub use bindings::raptaboard::dashboard::types::Image as ImageShape;
 pub use bindings::raptaboard::dashboard::types::{
     Align, Arc as ArcShape, Circle, Color, Field, FrameInfo, Input, Key, Level, Line, Modifiers,
-    NtValue, Picture, Pixels, Point, Polyline, Rect, Region, Role, Sample, ScalarValue, Shape,
-    Size, Stroke, Subscription, Text, Theme,
+    MouseButton, NtValue, Picture, Pixels, Point, PointerButton, Polyline, Rect, Region, Role,
+    Sample, ScalarValue, Shape, Size, Stroke, Subscription, Text, Theme,
 };
 
 use bindings::Widget;
@@ -155,19 +155,23 @@ impl Default for Limits {
 }
 
 impl Limits {
-    /// The limits a plugin runs under: the defaults, with the memory its
-    /// plugin.toml asks for (`[limits] memory_mb`).
+    /// The limits a plugin runs under: the defaults, with the memory and
+    /// call time its plugin.toml asks for (`[limits] memory_mb`, `call_ms`).
     ///
     /// ```
     /// use raptaboard_plugin_host::{Manifest, runtime::Limits};
     /// let m = Manifest::from_toml("name='g'\nversion='0'\napi='0.3'\ntab='Game'\n\
-    ///     [limits]\nmemory_mb=192\n").unwrap();
+    ///     [limits]\nmemory_mb=192\ncall_ms=500\n").unwrap();
     /// assert_eq!(Limits::for_manifest(&m).memory_bytes, 192 << 20);
+    /// assert_eq!(Limits::for_manifest(&m).call_ms, 500);
     /// ```
     pub fn for_manifest(manifest: &Manifest) -> Limits {
         let mut limits = Limits::default();
         if let Some(mb) = manifest.limits.memory_mb {
             limits.memory_bytes = (mb as usize) << 20;
+        }
+        if let Some(ms) = manifest.limits.call_ms {
+            limits.call_ms = u64::from(ms);
         }
         limits
     }
@@ -234,6 +238,9 @@ pub trait Host: Send {
     }
     /// A line for the dashboard log, from the plugin's `log` or its stdout.
     fn log(&mut self, _message: &str) {}
+
+    /// Give the keyboard and mouse back to the dashboard (a game's Quit).
+    fn release_focus(&mut self) {}
 }
 
 /// Compiles plugins and runs the clock behind their time limits. Make one and
@@ -659,6 +666,10 @@ impl wit_host::Host for State {
 
     fn log(&mut self, message: String) {
         self.host.log(&message);
+    }
+
+    fn release_focus(&mut self) {
+        self.host.release_focus();
     }
 }
 

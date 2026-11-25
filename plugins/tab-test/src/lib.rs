@@ -2,7 +2,8 @@
 //! reads `hello.txt` from its own folder (`/pack`), draws a square bouncing
 //! across a 320 × 200 pixel frame (Doom's size) 35 times a second, moving a
 //! whole number of pixels each step as a game does, counts the keys pressed,
-//! and beeps through `play-audio` when Space is pressed.
+//! and beeps through `play-audio` when Space is pressed. Q gives the
+//! keyboard back (`release-focus`), as a game's Quit would.
 
 use raptaboard_plugin::prelude::*;
 
@@ -23,6 +24,12 @@ struct TabTest {
     hello: Option<String>,
     /// Keys pressed so far.
     keys: u32,
+    /// How far the held mouse has moved across, in pixels, and its clicks.
+    mouse_x: f32,
+    clicks: u32,
+    /// Whether it has the keyboard (and the mouse): clicks count only then,
+    /// not the one that gave it the keyboard.
+    focused: bool,
 }
 
 /// Where the square's top-left corner is at `time_s`: bouncing between the
@@ -97,7 +104,13 @@ impl Widget for TabTest {
             rgba: frame_pixels(square_at(frame.time_s), frame.theme.accent),
             smooth: false,
         }));
-        let line = format!("{hello} Keys: {}", self.keys);
+        let mut line = format!("{hello} Keys: {}", self.keys);
+        if self.mouse_x != 0.0 || self.clicks > 0 {
+            line.push_str(&format!(
+                ", mouse {:.0}, clicks {}",
+                self.mouse_x, self.clicks
+            ));
+        }
         picture.text(Text {
             pos: Point {
                 x: 8.0,
@@ -116,12 +129,21 @@ impl Widget for TabTest {
     }
 
     fn on_input(&mut self, event: Input) {
+        match &event {
+            Input::Focus(f) => self.focused = *f,
+            Input::MouseMotion(d) => self.mouse_x += d.x,
+            Input::PointerDown(_) if self.focused => self.clicks += 1,
+            _ => {}
+        }
         if let Input::KeyDown(key) = event {
             self.keys += 1;
             if key.name == "Space"
                 && let Err(e) = host::play_audio(&beep(), BEEP.2, 1)
             {
                 host::log(&format!("no beep: {e}"));
+            }
+            if key.name == "Q" {
+                host::release_focus();
             }
         }
     }

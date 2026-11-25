@@ -120,7 +120,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   a `Host`; a trap, a panic, running past `Limits::call_ms` or `memory_bytes` stops it for good, as `Stopped`;
   WASI with no network or environment and no files but the plugin's own folder, read-only at `/pack`, stdout to the
   log; `Instance::usage` its call times and memory; `Limits::for_manifest`: 100 ms a call, 3 s for the first render
-  (loading), 64 MiB unless plugin.toml's `[limits] memory_mb` asks for more, at most 512); `dev.rs` builds a plugins workspace
+  (loading), 64 MiB, unless plugin.toml's `[limits]` asks for more: `memory_mb` at most 512, `call_ms` at most 1000); `dev.rs` builds a plugins workspace
   (`repo_plugins()`: `plugins/`, once per test run). `tests/runtime.rs` runs them. `docs/spec.md` "Plugin system"
   has the plan (next the example-widgets pack, then Doom, graphs, a 3D robot viewer, a log viewer).
 - `crates/plugin-test`: `raptaboard-plugin-test`, the harness for testing a plugin with `cargo test`: `Harness::build`
@@ -142,7 +142,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
 - Tab plugins (plugin.toml `tab = "…"`): `plugins::tab_plugin(tab)` finds the plugin claiming an empty tab's name,
   `tab_widget` its stand-in widget (its worker kept while the tab exists); `ui/plugin_tab.rs` draws it in place of the
   grid and turns the dashboard's shortcuts off while it has focus (`plugin_has_keys`); `PluginType::show_tab` and
-  `widget::tab_inputs` turn egui's events into its input. Plugins' `play-audio` streams through `sound::AudioOut`
+  `widget::tab_inputs` turn egui's events into its input (with `capture_mouse` in plugin.toml, the cursor grabbed and hidden
+  while it has focus, egui's raw `MouseMoved` as `mouse-motion`). Key names are egui's: "Up", "1", "Enter".
+  A plugin gives the keyboard and mouse back itself with `release-focus` (a game's Quit; `Latest::release_focus`). Plugins' `play-audio` streams through `sound::AudioOut`
   (per window, set by `frame_started`; on and off with the bell).
 - `crates/app/src/plugins/`: plugins in the app. `mod.rs` the registry (plugins from installed packs, `use_packs`, run by
   `ui/content_window.rs` at the first frame and after each install or remove; and from `--plugin`, which wins; saved in

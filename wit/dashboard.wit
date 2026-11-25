@@ -29,8 +29,9 @@
 //
 // Each call into a plugin may take 100 ms, but the first `render` may take
 // 3 s: load what it needs (a game's data) there. A plugin gets 64 MiB of
-// memory unless its plugin.toml asks for more (`[limits] memory_mb`, at most
-// 512).
+// memory, and each call 100 ms, unless its plugin.toml asks for more
+// (`[limits] memory_mb`, at most 512; `call_ms`, at most 1000: a game loads
+// a level whenever one ends).
 //
 // 0.3 added pixel images, an audio stream, the `/pack` folder and tabs. UI
 // elements and 3D scenes come in later versions: see docs/spec.md "Plugin
@@ -216,7 +217,9 @@ interface types {
 
     flags modifiers { shift, ctrl, alt, command }
 
-    /// A key by egui's name for it: "A", "Num1", "ArrowUp", "Space", "Escape".
+    /// A key by egui's name for it: "A", "1", "Up", "Enter", "Space",
+    /// "Escape", "F1" (the arrows are "Up", "Down", "Left" and "Right"; the
+    /// digits "0" to "9").
     /// The modifier keys come as keys of their own too, pressed and let go:
     /// "Shift", "Ctrl", "Alt" and "Command" (a game fires with Ctrl).
     record key {
@@ -224,16 +227,32 @@ interface types {
         modifiers: modifiers,
     }
 
+    /// A mouse button (or a touch, as `primary`).
+    enum mouse-button { primary, secondary, middle, extra1, extra2 }
+
+    /// Where a button went down or up, in pixels from the widget's top left,
+    /// and which.
+    record pointer-button {
+        pos: point,
+        button: mouse-button,
+    }
+
     variant input {
         /// A region was clicked, tapped, or used from the keyboard.
         activate(string),
-        pointer-down(point),
-        pointer-up(point),
+        pointer-down(pointer-button),
+        pointer-up(pointer-button),
         pointer-move(point),
+        /// The mouse moved this far, in pixels, while a tab plugin holds it
+        /// (`capture_mouse = true` in plugin.toml, and the tab has the
+        /// keyboard): the cursor is hidden and stays put, so this keeps coming
+        /// at any edge, for turning in a game.
+        mouse-motion(point),
         /// The scroll wheel or a two-finger scroll, in pixels.
         wheel(point),
-        /// The widget got focus (clicked into) or lost it (Shift+Escape, or a
-        /// click elsewhere). Keys and text only come while it has focus, and
+        /// The widget got focus (clicked into) or lost it (Shift+Escape, a
+        /// click elsewhere, or the window going to the background: it comes
+        /// back with the window). Keys and text only come while it has focus, and
         /// the dashboard's own shortcuts are off meanwhile. Losing it, treat
         /// every key as let go (keys let go elsewhere don't come).
         focus(bool),
@@ -272,6 +291,9 @@ interface host {
     play-audio: func(samples: list<s16>, rate: u32, channels: u8) -> result<_, string>;
     /// Write a line to the dashboard log.
     log: func(message: string);
+    /// Give the keyboard (and the mouse, if held) back to the dashboard, as
+    /// Shift+Escape does: a game's Quit. The plugin gets `focus(false)`.
+    release-focus: func();
 }
 
 world widget {

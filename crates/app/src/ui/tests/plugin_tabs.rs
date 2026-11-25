@@ -161,3 +161,68 @@ fn a_tab_of_its_name_with_widgets_stays_the_users() {
     settle(&mut harness);
     assert!(!crate::plugins::has_worker(&ctx, &stand_in));
 }
+
+#[test]
+fn a_tab_plugin_holds_the_mouse_while_it_has_the_keyboard() {
+    load_tab_test();
+    let robot = Robot::start();
+    let mut harness = tabs_harness(&robot);
+    labelled_soon(&mut harness, &format!("{SHOWN}0"));
+    let ctx = harness.ctx.clone();
+    let holds = || crate::plugins::widget::holds_mouse(&ctx, "tab test");
+    assert!(!holds());
+    let area = plugin_area(&harness);
+    click_at(
+        &mut harness,
+        area,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert!(holds(), "it asked for the mouse (capture_mouse)");
+    // Its movement, wherever the cursor would be.
+    harness.event(Event::MouseMoved(egui::vec2(12.0, 4.0)));
+    settle(&mut harness);
+    labelled_soon(&mut harness, &format!("{SHOWN}0, mouse 12, clicks 0"));
+    // Another app takes the focus: the mouse is let go (never stuck), and
+    // taken again when the window comes back. (eframe sets the raw input's
+    // `focused` from the window's own event.)
+    harness.input_mut().focused = false;
+    settle(&mut harness);
+    assert!(!holds());
+    harness.input_mut().focused = true;
+    settle(&mut harness);
+    assert!(holds());
+    // Shift+Escape gives both back.
+    for event in key(Key::Escape, Modifiers::SHIFT) {
+        harness.event(event);
+    }
+    settle(&mut harness);
+    assert!(!holds());
+    assert!(!harness.state().plugin_has_keys(&ctx));
+}
+
+#[test]
+fn a_tab_plugin_can_give_the_keyboard_and_mouse_back() {
+    load_tab_test();
+    let robot = Robot::start();
+    let mut harness = tabs_harness(&robot);
+    labelled_soon(&mut harness, &format!("{SHOWN}0"));
+    let ctx = harness.ctx.clone();
+    let area = plugin_area(&harness);
+    click_at(
+        &mut harness,
+        area,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert!(harness.state().plugin_has_keys(&ctx));
+    assert!(crate::plugins::widget::holds_mouse(&ctx, "tab test"));
+    // Q: tab-test asks (release-focus), as a game's Quit would.
+    press(&mut harness, Key::Q);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while harness.state().plugin_has_keys(&ctx) {
+        assert!(Instant::now() < deadline, "still has the keyboard");
+        settle(&mut harness);
+    }
+    assert!(!crate::plugins::widget::holds_mouse(&ctx, "tab test"));
+}
