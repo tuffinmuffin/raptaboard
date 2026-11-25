@@ -1,0 +1,15 @@
+[package]
+name = "raptaboard-plugin-test"
+description = "Test raptaboard widget plugins with cargo test: the real plugin runtime, no dashboard or robot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+raptaboard-plugin-host = { path = "../plugin-host" }
+serde_json.workspace = true
+
+[lints]
+workspace = true

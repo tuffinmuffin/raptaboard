@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/layout", "crates/plugin-host", "crates/app", "crates/win-console"]
+members = ["crates/layout", "crates/plugin-host", "crates/plugin-test", "crates/app", "crates/win-console"]
 # The plugins (and their SDK) build for WebAssembly in their own workspace.
 exclude = ["plugins"]
 

@@ -121,6 +121,13 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   WASI with no files, network or environment, stdout to the log); `dev.rs` builds a plugins workspace
   (`repo_plugins()`: `plugins/`, once per test run). `tests/runtime.rs` runs them. `docs/spec.md` "Plugin system"
   has the plan (next the example-widgets pack, then Doom, graphs, a 3D robot viewer, a log viewer).
+- `crates/plugin-test`: `raptaboard-plugin-test`, the harness for testing a plugin with `cargo test`: `Harness::build`
+  builds the plugin crate for wasm32-wasip2 (into `target/raptaboard-plugin-test/`, as the running `cargo test` may hold
+  its own target folder) and runs it in `plugin-host`'s runtime with the real limits; a test sets values, properties,
+  size, connection, theme and time, clicks regions by label, and reads what was drawn (`Drawn`: texts, regions,
+  summary, redraw), the tab mark, sounds, published values and log lines. Its `dark_theme`/`light_theme` are checked
+  against the app's (`plugins/convert.rs`); `measure_text` is an estimate. The `plugins/` workspace dev-depends on it
+  (native only); its `Cargo.lock` pins the same versions as this one's.
 - `crates/app/src/plugins/`: plugins in the app. `mod.rs` the registry (plugins from installed packs, `use_packs`, run by
   `ui/content_window.rs` at the first frame and after each install or remove; and from `--plugin`, which wins; saved in
   layouts as `plugin:<name>`, found by `widgets::find`; listed by `widgets::types_showing` and the settings dialog's
@@ -139,7 +146,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `widget!` macro over the wit-bindgen bindings, and helpers), `number` the first example plugin (a number topic
   as text, with the Text Display's setting names), `alerts` the second (the built-in Alerts widget remade: a
   table plugin with a tab mark, a tone and a pulse, with the built-in's setting names), `limits-test` a plugin that misbehaves on purpose for the
-  runtime tests. CI lints and tests it in the lint job.
+  runtime and harness tests. Each example plugin has harness tests in its `tests/`. CI lints and tests it in the lint job.
 - `crates/app`: the eframe app. `ui/` holds the window (`DashboardApp` in `ui/mod.rs` with file open/save and the edit and tab
   actions; its state is grouped in `ui/state.rs`: `file` (`LayoutFile`), `address`, `tree` (`TreeView`), `grid`
   (`GridState`: drags, where the grid was), `alerts` (the history and its panel) and `sends` (failed sends),
