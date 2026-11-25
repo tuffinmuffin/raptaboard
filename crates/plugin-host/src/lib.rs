@@ -22,6 +22,7 @@
 pub mod dev;
 pub mod path;
 pub mod runtime;
+pub mod store;
 
 use std::collections::BTreeMap;
 
@@ -60,6 +61,8 @@ pub enum ManifestError {
     Memory,
     #[error("[limits] call_ms must be 1 to {MAX_CALL_MS}")]
     CallTime,
+    #[error("[limits] storage_kb must be 1 to {}", store::MAX_STORAGE_KB)]
+    Storage,
     #[error("[match] has topic_types and table rules: a plugin shows a topic or a table, not both")]
     MixedMatch,
 }
@@ -107,6 +110,7 @@ pub struct Manifest {
 /// [limits]
 /// memory_mb = 192   # a game's data; 64 unless given, at most 512
 /// call_ms = 500     # a game loading a level; 100 unless given, at most 1000
+/// storage_kb = 256  # its saved values (storage-set); 64 unless given, at most 1024
 /// ```
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -116,6 +120,8 @@ pub struct LimitsSpec {
     /// The longest each call may take, in milliseconds (a game loads a
     /// level whenever one ends).
     pub call_ms: Option<u32>,
+    /// How much its saved values (`storage-set`) may take in all, in KiB.
+    pub storage_kb: Option<u32>,
 }
 
 /// A plugin's sample values for the sandbox window, from `[sandbox]`:
@@ -225,6 +231,10 @@ pub struct Permissions {
     /// closed.
     #[serde(default)]
     pub background: bool,
+    /// May save small values on this computer between runs (`storage-set`):
+    /// a setting, a recent file's path.
+    #[serde(default)]
+    pub storage: bool,
 }
 
 impl Permissions {
@@ -232,14 +242,15 @@ impl Permissions {
     ///
     /// ```
     /// use raptaboard_plugin_host::Permissions;
-    /// let p = Permissions { sound: true, background: true, ..Default::default() };
-    /// assert_eq!(p.names(), ["sound", "background"]);
+    /// let p = Permissions { sound: true, background: true, storage: true, ..Default::default() };
+    /// assert_eq!(p.names(), ["sound", "background", "storage"]);
     /// ```
     pub fn names(&self) -> Vec<&'static str> {
         [
             (self.publish, "publish"),
             (self.sound, "sound"),
             (self.background, "background"),
+            (self.storage, "storage"),
         ]
         .into_iter()
         .filter_map(|(on, name)| on.then_some(name))
@@ -300,6 +311,13 @@ impl Manifest {
             .is_some_and(|ms| ms == 0 || ms > MAX_CALL_MS)
         {
             return Err(ManifestError::CallTime);
+        }
+        if self
+            .limits
+            .storage_kb
+            .is_some_and(|kb| kb == 0 || kb > store::MAX_STORAGE_KB)
+        {
+            return Err(ManifestError::Storage);
         }
         if let Some(p) = &m.path {
             glob::Pattern::new(p).map_err(|e| ManifestError::Pattern(p.clone(), e))?;
@@ -498,7 +516,7 @@ mod tests {
         }
         assert!(
             with("[limits]\ncpu=2\n").is_err(),
-            "only memory and call time"
+            "only memory, call time and storage"
         );
         assert_eq!(
             with("[limits]\ncall_ms=500\n").unwrap().limits.call_ms,
@@ -506,6 +524,16 @@ mod tests {
         );
         for bad in ["[limits]\ncall_ms=0\n", "[limits]\ncall_ms=5000\n"] {
             assert!(matches!(with(bad), Err(ManifestError::CallTime)), "{bad}");
+        }
+        assert_eq!(
+            with("[limits]\nstorage_kb=256\n")
+                .unwrap()
+                .limits
+                .storage_kb,
+            Some(256)
+        );
+        for bad in ["[limits]\nstorage_kb=0\n", "[limits]\nstorage_kb=2048\n"] {
+            assert!(matches!(with(bad), Err(ManifestError::Storage)), "{bad}");
         }
     }
 

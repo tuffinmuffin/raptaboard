@@ -110,3 +110,43 @@ fn activating_a_region_that_isnt_there_says_so() {
 fn a_property_plugin_toml_doesnt_have_is_a_mistake() {
     limits_test().property("colour", "red");
 }
+
+/// `limits-test` with `storage = true` (its own plugin.toml doesn't ask).
+fn storing_limits_test() -> Harness {
+    let built = raptaboard_plugin_host::dev::repo_plugins();
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/limits-test");
+    let manifest = std::env::temp_dir().join(format!(
+        "raptaboard-storing-limits-test-{}.toml",
+        std::process::id()
+    ));
+    let text = std::fs::read_to_string(dir.join("plugin.toml")).unwrap();
+    std::fs::write(
+        &manifest,
+        format!("{text}\n[permissions]\nstorage = true\n"),
+    )
+    .unwrap();
+    Harness::from_files(&manifest, &built.join("limits_test.wasm"), &dir).unwrap()
+}
+
+#[test]
+fn saved_values_last_across_restarts_and_can_be_given_beforehand() {
+    let mut w = storing_limits_test();
+    w.property("mode", "storage");
+    let first = w.render().summary().unwrap().to_string();
+    assert!(first.starts_with("Ok(1)"), "{first}");
+    // The dashboard keeps them between runs; so does a restart.
+    w.restart();
+    assert!(w.render().summary().unwrap().starts_with("Ok(2)"));
+    assert_eq!(w.stored("renders").as_deref(), Some(&b"2"[..]));
+    let own = w.storage_dir();
+    // Values saved before: a folder the test fills.
+    let given = std::env::temp_dir().join(format!("raptaboard-given-{}", std::process::id()));
+    std::fs::create_dir_all(&given).unwrap();
+    std::fs::write(given.join("renders"), "41").unwrap();
+    w.storage_in(&given);
+    assert!(w.render().summary().unwrap().starts_with("Ok(42)"));
+    assert!(!own.exists(), "its own folder goes when another is given");
+    drop(w);
+    assert!(given.join("renders").exists(), "a given folder is left");
+    let _ = std::fs::remove_dir_all(given);
+}

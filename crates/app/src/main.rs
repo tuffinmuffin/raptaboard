@@ -46,6 +46,12 @@ fn main() -> eframe::Result {
         let code = packs_cli::run_in_home("raptaboard", &packs, sources, home.as_deref(), &mut ask);
         std::process::exit(code);
     }
+    if let Some(home) = &home {
+        raptaboard::plugins::set_data_dir(
+            home.join(settings::DIR_NAME)
+                .join(raptaboard::plugins::DATA_DIR_NAME),
+        );
+    }
     let sandbox = match command {
         Some(cli::Command::Plugin(cli::PluginCommand::Dev { folder, topic })) => {
             Some(open_sandbox(&folder, topic.as_deref(), address_given))

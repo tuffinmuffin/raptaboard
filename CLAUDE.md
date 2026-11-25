@@ -118,7 +118,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   wasmtime (`Runtime` compiles and keeps the clock behind the time limits, `Plugin` one compiled folder,
   `Instance` one widget: `subscriptions`, `update`, `render`, `tab_mark`, `on_input`, answering the plugin through
   a `Host`; a trap, a panic, running past `Limits::call_ms` or `memory_bytes` stops it for good, as `Stopped`;
-  WASI with no network or environment and no files but the plugin's own folder, read-only at `/pack`, stdout to the
+  WASI with no network or environment and no files but the plugin's own folder, read-only at `/pack` (small saved
+  values go through `storage-*` to `store.rs`, a folder per plugin the `Host` names), stdout to the
   log; `Instance::usage` its call times and memory; `Limits::for_manifest`: 100 ms a call, 3 s for the first render
   (loading), 64 MiB, unless plugin.toml's `[limits]` asks for more: `memory_mb` at most 512, `call_ms` at most 1000); `dev.rs` builds a plugins workspace
   (`repo_plugins()`: `plugins/`, once per test run). `tests/runtime.rs` runs them. `docs/spec.md` "Plugin system"

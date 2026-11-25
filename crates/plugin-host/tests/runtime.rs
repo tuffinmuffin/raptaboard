@@ -48,6 +48,8 @@ struct Seen {
 struct TestHost {
     seen: Arc<Mutex<Seen>>,
     unit: Option<String>,
+    /// Where saved values go, if anywhere.
+    storage: Option<PathBuf>,
 }
 
 impl Host for TestHost {
@@ -80,6 +82,9 @@ impl Host for TestHost {
     fn log(&mut self, message: &str) {
         self.seen.lock().unwrap().logs.push(message.into());
     }
+    fn storage_dir(&self) -> Option<PathBuf> {
+        self.storage.clone()
+    }
 }
 
 fn start(
@@ -92,6 +97,7 @@ fn start(
     let host = TestHost {
         seen: seen.clone(),
         unit: unit.map(str::to_string),
+        storage: None,
     };
     let props: HashMap<String, NtValue> = properties
         .iter()
@@ -383,6 +389,65 @@ fn publish_and_sound_need_their_permissions() {
     assert!(
         matches!(&seen.lock().unwrap().published[..], [(k, NtValue::Double(v))] if k == "x" && *v == 1.0)
     );
+}
+
+/// `limits-test` in `mode`, with `storage = true`, saving in `dir`.
+fn start_storing(mode_name: &str, dir: Option<&Path>, limits: Limits) -> Instance {
+    let p = plugin_with("limits-test", |m| m.permissions.storage = true);
+    let host = TestHost {
+        seen: Arc::default(),
+        unit: None,
+        storage: dir.map(Path::to_path_buf),
+    };
+    let props = mode(mode_name).into_iter().map(|(k, v)| (k.to_string(), v));
+    runtime()
+        .instantiate(&p, Box::new(host), props.collect(), limits)
+        .unwrap()
+}
+
+fn summary(w: &mut Instance) -> String {
+    w.render(frame(10.0, 10.0, true)).unwrap().summary.unwrap()
+}
+
+#[test]
+fn a_plugin_keeps_saved_values_between_runs() {
+    let dir = std::env::temp_dir().join(format!("raptaboard-storage-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut w = start_storing("storage", Some(&dir), Limits::default());
+    assert_eq!(summary(&mut w), "Ok(1); path false; keys [\"renders\"]");
+    assert_eq!(summary(&mut w), "Ok(2); path false; keys [\"renders\"]");
+    // The next run (a new instance) has them.
+    let mut again = start_storing("storage", Some(&dir), Limits::default());
+    assert!(summary(&mut again).starts_with("Ok(3)"));
+    assert_eq!(std::fs::read(dir.join("renders")).unwrap(), b"3");
+    // Within its limit only: 100 KiB is past the usual 64, and fits in 128.
+    let mut big = start_storing("storage-big", Some(&dir), Limits::default());
+    assert!(summary(&mut big).contains("storage full"));
+    let roomy = Limits {
+        storage_bytes: 128 << 10,
+        ..Limits::default()
+    };
+    let mut big = start_storing("storage-big", Some(&dir), roomy);
+    assert_eq!(summary(&mut big), "Ok(())");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn storage_needs_its_permission_and_somewhere_to_save() {
+    let (mut w, _) = start(
+        &plugin("limits-test"),
+        &mode("storage"),
+        None,
+        Limits::default(),
+    );
+    let s = summary(&mut w);
+    assert!(
+        s.starts_with("Err(\"plugin.toml doesn't have storage = true\")"),
+        "{s}"
+    );
+    let mut nowhere = start_storing("storage", None, Limits::default());
+    let s = summary(&mut nowhere);
+    assert!(s.starts_with("Err(\"nowhere to save values here\")"), "{s}");
 }
 
 #[test]

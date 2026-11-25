@@ -5,7 +5,9 @@
 //! runtime, with the same time and memory limits. A test gives it values, a
 //! size, the connection state and the theme, sends it clicks and keys, and
 //! checks what it drew ([`Drawn`]), its tab mark, and the sounds, values and
-//! log lines it asked for.
+//! log lines it asked for. A plugin with `storage = true` saves its values in
+//! a folder of the harness's own, kept across [`Harness::restart`] as the
+//! dashboard keeps them between runs.
 //!
 //! In a plugin crate, add it as a dev-dependency for native builds only (the
 //! plugin itself builds for WebAssembly):
@@ -198,6 +200,8 @@ struct Asked {
     releases: u32,
     published: Vec<(String, NtValue)>,
     logs: Vec<String>,
+    /// Where its saved values go (`storage-set`).
+    storage_dir: PathBuf,
 }
 
 struct TestHost(Arc<Mutex<Asked>>);
@@ -235,6 +239,21 @@ impl Host for TestHost {
     fn release_focus(&mut self) {
         self.0.lock().unwrap().releases += 1;
     }
+    fn storage_dir(&self) -> Option<PathBuf> {
+        Some(self.0.lock().unwrap().storage_dir.clone())
+    }
+}
+
+/// A new, empty folder for a harness's saved values, in the temp folder.
+fn fresh_storage_dir() -> PathBuf {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+        "raptaboard-plugin-test-storage-{}-{n}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    dir
 }
 
 /// The plugin runtime, shared by every test in the program.
@@ -314,22 +333,26 @@ fn build(crate_dir: &Path) -> Result<PathBuf, String> {
 
 /// Compile a plugin (once per test program for each `.wasm`).
 fn compiled(manifest_path: &Path, wasm: &Path, folder: &Path) -> Result<Arc<Plugin>, String> {
-    static COMPILED: OnceLock<Mutex<HashMap<PathBuf, Arc<Plugin>>>> = OnceLock::new();
-    let mut compiled = COMPILED.get_or_init(Default::default).lock().unwrap();
-    if let Some(plugin) = compiled.get(wasm) {
-        return Ok(plugin.clone());
-    }
+    // By the manifest's text as well as the `.wasm`: one build under two
+    // manifests (a test giving a permission) is two plugins.
+    type Key = (String, PathBuf, PathBuf);
+    static COMPILED: OnceLock<Mutex<HashMap<Key, Arc<Plugin>>>> = OnceLock::new();
     let text = std::fs::read_to_string(manifest_path)
         .map_err(|e| format!("{}: {e}", manifest_path.display()))?;
+    let key = (text, wasm.to_path_buf(), folder.to_path_buf());
+    let mut compiled = COMPILED.get_or_init(Default::default).lock().unwrap();
+    if let Some(plugin) = compiled.get(&key) {
+        return Ok(plugin.clone());
+    }
     let manifest =
-        Manifest::from_toml(&text).map_err(|e| format!("{}: {e}", manifest_path.display()))?;
+        Manifest::from_toml(&key.0).map_err(|e| format!("{}: {e}", manifest_path.display()))?;
     let bytes = std::fs::read(wasm).map_err(|e| format!("{}: {e}", wasm.display()))?;
     let plugin = Arc::new(
         shared_runtime()
             .compile(manifest, &bytes, folder)
             .map_err(|e| e.to_string())?,
     );
-    compiled.insert(wasm.to_path_buf(), plugin.clone());
+    compiled.insert(key, plugin.clone());
     Ok(plugin)
 }
 
@@ -409,6 +432,17 @@ pub struct Harness {
     frame: FrameInfo,
     limits: Limits,
     last: Option<Picture>,
+    /// Its saved values' folder is the harness's own (removed when it's
+    /// dropped), not one a test chose.
+    own_storage: bool,
+}
+
+impl Drop for Harness {
+    fn drop(&mut self) {
+        if self.own_storage {
+            let _ = std::fs::remove_dir_all(self.storage_dir());
+        }
+    }
 }
 
 impl Harness {
@@ -425,7 +459,10 @@ impl Harness {
     /// other files are in.
     pub fn from_files(manifest: &Path, wasm: &Path, folder: &Path) -> Result<Harness, String> {
         let plugin = compiled(manifest, wasm, folder)?;
-        let asked = Arc::new(Mutex::new(Asked::default()));
+        let asked = Arc::new(Mutex::new(Asked {
+            storage_dir: fresh_storage_dir(),
+            ..Asked::default()
+        }));
         let properties = runtime::default_properties(&plugin.manifest);
         let limits = Limits::for_manifest(&plugin.manifest);
         let instance = shared_runtime()
@@ -453,7 +490,35 @@ impl Harness {
             },
             limits,
             last: None,
+            own_storage: true,
         })
+    }
+
+    /// The folder its saved values (`storage-set`) are in: empty at first,
+    /// and kept across [`Harness::restart`], as the dashboard keeps them
+    /// between runs.
+    pub fn storage_dir(&self) -> PathBuf {
+        self.asked.lock().unwrap().storage_dir.clone()
+    }
+
+    /// Keep its saved values in `dir` instead (left there afterwards), and
+    /// start it again: to give it values saved before, or share them with
+    /// another harness.
+    pub fn storage_in(&mut self, dir: impl Into<PathBuf>) -> &mut Self {
+        if self.own_storage {
+            let _ = std::fs::remove_dir_all(self.storage_dir());
+        }
+        self.asked.lock().unwrap().storage_dir = dir.into();
+        self.own_storage = false;
+        self.restart()
+    }
+
+    /// The value it saved under `key` (`storage-set`), if any.
+    pub fn stored(&self, key: &str) -> Option<Vec<u8>> {
+        raptaboard_plugin_host::store::Store::new(self.storage_dir(), u64::MAX)
+            .get(key)
+            .ok()
+            .flatten()
     }
 
     /// Its `plugin.toml`.

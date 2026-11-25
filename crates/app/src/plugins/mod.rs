@@ -36,6 +36,26 @@ use worker::Worker;
 /// How a plugin widget type is saved in layouts: `plugin:<name>`.
 pub const TYPE_PREFIX: &str = "plugin:";
 
+/// The folder plugins' saved values are kept in, inside `~/.raptaboard`.
+pub const DATA_DIR_NAME: &str = "plugin-data";
+
+/// Where plugins keep their saved values (`storage-set`): a folder per
+/// plugin in it. Unset (tests), plugins have nowhere to save.
+static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Keep plugins' saved values in `dir` (`~/.raptaboard/plugin-data`), a
+/// folder per plugin. Set once, at startup.
+pub fn set_data_dir(dir: PathBuf) {
+    let _ = DATA_DIR.set(dir);
+}
+
+/// The folder plugin `name`'s saved values are kept in, if plugins can save.
+pub fn storage_dir(name: &str) -> Option<PathBuf> {
+    DATA_DIR
+        .get()
+        .map(|d| d.join(raptaboard_plugin_host::store::folder_name(name)))
+}
+
 /// How often a plugin's `.wasm` is checked for changes.
 const RELOAD_CHECK: Duration = Duration::from_secs(1);
 
