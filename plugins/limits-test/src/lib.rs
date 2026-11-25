@@ -3,7 +3,9 @@
 //! panics, `grow` keeps asking for memory, `publish` and `sound` try what
 //! plugin.toml doesn't allow, `print` writes to stdout, `region` draws a
 //! "Bell" button that logs when it's pressed, `slow-start` takes 300 ms on its
-//! first render only, `spin-later` never returns after its first, `files`
+//! first render only, `spin-later` never returns after its first,
+//! `slow-again` says its next render loads (`slow-next`) then takes 300 ms
+//! every render, `files`
 //! tries to read its own
 //! plugin.toml (allowed), a file outside its folder and to write in its
 //! folder (both refused), saying how each went. `ok` draws one line.
@@ -36,6 +38,10 @@ impl Widget for LimitsTest {
         match property_string("mode", "ok").as_str() {
             // Loads for 300 ms on its first render (a game's data), then quick.
             "slow-start" if self.renders == 1 => busy(300),
+            // Quick, saying the next render loads (slow-next); then 300 ms
+            // each time.
+            "slow-again" if self.renders == 1 => picture.slow_next = true,
+            "slow-again" => busy(300),
             // Quick on its first render, then never returns.
             "spin-later" if self.renders > 1 => loop {
                 std::hint::black_box(0);
