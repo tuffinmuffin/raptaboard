@@ -68,6 +68,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: release
+          # Saved by main's builds only, as in ci.yml.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Linux GUI libraries
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev
