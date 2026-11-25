@@ -364,8 +364,9 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
    plugins with the limits, the `plugins/` workspace has the SDK crate and the Number plugin, and
    plugin-host's tests run them; the app runs plugins loaded with `--plugin <folder>`, reloading a
    changed `.wasm`, through `crates/app/src/plugins/`; the Alerts plugin (2026-11-24) draws what the
-   built-in does, and `ui/tests/plugins.rs` sets both beside their built-ins; next loading plugins from
-   packs. Not yet: images in pictures, focus and keys, struct values). The wasmtime host with the limits above, API 0.2,
+   built-in does, and `ui/tests/plugins.rs` sets both beside their built-ins; plugins load from
+   installed packs (2026-11-24, see "Content packs"); next the `example-widgets` pack in
+   raptaboard-content, then the test harness and the sandbox window. Not yet: images in pictures, focus and keys, struct values). The wasmtime host with the limits above, API 0.2,
    the adapter, loading from packs and from a local folder, the SDK crate and the test harness. Then two plugins in
    `plugins/` (built in CI, shipped as an `example-widgets` pack in raptaboard-content), each set beside
    its built-in to show plugins can match them:
@@ -433,11 +434,22 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   that aren't fully open source (the IT Crowd clips) live there too, saying so in their license.
 - **What a pack holds:** sections, mixed as needed, each naming its files: `[[sound]]` (name, file),
   `[[image]]`, `[[field]]`, `[[plugin]]` and `[[layout]]` (file, optional name), plus `files` for
-  data the sections read (a plugin's WADs). Only sounds are used so far; images (Boolean Box),
-  fields (WPILib field JSONs), plugins (WASM widgets) and layouts (to start a new layout from, or
-  add a tab from; later perhaps tabs a plugin provides) come later, and a `[[data]]` section
-  naming data files for plugins can join with the plugin host. The
+  data the sections read (a plugin's WADs). Sounds and plugins are used so far; images (Boolean Box),
+  fields (WPILib field JSONs) and layouts (to start a new layout from, or
+  add a tab from; later perhaps tabs a plugin provides) come later. The
   single `kind` older catalogs had is optional and only a label.
+- **Plugins in packs** (done 2026-11-24): packs hold files only, so a `[[plugin]]` names its
+  `.wasm` (`alerts.wasm`) and its manifest, raptaboard's `plugin.toml`, sits beside it named for it
+  (`alerts.toml`). The content repo's `build_catalog.py` (and `pack_folder.rs` for `--package`)
+  reads the manifest and puts the plugin's name and the permissions it asks for in the catalog
+  (`content::PackPlugin`; older raptaboards ignore both). The Content window, the first-run list and
+  `raptaboard packs install` show them before installing ("Plugin alerts: plays sounds, runs while
+  its tab is closed"), and a plugin whose manifest asks for more than its catalog entry said isn't
+  loaded. The window loads the installed packs' plugins at its first frame and after each install
+  or remove (`plugins::use_packs`, `Content::plugins_changed`): where two packs have a plugin of one
+  name, the newest install's; a `--plugin` folder of that name wins over both. A removed pack's
+  plugin is dropped, and its widgets show "Missing plugin: <name>" with their settings kept.
+  A pack with plugins sets `min_app` to the first raptaboard that loads them.
 - **Sound layering** (decided with the user 2026-11-23): a pack's sound may add a new name or use a
   built-in name to replace it. Each install records `installed_at`; where packs share a name, the
   newest install wins (`sound::SoundLayers`). A sound setting is `fire 1` (newest pack's, else the
@@ -481,8 +493,12 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   offered) shows as "📦 Content: 1 update · Review · ✕" at the end of the bar's second row, hidden
   while the robot is enabled. Review opens the Content window; ✕ records each pack's version in
   `state.json`'s `dismissed`, so only something newer shows it again.
-- **Next:** plugin packs, starting with the
-  Doom field. A repository manager (asked for by the user 2026-11-23; a later improvement, around 0.5 after
+- **Next:** the `example-widgets` pack (Number and Alerts), then the Doom field. For now its
+  `.wasm` files are built here and copied into raptaboard-content by hand. Later (decided with the
+  user 2026-11-24): plugin sources stay in their own repos (the examples in this one's `plugins/`),
+  whose CI builds each plugin as a release artifact, and a pack names where its plugin comes from
+  (repo, tag, artifact) so the content repo's release workflow downloads and checks it
+  instead of keeping built `.wasm` files. A repository manager (asked for by the user 2026-11-23; a later improvement, around 0.5 after
   plugins, since teams aren't expected to use other sources yet): sources saved in
   `~/.raptaboard/content/sources.json` rather than `settings.toml`, each with a name, on or off,
   an optional signing key (so a team's own source can be signed), and when it was last checked

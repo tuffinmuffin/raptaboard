@@ -71,7 +71,7 @@ NetworkTables server chosen and, when asked, the content sources, and stores onl
 imported images and content packs): update it, and its date, in the same PR as anything that makes raptaboard
 connect somewhere new or store something new.
 
-Content packs (`docs/spec.md` "Content packs"): sounds now, plugins later, downloaded only when the user chooses,
+Content packs (`docs/spec.md` "Content packs"): sounds and widget plugins, downloaded only when the user chooses,
 from `tuffinmuffin/raptaboard-content` (its signed `catalog.json`, its own repo and release process: tag `vN` there)
 or sources the user adds. `content.rs` is the catalog, signature (`OFFICIAL_KEYS`, raptaboard-content's
 `catalog-key.pub`), checksums, the store in `~/.raptaboard/content/` and the download thread (`Content`; tests use
@@ -82,7 +82,8 @@ after an upgrade (`content::State`: `last_version`, `offer_pending`, `shown`). `
 for a new version's first start: add any migration there. The background check (`content_check_minutes`, hourly by
 default, only while the robot isn't enabled: `content::CheckTimer`) feeds `Content::news`, the bar's dismissible
 "📦 Content: …" notice (`content_notice`). A pack holds sections
-(`[[sound]]`, `[[image]]`, `[[field]]`, `[[plugin]]`, `[[layout]]`; only sounds are used so far). A pack's sound may be new or use a
+(`[[sound]]`, `[[image]]`, `[[field]]`, `[[plugin]]`, `[[layout]]`; sounds and plugins are used so far: a `[[plugin]]` is its `.wasm` with its manifest beside it,
+`alerts.toml` for `alerts.wasm`, the catalog giving its name and permissions, `content::PackPlugin`). A pack's sound may be new or use a
 built-in name to replace it, the newest install winning (`sound::SoundLayers`, `installed_at`); a setting picks
 `fire 1`, `pack:<id>/fire 1` or `builtin:fire 1` (`sound::SoundRef`), from the shared sound picker
 (`widgets/shared/sound_pick.rs`, FMSInfo and Alerts; `sound::sound_choices`). That's how the IT Crowd clips (the
@@ -119,8 +120,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   a `Host`; a trap, a panic, running past `Limits::call_ms` or `memory_bytes` stops it for good, as `Stopped`;
   WASI with no files, network or environment, stdout to the log); `dev.rs` builds a plugins workspace
   (`repo_plugins()`: `plugins/`, once per test run). `tests/runtime.rs` runs them. `docs/spec.md` "Plugin system"
-  has the plan (next plugin packs, then Doom, graphs, a 3D robot viewer, a log viewer).
-- `crates/app/src/plugins/`: plugins in the app. `mod.rs` the registry (plugins loaded with `--plugin`, saved in
+  has the plan (next the example-widgets pack, then Doom, graphs, a 3D robot viewer, a log viewer).
+- `crates/app/src/plugins/`: plugins in the app. `mod.rs` the registry (plugins from installed packs, `use_packs`, run by
+  `ui/content_window.rs` at the first frame and after each install or remove; and from `--plugin`, which wins; saved in
   layouts as `plugin:<name>`, found by `widgets::find`; listed by `widgets::types_showing` and the settings dialog's
   widget choice after the built-ins; a changed `.wasm` is loaded again within a second and its widgets restart) and
   the workers, one per widget, by window (egui context) and the widget's type and settings, so a moved widget keeps its

@@ -109,10 +109,11 @@ pub fn draw(
         return;
     }
     let body = draw_card(painter, visuals, rect, &widget.title);
+    let what = placeholder_text(&widget.widget_type);
     draw_clipped(painter, body, |painter, body| {
         let font = egui::FontId::proportional(MESSAGE_FONT_SIZE);
         for (line, dy) in [
-            (widget.widget_type.as_str(), -PLACEHOLDER_LINE_OFFSET),
+            (what.as_str(), -PLACEHOLDER_LINE_OFFSET),
             (widget.topic().unwrap_or(""), PLACEHOLDER_LINE_OFFSET),
         ] {
             painter.text(
@@ -124,6 +125,22 @@ pub fn draw(
             );
         }
     });
+}
+
+/// What the placeholder card says a widget is: its type, or for a plugin
+/// that isn't installed (its pack removed, or never installed here), that.
+/// The widget keeps its settings, for when the plugin is back.
+///
+/// ```
+/// use raptaboard::widgets::shared::card::placeholder_text;
+/// assert_eq!(placeholder_text("plugin:doom"), "Missing plugin: doom");
+/// assert_eq!(placeholder_text("Camera Stream"), "Camera Stream");
+/// ```
+pub fn placeholder_text(widget_type: &str) -> String {
+    match widget_type.strip_prefix(crate::plugins::TYPE_PREFIX) {
+        Some(name) => format!("Missing plugin: {name}"),
+        None => widget_type.to_string(),
+    }
 }
 
 /// Draw `text` as large as fits in `rect`, centered, in `color`. For

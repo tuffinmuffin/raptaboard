@@ -11,6 +11,9 @@
 //! - at least one section: `[[sound]]` (a name and a file), `[[image]]`,
 //!   `[[field]]`, `[[plugin]]` or `[[layout]]` (a file, and a name if not
 //!   the file's), each file of its section's type, no two with one name;
+//! - a `[[plugin]]`'s manifest beside its `.wasm` (`alerts.toml` for
+//!   `alerts.wasm`), a good `plugin.toml`, whose name is the plugin's and
+//!   whose permissions go into the catalog;
 //! - every file in the folder listed (by a section, or in `files` for data
 //!   the sections read), and every one listed there; files only, named with
 //!   letters, digits and `. _ -`.
@@ -23,7 +26,8 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::content::{
-    self, Catalog, FORMAT, Pack, PackFile, PackItem, PackSound, is_file_name, is_pack_id,
+    self, Catalog, FORMAT, Pack, PackFile, PackItem, PackPlugin, PackSound, is_file_name,
+    is_pack_id,
 };
 
 /// A pack's `pack.toml`, as written.
@@ -131,6 +135,19 @@ pub fn load(folder: &Path) -> Result<Pack, String> {
         ));
     }
     let mut listed: BTreeSet<String> = t.files.iter().cloned().collect();
+    let plugins = plugins(folder, &where_, &t.plugin)?;
+    let sections = sections.map(|(section, list)| {
+        if section != "plugin" {
+            return (section, list);
+        }
+        // Named by their manifests.
+        let named = plugins
+            .iter()
+            .map(|p| (p.name.clone(), p.file.clone()))
+            .collect();
+        (section, named)
+    });
+    listed.extend(plugins.iter().map(PackPlugin::manifest));
     for ((section, list), (_, types)) in sections.iter().zip(SECTIONS) {
         let mut names = HashSet::new();
         for (name, file) in list {
@@ -211,10 +228,52 @@ pub fn load(folder: &Path) -> Result<Pack, String> {
         sounds: t.sound,
         images: t.image,
         fields: t.field,
-        plugins: t.plugin,
+        plugins,
         layouts: t.layout,
         files,
     })
+}
+
+/// The pack's plugins, each named and given its permissions by its manifest
+/// (`alerts.toml` beside `alerts.wasm`), which must be there and good.
+fn plugins(folder: &Path, where_: &str, items: &[PackItem]) -> Result<Vec<PackPlugin>, String> {
+    let mut out = Vec::new();
+    for item in items {
+        let mut plugin = PackPlugin {
+            name: None,
+            file: item.file.clone(),
+            permissions: Vec::new(),
+        };
+        if !item.file.ends_with(".wasm") {
+            // Its section's check says what's wrong.
+            out.push(plugin);
+            continue;
+        }
+        let manifest = plugin.manifest();
+        let text = std::fs::read_to_string(folder.join(&manifest)).map_err(|_| {
+            format!(
+                "{where_}: plugin {} needs its manifest beside it, {manifest}",
+                item.file
+            )
+        })?;
+        let m = raptaboard_plugin_host::Manifest::from_toml(&text)
+            .map_err(|e| format!("{}: {e}", folder.join(&manifest).display()))?;
+        if item.name.as_ref().is_some_and(|n| *n != m.name) {
+            return Err(format!(
+                "{where_}: plugin {} is named {:?} in {manifest}",
+                item.file, m.name
+            ));
+        }
+        plugin.name = Some(m.name);
+        plugin.permissions = m
+            .permissions
+            .names()
+            .iter()
+            .map(|p| p.to_string())
+            .collect();
+        out.push(plugin);
+    }
+    Ok(out)
 }
 
 /// A catalog holding only the pack in `folder`.
@@ -282,6 +341,42 @@ credits = "Made by us."
         assert_eq!(horn.sha256, content::sha256_hex(b"toot"));
         assert_eq!(read_file(&horn.url, 100).unwrap(), b"toot");
         assert!(read_file(&horn.url, 2).is_err(), "over the limit");
+    }
+
+    /// A plugin manifest named `name`, asking to play sounds.
+    fn manifest(name: &str) -> String {
+        format!(
+            "name = \"{name}\"\nversion = \"0.1.0\"\napi = \"0.2\"\n[match]\ntype = \"Arm\"\n\
+             [permissions]\nsound = true\n"
+        )
+    }
+
+    #[test]
+    fn a_plugin_is_named_by_its_manifest_beside_it() {
+        let toml = format!("{HEAD}\n[[plugin]]\nfile = \"arm.wasm\"\n");
+        let arm = manifest("arm");
+        let files: &[(&str, &[u8])] = &[("arm.wasm", b"wasm"), ("arm.toml", arm.as_bytes())];
+        let pack = load(&pack_folder("pack-plugin", &toml, files)).unwrap();
+        assert_eq!(pack.plugins[0].name.as_deref(), Some("arm"));
+        assert_eq!(pack.plugins[0].permissions, ["sound"]);
+        assert_eq!(pack.plugin_lines(), ["Plugin arm: plays sounds"]);
+        // The manifest is one of its files, so it downloads.
+        assert!(pack.files.iter().any(|f| f.path == "arm.toml"));
+
+        let error = |toml: &str, files: &[(&str, &[u8])]| {
+            load(&pack_folder("pack-plugin-bad", toml, files)).unwrap_err()
+        };
+        assert!(error(&toml, &[("arm.wasm", b"wasm")]).contains("needs its manifest beside it"));
+        let named = toml.replace("file = ", "name = \"leg\"\nfile = ");
+        assert!(error(&named, files).contains("is named \"arm\""));
+        let no_api = arm.replace("api = \"0.2\"\n", "");
+        assert!(
+            error(
+                &toml,
+                &[("arm.wasm", b"wasm"), ("arm.toml", no_api.as_bytes())]
+            )
+            .contains("arm.toml")
+        );
     }
 
     #[test]

@@ -1,11 +1,13 @@
 //! Plugin widgets in the dashboard: loading plugins, running one worker per
 //! widget, and the adapter that makes each plugin a widget type.
 //!
-//! Plugins are loaded once at startup, from `--plugin <folder>` (a folder
-//! with `plugin.toml` and `widget.wasm`). A plugin's type is saved in
-//! layouts as `plugin:<name>`; [`crate::widgets::find`] finds it here. While
-//! the dashboard runs, a plugin whose `.wasm` changes is loaded again and its
-//! widgets restart, for developing one.
+//! Plugins come from installed content packs ([`use_packs`], at startup and
+//! after each install or remove) and from `--plugin <folder>` (a folder with
+//! `plugin.toml` and `widget.wasm`, for developing one), which wins over a
+//! pack's plugin of the same name. A plugin's type is saved in layouts as
+//! `plugin:<name>`; [`crate::widgets::find`] finds it here. While the
+//! dashboard runs, a folder plugin whose `.wasm` changes is loaded again and
+//! its widgets restart.
 //!
 //! Each widget of a plugin type gets a [`worker::Worker`]: the plugin running
 //! on a thread of its own. Workers are found by the widget's type and
@@ -43,9 +45,25 @@ pub struct PluginType {
     names: &'static [&'static str],
     /// The plugin's name.
     pub name: String,
-    folder: PathBuf,
-    wasm: PathBuf,
     loaded: RwLock<Arc<Loaded>>,
+}
+
+/// Where a plugin was loaded from.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Origin {
+    /// A folder given with `--plugin`: reloaded when its `.wasm` changes.
+    Folder,
+    /// An installed content pack (its id), installed at that time.
+    Pack { id: String, installed_at: u64 },
+}
+
+/// A plugin's files.
+#[derive(Debug, Clone, PartialEq)]
+struct Files {
+    manifest: PathBuf,
+    wasm: PathBuf,
+    /// Where its other files are (images, a game's data).
+    folder: PathBuf,
 }
 
 struct Loaded {
@@ -55,6 +73,8 @@ struct Loaded {
     modified: Option<SystemTime>,
     setting_keys: &'static [&'static str],
     table_types: &'static [&'static str],
+    files: Files,
+    origin: Origin,
 }
 
 impl PluginType {
@@ -63,8 +83,13 @@ impl PluginType {
     }
 
     /// The folder the plugin was loaded from.
-    pub fn folder(&self) -> &Path {
-        &self.folder
+    pub fn folder(&self) -> PathBuf {
+        self.loaded().files.folder.clone()
+    }
+
+    /// Where it was loaded from.
+    pub fn origin(&self) -> Origin {
+        self.loaded().origin.clone()
     }
 }
 
@@ -125,35 +150,71 @@ fn wasm_path(folder: &Path, manifest: &Manifest) -> PathBuf {
     if built.exists() { built } else { own }
 }
 
-fn compile(folder: &Path, generation: u64) -> Result<(Loaded, PathBuf), String> {
-    let text = std::fs::read_to_string(folder.join("plugin.toml"))
-        .map_err(|e| format!("{}: {e}", folder.join("plugin.toml").display()))?;
-    let manifest = Manifest::from_toml(&text).map_err(|e| format!("{}: {e}", folder.display()))?;
-    let wasm = wasm_path(folder, &manifest);
-    let bytes = std::fs::read(&wasm).map_err(|e| format!("{}: {e}", wasm.display()))?;
-    let modified = std::fs::metadata(&wasm).and_then(|m| m.modified()).ok();
+/// A folder plugin's files: its `plugin.toml`, and its `.wasm` ([`wasm_path`]),
+/// and its name.
+fn folder_files(folder: &Path) -> Result<(Files, String), String> {
+    let manifest = folder.join("plugin.toml");
+    let text =
+        std::fs::read_to_string(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
+    let m = Manifest::from_toml(&text).map_err(|e| format!("{}: {e}", folder.display()))?;
+    let files = Files {
+        wasm: wasm_path(folder, &m),
+        manifest,
+        folder: folder.to_path_buf(),
+    };
+    Ok((files, m.name))
+}
+
+/// Compile the plugin in `files`. `allowed`: the permissions its pack said
+/// it asks for; asking for any other stops it loading.
+fn compile(
+    files: Files,
+    origin: Origin,
+    allowed: Option<&[String]>,
+    generation: u64,
+) -> Result<Loaded, String> {
+    let text = std::fs::read_to_string(&files.manifest)
+        .map_err(|e| format!("{}: {e}", files.manifest.display()))?;
+    let manifest =
+        Manifest::from_toml(&text).map_err(|e| format!("{}: {e}", files.manifest.display()))?;
+    if let Some(allowed) = allowed {
+        let more: Vec<&str> = manifest
+            .permissions
+            .names()
+            .into_iter()
+            .filter(|p| !allowed.iter().any(|a| a == p))
+            .collect();
+        if !more.is_empty() {
+            return Err(format!(
+                "{} asks for {}, which its pack didn't list",
+                manifest.name,
+                more.join(", ")
+            ));
+        }
+    }
+    let bytes = std::fs::read(&files.wasm).map_err(|e| format!("{}: {e}", files.wasm.display()))?;
+    let modified = std::fs::metadata(&files.wasm)
+        .and_then(|m| m.modified())
+        .ok();
     let setting_keys = leak(manifest.properties.keys().cloned().collect());
     let table_types = leak(manifest.match_rules.type_tag.iter().cloned().collect());
     let plugin = runtime()?
-        .compile(manifest, &bytes, folder)
+        .compile(manifest, &bytes, &files.folder)
         .map_err(|e| e.to_string())?;
-    Ok((
-        Loaded {
-            plugin: Arc::new(plugin),
-            generation,
-            modified,
-            setting_keys,
-            table_types,
-        },
-        wasm,
-    ))
+    Ok(Loaded {
+        plugin: Arc::new(plugin),
+        generation,
+        modified,
+        setting_keys,
+        table_types,
+        files,
+        origin,
+    })
 }
 
-/// Load the plugin in `folder`. Returns its widget type's name
-/// (`plugin:<name>`), or what's wrong. Loading a plugin of a name already
-/// loaded replaces it.
-pub fn load(folder: &Path) -> Result<String, String> {
-    let (loaded, wasm) = compile(folder, 0)?;
+/// Put `loaded` in the registry: in place of a plugin of its name, or new.
+/// Returns its widget type's name.
+fn register(loaded: Loaded) -> String {
     let name = loaded.plugin.manifest.name.clone();
     let type_name = format!("{TYPE_PREFIX}{name}");
     let mut types = registry().types.write().unwrap();
@@ -163,17 +224,111 @@ pub fn load(folder: &Path) -> Result<String, String> {
             generation,
             ..loaded
         });
-        return Ok(type_name);
+        return type_name;
     }
     let ty: &'static PluginType = Box::leak(Box::new(PluginType {
         names: leak(vec![type_name.clone()]),
         name,
-        folder: folder.to_path_buf(),
-        wasm,
         loaded: RwLock::new(Arc::new(loaded)),
     }));
     types.push(ty);
-    Ok(type_name)
+    type_name
+}
+
+/// Load the plugin in `folder` (`plugin.toml` and its `.wasm`), for
+/// developing one. Returns its widget type's name (`plugin:<name>`), or
+/// what's wrong. It replaces any plugin of its name, a pack's too. Loading
+/// the same folder again with its `.wasm` unchanged does nothing, so its
+/// widgets keep running.
+pub fn load(folder: &Path) -> Result<String, String> {
+    // One load at a time, so two loads of one folder at once (tests) compile
+    // it once: the second finds the first's.
+    static LOADING: Mutex<()> = Mutex::new(());
+    let _one_at_a_time = LOADING.lock().unwrap_or_else(|e| e.into_inner());
+    let (files, name) = folder_files(folder)?;
+    let type_name = format!("{TYPE_PREFIX}{name}");
+    if let Some(ty) = find(&type_name) {
+        let loaded = ty.loaded();
+        let modified = std::fs::metadata(&files.wasm)
+            .and_then(|m| m.modified())
+            .ok();
+        if loaded.origin == Origin::Folder && loaded.files == files && loaded.modified == modified {
+            return Ok(type_name);
+        }
+    }
+    Ok(register(compile(files, Origin::Folder, None, 0)?))
+}
+
+/// How many times the plugin of widget type `type_name` has been loaded
+/// again (for tests).
+#[cfg(test)]
+pub(crate) fn generation(type_name: &str) -> Option<u64> {
+    find(type_name).map(|t| t.loaded().generation)
+}
+
+/// Use the plugins of the packs installed in the packs folder `store`:
+/// load those not loaded (or changed), and drop that folder's whose pack is
+/// gone. Where two packs have a
+/// plugin of one name, the newest install's is used; a folder plugin
+/// (`--plugin`) keeps its name. Returns what couldn't be loaded, a line each.
+pub fn use_packs(store: &Path, installed: &[crate::content::InstalledPlugin]) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut newest_first: Vec<&crate::content::InstalledPlugin> = installed.iter().collect();
+    newest_first.sort_by_key(|p| std::cmp::Reverse(p.installed_at));
+    let mut used: Vec<String> = Vec::new();
+    for p in newest_first {
+        let files = Files {
+            manifest: p.manifest.clone(),
+            wasm: p.wasm.clone(),
+            folder: p.folder.clone(),
+        };
+        let name = match &p.name {
+            Some(n) => n.clone(),
+            None => match std::fs::read_to_string(&files.manifest)
+                .map_err(|e| e.to_string())
+                .and_then(|t| Manifest::from_toml(&t).map_err(|e| e.to_string()))
+            {
+                Ok(m) => m.name,
+                Err(e) => {
+                    problems.push(format!("{} (pack {}): {e}", p.wasm.display(), p.pack));
+                    continue;
+                }
+            },
+        };
+        if used.contains(&name) {
+            continue;
+        }
+        let origin = Origin::Pack {
+            id: p.pack.clone(),
+            installed_at: p.installed_at,
+        };
+        if let Some(ty) = find(&format!("{TYPE_PREFIX}{name}")) {
+            let loaded = ty.loaded();
+            if loaded.origin == Origin::Folder || (loaded.origin == origin && loaded.files == files)
+            {
+                used.push(name);
+                continue;
+            }
+        }
+        match compile(files, origin, Some(&p.permissions), 0) {
+            Ok(loaded) if loaded.plugin.manifest.name != name => problems.push(format!(
+                "plugin {name} (pack {}): its manifest names it {}",
+                p.pack, loaded.plugin.manifest.name
+            )),
+            Ok(loaded) => {
+                register(loaded);
+                used.push(name);
+            }
+            Err(e) => problems.push(format!("plugin {name} (pack {}): {e}", p.pack)),
+        }
+    }
+    registry().types.write().unwrap().retain(|t| {
+        let loaded = t.loaded();
+        loaded.origin == Origin::Folder
+            || !loaded.files.folder.starts_with(store)
+            || used.contains(&t.name)
+    });
+    problems
 }
 
 /// The plugin widget type saved as `type_name`, if that plugin is loaded.
@@ -249,7 +404,9 @@ fn restart(ty: &PluginType, widget: &WidgetContainer, ctx: &egui::Context) {
 pub fn frame_started(ctx: &egui::Context, layout: &ElasticLayout) {
     let reg = registry();
     let types = all();
-    if types.is_empty() {
+    // Nothing loaded and nothing running (a pack's plugin removed leaves
+    // workers to drop).
+    if types.is_empty() && reg.workers.lock().unwrap().is_empty() {
         return;
     }
     CURRENT.with(|c| *c.borrow_mut() = Some(ctx.clone()));
@@ -263,9 +420,15 @@ pub fn frame_started(ctx: &egui::Context, layout: &ElasticLayout) {
     };
     if due {
         for ty in &types {
-            let modified = std::fs::metadata(&ty.wasm).and_then(|m| m.modified()).ok();
-            if modified.is_some() && modified != ty.loaded().modified {
-                match load(&ty.folder) {
+            let loaded = ty.loaded();
+            if loaded.origin != Origin::Folder {
+                continue;
+            }
+            let modified = std::fs::metadata(&loaded.files.wasm)
+                .and_then(|m| m.modified())
+                .ok();
+            if modified.is_some() && modified != loaded.modified {
+                match load(&loaded.files.folder) {
                     Ok(_) => eprintln!("raptaboard: plugin {} loaded again", ty.name),
                     Err(e) => eprintln!("raptaboard: plugin {} not loaded again: {e}", ty.name),
                 }

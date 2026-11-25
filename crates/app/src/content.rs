@@ -121,9 +121,10 @@ pub struct Pack {
     /// the pack). Not used yet.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<PackItem>,
-    /// Its widget plugins (`.wasm` components). Not used yet.
+    /// Its widget plugins (`.wasm` components, each with its manifest
+    /// beside it), loaded while it's installed (`crate::plugins`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub plugins: Vec<PackItem>,
+    pub plugins: Vec<PackPlugin>,
     /// Its layouts (layout `.json` files) to start from, or take tabs from.
     /// Not used yet.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -151,6 +152,82 @@ pub struct PackItem {
     pub name: Option<String>,
     /// One of the pack's files.
     pub file: String,
+}
+
+/// A widget plugin in a pack: its `.wasm` component, and its manifest
+/// (raptaboard's `plugin.toml`) beside it, named for it (`alerts.wasm`,
+/// `alerts.toml`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PackPlugin {
+    /// The plugin's name, from its manifest: its widgets are saved as
+    /// `plugin:<name>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Its `.wasm`, one of the pack's files.
+    pub file: String,
+    /// What its manifest asks for (`publish`, `sound`, `background`), shown
+    /// before installing. A plugin asking for more once installed isn't
+    /// loaded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub permissions: Vec<String>,
+}
+
+impl PackPlugin {
+    /// Its manifest's file name: the `.wasm`'s with `.toml`.
+    ///
+    /// ```
+    /// use raptaboard::content::PackPlugin;
+    /// let p = PackPlugin { name: None, file: "alerts.wasm".into(), permissions: vec![] };
+    /// assert_eq!(p.manifest(), "alerts.toml");
+    /// ```
+    pub fn manifest(&self) -> String {
+        let stem = self.file.strip_suffix(".wasm").unwrap_or(&self.file);
+        format!("{stem}.toml")
+    }
+
+    /// What it may do, for people: "plays sounds, runs while its tab is
+    /// closed", or "nothing more than draw".
+    ///
+    /// ```
+    /// use raptaboard::content::PackPlugin;
+    /// let p = PackPlugin { name: None, file: "a.wasm".into(), permissions: vec!["sound".into()] };
+    /// assert_eq!(p.may(), "plays sounds");
+    /// ```
+    pub fn may(&self) -> String {
+        if self.permissions.is_empty() {
+            return "nothing more than draw".into();
+        }
+        self.permissions
+            .iter()
+            .map(|p| match p.as_str() {
+                "publish" => "sends values to the robot",
+                "sound" => "plays sounds",
+                "background" => "runs while its tab is closed",
+                other => other,
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+/// A plugin in an installed pack, ready to load.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InstalledPlugin {
+    /// The pack's id and name.
+    pub pack: String,
+    pub pack_name: String,
+    /// When the pack was installed: where two packs have a plugin of one
+    /// name, the newest install's is used.
+    pub installed_at: u64,
+    /// The plugin's name, if the catalog gave it.
+    pub name: Option<String>,
+    /// Its `.wasm` and manifest, in the pack's folder.
+    pub wasm: PathBuf,
+    pub manifest: PathBuf,
+    /// The pack's folder, where the plugin's other files are.
+    pub folder: PathBuf,
+    /// What the catalog said it asks for.
+    pub permissions: Vec<String>,
 }
 
 impl Pack {
@@ -183,16 +260,36 @@ impl Pack {
         }
     }
 
-    /// Every file its sections use.
-    fn used_files(&self) -> impl Iterator<Item = &str> {
-        self.sounds.iter().map(|s| s.file.as_str()).chain(
-            self.images
-                .iter()
-                .chain(&self.fields)
-                .chain(&self.plugins)
-                .chain(&self.layouts)
-                .map(|i| i.file.as_str()),
-        )
+    /// A line for each of its plugins saying what it may do, shown before
+    /// installing: "Plugin alerts: plays sounds".
+    pub fn plugin_lines(&self) -> Vec<String> {
+        self.plugins
+            .iter()
+            .map(|p| {
+                let name = p.name.as_deref().unwrap_or(&p.file);
+                format!("Plugin {name}: {}", p.may())
+            })
+            .collect()
+    }
+
+    /// Every file its sections use (a plugin's manifest too).
+    fn used_files(&self) -> Vec<String> {
+        let items = self
+            .images
+            .iter()
+            .chain(&self.fields)
+            .chain(&self.layouts)
+            .map(|i| i.file.clone());
+        self.sounds
+            .iter()
+            .map(|s| s.file.clone())
+            .chain(items)
+            .chain(
+                self.plugins
+                    .iter()
+                    .flat_map(|p| [p.file.clone(), p.manifest()]),
+            )
+            .collect()
     }
 }
 
@@ -656,6 +753,27 @@ impl Store {
         layers
     }
 
+    /// The plugins the installed packs hold, in pack id order.
+    pub fn plugins(&self) -> Vec<InstalledPlugin> {
+        let mut out = Vec::new();
+        for i in self.installed() {
+            let dir = self.pack_dir(&i.pack.id);
+            for p in &i.pack.plugins {
+                out.push(InstalledPlugin {
+                    pack: i.pack.id.clone(),
+                    pack_name: i.pack.name.clone(),
+                    installed_at: i.installed_at,
+                    name: p.name.clone(),
+                    wasm: dir.join(&p.file),
+                    manifest: dir.join(p.manifest()),
+                    folder: dir.clone(),
+                    permissions: p.permissions.clone(),
+                });
+            }
+        }
+        out
+    }
+
     /// What's remembered between runs; the default if nothing is yet.
     pub fn state(&self) -> State {
         std::fs::read(self.dir.join("state.json"))
@@ -993,6 +1111,9 @@ pub struct Content {
     news: Vec<News>,
     /// The installed sounds, shared with the sound thread.
     sounds: SoundFiles,
+    /// What's installed changed since the window last loaded the packs'
+    /// plugins (true at first, so it loads them).
+    pub plugins_changed: bool,
 }
 
 impl Content {
@@ -1053,6 +1174,7 @@ impl Content {
             outcomes: Vec::new(),
             news: Vec::new(),
             sounds,
+            plugins_changed: true,
         };
         content.refresh();
         content
@@ -1107,8 +1229,14 @@ impl Content {
         &self.store.dir
     }
 
+    /// The plugins the installed packs hold.
+    pub fn plugins(&self) -> Vec<InstalledPlugin> {
+        self.store.plugins()
+    }
+
     /// Read what's installed again, and share its sounds.
     fn refresh(&mut self) {
+        self.plugins_changed = true;
         self.installed = self.store.installed();
         if let Ok(mut sounds) = self.sounds.write() {
             *sounds = self.store.sounds();
@@ -1669,12 +1797,19 @@ pub(crate) mod tests {
             Catalog::parse(&ok).unwrap().packs[0].contents(),
             "1 sound, 1 image, 1 layout"
         );
-        pack.plugins.push(PackItem {
+        pack.plugins.push(PackPlugin {
             name: None,
             file: "doom.wasm".into(),
+            permissions: vec![],
         });
-        let bad = serde_json::to_vec(&catalog(vec![pack])).unwrap();
+        let bad = serde_json::to_vec(&catalog(vec![pack.clone()])).unwrap();
         assert!(Catalog::parse(&bad).unwrap_err().contains("doom.wasm"));
+        // A plugin's manifest is one of its files too: with its .wasm there
+        // (any file the pack has stands in), the manifest is what's missing.
+        pack.plugins[0].file = "horn.mp3".into();
+        let wanted = pack.plugins[0].manifest();
+        let bad = serde_json::to_vec(&catalog(vec![pack])).unwrap();
+        assert!(Catalog::parse(&bad).unwrap_err().contains(&wanted));
         // An older catalog's kind still reads.
         let old = br#"{"format": 1, "packs": [{"id": "p", "name": "P", "version": "1.0.0",
             "kind": "sounds", "min_app": "0.1.0", "summary": "", "license": "", "credits": "",
