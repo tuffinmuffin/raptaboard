@@ -24,6 +24,7 @@ pub mod pack_folder;
 pub mod packs_cli;
 pub mod plugins;
 pub mod sampling;
+pub mod sandbox;
 pub mod settings;
 pub mod sound;
 pub mod state_sounds;

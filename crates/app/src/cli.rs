@@ -6,6 +6,7 @@
 //! raptaboard [--team N] [--address ds|team|mdns|wifi|sim|<host>] [--port N] [--hide-tree] [layout.json]
 //! raptaboard --help
 //! raptaboard packs list|install|update|remove|sources …   (see crate::packs_cli)
+//! raptaboard plugin dev <folder> [--topic <path>]       (see crate::sandbox)
 //! ```
 
 use std::path::PathBuf;
@@ -68,6 +69,28 @@ pub enum Command {
     /// later plugins), without opening the window.
     #[command(subcommand)]
     Packs(crate::packs_cli::Packs),
+    /// Develop widget plugins.
+    #[command(subcommand)]
+    Plugin(PluginCommand),
+}
+
+/// `raptaboard plugin …`: for developing widget plugins.
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+pub enum PluginCommand {
+    /// Try a plugin in a sandbox: the dashboard with only that plugin's
+    /// widget and a NetworkTables server of its own, serving its sample
+    /// values ([sandbox] in plugin.toml) for you to change, add and remove.
+    /// The widget restarts whenever the plugin's .wasm is rebuilt. Nothing
+    /// is saved. With --address, it shows the robot or sim instead.
+    Dev {
+        /// The plugin's folder: plugin.toml, and widget.wasm (or its cargo
+        /// build in ../target/wasm32-wasip2/release/).
+        #[arg(value_name = "FOLDER")]
+        folder: PathBuf,
+        /// With --address: the robot or sim's topic or table to show.
+        #[arg(long, value_name = "PATH")]
+        topic: Option<String>,
+    },
 }
 
 impl Args {
@@ -245,6 +268,37 @@ mod tests {
     // Tests written by Claude.
     use super::*;
     use clap::error::ErrorKind;
+
+    #[test]
+    fn plugin_dev_takes_a_folder_and_a_topic() {
+        let (_, command) = parse_command(args(&[
+            "plugin",
+            "dev",
+            "plugins/number",
+            "--topic",
+            "/SmartDashboard/x",
+        ]))
+        .unwrap();
+        assert_eq!(
+            command,
+            Some(Command::Plugin(PluginCommand::Dev {
+                folder: "plugins/number".into(),
+                topic: Some("/SmartDashboard/x".into()),
+            }))
+        );
+        // The dashboard's own options still come first.
+        let (settings, command) =
+            parse_command(args(&["--address", "sim", "plugin", "dev", "f"])).unwrap();
+        assert_eq!(settings.address.as_deref(), Some("sim"));
+        assert!(matches!(
+            command,
+            Some(Command::Plugin(PluginCommand::Dev { topic: None, .. }))
+        ));
+        assert!(
+            parse_command(args(&["plugin", "dev"])).is_err(),
+            "needs a folder"
+        );
+    }
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()

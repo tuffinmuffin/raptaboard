@@ -91,6 +91,11 @@ impl PluginType {
     pub fn origin(&self) -> Origin {
         self.loaded().origin.clone()
     }
+
+    /// Its `plugin.toml`, as loaded now.
+    pub fn manifest(&self) -> Manifest {
+        self.loaded().plugin.manifest.clone()
+    }
 }
 
 /// Plugin types and workers, for the whole program.

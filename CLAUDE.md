@@ -128,6 +128,13 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   summary, redraw), the tab mark, sounds, published values and log lines. Its `dark_theme`/`light_theme` are checked
   against the app's (`plugins/convert.rs`); `measure_text` is an estimate. The `plugins/` workspace dev-depends on it
   (native only); its `Cargo.lock` pins the same versions as this one's.
+- Plugin sandbox (`raptaboard plugin dev <folder>`, `cli::PluginCommand`): `sandbox.rs` (no egui) runs an `nt4::Server`
+  of its own on 127.0.0.1 (a free port) serving the topic or table the plugin's widget is bound to (`/Sandbox/value`,
+  or `/Sandbox/<type>` with its `.type`), with the plugin's sample values (`[sandbox]` in `plugin.toml`,
+  `plugin_host::SandboxValues`) and any added; `ui/sandbox_panel.rs` is its side panel (`DashboardApp::open_sandbox`:
+  size presets, theme, the Connected switch (the address pointed at a closed port), locked, and the values to edit,
+  add and remove). `main.rs` starts it with nowhere to save settings and no content packs. With `--address`, no
+  server: the widget is bound to `--topic`. `ui/tests/sandbox.rs` runs it with Number and Alerts.
 - `crates/app/src/plugins/`: plugins in the app. `mod.rs` the registry (plugins from installed packs, `use_packs`, run by
   `ui/content_window.rs` at the first frame and after each install or remove; and from `--plugin`, which wins; saved in
   layouts as `plugin:<name>`, found by `widgets::find`; listed by `widgets::types_showing` and the settings dialog's
