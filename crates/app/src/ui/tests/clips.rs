@@ -348,7 +348,10 @@ const BOOK_IMAGES: &str = "book/src/images";
 
 /// The card to cut out for a widget type, by title, where the first one
 /// in the layout isn't the best example: (type, card title).
-const PICTURED: &[(&str, &str)] = &[("Graph", "Sine and orbit")];
+const PICTURED: &[(&str, &str)] = &[
+    ("Graph", "Sine and orbit"),
+    ("Chassis Speeds", "Scripted speeds (lagging robot)"),
+];
 
 /// Whether the card titled `title` is the one to cut out for `kind`: the
 /// one [`PICTURED`] names, or else the first (`seen` has the types done).
