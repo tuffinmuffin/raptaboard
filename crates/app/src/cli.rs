@@ -274,7 +274,7 @@ mod tests {
         let (_, command) = parse_command(args(&[
             "plugin",
             "dev",
-            "plugins/number",
+            "plugins/topic-test",
             "--topic",
             "/SmartDashboard/x",
         ]))
@@ -282,7 +282,7 @@ mod tests {
         assert_eq!(
             command,
             Some(Command::Plugin(PluginCommand::Dev {
-                folder: "plugins/number".into(),
+                folder: "plugins/topic-test".into(),
                 topic: Some("/SmartDashboard/x".into()),
             }))
         );

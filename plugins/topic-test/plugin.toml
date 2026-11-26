@@ -1,7 +1,6 @@
-# Number: a number topic as text, like the built-in Text Display. The first
-# example plugin; its settings use the Text Display's names, so a widget can
-# switch between the two and keep them.
-name = "number"
+# A topic plugin for raptaboard's own tests (the published examples are in
+# raptaboard-examples): a number topic as text, with its unit.
+name = "topic-test"
 version = "0.1.0"
 api = "0.3"
 
@@ -17,8 +16,6 @@ min = [1, 1]
 decimal_places = { type = "number", default = -1 }
 font_size = { type = "number", default = 14 }
 fit_text = { type = "bool", default = false }
-show_unit = { type = "bool", default = true }
 
-# What the sandbox window (raptaboard plugin dev) starts with.
 [sandbox]
 value = 1.23456
