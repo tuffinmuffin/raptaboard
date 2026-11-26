@@ -475,7 +475,13 @@ impl WidgetType for NumberSlider {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
+        let body = card::draw_card(
+            ui.painter(),
+            ui.visuals(),
+            rect,
+            &widget.title,
+            &widget.properties,
+        );
         let area = if live.place.locked { rect } else { body };
         show_slider(ui, area, body.shrink(card::BODY_MARGIN), widget, live)
     }

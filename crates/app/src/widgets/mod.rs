@@ -233,7 +233,7 @@ pub trait WidgetType: Sync {
         widget: &WidgetContainer,
         value: Option<&Value>,
     ) {
-        let body = card::draw_card(painter, visuals, rect, &widget.title);
+        let body = card::draw_card(painter, visuals, rect, &widget.title, &widget.properties);
         card::draw_clipped(painter, body, |painter, body| {
             self.draw_body(painter, visuals, body, &widget.properties, value);
         });

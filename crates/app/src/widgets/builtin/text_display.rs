@@ -19,6 +19,7 @@ use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
 
 use crate::traces::SeriesKey;
+use crate::widgets::shared::text_style::{self, Family, TextStyle};
 use crate::widgets::shared::{card, entry, format, props, stats, value_colors};
 use crate::widgets::{Live, Reset, ValueInfo, WidgetType};
 
@@ -49,16 +50,23 @@ fn draw_text(
 ) {
     match text(p, value) {
         Ok(text) => {
-            let ink = value_colors::paint_background(painter, rect, p, value)
-                .unwrap_or(visuals.text_color());
+            // On a color-by-value background, black or white to read on
+            // it, unless the style picks a color.
+            let style = TextStyle::read(p, text_style::VALUE);
+            let ink = style.color_or(
+                value_colors::paint_background(painter, rect, p, value)
+                    .unwrap_or(visuals.text_color()),
+            );
             if fits(p) {
-                card::draw_fitted(painter, rect, &text, ink);
+                card::draw_fitted_styled(painter, rect, &text, ink, &style, Family::Sans);
             } else {
-                painter.text(
+                let font = style.font(painter.ctx(), Family::Mono, props::font_size(p));
+                style.text(
+                    painter,
                     rect.center(),
                     egui::Align2::CENTER_CENTER,
-                    text,
-                    egui::FontId::monospace(props::font_size(p)),
+                    &text,
+                    font,
                     ink,
                 );
             }
@@ -78,8 +86,10 @@ fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<
         FIT_TEXT,
         false,
     );
-    if !fits(p) {
-        props::text_size_row(ui, p);
+    if fits(p) {
+        text_style::text_row(ui, p, None, Family::Sans, true);
+    } else {
+        text_style::text_row(ui, p, Some(props::DEFAULT_FONT_SIZE), Family::Mono, true);
     }
     if value
         .nt_type
@@ -99,7 +109,7 @@ fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<
 }
 
 /// A Text Display's setting keys.
-pub const KEYS: [&str; 15] = [
+pub const KEYS: [&str; 19] = [
     EDITABLE,
     stats::SHOW_STATS,
     stats::STATS_WINDOW,
@@ -115,6 +125,10 @@ pub const KEYS: [&str; 15] = [
     crate::widgets::shared::scale::LOW_COLOR,
     crate::widgets::shared::scale::MID_COLOR,
     crate::widgets::shared::scale::HIGH_COLOR,
+    text_style::VALUE_STYLE_KEYS[0],
+    text_style::VALUE_STYLE_KEYS[1],
+    text_style::VALUE_STYLE_KEYS[2],
+    text_style::VALUE_STYLE_KEYS[3],
 ];
 
 /// The Text Display widget (Elastic's `"Text Display"`, also saved as
@@ -252,10 +266,8 @@ fn show_text(
         ),
     );
     let value = live.value;
-    entry::show(ui, id, rect, egui::FontId::monospace(size), |text| {
-        accepts_text(text, value)
-    })
-    .map(Value::String)
+    let font = TextStyle::read(p, text_style::VALUE).font(ui.ctx(), Family::Mono, size);
+    entry::show(ui, id, rect, font, |text| accepts_text(text, value)).map(Value::String)
 }
 
 impl WidgetType for TextDisplay {
@@ -289,7 +301,13 @@ impl WidgetType for TextDisplay {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
+        let body = card::draw_card(
+            ui.painter(),
+            ui.visuals(),
+            rect,
+            &widget.title,
+            &widget.properties,
+        );
         let area = if live.place.locked { rect } else { body };
         // The dot goes in the title bar's corner, clear of the value.
         let title = rect.with_max_y(body.min.y);

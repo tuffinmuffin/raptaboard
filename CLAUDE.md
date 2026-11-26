@@ -268,7 +268,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   enum text, `EnumDisplay`), `alert_sign.rs` (alert level colors and signs, for the widget, tab marks
   and history), `props.rs` (period, font size, colors, a topic picker), `sound_pick.rs` (the sound dropdown:
   built-in and installed packs' sounds), `value_colors.rs` (color by value: thresholds or a gradient), `scale.rs` (bars' and gauges' shared settings,
-  autoscale, and their `show`/`show_body`), `stats.rs` (min, max and average under a number), `robot_view.rs` (a robot from above with
+  autoscale, and their `show`/`show_body`), `stats.rs` (min, max and average under a number), `text_style.rs` (a title's and value text's font, Sans or Mono, color, bold and italic: `TextStyle`, the dialog's "Style…" pop-up, and the bold fonts from `media/fonts/`), `robot_view.rs` (a robot from above with
   speed and spin arrows, for the swerve view and Chassis Speeds) and `settings.rs` (the settings dialog's shared
   rows; the dialog window is in `ui/dialogs.rs`); setting keys are constants in the file that owns them,
   listed in `docs/spec.md` under "raptaboard widget settings" (keep that table in step); adding a

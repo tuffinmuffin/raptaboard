@@ -375,7 +375,13 @@ impl WidgetType for EnumDropdown {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
+        let body = card::draw_card(
+            ui.painter(),
+            ui.visuals(),
+            rect,
+            &widget.title,
+            &widget.properties,
+        );
         self.show_in(ui, body.shrink(card::BODY_MARGIN), widget, live)
     }
     fn show_body(
@@ -576,7 +582,13 @@ impl WidgetType for EnumToggle {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
+        let body = card::draw_card(
+            ui.painter(),
+            ui.visuals(),
+            rect,
+            &widget.title,
+            &widget.properties,
+        );
         // Locked, the whole card takes the click; unlocked, the title bar
         // moves the widget.
         let area = if live.place.locked { rect } else { body };

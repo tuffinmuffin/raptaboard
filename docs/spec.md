@@ -148,6 +148,11 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | --- | --- | --- | --- | --- |
 | `period` (Elastic) | `shared/props.rs` | all | update period, seconds (0.01–5) | 0.06 |
 | `font_size` | `shared/props.rs` | Text Display; Boolean Box text | points, 8–96 | 16 |
+| `font_family` | `shared/text_style.rs` | Text Display, Boolean Box text, Struct values | `"sans"` or `"mono"` | the widget's own (Text Display and Struct Mono, Boolean Box Sans) |
+| `font_color` | `shared/text_style.rs` | Text Display, Struct values | ARGB color; beats a color-by-value background's black or white | the theme's |
+| `font_bold`, `font_italic` | `shared/text_style.rs` | Text Display, Boolean Box text, Struct values | true or false | false |
+| `title_font_family`, `title_color`, `title_bold`, `title_italic` | `shared/text_style.rs` | all, List Layouts too | as the value text's | Sans, the theme's color, plain |
+| `title_font_size` | `shared/text_style.rs` | all, List Layouts too | points, 8–20 (the title strip's height) | 14 |
 | `decimal_places` | `shared/format.rs` | Text Display (double, float) | fixed places, 0–10 | up to 4, trailing zeros cut |
 | `int_format` | `shared/format.rs` | Text Display (int, enum numbers) | `decimal`, `hex` (`0x1A`), `binary` (`0b11010`) | `decimal` |
 | `int_digits` | `shared/format.rs` | Text Display (int, enum numbers) | at least this many digits, zero-padded, 1–64 | no padding |
@@ -746,9 +751,15 @@ raptaboard is meant to rest in, apart from feature requests.
      Text Display fills its body with it, the text black or white to read on
      it; Number Bar, Voltage View and Radial Gauge use it for their fill unless their own gradient (over
      their scale) is on. The colors are the scale's `low_color`, `mid_color`, `high_color`.
-   - Text style: a font dialog (from the widget dialog's Text size row) for the value text and the
-     title: font family, size, color, bold, italic. Saved as raptaboard keys (`font_family`,
-     `font_color`, `font_bold`, ...; `font_size` exists), with a layout-wide default style later.
+   - Text style (**done** for 0.5.0, 2026-11-26, `shared/text_style.rs`): the settings dialog's "Text"
+     row (size and a "Style…" pop-up: font, color, bold, italic) for the value text of Text Display,
+     Boolean Box (no color: its true and false text colors are its own) and Struct, and a "Title
+     text" row (size, Style…) for every widget's and List Layout's title. Fonts are Sans (egui's
+     Ubuntu Light) and Mono (Hack), the same on every computer; bold uses `media/fonts/`'s Ubuntu
+     Bold and Hack Bold (added to egui as their own families, `install_fonts`; drawn regular for the
+     one frame before they're in); italic is egui's slant. "Reset settings" clears both styles.
+     Not yet: the choosers' and enum widgets' text (egui's own combo boxes and buttons, which can't
+     slant), the number widgets' value text, and a layout-wide default style.
    - Copy settings to the rest of a list (**done**, `list_layout::copy_settings`): in the list settings,
      set up one child as wanted, then its "Copy to same type" gives the others of the same widget type
      its display settings so they match it exactly: every display setting either has (Elastic's too,

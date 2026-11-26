@@ -383,7 +383,13 @@ impl WidgetType for DropdownChooser {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
+        let body = card::draw_card(
+            ui.painter(),
+            ui.visuals(),
+            rect,
+            &widget.title,
+            &widget.properties,
+        );
         self.show_in(ui, body.shrink(card::BODY_MARGIN), widget, live)
     }
 
@@ -587,7 +593,13 @@ impl WidgetType for SplitButtonChooser {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
+        let body = card::draw_card(
+            ui.painter(),
+            ui.visuals(),
+            rect,
+            &widget.title,
+            &widget.properties,
+        );
         self.show_in(ui, body.shrink(card::BODY_MARGIN), widget, live)
     }
 

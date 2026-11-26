@@ -69,7 +69,13 @@ fn show_card(
     live: &Live<'_>,
     paint: impl FnOnce(&egui::Painter, Rect),
 ) -> Option<Value> {
-    let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
+    let body = card::draw_card(
+        ui.painter(),
+        ui.visuals(),
+        rect,
+        &widget.title,
+        &widget.properties,
+    );
     let clicked = clicked_in(ui, if live.place.locked { rect } else { body });
     let painter = ui.painter().with_clip_rect(body.intersect(ui.clip_rect()));
     paint(&painter, body.shrink(card::BODY_MARGIN));

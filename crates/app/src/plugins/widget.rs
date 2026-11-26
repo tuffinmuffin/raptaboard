@@ -530,7 +530,13 @@ impl WidgetType for PluginType {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
+        let body = card::draw_card(
+            ui.painter(),
+            ui.visuals(),
+            rect,
+            &widget.title,
+            &widget.properties,
+        );
         let clip = body.intersect(ui.clip_rect());
         let mut inside = ui.new_child(egui::UiBuilder::new().max_rect(body));
         inside.set_clip_rect(clip);

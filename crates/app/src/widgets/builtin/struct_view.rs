@@ -15,10 +15,17 @@ use raptaboard_layout::WidgetContainer;
 use serde_json::{Map, Value as Json};
 
 use crate::types::structs::{self, Shown};
+use crate::widgets::shared::text_style::{self, Family, TextStyle};
 use crate::widgets::shared::{card, props};
 use crate::widgets::{Live, ValueInfo, WidgetType};
 
-const KEYS: [&str; 1] = [props::FONT_SIZE];
+const KEYS: [&str; 5] = [
+    props::FONT_SIZE,
+    text_style::VALUE_STYLE_KEYS[0],
+    text_style::VALUE_STYLE_KEYS[1],
+    text_style::VALUE_STYLE_KEYS[2],
+    text_style::VALUE_STYLE_KEYS[3],
+];
 
 /// The text size when `font_size` isn't set, points: small, as the list can
 /// be long.
@@ -123,6 +130,9 @@ impl StructView {
             }
         };
         let size = props::font_size_set(&widget.properties).unwrap_or(DEFAULT_TEXT_SIZE);
+        // The values in the text style; the field names stay plain.
+        let style = TextStyle::read(&widget.properties, text_style::VALUE);
+        let font = style.font(ui.ctx(), Family::Mono, size);
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
         child.set_clip_rect(rect.intersect(ui.clip_rect()));
         let weak = child.visuals().weak_text_color();
@@ -136,11 +146,15 @@ impl StructView {
                         ui.add_space(row.depth as f32 * size * INDENT);
                         let name = RichText::new(&row.name).size(size).color(weak);
                         ui.add(egui::Label::new(name).selectable(false));
-                        let value = RichText::new(&row.text).size(size).monospace();
+                        let value = RichText::new(&row.text).font(font.clone());
                         let value = if row.node {
                             value.color(weak).italics()
                         } else {
-                            value
+                            let value = match style.color {
+                                Some(c) => value.color(c),
+                                None => value,
+                            };
+                            if style.italic { value.italics() } else { value }
                         };
                         ui.add(egui::Label::new(value).selectable(false).truncate());
                     });
@@ -170,7 +184,13 @@ impl WidgetType for StructView {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
+        let body = card::draw_card(
+            ui.painter(),
+            ui.visuals(),
+            rect,
+            &widget.title,
+            &widget.properties,
+        );
         self.show_in(ui, body.shrink(card::BODY_MARGIN), widget, live);
         None
     }
@@ -201,7 +221,7 @@ impl WidgetType for StructView {
     }
 
     fn settings(&self, ui: &mut egui::Ui, p: &mut Map<String, Json>, _: ValueInfo<'_>) {
-        props::text_size_row(ui, p);
+        text_style::text_row(ui, p, Some(DEFAULT_TEXT_SIZE), Family::Mono, true);
     }
 
     fn setting_keys(&self) -> &'static [&'static str] {
