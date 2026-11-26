@@ -1,6 +1,6 @@
 # raptaboard privacy policy
 
-Last updated: November 25, 2026
+Last updated: November 26, 2026
 
 raptaboard is a driver dashboard for FIRST Robotics Competition robots, made by Team 3200
 (Raptacon). This policy covers the raptaboard app, however you install it: from the Microsoft
@@ -57,7 +57,10 @@ raptaboard keeps these files on your computer, and never sends them anywhere:
 - images you add to widgets, copied into the `.raptaboard` folder;
 - the content packs you download, in `.raptaboard/content`, with a note of which packs you've
   been offered or dismissed and the raptaboard version that last started (`state.json`), and
-  the content sources you add, in its settings.
+  the content sources you add, in its settings;
+- small values plugins keep between runs, such as a game's options, in
+  `.raptaboard/plugin-data`, a folder for each plugin that asks to (it says so before you
+  install it).
 
 You can delete any of these at any time. Uninstalling raptaboard doesn't remove them; delete the
 `.raptaboard` folder in your home folder to remove its settings.
