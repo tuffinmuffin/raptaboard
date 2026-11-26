@@ -5,9 +5,9 @@
 # Using raptaboard
 
 - [Install](install.md)
-- [First start]()
-- [Connecting to the robot]()
-- [The window]()
+- [First start](guide/first-start.md)
+- [Connecting to the robot](guide/connecting.md)
+- [The window](guide/window.md)
 - [Widgets]()
 - [Layouts]()
 - [Content packs and plugins]()

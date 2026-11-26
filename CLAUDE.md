@@ -36,11 +36,13 @@ cargo run -p raptaboard -- --help
 # The book (book/, mdBook 0.5.4; published to GitHub Pages from main by book.yml):
 mdbook serve book --open
 python3 scripts/check_book.py      # every chapter, link and image resolves
-# The book's clips (ui/tests/clips.rs: the app headless against a scripted robot, saved as GIFs
+# The book's Field clip (ui/tests/clips.rs: the app headless against a scripted robot, saved as a GIF
 # in book/src/images/; needs a GPU, ~30 s):
-cargo test -p raptaboard --lib record_ -- --ignored --nocapture
+cargo test -p raptaboard --lib record_field_clip -- --ignored --nocapture
 # The Microsoft Store listing's screenshots (media/store/; needs a GPU and robot-2027's sim running here):
 cargo test -p raptaboard --lib record_store_screenshots -- --ignored --nocapture
+# The book's screenshots (book/src/images/tabs, widgets, window; needs a GPU and robot-2027's sim running here):
+cargo test -p raptaboard --lib record_docs_screenshots -- --ignored --nocapture
 # Log pointer and touch input to the terminal (input_log.rs: egui's events each frame and what the
 # Field's target made of them), for odd clicks and taps:
 RAPTABOARD_LOG_INPUT=1 cargo run -p raptaboard -- --address sim layouts/robot2027_sim.json
