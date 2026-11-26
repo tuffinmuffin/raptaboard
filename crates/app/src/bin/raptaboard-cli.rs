@@ -45,11 +45,13 @@ fn main() {
         eprintln!("raptaboard-cli: {note}");
     }
     let sources = loaded.settings.content_sources.unwrap_or_default();
+    let prereleases = loaded.settings.content_prereleases.unwrap_or(false);
     let code = match &args.command {
         Command::Packs(packs) => packs_cli::run_in_home(
             "raptaboard-cli",
             packs,
             sources,
+            prereleases,
             home.as_deref(),
             &mut packs_cli::ask_terminal,
         ),

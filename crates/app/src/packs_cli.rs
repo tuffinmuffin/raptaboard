@@ -85,6 +85,10 @@ pub struct From {
     /// are still checked.
     #[arg(long)]
     pub unsigned: bool,
+    /// The official source's pre-release packs too, as the setting
+    /// content_prereleases does: packs being tried before they're released.
+    #[arg(long)]
+    pub prereleases: bool,
 }
 
 /// What a command works with: where packs are installed, the settings'
@@ -94,6 +98,8 @@ pub struct Env<'a> {
     pub store: Store,
     /// The sources added in the settings (`content_sources`).
     pub sources: Vec<String>,
+    /// The official source's pre-releases too (`content_prereleases`).
+    pub prereleases: bool,
     /// The keys the official catalog may be signed with.
     pub keys: &'a [[u8; 32]],
     /// Downloads a URL.
@@ -123,8 +129,10 @@ pub fn run(command: &Packs, env: &mut Env<'_>) -> Result<(), String> {
         Packs::Update { ids, from, yes } => update(ids, from, *yes, env),
         Packs::Remove { ids } => remove(ids, env),
         Packs::Sources => {
-            for s in content::sources(&env.sources) {
-                let note = if s.official {
+            for s in content::sources(&env.sources, env.prereleases) {
+                let note = if s.official && s.prereleases {
+                    "  (official, signed; pre-releases too)"
+                } else if s.official {
                     "  (official, signed)"
                 } else {
                     "  (added, not signed)"
@@ -144,6 +152,7 @@ pub fn run_in_home(
     program: &str,
     command: &Packs,
     sources: Vec<String>,
+    prereleases: bool,
     home: Option<&std::path::Path>,
     ask: &mut dyn FnMut(&str) -> bool,
 ) -> i32 {
@@ -156,6 +165,7 @@ pub fn run_in_home(
     let mut env = Env {
         store: Store::new(dir),
         sources,
+        prereleases,
         keys: content::OFFICIAL_KEYS,
         fetch: &content::http_get,
         out: &mut out,
@@ -203,6 +213,7 @@ fn read(from: &From, env: &mut Env<'_>) -> Result<Read, String> {
                 source: Source {
                     url: format!("file:{}", folder.display()),
                     official: false,
+                    prereleases: false,
                 },
                 catalog: pack_folder::catalog(folder),
                 note: None,
@@ -210,6 +221,7 @@ fn read(from: &From, env: &mut Env<'_>) -> Result<Read, String> {
             local: true,
         }
     } else {
+        let prereleases = from.prereleases || env.prereleases;
         let sources = match &from.url {
             Some(url) if url != OFFICIAL && !from.unsigned => {
                 return Err(format!(
@@ -219,8 +231,9 @@ fn read(from: &From, env: &mut Env<'_>) -> Result<Read, String> {
             Some(url) => vec![Source {
                 url: url.clone(),
                 official: url == OFFICIAL,
+                prereleases: prereleases && url == OFFICIAL,
             }],
-            None => content::sources(&env.sources),
+            None => content::sources(&env.sources, prereleases),
         };
         Read {
             checked: sources
@@ -555,6 +568,7 @@ mod tests {
         let mut env = Env {
             store: Store::new(dir),
             sources: Vec::new(),
+            prereleases: false,
             keys: &keys,
             fetch: &*fetch,
             out: &mut out,
@@ -823,6 +837,47 @@ mod tests {
     }
 
     #[test]
+    fn prereleases_list_the_newest_catalog_a_prerelease_too() {
+        use crate::content::tests::{release_url, releases_marked};
+        let (key, public) = test_key();
+        let (web, dir) = (Web::default(), folder("cli-pre"));
+        let cat = |release: &str, id: &str| Catalog {
+            format: content::FORMAT,
+            release: release.into(),
+            packs: vec![sound_pack(
+                id,
+                "1.0.0",
+                &[("beep", "beep.mp3")],
+                "https://x",
+            )],
+        };
+        web.serve(OFFICIAL, &cat("v1", "released"), Some(&key));
+        web.serve(
+            &release_url("v2-pre.1"),
+            &cat("v2-pre.1", "trying"),
+            Some(&key),
+        );
+        web.files.lock().unwrap().insert(
+            content::OFFICIAL_RELEASES.into(),
+            releases_marked(&[("v2-pre.1", true, true), ("v1", true, false)]),
+        );
+        let ran = run_in(&dir, &web, public, &["list"], false);
+        assert!(
+            ran.out.contains("released 1.0.0") && !ran.out.contains("trying"),
+            "{}",
+            ran.out
+        );
+        let ran = run_in(&dir, &web, public, &["list", "--prereleases"], false);
+        assert_eq!(ran.result, Ok(()));
+        assert!(ran.out.contains("trying 1.0.0"), "{}", ran.out);
+        assert!(
+            ran.out.contains("Pre-release packs (v2-pre.1)"),
+            "{}",
+            ran.out
+        );
+    }
+
+    #[test]
     fn an_older_release_in_use_is_noted_as_the_window_notes_it() {
         use crate::content::tests::{release_url, releases};
         let (key, public) = test_key();
@@ -848,6 +903,7 @@ mod tests {
         let note = Source {
             url: OFFICIAL.into(),
             official: true,
+            prereleases: false,
         }
         .read(&[public], &*web.fetch())
         .note

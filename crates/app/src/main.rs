@@ -43,7 +43,15 @@ fn main() -> eframe::Result {
     }
     if let Some(cli::Command::Packs(packs)) = command {
         let sources = loaded.settings.content_sources.clone().unwrap_or_default();
-        let code = packs_cli::run_in_home("raptaboard", &packs, sources, home.as_deref(), &mut ask);
+        let prereleases = loaded.settings.content_prereleases.unwrap_or(false);
+        let code = packs_cli::run_in_home(
+            "raptaboard",
+            &packs,
+            sources,
+            prereleases,
+            home.as_deref(),
+            &mut ask,
+        );
         std::process::exit(code);
     }
     if let Some(home) = &home {

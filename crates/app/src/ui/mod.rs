@@ -135,6 +135,8 @@ pub struct DashboardApp {
     /// How often to check them for updates, in minutes; 0 for never (a
     /// setting).
     content_check_minutes: u32,
+    /// The official source's pre-release packs too (a setting).
+    content_prereleases: bool,
     /// When the next background check is due.
     content_timer: crate::content::CheckTimer,
     /// The Content window and the first-run list.
@@ -194,6 +196,7 @@ impl DashboardApp {
             content: None,
             content_sources: options.content_sources,
             content_check_minutes: options.content_check_minutes,
+            content_prereleases: options.content_prereleases,
             content_timer: crate::content::CheckTimer::starting(
                 Instant::now(),
                 content_window::FIRST_CHECK_DELAY,
@@ -244,6 +247,7 @@ impl DashboardApp {
             alert_history_ignore: Some(self.alerts.history.ignored().to_vec()),
             content_sources: Some(self.content_sources.clone()),
             content_check_minutes: Some(self.content_check_minutes),
+            content_prereleases: Some(self.content_prereleases),
             tab: self
                 .layout
                 .tabs
