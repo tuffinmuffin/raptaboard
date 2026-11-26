@@ -474,4 +474,15 @@ fn record_docs_screenshots() {
     show_tab(&mut harness, "Widgets", 3);
     let image = harness.render().expect("render a frame");
     save_png(&image, &format!("{BOOK_IMAGES}/window/editing.png"));
+    // ⚙ Settings open, locked, without the tree, set up as a team would:
+    // the robot by team number (the last shot: it leaves the sim).
+    harness.state_mut().address.mode = AddressMode::TeamNumber;
+    harness.state_mut().address.team = 3200;
+    harness.state_mut().locked = true;
+    harness.state_mut().tree.shown = false;
+    harness.state_mut().gear.settings = true;
+    show_tab(&mut harness, "Widgets", 1);
+    let image = harness.render().expect("render a frame");
+    save_png(&image, &format!("{BOOK_IMAGES}/window/settings.png"));
+    harness.state_mut().gear.settings = false;
 }
