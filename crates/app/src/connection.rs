@@ -96,8 +96,8 @@ pub fn team_address(team: u32) -> String {
 }
 
 /// The host to connect to, or `None` while there's none: the Driver Station
-/// mode has not reported an address yet (that lookup is not built yet), or
-/// the team number mode has no team (`team` is 0).
+/// mode (the window asks [`crate::driver_station::DsLookup`] instead), or
+/// the team number mode with no team (`team` is 0).
 ///
 /// ```
 /// use raptaboard::connection::{resolve, AddressMode};

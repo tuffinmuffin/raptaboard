@@ -13,6 +13,7 @@ pub mod cli;
 pub mod connection;
 pub mod content;
 pub mod credits;
+pub mod driver_station;
 pub mod edit;
 pub mod fields;
 pub mod grid;

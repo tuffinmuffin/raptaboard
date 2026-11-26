@@ -114,6 +114,13 @@ pub struct DashboardApp {
     traces: Traces,
     /// Whether tones play (a failed send's, and Alerts widgets').
     alert_sound: bool,
+    /// The Driver Station on this computer, listened to for the robot's
+    /// address while the server choice is Driver Station.
+    ds: Option<crate::driver_station::DsLookup>,
+    /// Where that Driver Station is: `None` for the real places
+    /// ([`DsLookup::start`](crate::driver_station::DsLookup::start)); tests
+    /// set their own (the 2027 websocket's URL, the NI one's address).
+    ds_at: Option<(String, std::net::SocketAddr)>,
     /// Plays the tones.
     sound: Sound,
     /// The alert history and its panel.
@@ -179,6 +186,8 @@ impl DashboardApp {
             sampler: Sampler::default(),
             traces: Traces::default(),
             alert_sound: options.alert_sound,
+            ds: None,
+            ds_at: None,
             sound: Sound::new(),
             alerts: Alerts {
                 history: {
