@@ -597,10 +597,16 @@ source setting, and plugins' needs shown before installing, so the pages describ
   builds and its links and images resolve. The README shrinks to what raptaboard is, install and
   links into the book (its status line, still "0.1.0" and "Plugins come next", is fixed then).
   Tutorial code is included from real, tested files, so it can't drift.
-- **Screenshots:** `record_docs_screenshots`, an ignored test like `record_store_screenshots`,
-  drives the app headless against a scripted robot (no sim needed, as `record_field_clip` does)
-  and writes PNGs into `book/src/images/`; run before each release (it needs a GPU) and commit
-  them. CI only checks every image the book uses exists.
+- **Screenshots:** `record_docs_screenshots` (`ui/tests/clips.rs`), an ignored test like
+  `record_store_screenshots`, drives the app headless against robot-2027's sim (decided with the user
+  2026-11-26, instead of a scripted robot: the sim's data is richer, and it's running while the
+  screenshots are made) showing `layouts/robot2027_sim.json`. Each tab with widgets is saved whole,
+  the window sized to fit it, to `book/src/images/tabs/<tab>.png`, the first card of each widget
+  type cut out to `book/src/images/widgets/<type>.png`, and the window unlocked with the tree to
+  `book/src/images/window/editing.png` (27 widget types; Multi Color View isn't in the layout yet).
+  Run before each release (it needs a GPU and the sim) and commit them. CI only checks every image
+  the book uses exists. The sim layout and robot-2027's `raptaboard-test` test topics change as the
+  pages need.
 - **User guide:** install and first start (each system's unsigned-build prompt, the first-start
   packs); connecting (team, Driver Station, SystemCore, sim, address); a tour of the window
   (tabs, tree, settings bar, lock, status); adding and arranging widgets (drag from the tree, Add
@@ -621,7 +627,7 @@ source setting, and plugins' needs shown before installing, so the pages describ
     commit, so every step builds and passes its tests. Then tab plugins (Doom as the case study:
     pixel frames, input and focus, audio, storage) and content packs (`pack.toml`, artifacts
     from other repos, the two signed catalogs).
-- **Order**, a pull request each (**the first done** 2026-11-26: `book/` with every planned page in
+- **Order**, a pull request each (**the first two done** 2026-11-26, the screenshot recorder second; `book/` with every planned page in
   `SUMMARY.md`, the ones still to write as drafts; the README's sections moved in; its images in
   `book/src/images/`; `scripts/check_book.py` for links, images and chapters; `book.yml` building
   it on pull requests and publishing it from main): the book's scaffold, Pages workflow and README; the screenshot
