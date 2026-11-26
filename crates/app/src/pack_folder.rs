@@ -234,7 +234,7 @@ pub fn load(folder: &Path) -> Result<Pack, String> {
     })
 }
 
-/// The pack's plugins, each named and given its permissions by its manifest
+/// The pack's plugins, each named and given its permissions and needs by its manifest
 /// (`alerts.toml` beside `alerts.wasm`), which must be there and good.
 fn plugins(folder: &Path, where_: &str, items: &[PackItem]) -> Result<Vec<PackPlugin>, String> {
     let mut out = Vec::new();
@@ -243,6 +243,7 @@ fn plugins(folder: &Path, where_: &str, items: &[PackItem]) -> Result<Vec<PackPl
             name: None,
             file: item.file.clone(),
             permissions: Vec::new(),
+            needs: None,
         };
         if !item.file.ends_with(".wasm") {
             // Its section's check says what's wrong.
@@ -264,6 +265,7 @@ fn plugins(folder: &Path, where_: &str, items: &[PackItem]) -> Result<Vec<PackPl
                 item.file, m.name
             ));
         }
+        plugin.needs = Some(crate::content::PluginNeeds::of(&m));
         plugin.name = Some(m.name);
         plugin.permissions = m
             .permissions

@@ -381,6 +381,48 @@ fn a_packs_plugin_asking_for_more_than_its_catalog_said_isnt_loaded() {
 }
 
 #[test]
+fn a_packs_plugin_needing_more_than_its_catalog_said_isnt_loaded() {
+    use crate::content::InstalledPlugin;
+    use crate::plugins::use_packs;
+    let dir = plugin_pack("pack-tab", "tab-test");
+    let pack = crate::pack_folder::load(&dir).unwrap();
+    // What it needs is shown, the tab and mouse first.
+    assert_eq!(
+        pack.plugin_lines(),
+        ["Plugin pack-tab: fills the Tab test tab, \
+          holds the mouse while its tab has the keyboard, plays sounds"]
+    );
+    let installed = |needs| InstalledPlugin {
+        pack: "tabs".into(),
+        pack_name: "Tabs".into(),
+        installed_at: 0,
+        name: Some("pack-tab".into()),
+        wasm: dir.join("pack-tab.wasm"),
+        manifest: dir.join("pack-tab.toml"),
+        folder: dir.clone(),
+        permissions: vec!["sound".into()],
+        needs,
+    };
+    let store = crate::content::tests::folder("pack-tab-store");
+    // A catalog that hides that it holds the mouse.
+    let mut hidden = pack.plugins[0].needs.clone().unwrap();
+    hidden.capture_mouse = false;
+    let problems = use_packs(&store, &[installed(Some(hidden))]);
+    assert!(crate::plugins::find("plugin:pack-tab").is_none());
+    assert_eq!(problems.len(), 1, "{problems:?}");
+    assert!(
+        problems[0].contains("asks for the mouse, which its pack didn't list"),
+        "{problems:?}"
+    );
+    // Its catalog's needs, or a catalog from before needs: it loads.
+    for needs in [pack.plugins[0].needs.clone(), None] {
+        assert!(use_packs(&store, &[installed(needs)]).is_empty());
+        assert!(crate::plugins::find("plugin:pack-tab").is_some());
+        assert!(use_packs(&store, &[]).is_empty());
+    }
+}
+
+#[test]
 fn the_newest_pack_wins_and_a_folder_plugin_beats_a_pack() {
     use crate::content::InstalledPlugin;
     use crate::plugins::{Origin, use_packs};
@@ -403,6 +445,7 @@ fn the_newest_pack_wins_and_a_folder_plugin_beats_a_pack() {
             manifest: to.join(format!("{id}.toml")),
             folder: to,
             permissions: vec![],
+            needs: None,
         }
     };
     let mut older = copy("older", "layered", "topic-test");

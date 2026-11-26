@@ -26,6 +26,7 @@
 //! for them and picks up what happened each frame, so a slow or missing
 //! network never holds up the dashboard.
 
+use raptaboard_plugin_host::{Manifest, runtime::Limits};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -165,11 +166,90 @@ pub struct PackPlugin {
     pub name: Option<String>,
     /// Its `.wasm`, one of the pack's files.
     pub file: String,
-    /// What its manifest asks for (`publish`, `sound`, `background`), shown
-    /// before installing. A plugin asking for more once installed isn't
-    /// loaded.
+    /// What its manifest asks for (`publish`, `sound`, `background`,
+    /// `storage`), shown before installing. A plugin asking for more once
+    /// installed isn't loaded.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permissions: Vec<String>,
+    /// What else its manifest needs (a tab, the mouse, more than the usual
+    /// limits), shown before installing and held to like `permissions`.
+    /// None from a catalog made before needs were listed: not checked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub needs: Option<PluginNeeds>,
+}
+
+/// What a plugin needs beyond drawing a widget, from its manifest: the tab
+/// it fills, holding the mouse, and its `[limits]`. Only what it asks for.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PluginNeeds {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub capture_mouse: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_mb: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call_ms: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_kb: Option<u32>,
+}
+
+impl PluginNeeds {
+    /// The needs of the plugin with manifest `m`.
+    pub fn of(m: &Manifest) -> Self {
+        PluginNeeds {
+            tab: m.tab.clone(),
+            capture_mouse: m.capture_mouse,
+            memory_mb: m.limits.memory_mb,
+            call_ms: m.limits.call_ms,
+            storage_kb: m.limits.storage_kb,
+        }
+    }
+
+    /// The limits these needs allow: the usual, with what they ask for.
+    fn limits(&self) -> Limits {
+        let d = Limits::default();
+        Limits {
+            call_ms: self.call_ms.map_or(d.call_ms, u64::from),
+            memory_bytes: self
+                .memory_mb
+                .map_or(d.memory_bytes, |mb| (mb as usize) << 20),
+            storage_bytes: self
+                .storage_kb
+                .map_or(d.storage_bytes, |kb| u64::from(kb) << 10),
+            ..d
+        }
+    }
+
+    /// What the plugin with manifest `m` needs beyond these, in words (empty
+    /// if nothing): a plugin needing more than its catalog said isn't loaded.
+    ///
+    /// ```
+    /// use raptaboard::content::PluginNeeds;
+    /// use raptaboard_plugin_host::Manifest;
+    /// let m = Manifest::from_toml("name='g'\nversion='0'\napi='0.3'\ntab='Game'\n\
+    ///     [limits]\nmemory_mb=192\n").unwrap();
+    /// assert!(PluginNeeds::of(&m).beyond(&m).is_empty());
+    /// assert_eq!(PluginNeeds::default().beyond(&m), ["the Game tab", "more memory"]);
+    /// ```
+    pub fn beyond(&self, m: &Manifest) -> Vec<String> {
+        let (have, asked) = (self.limits(), Limits::for_manifest(m));
+        let mut more = Vec::new();
+        if let Some(tab) = m.tab.as_ref().filter(|t| self.tab.as_ref() != Some(*t)) {
+            more.push(format!("the {tab} tab"));
+        }
+        for (over, what) in [
+            (m.capture_mouse && !self.capture_mouse, "the mouse"),
+            (asked.memory_bytes > have.memory_bytes, "more memory"),
+            (asked.call_ms > have.call_ms, "more time each call"),
+            (asked.storage_bytes > have.storage_bytes, "more saved space"),
+        ] {
+            if over {
+                more.push(what.to_string());
+            }
+        }
+        more
+    }
 }
 
 impl PackPlugin {
@@ -177,7 +257,7 @@ impl PackPlugin {
     ///
     /// ```
     /// use raptaboard::content::PackPlugin;
-    /// let p = PackPlugin { name: None, file: "alerts.wasm".into(), permissions: vec![] };
+    /// let p = PackPlugin { name: None, file: "alerts.wasm".into(), permissions: vec![], needs: None };
     /// assert_eq!(p.manifest(), "alerts.toml");
     /// ```
     pub fn manifest(&self) -> String {
@@ -185,28 +265,44 @@ impl PackPlugin {
         format!("{stem}.toml")
     }
 
-    /// What it may do, for people: "plays sounds, runs while its tab is
-    /// closed", or "nothing more than draw".
+    /// What it may do and needs, for people: "plays sounds, runs while its
+    /// tab is closed", "fills the Doom tab, …, uses up to 192 MB of memory",
+    /// or "nothing more than draw".
     ///
     /// ```
     /// use raptaboard::content::PackPlugin;
-    /// let p = PackPlugin { name: None, file: "a.wasm".into(), permissions: vec!["sound".into()] };
+    /// let p = PackPlugin { name: None, file: "a.wasm".into(), permissions: vec!["sound".into()], needs: None };
     /// assert_eq!(p.may(), "plays sounds");
     /// ```
     pub fn may(&self) -> String {
-        if self.permissions.is_empty() {
+        let needs = self.needs.clone().unwrap_or_default();
+        let mut words: Vec<String> = Vec::new();
+        if let Some(tab) = &needs.tab {
+            words.push(format!("fills the {tab} tab"));
+        }
+        if needs.capture_mouse {
+            words.push("holds the mouse while its tab has the keyboard".into());
+        }
+        words.extend(self.permissions.iter().map(|p| match p.as_str() {
+            "publish" => "sends values to the robot".into(),
+            "sound" => "plays sounds".into(),
+            "background" => "runs while its tab is closed".into(),
+            "storage" => match needs.storage_kb {
+                Some(kb) => format!("saves its settings on this computer (up to {kb} KB)"),
+                None => "saves its settings on this computer".into(),
+            },
+            other => other.to_string(),
+        }));
+        if let Some(mb) = needs.memory_mb {
+            words.push(format!("uses up to {mb} MB of memory"));
+        }
+        if let Some(ms) = needs.call_ms {
+            words.push(format!("may work up to {ms} ms at a time"));
+        }
+        if words.is_empty() {
             return "nothing more than draw".into();
         }
-        self.permissions
-            .iter()
-            .map(|p| match p.as_str() {
-                "publish" => "sends values to the robot",
-                "sound" => "plays sounds",
-                "background" => "runs while its tab is closed",
-                other => other,
-            })
-            .collect::<Vec<_>>()
-            .join(", ")
+        words.join(", ")
     }
 }
 
@@ -228,6 +324,8 @@ pub struct InstalledPlugin {
     pub folder: PathBuf,
     /// What the catalog said it asks for.
     pub permissions: Vec<String>,
+    /// What the catalog said it needs (None from a catalog before needs).
+    pub needs: Option<PluginNeeds>,
 }
 
 impl Pack {
@@ -768,6 +866,7 @@ impl Store {
                     manifest: dir.join(p.manifest()),
                     folder: dir.clone(),
                     permissions: p.permissions.clone(),
+                    needs: p.needs.clone(),
                 });
             }
         }
@@ -1342,6 +1441,80 @@ impl Content {
 #[cfg(test)]
 pub(crate) mod tests {
     // Tests written by Claude.
+
+    #[test]
+    fn a_plugins_needs_come_from_its_catalog_and_are_shown() {
+        let plugin: PackPlugin = serde_json::from_value(serde_json::json!({
+            "name": "doom", "file": "doom.wasm", "permissions": ["sound", "storage"],
+            "needs": {"tab": "Doom", "capture_mouse": true, "memory_mb": 192, "call_ms": 500}
+        }))
+        .unwrap();
+        assert_eq!(
+            plugin.may(),
+            "fills the Doom tab, holds the mouse while its tab has the keyboard, plays sounds, \
+             saves its settings on this computer, uses up to 192 MB of memory, \
+             may work up to 500 ms at a time"
+        );
+        // Saved space goes with storage.
+        let mut more = plugin.clone();
+        more.needs.as_mut().unwrap().storage_kb = Some(256);
+        assert!(
+            more.may()
+                .contains("saves its settings on this computer (up to 256 KB)")
+        );
+        // Kept as it came, and a catalog from before needs gave none.
+        let back: PackPlugin =
+            serde_json::from_value(serde_json::to_value(&plugin).unwrap()).unwrap();
+        assert_eq!(back, plugin);
+        let old: PackPlugin =
+            serde_json::from_value(serde_json::json!({"file": "a.wasm"})).unwrap();
+        assert_eq!(old.needs, None);
+        assert_eq!(old.may(), "nothing more than draw");
+    }
+
+    #[test]
+    fn a_plugin_needing_more_than_its_catalog_said_is_named_for_each() {
+        let m = Manifest::from_toml(
+            "name='g'\nversion='0'\napi='0.3'\ntab='Game'\ncapture_mouse=true\n\
+             [limits]\nmemory_mb=192\ncall_ms=500\nstorage_kb=256\n",
+        )
+        .unwrap();
+        let said = PluginNeeds::of(&m);
+        assert!(said.beyond(&m).is_empty());
+        assert_eq!(
+            PluginNeeds::default().beyond(&m),
+            [
+                "the Game tab",
+                "the mouse",
+                "more memory",
+                "more time each call",
+                "more saved space"
+            ]
+        );
+        // Another tab, or less of each than it asks.
+        let other = PluginNeeds {
+            tab: Some("Other".into()),
+            memory_mb: Some(191),
+            call_ms: Some(499),
+            storage_kb: Some(255),
+            ..said.clone()
+        };
+        assert_eq!(other.beyond(&m).len(), 4);
+        // More than it asks is fine; leaving a limit out is the usual one.
+        let roomy = PluginNeeds {
+            memory_mb: Some(512),
+            ..said.clone()
+        };
+        assert!(roomy.beyond(&m).is_empty());
+        let usual =
+            Manifest::from_toml("name='w'\nversion='0'\napi='0.3'\n[match]\ntype='X'\n").unwrap();
+        assert!(PluginNeeds::default().beyond(&usual).is_empty());
+        let small = PluginNeeds {
+            memory_mb: Some(32),
+            ..Default::default()
+        };
+        assert_eq!(small.beyond(&usual), ["more memory"]);
+    }
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
     use std::sync::{Arc, Mutex};
@@ -1801,6 +1974,7 @@ pub(crate) mod tests {
             name: None,
             file: "doom.wasm".into(),
             permissions: vec![],
+            needs: None,
         });
         let bad = serde_json::to_vec(&catalog(vec![pack.clone()])).unwrap();
         assert!(Catalog::parse(&bad).unwrap_err().contains("doom.wasm"));
