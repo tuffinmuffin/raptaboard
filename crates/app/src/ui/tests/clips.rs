@@ -19,8 +19,8 @@ use image::{Delay, Frame, RgbaImage, imageops};
 use super::*;
 use crate::types::field::FieldInfo;
 
-/// Where the README's Field clip goes, from the repo's root.
-const FIELD_CLIP: &str = "docs/images/field.gif";
+/// Where the book's Field clip goes, from the repo's root.
+const FIELD_CLIP: &str = "book/src/images/field.gif";
 /// Frames a second in the clip.
 const FPS: u32 = 10;
 /// How long the clip is, seconds: a robot's lap of its orbit.

@@ -1,0 +1,18 @@
+# raptaboard's documentation: `mdbook build book` (mdBook 0.5.4), published
+# to GitHub Pages from main (.github/workflows/book.yml).
+[book]
+title = "raptaboard"
+description = "An FRC driver dashboard in Rust, with widget plugins"
+authors = ["FRC Team 3200 (Raptacon)"]
+language = "en"
+src = "src"
+
+[output.html]
+git-repository-url = "https://github.com/tuffinmuffin/raptaboard"
+edit-url-template = "https://github.com/tuffinmuffin/raptaboard/edit/main/book/{path}"
+site-url = "/raptaboard/"
+
+[build]
+# A chapter in SUMMARY.md whose file is missing fails the build instead of
+# being made empty.
+create-missing = false

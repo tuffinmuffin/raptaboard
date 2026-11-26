@@ -25,3 +25,4 @@ lcov.info
 *.swp
 *~
 Thumbs.db
+/book/book/
