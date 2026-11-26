@@ -32,7 +32,9 @@ packs without updating raptaboard.
   signed.
 - **Driver Station** as the server choice now works: the robot's address comes from the
   Driver Station on the same computer, the 2027 one or the NI one, as in Elastic.
-- **Microsoft Store package:** only the dashboard, without `raptaboard-cli`.
+- **Documentation:** a book at <https://tuffinmuffin.github.io/raptaboard/>: installing,
+  connecting, the window, building raptaboard and writing plugins, with more pages coming.
+- **Not in the Microsoft Store:** the Store stays at 0.3.0 until 0.5.0. Get 0.4.0 from GitHub.
 
 ## 0.3.0
 

@@ -598,7 +598,13 @@ chooses, never needed at an event: packs are installed beforehand and used from 
 
 Planned with the user 2026-11-25, for the next release (after the pack pipeline chores: Doom's
 releases, the content repo's artifacts from other repos and its two catalogs, the pre-release
-source setting, and plugins' needs shown before installing, so the pages describe what's there).
+source setting, and plugins' needs shown before installing, so the pages describe what's there). Changed 2026-11-26: 0.4.0 is released once
+the first three pull requests are in (the book publishes from main, apart from releases), and the
+rest follow.
+
+**Releases from 0.4.0** (decided with the user 2026-11-26): 0.4.0 goes on GitHub only; the
+Microsoft Store stays at 0.3.0. 0.5.0 is the GUI updates, and goes to the Store too: the state
+raptaboard is meant to rest in, apart from feature requests.
 
 - **Where:** an mdBook in `book/`, published to GitHub Pages by CI on main; pull requests check it
   builds and its links and images resolve. The README shrinks to what raptaboard is, install and
