@@ -31,8 +31,15 @@ Open: should the robot serve plugins from port 5800 along with layouts? Stream D
 - `ws://<host>:<port>/nt/Elastic`, subprotocol `v4.1.networktables.first.wpi.edu`, falling back to
   `networktables.first.wpi.edu` (v4.0). A second websocket sends RTT time pings.
 - Port: robot code 5810, SystemCore internal 6810.
-- Address modes: Driver Station (asks the DS at `ws://<host>:6768/ipws`), team number (10.TE.AM.2),
-  SystemCore mDNS (`robot.local`), SystemCore WiFi (`172.30.0.1`), localhost, custom.
+- Address modes: Driver Station, team number (10.TE.AM.2), SystemCore mDNS (`robot.local`),
+  SystemCore WiFi (`172.30.0.1`), localhost, custom. Driver Station (`driver_station.rs`, built
+  2026-11-26 from Elastic's `ds_interop.dart`; not yet tried with a real Driver Station) listens on
+  this computer to both the 2027 Driver Station's websocket, `ws://127.0.0.1:6768/ipws`
+  (`{"robotIp": "10.32.0.2", "dockedHeight": …}`, `"0.0.0.0"` while unknown), and the NI Driver
+  Station's TCP port 1742 (`{"robotIP": <u32, big-endian>}`, 0 while unknown; what Elastic read
+  before May 2026, and WPILib's own client reads), each retried every second, only while the mode
+  is chosen; the newest address either gave is used, and kept if the Driver Station closes.
+  Resizing above a docked Driver Station (`dockedHeight`) isn't done yet.
 - Subscriptions are shared between widgets on the same topic. Default period 0.06 s, graphs 0.033 s.
   The open tab gets one subscription per period, and each widget shows a new value once per its
   period on a steady beat, however often the window redraws.

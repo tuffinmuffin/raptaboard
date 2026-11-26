@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use eframe::egui::{self, Color32, Sense};
 
 use crate::connection::{AddressMode, resolve};
+use crate::driver_station::DsLookup;
 use crate::edit::EditAction;
 use crate::layout_file::{self, FileAction};
 use crate::nt::ConnectionStatus;
@@ -35,6 +36,19 @@ pub(super) fn status_label(ui: &mut egui::Ui, status: &ConnectionStatus, no_team
 }
 
 impl DashboardApp {
+    /// The robot's address from the Driver Station on this computer, once
+    /// it has given one, listening to it from the first call (stopped when
+    /// another server choice is picked).
+    fn driver_station_ip(&mut self) -> Option<String> {
+        let at = self.ds_at.clone();
+        self.ds
+            .get_or_insert_with(|| match at {
+                Some((websocket, ni)) => DsLookup::start_at(&websocket, ni),
+                None => DsLookup::start(),
+            })
+            .robot_ip()
+    }
+
     pub(super) fn settings_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.strong("raptaboard");
@@ -85,7 +99,12 @@ impl DashboardApp {
             ui.separator();
             // The address is set in the Settings window; the connection
             // follows it every frame, whether that window is open or not.
-            let host = resolve(self.address.mode, self.address.team, &self.address.custom);
+            let host = if self.address.mode == AddressMode::DriverStation {
+                self.driver_station_ip()
+            } else {
+                self.ds = None;
+                resolve(self.address.mode, self.address.team, &self.address.custom)
+            };
             self.nt.set_target(host.as_deref(), self.address.port);
             ui.separator();
             let no_team = self.address.mode == AddressMode::TeamNumber && self.address.team == 0;

@@ -400,7 +400,7 @@ fn the_gear_opens_connection_settings_and_the_licenses() {
     labelled_soon(&mut harness, "Sounds, images, fields");
     for (page, shows) in [
         ("Sounds, images, fields", "Sarah-Christin Freytag"),
-        ("Privacy", "We collect no personal data"),
+        ("Privacy", "We collect no data"),
         ("Rust crates", "Rust crates. Their licenses:"),
         ("License texts", "Copy all"),
     ] {
@@ -412,4 +412,44 @@ fn the_gear_opens_connection_settings_and_the_licenses() {
         );
     }
     assert!(harness.state().gear.about && harness.state().gear.settings);
+}
+
+#[test]
+fn the_driver_station_choice_connects_where_the_driver_station_says() {
+    use std::io::Write;
+    let robot = Robot::start();
+    let ctx = egui::Context::default();
+    let mut app = app_for(&robot);
+    // An NI Driver Station on this computer that knows the robot is at
+    // 127.0.0.1 (2130706433) once asked a second time.
+    let ni = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let ni_at = ni.local_addr().unwrap();
+    let closed = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    let (tell, told) = std::sync::mpsc::channel::<()>();
+    let ds = std::thread::spawn(move || {
+        let (mut stream, _) = ni.accept().unwrap();
+        stream.write_all(b"{\"robotIP\":0}\n").unwrap();
+        told.recv().unwrap();
+        stream.write_all(b"{\"robotIP\":2130706433}\n").unwrap();
+        let _ = told.recv();
+    });
+    app.ds_at = Some((format!("ws://{closed}/ipws"), ni_at));
+    app.address.mode = AddressMode::DriverStation;
+    for _ in 0..30 {
+        frame(&ctx, &mut app, vec![]);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(app.ds.is_some());
+    assert_eq!(app.nt.status(), ConnectionStatus::NoTarget);
+    tell.send(()).unwrap();
+    run_until(&ctx, &mut app, &robot, connected);
+    // Another choice stops listening to the Driver Station.
+    app.address.mode = AddressMode::Custom;
+    frame(&ctx, &mut app, vec![]);
+    assert!(app.ds.is_none());
+    drop(tell);
+    ds.join().unwrap();
 }

@@ -30,6 +30,8 @@ packs without updating raptaboard.
 - **Pre-release packs:** "Pre-releases" beside the official source in the Content window (or
   `raptaboard packs list --prereleases`) offers packs being tried before they're released, still
   signed.
+- **Driver Station** as the server choice now works: the robot's address comes from the
+  Driver Station on the same computer, the 2027 one or the NI one, as in Elastic.
 - **Microsoft Store package:** only the dashboard, without `raptaboard-cli`.
 
 ## 0.3.0

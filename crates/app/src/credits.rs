@@ -375,14 +375,8 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert!(
-            headings.contains(&"We collect no personal data"),
-            "{headings:?}"
-        );
-        assert!(
-            headings.contains(&"What raptaboard connects to"),
-            "{headings:?}"
-        );
+        assert!(headings.contains(&"We collect no data"), "{headings:?}");
+        assert!(headings.contains(&"What it connects to"), "{headings:?}");
         // No Markdown left to show as symbols.
         for b in &blocks {
             let text = format!("{b:?}");
@@ -395,17 +389,14 @@ mod tests {
                 "{text}"
             );
         }
-        assert!(blocks.contains(&PolicyBlock::Subheading("Content packs".into())));
-        assert!(
-            blocks
-                .iter()
-                .any(|b| matches!(b, PolicyBlock::SubItem(i) if i.contains("about once an hour")))
-        );
-        assert!(
-            blocks
-                .iter()
-                .any(|b| matches!(b, PolicyBlock::Item(i) if i.contains("content packs")))
-        );
+        // Subheadings and lists, nested too, from a sample (the policy has
+        // none today).
+        let sample =
+            policy_blocks("# T\n\n## H\n\n### Packs\n\n- **One** item\n  - a `sub` item\n- Two\n");
+        assert!(sample.contains(&PolicyBlock::Subheading("Packs".into())));
+        assert!(sample.contains(&PolicyBlock::Item("One item".into())));
+        assert!(sample.contains(&PolicyBlock::SubItem("a sub item".into())));
+        assert!(sample.contains(&PolicyBlock::Item("Two".into())));
     }
 
     #[test]
