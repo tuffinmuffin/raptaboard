@@ -348,8 +348,8 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
   host runtime and limits, for `cargo test`. A test sets values (one at a time or a timed script),
   sizes, the connection state and the theme, and sends input (`activate("bell")`, keys). It then
   checks what came back: shapes, regions found by label, the tab mark, redraw requests, sounds asked
-  for and log lines, and optionally a rendered PNG snapshot. Our own Number and Alerts plugins are
-  checked against the built-ins with it.
+  for and log lines, and optionally a rendered PNG snapshot. The Number and Alerts example plugins
+  (raptaboard-examples) are checked against the built-ins with it.
 - **Sandbox window** (`raptaboard plugin dev <folder>`; started 2026-11-25: the server, the plugin's
   `[sandbox]` sample values, the values panel (type, add, remove), size presets and the theme,
   connected and locked switches, and `--address` with `--topic`; the dev overlay 2026-11-25: regions
@@ -428,7 +428,10 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
    whole or not at all), 64 KiB in all unless `[limits] storage_kb` asks for more (at most 1 MiB).
    A writable `/data` folder for larger things (saved images, recordings) is the planned extension,
    not built yet. Next: the pack. Before 1.0 a plugin runs only on the same 0.x, so the
-   content repo's `example-widgets` pack (0.2) is rebuilt for 0.3 before the next release.
+   content repo's `example-widgets` pack (0.2) is rebuilt for 0.3 before the next release. The
+   example plugins moved to their own repo, raptaboard-examples (2026-11-25, asked for by the user),
+   released there; `plugins/` keeps the SDK and test plugins (`topic-test` and `table-test` stand in
+   for them in raptaboard's tests).
 3. **Custom graphs**: binding several tables (the `table` property) and history from the host.
 4. **3D scene and a robot viewer**: the host renders and the plugin describes a scene it keeps.
    Meshes come from the pack's GLB files, as a part tree whose transforms the plugin sets. There are

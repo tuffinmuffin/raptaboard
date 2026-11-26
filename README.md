@@ -70,7 +70,7 @@ On Linux you also need the windowing libraries:
 | `crates/plugin-host` | Plugin manifests (`plugin.toml`), matching plugins to NT tables, topic path helpers |
 | `crates/app` | The eframe/egui desktop app (binary `raptaboard`) |
 | `wit/dashboard.wit` | The plugin interface: what a WASM widget imports and exports |
-| `plugins/` | The plugin SDK (`raptaboard-plugin`) and example plugins, built for WebAssembly in their own workspace |
+| `plugins/` | The plugin SDK (`raptaboard-plugin`) and the plugins raptaboard's own tests use, built for WebAssembly in their own workspace |
 | `docs/spec.md` | The spec: Elastic feature list, requirements, plugin design, milestones |
 | `packaging/`, `scripts/package.py` | Release packages: the Windows installer, macOS app and Linux install script |
 | `media/icon/` | The app icon (`raptaboard.svg`; the other files are made from it) |
@@ -97,16 +97,18 @@ decimal_places = { type = "number", default = -1 }
 
 The WASM component implements the `widget` world from `wit/dashboard.wit`: the dashboard pushes it
 the values it asked for, and it returns shapes to draw. In Rust, the SDK in `plugins/sdk` does the
-plumbing: implement its `Widget` trait and pass the type to `widget!` (`plugins/number` is a
-small example; `plugins/alerts`, the built-in Alerts widget remade, a bigger one). To try one, build it and start the dashboard with it:
+plumbing: implement its `Widget` trait and pass the type to `widget!`. The example plugins are in
+[raptaboard-examples](https://github.com/tuffinmuffin/raptaboard-examples): Number, a small one,
+and Alerts, the built-in Alerts widget remade, a bigger one. The plugins in `plugins/` are the
+ones raptaboard's own tests use. To try one, build it and start the dashboard with it:
 
 ```sh
 rustup target add wasm32-wasip2
 (cd plugins && cargo build --release --target wasm32-wasip2)
-cargo run -p raptaboard -- --plugin plugins/number --plugin plugins/alerts --address sim
+cargo run -p raptaboard -- --plugin plugins/topic-test --plugin plugins/table-test --address sim
 ```
 
-Their widget types (`plugin:number`, `plugin:alerts`) are then in "Add as" and the settings dialog's widget choice for
+Their widget types (`plugin:topic-test`, `plugin:table-test`) are then in "Add as" and the settings dialog's widget choice for
 the topics and tables they show, after the built-in ones. Rebuild one while the dashboard runs and its
 widgets restart with the new build.
 
@@ -119,13 +121,13 @@ stopped, with Restart; the widget restarts whenever the `.wasm` is rebuilt. Noth
 is saved. (`--address sim --topic <path>` shows the sim's values instead.)
 
 ```sh
-cargo run -p raptaboard -- plugin dev plugins/alerts
+cargo run -p raptaboard -- plugin dev plugins/table-test
 ```
 
 To test one without the dashboard, `crates/plugin-test` (`raptaboard-plugin-test`) runs its built
 `.wasm` in the dashboard's own plugin runtime from `cargo test`: set values, the size and the
 connection, click its regions, and check the text it drew, its tab mark and the sounds it asked for.
-`plugins/number/tests/harness.rs` and `plugins/alerts/tests/harness.rs` are examples:
+raptaboard-examples' `number/tests/harness.rs` and `alerts/tests/harness.rs` are examples:
 
 ```rust
 let mut widget = raptaboard_plugin_test::Harness::build(env!("CARGO_MANIFEST_DIR"));

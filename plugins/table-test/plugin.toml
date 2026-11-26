@@ -1,0 +1,28 @@
+# A table plugin for raptaboard's own tests (the published examples are in
+# raptaboard-examples): counts a WPILib Alerts group's alerts.
+name = "table-test"
+version = "0.1.0"
+api = "0.3"
+
+[match]
+type = "Alerts"
+
+[size]
+default = [2, 2]
+min = [1, 1]
+
+[properties]
+# Every alert group on the server, not just the widget's.
+all_groups = { type = "bool", default = false }
+# Play `tone` when a new error arrives.
+sound = { type = "bool", default = false }
+tone = { type = "sound", default = "beep" }
+
+[sandbox.values]
+errors = ["Encoder lost"]
+warnings = ["Battery low", "Hot motor"]
+infos = ["Vision connected"]
+
+[permissions]
+sound = true
+background = true

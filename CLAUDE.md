@@ -139,7 +139,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   add and remove; and the plugin's overlay: its regions outlined (`plugins::set_outline_regions`), each kind of call's
   time and its memory against the limits (`runtime::Instance::usage`, kept by the worker), its log, why it stopped,
   Restart; `plugins::dev_view`). `main.rs` starts it with nowhere to save settings and no content packs. With `--address`, no
-  server: the widget is bound to `--topic`. `ui/tests/sandbox.rs` runs it with Number and Alerts.
+  server: the widget is bound to `--topic`. `ui/tests/sandbox.rs` runs it with `topic-test` and `table-test`.
 - Tab plugins (plugin.toml `tab = "…"`): `plugins::tab_plugin(tab)` finds the plugin claiming an empty tab's name,
   `tab_widget` its stand-in widget (its worker kept while the tab exists); `ui/plugin_tab.rs` draws it in place of the
   grid and turns the dashboard's shortcuts off while it has focus (`plugin_has_keys`); `PluginType::show_tab` and
@@ -159,15 +159,16 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   `PluginType`, the `WidgetType` adapter (card, picture, regions as accessible controls, the summary as the widget's
   label, "Plugin stopped" with Restart, settings rows from `plugin.toml`); `draw.rs` the shapes in egui (images not
   yet); `convert.rs` values, settings and the theme in the plugin interface's types. `ui/tests/plugins.rs` runs the
-  Number plugin beside a Text Display and the Alerts plugin beside the built-in Alerts.
+  `topic-test` plugin beside a Text Display and `table-test` beside the built-in Alerts.
 - `plugins/`: a workspace of its own, built for WebAssembly (`cd plugins && cargo build --release --target
   wasm32-wasip2`; needs `rustup target add wasm32-wasip2`): `sdk` is `raptaboard-plugin` (the `Widget` trait and
-  `widget!` macro over the wit-bindgen bindings, and helpers), `number` the first example plugin (a number topic
-  as text, with the Text Display's setting names), `alerts` the second (the built-in Alerts widget remade: a
-  table plugin with a tab mark, a tone and a pulse, with the built-in's setting names), `limits-test` a plugin that misbehaves on purpose for the
+  `widget!` macro over the wit-bindgen bindings, and helpers), `topic-test` a topic plugin for the tests (a number
+  topic as text, with its unit; fit by `measure-text`), `table-test` a table plugin (an Alerts group's counts, every
+  group's with `all_groups`, a tone for a new error, its tab mark while closed), `limits-test` a plugin that misbehaves on purpose for the
   runtime and harness tests (its `region` mode draws a "Bell" button, `files` tries files in and out of `/pack`), and
   `tab-test` a plugin that fills a tab ("Tab test": a bouncing pixel frame at 35 Hz, keys, a beep through
-  `play-audio`, a file from `/pack`), the small stand-in for Doom. Each example plugin has harness tests in its `tests/`. CI lints and tests it in the lint job.
+  `play-audio`, a file from `/pack`), the small stand-in for Doom. The example plugins (Number, Alerts) moved to raptaboard-examples (2026-11-25), with
+  their harness tests; its releases feed the content repo's `example-widgets` pack. CI lints and tests `plugins/` in the lint job.
 - `crates/app`: the eframe app. `ui/` holds the window (`DashboardApp` in `ui/mod.rs` with file open/save and the edit and tab
   actions; its state is grouped in `ui/state.rs`: `file` (`LayoutFile`), `address`, `tree` (`TreeView`), `grid`
   (`GridState`: drags, where the grid was), `alerts` (the history and its panel) and `sends` (failed sends),
@@ -331,8 +332,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   Layout children.
 - `wit/dashboard.wit`: plugin ABI (0.3: widgets and tab plugins, shapes including `pixels`, regions, input,
   `play-audio`, the plugin's folder read-only at `/pack`). Bump the package version and `HOST_API` in plugin-host
-  together; before 1.0 a plugin runs only on the same 0.x (`api_compatible`), so rebuild the plugins and the
-  content repo's `example-widgets` pack with it.
+  together; before 1.0 a plugin runs only on the same 0.x (`api_compatible`), so rebuild the plugins, raptaboard-examples
+  (its SDK pin) and the content repo's packs with it.
 - `plugins/arm`: a manifest only (no code); its `plugin.toml` is a test fixture.
 
 ## Conventions
