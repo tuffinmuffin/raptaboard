@@ -1,0 +1,61 @@
+# The book (book/): checked and built on every pull request, and published
+# to GitHub Pages from main (https://tuffinmuffin.github.io/raptaboard/).
+name: book
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One publish at a time; a newer push to main replaces one waiting.
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MDBOOK_VERSION: "0.5.4"
+  # sha256 of mdbook-v0.5.4-x86_64-unknown-linux-gnu.tar.gz
+  MDBOOK_SHA256: 3f28de05dafca9d0f2eab99c662116b0e37b89b1d96a08f8f430b9eeae958cd7
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check links and images
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_check_book.py'
+          python3 scripts/check_book.py
+      - name: Install mdBook
+        run: |
+          tarball="mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sSfL -o "$tarball" \
+            "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/$tarball"
+          echo "${MDBOOK_SHA256}  $tarball" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$tarball" -C "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Build
+        run: mdbook build book
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: book/book
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

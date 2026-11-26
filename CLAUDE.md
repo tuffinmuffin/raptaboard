@@ -33,8 +33,11 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p raptaboard -- crates/layout/tests/data/elastic_sample.json
 cargo run -p raptaboard -- --address sim crates/layout/tests/data/elastic_sample.json  # robot sim
 cargo run -p raptaboard -- --help
-# The README's clips (ui/tests/clips.rs: the app headless against a scripted robot, saved as GIFs
-# in docs/images/; needs a GPU, ~30 s):
+# The book (book/, mdBook 0.5.4; published to GitHub Pages from main by book.yml):
+mdbook serve book --open
+python3 scripts/check_book.py      # every chapter, link and image resolves
+# The book's clips (ui/tests/clips.rs: the app headless against a scripted robot, saved as GIFs
+# in book/src/images/; needs a GPU, ~30 s):
 cargo test -p raptaboard --lib record_ -- --ignored --nocapture
 # The Microsoft Store listing's screenshots (media/store/; needs a GPU and robot-2027's sim running here):
 cargo test -p raptaboard --lib record_store_screenshots -- --ignored --nocapture

@@ -621,7 +621,10 @@ source setting, and plugins' needs shown before installing, so the pages describ
     commit, so every step builds and passes its tests. Then tab plugins (Doom as the case study:
     pixel frames, input and focus, audio, storage) and content packs (`pack.toml`, artifacts
     from other repos, the two signed catalogs).
-- **Order**, a pull request each: the book's scaffold, Pages workflow and README; the screenshot
+- **Order**, a pull request each (**the first done** 2026-11-26: `book/` with every planned page in
+  `SUMMARY.md`, the ones still to write as drafts; the README's sections moved in; its images in
+  `book/src/images/`; `scripts/check_book.py` for links, images and chapters; `book.yml` building
+  it on pull requests and publishing it from main): the book's scaffold, Pages workflow and README; the screenshot
   recorder; the user guide's first pages; the widget reference and in-depth pages; the
   architecture and built-in widget tutorial; the plugin reference with the tutorial plugin and
   its walkthrough; tab plugins, content packs, testing and releasing.
