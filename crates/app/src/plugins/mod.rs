@@ -31,6 +31,7 @@ use raptaboard_layout::{ElasticLayout, WidgetContainer};
 use raptaboard_plugin_host::Manifest;
 use raptaboard_plugin_host::runtime::{Plugin, Runtime};
 
+use crate::content::PluginNeeds;
 use worker::Worker;
 
 /// How a plugin widget type is saved in layouts: `plugin:<name>`.
@@ -192,12 +193,20 @@ fn folder_files(folder: &Path) -> Result<(Files, String), String> {
     Ok((files, m.name))
 }
 
-/// Compile the plugin in `files`. `allowed`: the permissions its pack said
-/// it asks for; asking for any other stops it loading.
+/// What a pack's catalog said its plugin asks for and needs: a plugin
+/// asking for more doesn't load.
+struct Allowed<'a> {
+    permissions: &'a [String],
+    /// None from a catalog made before needs were listed: not checked.
+    needs: Option<&'a PluginNeeds>,
+}
+
+/// Compile the plugin in `files`. `allowed`: what its pack said it asks for
+/// and needs; asking for more stops it loading.
 fn compile(
     files: Files,
     origin: Origin,
-    allowed: Option<&[String]>,
+    allowed: Option<Allowed>,
     generation: u64,
 ) -> Result<Loaded, String> {
     let text = std::fs::read_to_string(&files.manifest)
@@ -205,12 +214,16 @@ fn compile(
     let manifest =
         Manifest::from_toml(&text).map_err(|e| format!("{}: {e}", files.manifest.display()))?;
     if let Some(allowed) = allowed {
-        let more: Vec<&str> = manifest
+        let mut more: Vec<String> = manifest
             .permissions
             .names()
             .into_iter()
-            .filter(|p| !allowed.iter().any(|a| a == p))
+            .filter(|p| !allowed.permissions.iter().any(|a| a == p))
+            .map(String::from)
             .collect();
+        if let Some(needs) = allowed.needs {
+            more.extend(needs.beyond(&manifest));
+        }
         if !more.is_empty() {
             return Err(format!(
                 "{} asks for {}, which its pack didn't list",
@@ -337,7 +350,11 @@ pub fn use_packs(store: &Path, installed: &[crate::content::InstalledPlugin]) ->
                 continue;
             }
         }
-        match compile(files, origin, Some(&p.permissions), 0) {
+        let allowed = Allowed {
+            permissions: &p.permissions,
+            needs: p.needs.as_ref(),
+        };
+        match compile(files, origin, Some(allowed), 0) {
             Ok(loaded) if loaded.plugin.manifest.name != name => problems.push(format!(
                 "plugin {name} (pack {}): its manifest names it {}",
                 p.pack, loaded.plugin.manifest.name

@@ -419,7 +419,7 @@ Planned with the user 2026-11-23: authors shouldn't need a robot or the sim to s
    loading the WADs took 67 ms in a release build, about 200 ms in a debug one) and a plugin may ask
    for up to 512 MiB (`[limits] memory_mb` in plugin.toml; Doom runs at about 105 MiB, each frame
    about 1 ms) and longer calls, up to 1 s (`call_ms`: Doom loads a level whenever one ends, over
-   100 ms). Not yet shown before installing a pack (the catalog would carry it). Doom's sound is
+   100 ms). Shown before installing a pack, from the catalog's `needs`. Doom's sound is
    mixed in the plugin (effects and OPL2 music) and streamed through `play-audio`. Storage (in 0.3,
    asked for by the user 2026-11-25): `storage-get`/`-set`/`-remove`/`-keys`, small values a plugin
    keeps between runs (a setting, a CAD file's path; Doom's settings could use it), one set per
@@ -487,11 +487,15 @@ chooses, never needed at an event: packs are installed beforehand and used from 
 - **Plugins in packs** (done 2026-11-24): packs hold files only, so a `[[plugin]]` names its
   `.wasm` (`alerts.wasm`) and its manifest, raptaboard's `plugin.toml`, sits beside it named for it
   (`alerts.toml`). The content repo's `build_catalog.py` (and `pack_folder.rs` for `--package`)
-  reads the manifest and puts the plugin's name and the permissions it asks for in the catalog
-  (`content::PackPlugin`; older raptaboards ignore both). The Content window, the first-run list and
+  reads the manifest and puts the plugin's name, the permissions it asks for and its needs (`needs`:
+  the tab it fills, `capture_mouse`, and its `[limits]`; `content::PluginNeeds`) in the catalog
+  (`content::PackPlugin`; older raptaboards ignore them). The Content window, the first-run list and
   `raptaboard packs install` show them before installing ("Plugin alerts: plays sounds, runs while
-  its tab is closed"), and a plugin whose manifest asks for more than its catalog entry said isn't
-  loaded. The window loads the installed packs' plugins at its first frame and after each install
+  its tab is closed"; "Plugin doom: fills the Doom tab, holds the mouse while its tab has the
+  keyboard, plays sounds, saves its settings on this computer, uses up to 192 MB of memory, may work
+  up to 500 ms at a time"), and a plugin whose manifest asks for more than its catalog entry said
+  isn't loaded. A catalog from before needs (content v4 and older) gave none, so they aren't checked
+  for packs it installed. The window loads the installed packs' plugins at its first frame and after each install
   or remove (`plugins::use_packs`, `Content::plugins_changed`): where two packs have a plugin of one
   name, the newest install's; a `--plugin` folder of that name wins over both. A removed pack's
   plugin is dropped, and its widgets show "Missing plugin: <name>" with their settings kept.

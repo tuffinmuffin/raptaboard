@@ -9,7 +9,8 @@ packs without updating raptaboard.
 
 - **Plugin widgets** from content packs: ⚙ Settings → Content packs lists what each plugin may do
   (send values to the robot, play sounds, keep running while its tab is closed, save values on
-  this computer) before installing, and raptaboard holds it to that. A plugin's widgets are in "Add
+  this computer) and what else it needs (a tab it fills, holding the mouse, more memory or time)
+  before installing, and raptaboard holds it to that. A plugin's widgets are in "Add
   as" and the settings dialog for the topics and tables it shows, after the built-in ones. A
   plugin that stops shows why, with Restart; one can't slow the window down or use more than its
   share of memory.
