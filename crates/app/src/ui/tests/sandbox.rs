@@ -37,9 +37,12 @@ fn sandbox(harness: &mut Harness) -> &mut Sandbox {
 
 #[test]
 fn the_sandbox_serves_a_table_plugins_samples_and_changes_them() {
-    let mut harness = sandbox_for("alerts");
+    let mut harness = sandbox_for("table-test");
     // plugin.toml's [sandbox] values, from the sandbox's own server.
-    labelled_soon(&mut harness, "plugin:alerts: 1 error, 2 warnings, 1 info");
+    labelled_soon(
+        &mut harness,
+        "plugin:table-test: 1 error, 2 warnings, 1 info",
+    );
     assert!(harness.query_by_label("Plugin sandbox").is_some());
     sandbox(&mut harness)
         .set(
@@ -47,18 +50,27 @@ fn the_sandbox_serves_a_table_plugins_samples_and_changes_them() {
             Value::StringArray(vec!["A".into(), "B".into()]),
         )
         .unwrap();
-    labelled_soon(&mut harness, "plugin:alerts: 2 errors, 2 warnings, 1 info");
+    labelled_soon(
+        &mut harness,
+        "plugin:table-test: 2 errors, 2 warnings, 1 info",
+    );
     // Not served any more: as a robot that stopped publishing it.
     sandbox(&mut harness).remove("/Sandbox/Alerts/infos");
-    labelled_soon(&mut harness, "plugin:alerts: 2 errors, 2 warnings, 0 infos");
+    labelled_soon(
+        &mut harness,
+        "plugin:table-test: 2 errors, 2 warnings, 0 infos",
+    );
     // Disconnected (the panel's switch): the plugin greys and says so.
     harness.get_by_label("Connected").click();
     labelled_soon(
         &mut harness,
-        "plugin:alerts: 2 errors, 2 warnings, 0 infos (disconnected)",
+        "plugin:table-test: 2 errors, 2 warnings, 0 infos (disconnected)",
     );
     harness.get_by_label("Connected").click();
-    labelled_soon(&mut harness, "plugin:alerts: 2 errors, 2 warnings, 0 infos");
+    labelled_soon(
+        &mut harness,
+        "plugin:table-test: 2 errors, 2 warnings, 0 infos",
+    );
     // A key added from the panel goes under the widget's table.
     harness.get_by_label("New key").click();
     settle(&mut harness);
@@ -76,12 +88,12 @@ fn the_sandbox_serves_a_table_plugins_samples_and_changes_them() {
 
 #[test]
 fn the_sandbox_sizes_a_topic_plugins_widget() {
-    let mut harness = sandbox_for("number");
-    labelled_soon(&mut harness, "plugin:number: 1.2346");
+    let mut harness = sandbox_for("topic-test");
+    labelled_soon(&mut harness, "plugin:topic-test: 1.2346");
     sandbox(&mut harness)
         .set("/Sandbox/value", Value::Double(-2.5))
         .unwrap();
-    labelled_soon(&mut harness, "plugin:number: -2.5");
+    labelled_soon(&mut harness, "plugin:topic-test: -2.5");
     // A topic added under the root, and the size picked.
     assert_eq!(
         sandbox(&mut harness).add("speed", nt4::NtType::Double),

@@ -200,3 +200,156 @@ pub fn region_rect(origin: Pos2, min: &Point, max: &Point) -> Rect {
         origin + Vec2::new(max.x, max.y),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    // Tests written by Claude.
+    use super::*;
+    use raptaboard_plugin_host::runtime::{
+        ArcShape, Circle, Color, Line, Polyline, Rect as PluginRect, Text,
+    };
+
+    const WHITE: Color = Color {
+        r: 255,
+        g: 255,
+        b: 255,
+        a: 255,
+    };
+
+    fn p(x: f32, y: f32) -> Point {
+        Point { x, y }
+    }
+
+    fn line() -> PluginStroke {
+        PluginStroke {
+            width: 2.0,
+            color: WHITE,
+        }
+    }
+
+    /// What egui gets for `list`, drawn with the body's corner at (10, 20).
+    fn drawn(list: &[Shape]) -> Vec<epaint::Shape> {
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_pass(egui::RawInput::default(), |ctx| {
+            let painter = ctx.layer_painter(egui::LayerId::background());
+            shapes(
+                &painter,
+                Pos2::new(10.0, 20.0),
+                list,
+                (egui::Id::unique("plugin draw test"), 1),
+            );
+        });
+        // The font atlas, for the GPU; there's none here.
+        output.textures_delta.clear();
+        output.shapes.into_iter().map(|c| c.shape).collect()
+    }
+
+    #[test]
+    fn each_shape_is_drawn_where_the_plugin_put_it() {
+        let quarter = std::f32::consts::FRAC_PI_2;
+        let out = drawn(&[
+            Shape::Line(Line {
+                start: p(0.0, 0.0),
+                end: p(5.0, 5.0),
+                stroke: line(),
+            }),
+            Shape::Polyline(Polyline {
+                points: vec![p(0.0, 0.0), p(4.0, 0.0), p(4.0, 4.0)],
+                closed: true,
+                stroke: line(),
+                fill: Some(WHITE),
+            }),
+            Shape::Polyline(Polyline {
+                points: vec![p(0.0, 0.0), p(4.0, 0.0)],
+                closed: false,
+                stroke: line(),
+                fill: None,
+            }),
+            Shape::Arc(ArcShape {
+                center: p(50.0, 50.0),
+                radius: 10.0,
+                start_rad: 0.0,
+                end_rad: quarter,
+                stroke: line(),
+            }),
+            Shape::Rect(PluginRect {
+                min: p(1.0, 2.0),
+                max: p(11.0, 12.0),
+                corner_radius: 3.0,
+                stroke: None,
+                fill: Some(WHITE),
+            }),
+            Shape::Circle(Circle {
+                center: p(30.0, 40.0),
+                radius: 6.0,
+                stroke: Some(line()),
+                fill: None,
+            }),
+            Shape::Text(Text {
+                pos: p(100.0, 0.0),
+                text: "right".into(),
+                size: 14.0,
+                color: WHITE,
+                align: Align::Right,
+                max_width: None,
+                monospace: false,
+            }),
+        ]);
+        assert_eq!(out.len(), 7, "{out:?}");
+        let corner = Vec2::new(10.0, 20.0);
+        match &out[0] {
+            epaint::Shape::LineSegment { points, stroke } => {
+                assert_eq!(*points, [Pos2::new(10.0, 20.0), Pos2::new(15.0, 25.0)]);
+                assert_eq!(stroke.width, 2.0);
+            }
+            other => panic!("line: {other:?}"),
+        }
+        match &out[1] {
+            epaint::Shape::Path(path) => {
+                assert!(path.closed && path.fill == egui::Color32::WHITE);
+                assert_eq!(path.points[2], Pos2::new(4.0, 4.0) + corner);
+            }
+            other => panic!("closed polyline: {other:?}"),
+        }
+        match &out[2] {
+            epaint::Shape::Path(path) => assert!(!path.closed && path.points.len() == 2),
+            other => panic!("open polyline: {other:?}"),
+        }
+        match &out[3] {
+            // Counter-clockwise as seen: from the right, round to the top.
+            epaint::Shape::Path(path) => {
+                let (first, last) = (path.points[0], *path.points.last().unwrap());
+                assert!((first - (Pos2::new(60.0, 50.0) + corner)).length() < 1e-3);
+                assert!((last - (Pos2::new(50.0, 40.0) + corner)).length() < 1e-3);
+                assert!(path.points.len() > 10, "smooth: {}", path.points.len());
+            }
+            other => panic!("arc: {other:?}"),
+        }
+        match &out[4] {
+            epaint::Shape::Rect(r) => {
+                assert_eq!(
+                    r.rect,
+                    Rect::from_min_max(Pos2::new(11.0, 22.0), Pos2::new(21.0, 32.0))
+                );
+                assert_eq!(r.fill, egui::Color32::WHITE);
+            }
+            other => panic!("rect: {other:?}"),
+        }
+        match &out[5] {
+            epaint::Shape::Circle(c) => {
+                assert_eq!((c.center, c.radius), (Pos2::new(40.0, 60.0), 6.0));
+                assert_eq!(c.stroke.width, 2.0);
+            }
+            other => panic!("circle: {other:?}"),
+        }
+        match &out[6] {
+            // Right-aligned: it ends at the point it was given.
+            epaint::Shape::Text(t) => {
+                let right = t.pos.x + t.galley.size().x;
+                assert!((right - 110.0).abs() < 1e-3, "{right}");
+                assert_eq!(t.pos.y, 20.0);
+            }
+            other => panic!("text: {other:?}"),
+        }
+    }
+}

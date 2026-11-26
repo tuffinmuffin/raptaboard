@@ -158,9 +158,9 @@ fn sample(value: f64) -> Sample {
 }
 
 #[test]
-fn number_shows_its_value_with_decimals_and_unit() {
+fn a_topic_plugin_shows_its_value_with_decimals_and_unit() {
     let (mut w, _) = start(
-        &plugin("number"),
+        &plugin("topic-test"),
         &[("decimal_places", NtValue::Double(2.0))],
         Some("m"),
         Limits::default(),
@@ -180,8 +180,8 @@ fn number_shows_its_value_with_decimals_and_unit() {
 }
 
 #[test]
-fn number_without_a_value_shows_a_dash_and_greys_when_disconnected() {
-    let (mut w, _) = start(&plugin("number"), &[], None, Limits::default());
+fn a_topic_plugin_without_a_value_shows_a_dash_and_greys_when_disconnected() {
+    let (mut w, _) = start(&plugin("topic-test"), &[], None, Limits::default());
     let picture = w.render(frame(200.0, 100.0, false)).unwrap();
     let text = texts(&picture);
     assert_eq!(text[0].text, "—");
@@ -205,9 +205,9 @@ fn number_without_a_value_shows_a_dash_and_greys_when_disconnected() {
 }
 
 #[test]
-fn number_fits_its_text_to_the_widget() {
+fn a_topic_plugin_fits_its_text_to_the_widget() {
     let (mut w, _) = start(
-        &plugin("number"),
+        &plugin("topic-test"),
         &[("fit_text", NtValue::Boolean(true))],
         None,
         Limits::default(),
@@ -471,7 +471,7 @@ fn load_reads_a_plugin_folder_and_says_what_is_wrong() {
     let dir = std::env::temp_dir().join(format!("raptaboard-plugin-load-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::copy(
-        plugins_dir().join("number/plugin.toml"),
+        plugins_dir().join("topic-test/plugin.toml"),
         dir.join("plugin.toml"),
     )
     .unwrap();
@@ -482,9 +482,9 @@ fn load_reads_a_plugin_folder_and_says_what_is_wrong() {
     std::fs::write(dir.join("widget.wasm"), b"not wasm").unwrap();
     assert!(matches!(runtime().load(&dir), Err(LoadError::Wasm { .. })));
 
-    std::fs::copy(built().join("number.wasm"), dir.join("widget.wasm")).unwrap();
+    std::fs::copy(built().join("topic_test.wasm"), dir.join("widget.wasm")).unwrap();
     let loaded = runtime().load(&dir).unwrap();
-    assert_eq!(loaded.manifest.name, "number");
+    assert_eq!(loaded.manifest.name, "topic-test");
     assert_eq!(loaded.folder, dir);
 
     std::fs::write(dir.join("plugin.toml"), "name = 'x'").unwrap();

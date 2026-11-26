@@ -1,6 +1,6 @@
-//! Plugin widgets in the window: the Number and Alerts plugins from
-//! `plugins/` on the grid beside the built-ins they copy, and a plugin that
-//! stops.
+//! Plugin widgets in the window: the test plugins from `plugins/` (a topic
+//! plugin and a table plugin) on the grid beside the built-ins they copy, and
+//! a plugin that stops.
 
 // Tests written by Claude.
 
@@ -44,19 +44,22 @@ fn harness_with(robot: &Robot, widgets: Vec<WidgetContainer>) -> Harness {
 }
 
 #[test]
-fn the_number_plugin_shows_a_topic_beside_the_built_in() {
-    let number = load("number");
-    assert_eq!(number, "plugin:number");
+fn a_topic_plugin_shows_a_topic_beside_the_built_in() {
+    let number = load("topic-test");
+    assert_eq!(number, "plugin:topic-test");
     // It's offered for number topics, after the built-ins.
     // (Other tests load plugins too, all in one program, so it's not
     // necessarily the last.)
     let offered = widgets::types_showing("double");
-    let place = offered.iter().position(|t| *t == "plugin:number").unwrap();
+    let place = offered
+        .iter()
+        .position(|t| *t == "plugin:topic-test")
+        .unwrap();
     assert!(
         offered[place..].iter().all(|t| t.starts_with("plugin:")),
         "{offered:?}"
     );
-    assert!(!widgets::types_showing("string").contains(&"plugin:number"));
+    assert!(!widgets::types_showing("string").contains(&"plugin:topic-test"));
 
     let robot = Robot::start();
     let value = robot._server.publish::<f64>("/Plugin/value");
@@ -84,9 +87,9 @@ fn the_number_plugin_shows_a_topic_beside_the_built_in() {
 fn loading_a_plugin_again_unchanged_keeps_its_widgets_running() {
     // Tests load plugins at the same time; one test's load mustn't restart
     // another's widgets.
-    let number = load("number");
+    let number = load("topic-test");
     let before = crate::plugins::generation(&number);
-    load("number");
+    load("topic-test");
     assert_eq!(crate::plugins::generation(&number), before);
 }
 
@@ -116,7 +119,7 @@ fn a_plugin_that_stops_offers_a_restart() {
 
 #[test]
 fn a_deleted_plugin_widget_stops_its_worker() {
-    let number = load("number");
+    let number = load("topic-test");
     let robot = Robot::start();
     let gone = widget(&number, "/Plugin/deleted", "double", at(0.0));
     let mut harness = harness_with(&robot, vec![gone.clone()]);
@@ -150,9 +153,9 @@ fn alerts(
 }
 
 #[test]
-fn the_alerts_plugin_counts_and_sounds_like_the_built_in() {
-    let plugin = load("alerts");
-    assert_eq!(plugin, "plugin:alerts");
+fn a_table_plugin_counts_and_sounds_like_the_built_in() {
+    let plugin = load("table-test");
+    assert_eq!(plugin, "plugin:table-test");
     // Offered for alert groups' tables, like the built-in.
     let ty = crate::plugins::find(&plugin).unwrap();
     assert_eq!(widgets::WidgetType::table_types(ty), ["Alerts"]);
@@ -211,8 +214,8 @@ fn the_alerts_plugin_counts_and_sounds_like_the_built_in() {
 }
 
 #[test]
-fn the_alerts_plugin_marks_its_tab_while_it_is_closed() {
-    let plugin = load("alerts");
+fn a_table_plugin_marks_its_tab_while_it_is_closed() {
+    let plugin = load("table-test");
     let robot = Robot::start();
     let mut harness = harness_with(&robot, vec![]);
     let mut closed = Tab::new("Arm tab");
@@ -293,7 +296,7 @@ fn packs_settled(harness: &mut Harness) {
 
 #[test]
 fn a_packs_plugin_is_used_while_its_installed() {
-    let pack = crate::pack_folder::load(&plugin_pack("pack-number", "number")).unwrap();
+    let pack = crate::pack_folder::load(&plugin_pack("pack-number", "topic-test")).unwrap();
     // The catalog names it and says what it may do.
     assert_eq!(pack.plugins[0].name.as_deref(), Some("pack-number"));
     assert_eq!(
@@ -345,7 +348,7 @@ fn a_packs_plugin_is_used_while_its_installed() {
 
 #[test]
 fn a_packs_plugin_asking_for_more_than_its_catalog_said_isnt_loaded() {
-    let mut pack = crate::pack_folder::load(&plugin_pack("pack-alerts", "alerts")).unwrap();
+    let mut pack = crate::pack_folder::load(&plugin_pack("pack-alerts", "table-test")).unwrap();
     assert_eq!(
         pack.plugin_lines(),
         ["Plugin pack-alerts: plays sounds, runs while its tab is closed"]
@@ -402,9 +405,9 @@ fn the_newest_pack_wins_and_a_folder_plugin_beats_a_pack() {
             permissions: vec![],
         }
     };
-    let mut older = copy("older", "layered", "number");
+    let mut older = copy("older", "layered", "topic-test");
     older.installed_at = 100;
-    let mut newer = copy("newer", "layered", "number");
+    let mut newer = copy("newer", "layered", "topic-test");
     newer.installed_at = 200;
     assert!(use_packs(&store, &[older.clone(), newer.clone()]).is_empty());
     let origin = || crate::plugins::find("plugin:layered").unwrap().origin();
@@ -416,16 +419,16 @@ fn the_newest_pack_wins_and_a_folder_plugin_beats_a_pack() {
     assert!(crate::plugins::find("plugin:layered").is_none());
 
     // A folder plugin keeps its name.
-    load("number");
-    let number = copy("numbers", "number-folder-test", "number");
+    load("topic-test");
+    let number = copy("numbers", "number-folder-test", "topic-test");
     let named_number = InstalledPlugin {
-        name: Some("number".into()),
+        name: Some("topic-test".into()),
         ..number
     };
     let problems = use_packs(&store, &[named_number]);
     assert!(problems.is_empty(), "{problems:?}");
     assert_eq!(
-        crate::plugins::find("plugin:number").unwrap().origin(),
+        crate::plugins::find("plugin:topic-test").unwrap().origin(),
         Origin::Folder
     );
 }
