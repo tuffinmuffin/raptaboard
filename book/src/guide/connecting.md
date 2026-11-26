@@ -22,7 +22,7 @@ The changes take effect at once and are saved.
 | SystemCore WiFi | `172.30.0.1` | Joined to a SystemCore's own WiFi. |
 | localhost (sim) | `127.0.0.1` | Robot code in simulation on this computer. |
 | Custom | the address you type | Anything else: a host name or IP address. |
-| Driver Station | asks the Driver Station | **Not finished yet**: it shows "Waiting for Driver Station" and never connects. Use Team Number. |
+| Driver Station | asks the Driver Station on this computer | **Needs work**: it hasn't been tried with a Driver Station yet, and today it stays on "Waiting for Driver Station". Use Team Number. |
 
 ## The status
 

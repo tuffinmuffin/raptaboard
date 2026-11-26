@@ -627,7 +627,7 @@ source setting, and plugins' needs shown before installing, so the pages describ
     commit, so every step builds and passes its tests. Then tab plugins (Doom as the case study:
     pixel frames, input and focus, audio, storage) and content packs (`pack.toml`, artifacts
     from other repos, the two signed catalogs).
-- **Order**, a pull request each (**the first three done** 2026-11-26: the screenshot recorder second, then First start, Connecting and The window, which found the Driver Station address mode isn't finished (documented as such); `book/` with every planned page in
+- **Order**, a pull request each (**the first three done** 2026-11-26: the screenshot recorder second, then First start, Connecting and The window, which found the Driver Station address mode isn't finished: `connection::resolve` gives it no address, so it waits forever; kept in the menu, the page noting it needs work, until a Driver Station is set up to test against (user, 2026-11-26); `book/` with every planned page in
   `SUMMARY.md`, the ones still to write as drafts; the README's sections moved in; its images in
   `book/src/images/`; `scripts/check_book.py` for links, images and chapters; `book.yml` building
   it on pull requests and publishing it from main): the book's scaffold, Pages workflow and README; the screenshot
