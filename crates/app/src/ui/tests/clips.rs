@@ -1,6 +1,7 @@
-//! The clips in the README, made by running the app headless against a
-//! scripted robot and saving the frames as a GIF, and the Microsoft Store
-//! listing's screenshots, made the same way against robot-2027's sim. Ignored in normal test
+//! The book's Field clip, made by running the app headless against a
+//! scripted robot and saving the frames as a GIF, and the book's and the
+//! Microsoft Store listing's screenshots, made the same way against
+//! robot-2027's sim. Ignored in normal test
 //! runs (they need a GPU and take a while); make them again after changing
 //! what they show:
 //!
@@ -256,13 +257,10 @@ fn save_gif(frames: &[RgbaImage], path: &str) {
     .expect("write the GIF");
 }
 
-/// Where the Microsoft Store's screenshots go, from the repo's root.
-const STORE_DIR: &str = "media/store";
-
-#[test]
-#[ignore = "makes the Microsoft Store's screenshots: needs a GPU and robot-2027's sim running \
-            on this computer (layouts/robot2027_sim.json's topics); run with --ignored"]
-fn record_store_screenshots() {
+/// The window, connected to robot-2027's sim on this computer and showing
+/// `layouts/robot2027_sim.json`, locked and without the tree, `size` points
+/// big at `pixels_per_point`.
+fn sim_harness(size: egui::Vec2, pixels_per_point: f32) -> Harness {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let path = root.join("layouts/robot2027_sim.json");
     let layout = crate::layout_file::load(&path).expect("the sim layout opens");
@@ -274,10 +272,9 @@ fn record_store_screenshots() {
     app.address.port = nt4::proto::ROBOT_CODE_PORT;
     app.locked = true;
     app.tree.shown = false;
-    // 1920 x 1080 pixels, at 1.25 points a pixel as a laptop shows it.
     let mut harness = egui_kittest::Harness::builder()
-        .with_size(egui::vec2(1536.0, 864.0))
-        .with_pixels_per_point(1.25)
+        .with_size(size)
+        .with_pixels_per_point(pixels_per_point)
         .allow_missing_glyphs()
         .with_step_dt(1.0 / 60.0)
         .wgpu()
@@ -296,32 +293,185 @@ fn record_store_screenshots() {
         harness.step();
         std::thread::sleep(Duration::from_millis(16));
     }
-    let shoot = |harness: &mut Harness, tab: &str, name: &str| {
-        let index = harness
-            .state()
-            .layout
-            .tabs
-            .iter()
-            .position(|t| t.name == tab)
-            .unwrap_or_else(|| panic!("no {tab} tab"));
-        harness.state_mut().current_tab = index;
-        // Ten seconds of values, at about 60 frames a second.
-        let until = Instant::now() + Duration::from_secs(10);
-        while Instant::now() < until {
-            harness.step();
-            std::thread::sleep(Duration::from_millis(16));
-        }
+    harness
+}
+
+/// Show the tab named `tab` and run `seconds` of frames, about 60 a
+/// second, so its values arrive and its graphs fill.
+fn show_tab(harness: &mut Harness, tab: &str, seconds: u64) {
+    let index = harness
+        .state()
+        .layout
+        .tabs
+        .iter()
+        .position(|t| t.name == tab)
+        .unwrap_or_else(|| panic!("no {tab} tab"));
+    harness.state_mut().current_tab = index;
+    let until = Instant::now() + Duration::from_secs(seconds);
+    while Instant::now() < until {
+        harness.step();
+        std::thread::sleep(Duration::from_millis(16));
+    }
+}
+
+/// Save `image` at `path` (from the repo's root), making its folder.
+fn save_png(image: &RgbaImage, path: &str) {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let out = root.join(path);
+    std::fs::create_dir_all(out.parent().unwrap()).expect("make the folder");
+    image.save(&out).expect("save the screenshot");
+    println!("wrote {path} ({}x{})", image.width(), image.height());
+}
+
+/// Where the Microsoft Store's screenshots go, from the repo's root.
+const STORE_DIR: &str = "media/store";
+
+#[test]
+#[ignore = "makes the Microsoft Store's screenshots: needs a GPU and robot-2027's sim running \
+            on this computer (layouts/robot2027_sim.json's topics); run with --ignored"]
+fn record_store_screenshots() {
+    // 1920 x 1080 pixels, at 1.25 points a pixel as a laptop shows it.
+    let mut harness = sim_harness(egui::vec2(1536.0, 864.0), 1.25);
+    for (tab, name) in [
+        ("Field", "screenshot-field.png"),
+        ("More widgets", "screenshot-graphs.png"),
+        ("Widgets", "screenshot-widgets.png"),
+    ] {
+        show_tab(&mut harness, tab, 10);
         let image = harness.render().expect("render a frame");
-        let out = root.join(STORE_DIR).join(name);
-        image.save(&out).expect("save the screenshot");
-        println!(
-            "wrote {} ({}x{})",
-            out.display(),
-            image.width(),
-            image.height()
+        save_png(&image, &format!("{STORE_DIR}/{name}"));
+    }
+}
+
+/// Where the book's screenshots go, from the repo's root.
+const BOOK_IMAGES: &str = "book/src/images";
+
+/// The card to cut out for a widget type, by title, where the first one
+/// in the layout isn't the best example: (type, card title).
+const PICTURED: &[(&str, &str)] = &[
+    ("Graph", "Sine and orbit"),
+    ("Chassis Speeds", "Scripted speeds (lagging robot)"),
+];
+
+/// Whether the card titled `title` is the one to cut out for `kind`: the
+/// one [`PICTURED`] names, or else the first (`seen` has the types done).
+fn pictured(kind: &str, title: &str, seen: &std::collections::BTreeSet<String>) -> bool {
+    match PICTURED.iter().find(|(k, _)| *k == kind) {
+        Some((_, want)) => *want == title,
+        None => !seen.contains(kind),
+    }
+}
+
+#[test]
+fn a_type_named_in_pictured_is_cut_from_that_card_only() {
+    let mut seen = std::collections::BTreeSet::new();
+    assert!(!pictured("Graph", "Loop time", &seen));
+    assert!(pictured("Graph", "Sine and orbit", &seen));
+    assert!(pictured("Gyro", "Any", &seen));
+    seen.insert("Gyro".to_string());
+    assert!(!pictured("Gyro", "Another", &seen));
+}
+
+/// A name as a file name: `More widgets` → `more-widgets`, `3D Pose` →
+/// `3d-pose`.
+fn slug(name: &str) -> String {
+    let words: Vec<String> = name
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_ascii_lowercase())
+        .collect();
+    words.join("-")
+}
+
+#[test]
+fn slugs_are_lowercase_words_with_dashes() {
+    assert_eq!(slug("More widgets"), "more-widgets");
+    assert_eq!(slug("3D Pose"), "3d-pose");
+    assert_eq!(slug("  Split Button   Chooser "), "split-button-chooser");
+}
+
+#[test]
+#[ignore = "makes the book's screenshots: needs a GPU and robot-2027's sim running on this \
+            computer (layouts/robot2027_sim.json's topics); run with --ignored"]
+fn record_docs_screenshots() {
+    const MARGIN: f32 = 16.0;
+    let mut harness = sim_harness(egui::vec2(1280.0, 800.0), 1.0);
+    let tabs: Vec<String> = harness
+        .state()
+        .layout
+        .tabs
+        .iter()
+        .map(|t| t.name.clone())
+        .collect();
+    let mut seen = std::collections::BTreeSet::new();
+    for tab in &tabs {
+        let index = tabs.iter().position(|t| t == tab).unwrap();
+        let grid = &harness.state().layout.tabs[index].grid_layout;
+        let cards: Vec<(String, String, LayoutRect)> = grid
+            .containers
+            .iter()
+            .map(|c| (c.widget_type.clone(), c.title.clone(), c.rect))
+            .chain(
+                grid.layouts
+                    .iter()
+                    .map(|l| ("List Layout".to_string(), l.title.clone(), l.rect)),
+            )
+            .collect();
+        if cards.is_empty() {
+            continue;
+        }
+        // The window just big enough for every card: the grid starts below
+        // the tab bar, at the area's top left.
+        show_tab(&mut harness, tab, 1);
+        let top = harness.state().grid.area.min;
+        let right = cards
+            .iter()
+            .map(|(_, _, r)| r.x + r.width)
+            .fold(0.0, f64::max) as f32;
+        let bottom = cards
+            .iter()
+            .map(|(_, _, r)| r.y + r.height)
+            .fold(0.0, f64::max) as f32;
+        harness.set_size(egui::vec2(
+            (top.x + right + MARGIN).max(1280.0),
+            top.y + bottom + MARGIN,
+        ));
+        show_tab(&mut harness, tab, 8);
+        let image = harness.render().expect("render a frame");
+        save_png(&image, &format!("{BOOK_IMAGES}/tabs/{}.png", slug(tab)));
+        // Each widget type's first card, cut out with a little of the grid
+        // around it.
+        let area = harness.state().grid.area;
+        for (kind, title, r) in &cards {
+            if !pictured(kind, title, &seen) {
+                continue;
+            }
+            seen.insert(kind.clone());
+            let pad = 4.0;
+            let x = (area.min.x + r.x as f32 - pad).max(0.0) as u32;
+            let y = (area.min.y + r.y as f32 - pad).max(0.0) as u32;
+            let w = ((r.width as f32 + 2.0 * pad) as u32).min(image.width() - x);
+            let h = ((r.height as f32 + 2.0 * pad) as u32).min(image.height() - y);
+            let cut = imageops::crop_imm(&image, x, y, w, h).to_image();
+            save_png(&cut, &format!("{BOOK_IMAGES}/widgets/{}.png", slug(kind)));
+        }
+    }
+    for (kind, title) in PICTURED {
+        assert!(
+            seen.contains(*kind),
+            "no {kind} card titled {title:?} in the layout"
         );
-    };
-    shoot(&mut harness, "Field", "screenshot-field.png");
-    shoot(&mut harness, "More widgets", "screenshot-graphs.png");
-    shoot(&mut harness, "Widgets", "screenshot-widgets.png");
+    }
+    println!(
+        "widget types shown: {}",
+        seen.into_iter().collect::<Vec<_>>().join(", ")
+    );
+    // The window as it's set up: unlocked, the tree shown, at a laptop's
+    // size.
+    harness.set_size(egui::vec2(1280.0, 800.0));
+    harness.state_mut().locked = false;
+    harness.state_mut().tree.shown = true;
+    show_tab(&mut harness, "Widgets", 3);
+    let image = harness.render().expect("render a frame");
+    save_png(&image, &format!("{BOOK_IMAGES}/window/editing.png"));
 }
