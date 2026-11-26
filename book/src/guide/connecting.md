@@ -22,13 +22,15 @@ The changes take effect at once and are saved.
 | SystemCore WiFi | `172.30.0.1` | Joined to a SystemCore's own WiFi. |
 | localhost (sim) | `127.0.0.1` | Robot code in simulation on this computer. |
 | Custom | the address you type | Anything else: a host name or IP address. |
-| Driver Station | asks the Driver Station on this computer | **Needs work**: it hasn't been tried with a Driver Station yet, and today it stays on "Waiting for Driver Station". Use Team Number. |
+| Driver Station | the address the Driver Station on this computer gives | The Driver Station running here: the 2027 one or the NI one, as in Elastic. Until it gives an address, the status says "Waiting for Driver Station". Not yet tried with a real Driver Station: if it doesn't connect, use Team Number. |
 
 ## The status
 
 The top bar shows how the connection is going, with a colored dot:
 
 - ⚪ **Set a team number**: the Server is Team Number, and there's no team.
+- ⚪ **Waiting for Driver Station**: the Server is Driver Station, and it hasn't given the robot's
+  address yet (or isn't running).
 - 🟠 **Connecting to 10.32.0.2:5810…**: trying. It keeps trying, and reconnects by itself if the
   robot reboots or the radio drops.
 - 🟢 **Connected to 10.32.0.2:5810, 342 topics**: connected, with how many topics the server has.
