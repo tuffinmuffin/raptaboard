@@ -346,6 +346,29 @@ fn record_store_screenshots() {
 /// Where the book's screenshots go, from the repo's root.
 const BOOK_IMAGES: &str = "book/src/images";
 
+/// The card to cut out for a widget type, by title, where the first one
+/// in the layout isn't the best example: (type, card title).
+const PICTURED: &[(&str, &str)] = &[("Graph", "Sine and orbit")];
+
+/// Whether the card titled `title` is the one to cut out for `kind`: the
+/// one [`PICTURED`] names, or else the first (`seen` has the types done).
+fn pictured(kind: &str, title: &str, seen: &std::collections::BTreeSet<String>) -> bool {
+    match PICTURED.iter().find(|(k, _)| *k == kind) {
+        Some((_, want)) => *want == title,
+        None => !seen.contains(kind),
+    }
+}
+
+#[test]
+fn a_type_named_in_pictured_is_cut_from_that_card_only() {
+    let mut seen = std::collections::BTreeSet::new();
+    assert!(!pictured("Graph", "Loop time", &seen));
+    assert!(pictured("Graph", "Sine and orbit", &seen));
+    assert!(pictured("Gyro", "Any", &seen));
+    seen.insert("Gyro".to_string());
+    assert!(!pictured("Gyro", "Another", &seen));
+}
+
 /// A name as a file name: `More widgets` → `more-widgets`, `3D Pose` →
 /// `3d-pose`.
 fn slug(name: &str) -> String {
@@ -381,14 +404,14 @@ fn record_docs_screenshots() {
     for tab in &tabs {
         let index = tabs.iter().position(|t| t == tab).unwrap();
         let grid = &harness.state().layout.tabs[index].grid_layout;
-        let cards: Vec<(String, LayoutRect)> = grid
+        let cards: Vec<(String, String, LayoutRect)> = grid
             .containers
             .iter()
-            .map(|c| (c.widget_type.clone(), c.rect))
+            .map(|c| (c.widget_type.clone(), c.title.clone(), c.rect))
             .chain(
                 grid.layouts
                     .iter()
-                    .map(|l| ("List Layout".to_string(), l.rect)),
+                    .map(|l| ("List Layout".to_string(), l.title.clone(), l.rect)),
             )
             .collect();
         if cards.is_empty() {
@@ -398,10 +421,13 @@ fn record_docs_screenshots() {
         // the tab bar, at the area's top left.
         show_tab(&mut harness, tab, 1);
         let top = harness.state().grid.area.min;
-        let right = cards.iter().map(|(_, r)| r.x + r.width).fold(0.0, f64::max) as f32;
+        let right = cards
+            .iter()
+            .map(|(_, _, r)| r.x + r.width)
+            .fold(0.0, f64::max) as f32;
         let bottom = cards
             .iter()
-            .map(|(_, r)| r.y + r.height)
+            .map(|(_, _, r)| r.y + r.height)
             .fold(0.0, f64::max) as f32;
         harness.set_size(egui::vec2(
             (top.x + right + MARGIN).max(1280.0),
@@ -413,10 +439,11 @@ fn record_docs_screenshots() {
         // Each widget type's first card, cut out with a little of the grid
         // around it.
         let area = harness.state().grid.area;
-        for (kind, r) in &cards {
-            if !seen.insert(kind.clone()) {
+        for (kind, title, r) in &cards {
+            if !pictured(kind, title, &seen) {
                 continue;
             }
+            seen.insert(kind.clone());
             let pad = 4.0;
             let x = (area.min.x + r.x as f32 - pad).max(0.0) as u32;
             let y = (area.min.y + r.y as f32 - pad).max(0.0) as u32;
@@ -425,6 +452,12 @@ fn record_docs_screenshots() {
             let cut = imageops::crop_imm(&image, x, y, w, h).to_image();
             save_png(&cut, &format!("{BOOK_IMAGES}/widgets/{}.png", slug(kind)));
         }
+    }
+    for (kind, title) in PICTURED {
+        assert!(
+            seen.contains(*kind),
+            "no {kind} card titled {title:?} in the layout"
+        );
     }
     println!(
         "widget types shown: {}",
