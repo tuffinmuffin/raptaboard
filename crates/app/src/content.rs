@@ -908,6 +908,10 @@ struct Release {
     draft: bool,
     #[serde(default)]
     prerelease: bool,
+    /// When it was published (`2026-11-26T07:57:48Z`): GitHub's list
+    /// isn't newest first (it gave v5, v4, v6-pre.1).
+    #[serde(default)]
+    published_at: Option<String>,
     #[serde(default)]
     assets: Vec<Asset>,
 }
@@ -933,11 +937,15 @@ impl Release {
     }
 }
 
-/// The official source's releases, newest first, drafts left out.
+/// The official source's releases, newest published first (those without
+/// a date last, as listed), drafts left out.
 fn releases(fetch: &Fetch) -> Result<Vec<Release>, String> {
     let all: Vec<Release> = fetch(OFFICIAL_RELEASES, CATALOG_LIMIT)
         .and_then(|b| serde_json::from_slice(&b).map_err(|e| e.to_string()))?;
-    Ok(all.into_iter().filter(|r| !r.draft).collect())
+    let mut list: Vec<Release> = all.into_iter().filter(|r| !r.draft).collect();
+    // RFC 3339 times in UTC sort as text.
+    list.sort_by(|a, b| b.published_at.cmp(&a.published_at));
+    Ok(list)
 }
 
 /// The official catalog: the latest release's, or if that has none (its
@@ -1952,6 +1960,39 @@ pub(crate) mod tests {
             note.contains("No pre-release catalog") && note.contains("released packs"),
             "{note}"
         );
+    }
+
+    #[test]
+    fn the_newest_release_is_the_last_published_not_the_first_listed() {
+        let (key, public) = test_key();
+        let web = Web::default();
+        let pack = |id| {
+            catalog(vec![sound_pack(
+                id,
+                "1.0.0",
+                &[("beep", "beep.mp3")],
+                "https://x",
+            )])
+        };
+        web.serve(&release_url("v5"), &pack("released"), Some(&key));
+        web.serve(&release_url("v6-pre.1"), &pack("trying"), Some(&key));
+        // As GitHub listed them on 2026-11-26.
+        let release = |tag: &str, pre: bool, at: &str| {
+            serde_json::json!({"tag_name": tag, "prerelease": pre, "published_at": at,
+                "assets": [{"name": "catalog.json"}, {"name": "catalog.json.sig"}]})
+        };
+        let list = serde_json::json!([
+            release("v5", false, "2026-11-26T07:40:16Z"),
+            release("v4", false, "2026-11-26T04:00:35Z"),
+            release("v6-pre.1", true, "2026-11-26T07:57:48Z"),
+        ]);
+        web.files
+            .lock()
+            .unwrap()
+            .insert(OFFICIAL_RELEASES.into(), serde_json::to_vec(&list).unwrap());
+        let (got, note) = fetch_official(&[public], &*web.fetch(), true).unwrap();
+        assert_eq!(got.packs[0].id, "trying");
+        assert!(note.unwrap().contains("v6-pre.1"));
     }
 
     #[test]
