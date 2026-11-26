@@ -476,7 +476,12 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   `releases/latest/download/catalog.json` and refuses it unless the signature checks. If the
   latest release has none (a content release that failed or is still publishing), it lists the
   releases (GitHub's API) and uses the newest with a catalog, saying so in the Content window;
-  if none works, it says why. Offline, it stops at the first error. Packs
+  if none works, it says why. Offline, it stops at the first error. A `vN-pre.M` tag publishes a
+  GitHub pre-release, which `latest` passes over: with the setting `content_prereleases` (the
+  Content window's "Pre-releases" beside the official source, or `raptaboard packs … --prereleases`
+  for one command) raptaboard lists the releases and reads the newest with a catalog, a
+  pre-release or not, signed the same way, noting a pre-release's tag; if the list can't be had
+  (GitHub's API allows 60 an hour unsigned in), the released catalog, saying so. Packs
   that aren't fully open source (the IT Crowd clips) live there too, saying so in their license.
 - **What a pack holds:** sections, mixed as needed, each naming its files: `[[sound]]` (name, file),
   `[[image]]`, `[[field]]`, `[[plugin]]` and `[[layout]]` (file, optional name), plus `files` for

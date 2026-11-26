@@ -266,6 +266,49 @@ fn a_source_added_is_saved_and_its_packs_listed() {
 }
 
 #[test]
+fn pre_releases_ticked_offer_the_newest_catalog_and_are_saved() {
+    use crate::content::OFFICIAL_RELEASES;
+    use crate::content::tests::{release_url, releases_marked};
+    let dir = folder("ui-prereleases");
+    let (web, public) = official_web();
+    let (key, _) = test_key();
+    let mut trying = sound_pack("trying", "0.1.0", &[("new", "new.mp3")], "https://x");
+    trying.name = "Packs being tried".into();
+    let pre = Catalog {
+        format: FORMAT,
+        release: "v2-pre.1".into(),
+        packs: vec![trying],
+    };
+    web.serve(&release_url("v2-pre.1"), &pre, Some(&key));
+    web.files.lock().unwrap().insert(
+        OFFICIAL_RELEASES.into(),
+        releases_marked(&[("v2-pre.1", true, true), ("v1", true, false)]),
+    );
+    answered_before(&dir, &[]);
+    let mut harness = harness_with(&dir, &web, public);
+    harness.state_mut().packs.open = true;
+    until_idle(&mut harness);
+    labelled_soon(&mut harness, "IT Crowd clips");
+    assert!(harness.query_by_label("Packs being tried").is_none());
+    assert_eq!(
+        harness.state().current_settings(None).content_prereleases,
+        Some(false)
+    );
+    harness.get_by_label("Pre-releases").click();
+    labelled_soon(&mut harness, "Packs being tried");
+    harness.get_by_label_contains("Pre-release packs (v2-pre.1)");
+    assert_eq!(
+        harness.state().current_settings(None).content_prereleases,
+        Some(true)
+    );
+    // Off again: the released packs.
+    harness.get_by_label("Pre-releases").click();
+    labelled_soon(&mut harness, "IT Crowd clips");
+    until_idle(&mut harness);
+    assert!(harness.query_by_label("Packs being tried").is_none());
+}
+
+#[test]
 fn an_upgrade_offers_the_packs_again_with_those_seen_unticked() {
     let dir = folder("ui-upgrade");
     let (web, public) = official_web();

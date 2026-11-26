@@ -27,6 +27,7 @@
 //! alert_history_ignore = ["Frame Timing:"] # alerts not recorded, by text they contain
 //! content_sources = ["https://example.org/catalog.json"] # content pack sources added
 //! content_check_minutes = 60 # check for content updates this often; 0 for never
+//! content_prereleases = false # the official source's pre-release packs too
 //! layout = "/Users/me/layouts/match.json"
 //! tab = "Teleoperated"
 //! tab_index = 0
@@ -86,6 +87,10 @@ pub struct Settings {
     /// enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_check_minutes: Option<u32>,
+    /// The official source's newest catalog, a pre-release's too: packs
+    /// being tried before they're released.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_prereleases: Option<bool>,
     /// The layout file to open at start: the one last opened or saved.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<String>,
@@ -133,6 +138,7 @@ pub fn defaults() -> Settings {
         alert_history_ignore: Some(Vec::new()),
         content_sources: Some(Vec::new()),
         content_check_minutes: Some(60),
+        content_prereleases: Some(false),
         layout: None,
         tab: None,
         tab_index: None,
@@ -187,6 +193,7 @@ impl Settings {
             alert_history_ignore: self.alert_history_ignore.or(lower.alert_history_ignore),
             content_sources: self.content_sources.or(lower.content_sources),
             content_check_minutes: self.content_check_minutes.or(lower.content_check_minutes),
+            content_prereleases: self.content_prereleases.or(lower.content_prereleases),
             layout: self.layout.or(lower.layout),
             tab: self.tab.or(lower.tab),
             tab_index: self.tab_index.or(lower.tab_index),
@@ -336,6 +343,7 @@ impl Tracker {
         note!(alert_history_ignore);
         note!(content_sources);
         note!(content_check_minutes);
+        note!(content_prereleases);
         note!(layout);
         note!(tab);
         note!(tab_index);

@@ -27,6 +27,9 @@ packs without updating raptaboard.
   window, with sample values, its time and memory against its limits, and its log), and the
   examples in [raptaboard-examples](https://github.com/tuffinmuffin/raptaboard-examples). Packs can
   take their files from a plugin's own repository's releases.
+- **Pre-release packs:** "Pre-releases" beside the official source in the Content window (or
+  `raptaboard packs list --prereleases`) offers packs being tried before they're released, still
+  signed.
 - **Microsoft Store package:** only the dashboard, without `raptaboard-cli`.
 
 ## 0.3.0

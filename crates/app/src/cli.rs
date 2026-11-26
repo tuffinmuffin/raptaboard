@@ -140,6 +140,8 @@ pub struct StartupOptions {
     pub content_sources: Vec<String>,
     /// How often to check for content updates, in minutes; 0 for never.
     pub content_check_minutes: u32,
+    /// The official source's pre-release packs too.
+    pub content_prereleases: bool,
     /// Where content packs are installed (`~/.raptaboard/content`); `None`
     /// for none at all (tests, or no home folder): no packs, and nothing
     /// downloaded.
@@ -184,6 +186,7 @@ impl From<Loaded> for StartupOptions {
             alert_history_ignore: s.alert_history_ignore.unwrap_or_default(),
             content_sources: s.content_sources.unwrap_or_default(),
             content_check_minutes: s.content_check_minutes.unwrap_or(60),
+            content_prereleases: s.content_prereleases.unwrap_or(false),
             // main.rs sets it: the settings files don't say where.
             content_dir: None,
             store: loaded.store,

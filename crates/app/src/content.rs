@@ -900,61 +900,115 @@ pub fn fetch_catalog(url: &str, keys: &[[u8; 32]], fetch: &Fetch) -> Result<Cata
     Catalog::parse(&bytes)
 }
 
+/// A release of the official source, from GitHub's API.
+#[derive(Deserialize)]
+struct Release {
+    tag_name: String,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    prerelease: bool,
+    #[serde(default)]
+    assets: Vec<Asset>,
+}
+
+#[derive(Deserialize)]
+struct Asset {
+    name: String,
+}
+
+impl Release {
+    /// Whether it has a signed catalog.
+    fn has_catalog(&self) -> bool {
+        let has = |name: &str| self.assets.iter().any(|a| a.name == name);
+        has("catalog.json") && has("catalog.json.sig")
+    }
+
+    /// Its catalog's URL.
+    fn catalog_url(&self) -> String {
+        format!(
+            "https://github.com/{OFFICIAL_REPO}/releases/download/{}/catalog.json",
+            self.tag_name
+        )
+    }
+}
+
+/// The official source's releases, newest first, drafts left out.
+fn releases(fetch: &Fetch) -> Result<Vec<Release>, String> {
+    let all: Vec<Release> = fetch(OFFICIAL_RELEASES, CATALOG_LIMIT)
+        .and_then(|b| serde_json::from_slice(&b).map_err(|e| e.to_string()))?;
+    Ok(all.into_iter().filter(|r| !r.draft).collect())
+}
+
 /// The official catalog: the latest release's, or if that has none (its
 /// release failed or is still publishing), the newest release before it
-/// that has one, with a note saying so. Signed either way. Offline, it
-/// stops at the first error.
+/// that has one, with a note saying so. With `prereleases`, the newest
+/// release's, a pre-release or not (packs being tried before they're
+/// released), and the released one with a note if none can be had. Signed
+/// either way. Offline, it stops at the first error.
 pub fn fetch_official(
     keys: &[[u8; 32]],
     fetch: &Fetch,
+    prereleases: bool,
 ) -> Result<(Catalog, Option<String>), String> {
+    if prereleases {
+        let why = match releases(fetch) {
+            Ok(list) => {
+                let mut why = "none of its releases has a usable catalog".to_string();
+                for release in list
+                    .iter()
+                    .filter(|r| r.has_catalog())
+                    .take(FALLBACK_RELEASES)
+                {
+                    match fetch_catalog(&release.catalog_url(), keys, fetch) {
+                        Ok(catalog) => {
+                            let note = release.prerelease.then(|| {
+                                format!(
+                                    "Pre-release packs ({}): for trying before they're released.",
+                                    release.tag_name
+                                )
+                            });
+                            return Ok((catalog, note));
+                        }
+                        Err(e) if is_offline(&e) => return Err(e),
+                        Err(e) => why = e,
+                    }
+                }
+                why
+            }
+            Err(e) if is_offline(&e) => return Err(e),
+            Err(e) => format!("couldn't list its releases: {e}"),
+        };
+        let (catalog, note) = fetch_official(keys, fetch, false)?;
+        let said = format!("No pre-release catalog ({why}), so these are the released packs.");
+        let note = match note {
+            Some(n) => format!("{said} {n}"),
+            None => said,
+        };
+        return Ok((catalog, Some(note)));
+    }
     let first = match fetch_catalog(OFFICIAL, keys, fetch) {
         Ok(catalog) => return Ok((catalog, None)),
         Err(e) if is_offline(&e) => return Err(e),
         Err(e) => e,
     };
-    #[derive(Deserialize)]
-    struct Release {
-        tag_name: String,
-        #[serde(default)]
-        draft: bool,
-        #[serde(default)]
-        prerelease: bool,
-        #[serde(default)]
-        assets: Vec<Asset>,
-    }
-    #[derive(Deserialize)]
-    struct Asset {
-        name: String,
-    }
     let gave_up = |why: String| {
         format!(
             "The official source's latest release has no usable catalog ({first}). A content \
              release may have failed or still be publishing; try again in a few minutes.{why}"
         )
     };
-    let releases: Vec<Release> = match fetch(OFFICIAL_RELEASES, CATALOG_LIMIT)
-        .and_then(|b| serde_json::from_slice(&b).map_err(|e| e.to_string()))
-    {
+    let releases = match releases(fetch) {
         Ok(r) => r,
         Err(e) => return Err(gave_up(format!(" (Couldn't list its releases: {e}.)"))),
     };
-    let has = |r: &Release, name: &str| r.assets.iter().any(|a| a.name == name);
-    let newest = releases
-        .iter()
-        .find(|r| !r.draft)
-        .map(|r| r.tag_name.clone());
+    let newest = releases.first().map(|r| r.tag_name.clone());
     for release in releases
         .iter()
-        .filter(|r| !r.draft && !r.prerelease)
-        .filter(|r| has(r, "catalog.json") && has(r, "catalog.json.sig"))
+        .filter(|r| !r.prerelease && r.has_catalog())
         .take(FALLBACK_RELEASES)
     {
-        let url = format!(
-            "https://github.com/{OFFICIAL_REPO}/releases/download/{}/catalog.json",
-            release.tag_name
-        );
-        if let Ok(catalog) = fetch_catalog(&url, keys, fetch) {
+        if let Ok(catalog) = fetch_catalog(&release.catalog_url(), keys, fetch) {
             let newest = newest.unwrap_or_else(|| "the latest".into());
             let note = format!(
                 "The newest content release ({newest}) has no usable catalog ({first}), so \
@@ -1043,13 +1097,18 @@ pub struct Source {
     pub url: String,
     /// The official one: signed, can't be removed.
     pub official: bool,
+    /// For the official one: its newest catalog, a pre-release's too
+    /// ([`fetch_official`]); the setting `content_prereleases`.
+    pub prereleases: bool,
 }
 
-/// The sources: the official one, then those the user added.
-pub fn sources(added: &[String]) -> Vec<Source> {
+/// The sources: the official one (its pre-releases too, with
+/// `prereleases`), then those the user added.
+pub fn sources(added: &[String], prereleases: bool) -> Vec<Source> {
     std::iter::once(Source {
         url: OFFICIAL.into(),
         official: true,
+        prereleases,
     })
     .chain(
         added
@@ -1058,6 +1117,7 @@ pub fn sources(added: &[String]) -> Vec<Source> {
             .map(|u| Source {
                 url: u.clone(),
                 official: false,
+                prereleases: false,
             }),
     )
     .collect()
@@ -1070,7 +1130,7 @@ impl Source {
     /// checks and `raptaboard packs` both read sources this way.
     pub fn read(self, keys: &[[u8; 32]], fetch: &Fetch) -> Checked {
         let (catalog, note) = if self.official {
-            match fetch_official(keys, fetch) {
+            match fetch_official(keys, fetch, self.prereleases) {
                 Ok((c, note)) => (Ok(c), note),
                 Err(e) => (Err(e), None),
             }
@@ -1640,7 +1700,7 @@ pub(crate) mod tests {
                 http_get(url, limit)
             }
         };
-        let (older, note) = fetch_official(OFFICIAL_KEYS, &broken).unwrap();
+        let (older, note) = fetch_official(OFFICIAL_KEYS, &broken, false).unwrap();
         assert!(!older.packs.is_empty() && note.is_some(), "{note:?}");
         // Somewhere with no server: a quick error, not a hang.
         let start = std::time::Instant::now();
@@ -1729,9 +1789,16 @@ pub(crate) mod tests {
     /// GitHub's list of releases, newest first: each tag and whether it
     /// has the catalog's two files.
     pub fn releases(tags: &[(&str, bool)]) -> Vec<u8> {
+        let marked: Vec<(&str, bool, bool)> = tags.iter().map(|(t, w)| (*t, *w, false)).collect();
+        releases_marked(&marked)
+    }
+
+    /// The same, with whether each is a pre-release: (tag, has the
+    /// catalog, pre-release).
+    pub fn releases_marked(tags: &[(&str, bool, bool)]) -> Vec<u8> {
         let list: Vec<serde_json::Value> = tags
             .iter()
-            .map(|(tag, whole)| {
+            .map(|(tag, whole, pre)| {
                 let assets: Vec<serde_json::Value> = if *whole {
                     vec![
                         serde_json::json!({"name": "catalog.json"}),
@@ -1740,7 +1807,7 @@ pub(crate) mod tests {
                 } else {
                     vec![]
                 };
-                serde_json::json!({"tag_name": tag, "draft": false, "prerelease": false, "assets": assets})
+                serde_json::json!({"tag_name": tag, "draft": false, "prerelease": pre, "assets": assets})
             })
             .collect();
         serde_json::to_vec(&list).unwrap()
@@ -1761,6 +1828,7 @@ pub(crate) mod tests {
             source: Source {
                 url: url.into(),
                 official: false,
+                prereleases: false,
             },
             catalog: Ok(catalog(vec![sound_pack(
                 "beeps",
@@ -1803,20 +1871,86 @@ pub(crate) mod tests {
             OFFICIAL_RELEASES.into(),
             releases(&[("v2", false), ("v1", true)]),
         );
-        let (got, note) = fetch_official(&[public], &*web.fetch()).unwrap();
+        let (got, note) = fetch_official(&[public], &*web.fetch(), false).unwrap();
         assert_eq!(got, v1);
         let note = note.unwrap();
         assert!(note.contains("v2") && note.contains("from v1"), "{note}");
         // The latest working: no note, no list asked for.
         web.serve(OFFICIAL, &v1, Some(&key));
         web.asked.lock().unwrap().clear();
-        assert_eq!(fetch_official(&[public], &*web.fetch()).unwrap().1, None);
+        assert_eq!(
+            fetch_official(&[public], &*web.fetch(), false).unwrap().1,
+            None
+        );
         assert!(
             !web.asked
                 .lock()
                 .unwrap()
                 .iter()
                 .any(|u| u == OFFICIAL_RELEASES)
+        );
+    }
+
+    #[test]
+    fn with_prereleases_the_newest_release_is_read_a_prerelease_too() {
+        let (key, public) = test_key();
+        let web = Web::default();
+        let pack = |version| {
+            catalog(vec![sound_pack(
+                "beeps",
+                version,
+                &[("beep", "beep.mp3")],
+                "https://x",
+            )])
+        };
+        let (v1, pre) = (pack("1.0.0"), pack("2.0.0"));
+        web.serve(OFFICIAL, &v1, Some(&key));
+        web.serve(&release_url("v1"), &v1, Some(&key));
+        web.serve(&release_url("v2-pre.1"), &pre, Some(&key));
+        let list = |tags: &[(&str, bool, bool)]| {
+            web.files
+                .lock()
+                .unwrap()
+                .insert(OFFICIAL_RELEASES.into(), releases_marked(tags));
+        };
+        // The newest, v3-pre.1, is still publishing (no catalog yet).
+        list(&[
+            ("v3-pre.1", false, true),
+            ("v2-pre.1", true, true),
+            ("v1", true, false),
+        ]);
+        // Without the setting: the released one, no note.
+        assert_eq!(
+            fetch_official(&[public], &*web.fetch(), false).unwrap(),
+            (v1.clone(), None)
+        );
+        let (got, note) = fetch_official(&[public], &*web.fetch(), true).unwrap();
+        assert_eq!(got, pre);
+        assert!(note.unwrap().contains("v2-pre.1"));
+        // A released catalog newest: it, with no note.
+        list(&[("v1", true, false), ("v0-pre.9", true, true)]);
+        assert_eq!(
+            fetch_official(&[public], &*web.fetch(), true).unwrap(),
+            (v1.clone(), None)
+        );
+        // A pre-release must be signed too: one signed by another key is
+        // passed over.
+        let other = SigningKey::from_bytes(&[9u8; 32]);
+        web.serve(&release_url("v2-pre.1"), &pre, Some(&other));
+        list(&[("v2-pre.1", true, true), ("v1", true, false)]);
+        assert_eq!(
+            fetch_official(&[public], &*web.fetch(), true).unwrap(),
+            (v1.clone(), None)
+        );
+        // The list can't be had (GitHub's API limits how often): the
+        // released packs, saying so.
+        web.files.lock().unwrap().remove(OFFICIAL_RELEASES);
+        let (got, note) = fetch_official(&[public], &*web.fetch(), true).unwrap();
+        assert_eq!(got, v1);
+        let note = note.unwrap();
+        assert!(
+            note.contains("No pre-release catalog") && note.contains("released packs"),
+            "{note}"
         );
     }
 
@@ -1828,14 +1962,14 @@ pub(crate) mod tests {
             .lock()
             .unwrap()
             .insert(OFFICIAL_RELEASES.into(), releases(&[("v2", false)]));
-        let err = fetch_official(&[public], &*web.fetch()).unwrap_err();
+        let err = fetch_official(&[public], &*web.fetch(), false).unwrap_err();
         assert!(
             err.contains("may have failed or still be publishing"),
             "{err}"
         );
         // Can't list them either: still says what happened.
         let empty = Web::default();
-        let err = fetch_official(&[public], &*empty.fetch()).unwrap_err();
+        let err = fetch_official(&[public], &*empty.fetch(), false).unwrap_err();
         assert!(err.contains("Couldn't list its releases"), "{err}");
     }
 
@@ -1848,7 +1982,7 @@ pub(crate) mod tests {
             log.lock().unwrap().push(url.into());
             Err("github.com: can't connect (offline?)".into())
         });
-        let err = fetch_official(&[public], &*offline).unwrap_err();
+        let err = fetch_official(&[public], &*offline, false).unwrap_err();
         assert!(err.contains("offline"), "{err}");
         assert_eq!(*asked.lock().unwrap(), [OFFICIAL]);
     }
@@ -2020,7 +2154,7 @@ pub(crate) mod tests {
             .unwrap();
         let mut content =
             Content::with_fetch(&dir, SoundFiles::default(), vec![public], web.fetch());
-        content.check(sources(&[]));
+        content.check(sources(&[], false));
         while !content.idle() || content.checked.is_none() {
             content.poll();
             std::thread::sleep(Duration::from_millis(10));
@@ -2040,7 +2174,7 @@ pub(crate) mod tests {
         // Something newer than what was dismissed shows again.
         let newest = sound_pack("beeps", "1.2.0", &[("beep", "beep.mp3")], "https://x");
         web.serve(OFFICIAL, &catalog(vec![newest]), Some(&key));
-        content.check(sources(&[]));
+        content.check(sources(&[], false));
         content.checked = None;
         while !content.idle() || content.checked.is_none() {
             content.poll();
@@ -2137,10 +2271,10 @@ pub(crate) mod tests {
             }
             panic!("the download thread didn't finish");
         };
-        content.check(sources(&[
-            "https://y/c.json".into(),
-            "https://z/none.json".into(),
-        ]));
+        content.check(sources(
+            &["https://y/c.json".into(), "https://z/none.json".into()],
+            false,
+        ));
         wait(&mut content);
         let checked = content.checked.clone().unwrap();
         assert_eq!(checked.len(), 3);

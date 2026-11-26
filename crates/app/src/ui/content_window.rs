@@ -141,7 +141,7 @@ impl DashboardApp {
 
     /// The sources: the official one and those added.
     fn content_sources(&self) -> Vec<content::Source> {
-        content::sources(&self.content_sources)
+        content::sources(&self.content_sources, self.content_prereleases)
     }
 
     /// Called once at start: on the first start of a new version (or the
@@ -159,7 +159,10 @@ impl DashboardApp {
             self.status = format!("Couldn't save the content packs' state: {e}");
         }
         if state.offer_pending {
-            content.check(content::sources(&self.content_sources));
+            content.check(content::sources(
+                &self.content_sources,
+                self.content_prereleases,
+            ));
             self.packs.offer = Some(Offer {
                 picked: None,
                 shown: state.shown,
@@ -210,7 +213,10 @@ impl DashboardApp {
                 .content_timer
                 .due(std::time::Instant::now(), every, quiet)
         {
-            content.check(content::sources(&self.content_sources));
+            content.check(content::sources(
+                &self.content_sources,
+                self.content_prereleases,
+            ));
         }
         self.first_run_list(ctx);
         if self.packs.open {
@@ -519,11 +525,19 @@ impl DashboardApp {
         ui.strong("Sources");
         let checked = content.checked.clone().unwrap_or_default();
         let mut remove = None;
+        let mut prereleases_changed = false;
         for source in &sources {
             ui.horizontal(|ui| {
                 if source.official {
                     ui.label("raptaboard-content (official, signed)")
                         .on_hover_text(&source.url);
+                    prereleases_changed = ui
+                        .checkbox(&mut self.content_prereleases, "Pre-releases")
+                        .on_hover_text(
+                            "Also offer packs being tried before they're released: the \
+                             newest content release, a pre-release or not. Still signed.",
+                        )
+                        .changed();
                 } else {
                     ui.label(&source.url);
                     ui.label(egui::RichText::new("not signed").weak());
@@ -559,7 +573,10 @@ impl DashboardApp {
             {
                 self.content_sources.push(url);
                 self.packs.new_source.clear();
-                content.check(content::sources(&self.content_sources));
+                content.check(content::sources(
+                    &self.content_sources,
+                    self.content_prereleases,
+                ));
             }
         });
         ui.label(
@@ -570,9 +587,18 @@ impl DashboardApp {
             .weak()
             .small(),
         );
+        if prereleases_changed {
+            content.check(content::sources(
+                &self.content_sources,
+                self.content_prereleases,
+            ));
+        }
         if let Some(url) = remove {
             self.content_sources.retain(|u| *u != url);
-            content.check(content::sources(&self.content_sources));
+            content.check(content::sources(
+                &self.content_sources,
+                self.content_prereleases,
+            ));
         }
     }
 }
