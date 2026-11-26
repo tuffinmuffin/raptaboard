@@ -916,7 +916,7 @@ dependencies = [
 
 [[package]]
 name = "raptaboard-plugin-host"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "glob",
  "serde",
@@ -928,7 +928,7 @@ dependencies = [
 
 [[package]]
 name = "raptaboard-plugin-test"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "raptaboard-plugin-host",
  "serde_json",
