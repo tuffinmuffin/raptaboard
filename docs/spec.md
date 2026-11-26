@@ -575,6 +575,45 @@ chooses, never needed at an event: packs are installed beforehand and used from 
   and `install.sh` puts it in `~/.local/bin` (and `--uninstall` removes it). `scripts/package.py`
   builds both programs everywhere (`PROGRAMS`) and stops if either is missing from a package.
 
+## Documentation
+
+Planned with the user 2026-11-25, for the next release (after the pack pipeline chores: Doom's
+releases, the content repo's artifacts from other repos and its two catalogs, the pre-release
+source setting, and plugins' needs shown before installing, so the pages describe what's there).
+
+- **Where:** an mdBook in `book/`, published to GitHub Pages by CI on main; pull requests check it
+  builds and its links and images resolve. The README shrinks to what raptaboard is, install and
+  links into the book (its status line, still "0.1.0" and "Plugins come next", is fixed then).
+  Tutorial code is included from real, tested files, so it can't drift.
+- **Screenshots:** `record_docs_screenshots`, an ignored test like `record_store_screenshots`,
+  drives the app headless against a scripted robot (no sim needed, as `record_field_clip` does)
+  and writes PNGs into `book/src/images/`; run before each release (it needs a GPU) and commit
+  them. CI only checks every image the book uses exists.
+- **User guide:** install and first start (each system's unsigned-build prompt, the first-start
+  packs); connecting (team, Driver Station, SystemCore, sim, address); a tour of the window
+  (tabs, tree, settings bar, lock, status); adding and arranging widgets (drag from the tree, Add
+  as, the edit dialog, List Layouts, undo); layouts (Elastic files and what raptaboard adds); a
+  page per widget with a screenshot and its settings (the settings tables generated from the
+  widget registry); Field, Alerts and FMSInfo in depth; content packs and plugins (sources,
+  released and pre-release, what each permission and limit means); troubleshooting.
+- **Developer guide**, for both kinds of developer the user named:
+  - *Core developers* (in raptaboard): the repo and its architecture (crates; values from NT to
+    the app's state to widgets), and a tutorial **adding a built-in widget** step by step: the
+    type and its registration, its settings, drawing, a kittest test and its screenshot. Then
+    testing, coverage and releasing.
+  - *External developers* (in their own repo): the plugin structure (the WIT world and its
+    calls, a `plugin.toml` reference: match, tab, properties, permissions, limits, storage,
+    sandbox; API versions), and a tutorial **writing a plugin**: a new crate on the SDK, a small
+    table widget, harness tests, the sandbox, then releasing it from its repo's CI and adding it
+    to a pack. Its code is a `tutorial` plugin in raptaboard-examples, a step per folder or
+    commit, so every step builds and passes its tests. Then tab plugins (Doom as the case study:
+    pixel frames, input and focus, audio, storage) and content packs (`pack.toml`, artifacts
+    from other repos, the two signed catalogs).
+- **Order**, a pull request each: the book's scaffold, Pages workflow and README; the screenshot
+  recorder; the user guide's first pages; the widget reference and in-depth pages; the
+  architecture and built-in widget tutorial; the plugin reference with the tutorial plugin and
+  its walkthrough; tab plugins, content packs, testing and releasing.
+
 ## Milestones
 
 1. Spike: egui window, NT4.1 client connected to the robot-2027 sim (via the `nt4` crate), NT
