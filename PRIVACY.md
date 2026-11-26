@@ -3,79 +3,36 @@
 Last updated: November 26, 2026
 
 raptaboard is a driver dashboard for FIRST Robotics Competition robots, made by Team 3200
-(Raptacon). This policy covers the raptaboard app, however you install it: from the Microsoft
-Store or from GitHub. It's online at
-<https://github.com/tuffinmuffin/raptaboard/blob/main/PRIVACY.md>, and raptaboard shows it too,
-in ⚙ Settings → About and licenses → Privacy.
+(Raptacon). This policy covers the raptaboard app, from the Microsoft Store or from GitHub. It's
+online at <https://github.com/tuffinmuffin/raptaboard/blob/main/PRIVACY.md>, and in the app under
+⚙ Settings → About and licenses → Privacy.
 
-## We collect no personal data
+## We collect no data
 
 raptaboard doesn't collect, store or share any personal information. It has no accounts, no
-analytics, no advertising and no crash reporting, and it sends nothing to us or to anyone else.
+analytics, no advertising and no crash reporting, and it sends nothing to us.
 
-## What raptaboard connects to
+## What it connects to
 
-raptaboard connects only to the robot, or another NetworkTables server you choose (such as a
-robot simulator), on your own network. It does this to show and send your robot's values. It
-finds the robot from the team number and address you set; this may include asking the FRC Driver
-Station on the same computer for the robot's address, or looking for the robot on your local
-network. The plugin sandbox for developers (`raptaboard plugin dev`) instead runs a NetworkTables
-server of its own that only your computer can reach, and connects to that.
+raptaboard connects to services on your local network for your robot: the robot or simulator you
+choose, and the FRC Driver Station on the same computer.
 
-### Content packs
+It also downloads content packs (extra sounds and plugins) from GitHub, or from other sources you
+add: the list of packs when it checks for updates (which you can turn off in ⚙ Settings), and a
+pack only when you choose it. These requests send nothing about you, and are covered by the
+[GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 
-raptaboard can download **content packs**: extra sounds, and later widget plugins, fields and
-layouts. They come from raptaboard-content on GitHub, or from another source you add yourself.
+## What it keeps on your computer
 
-- **Packs download only when you choose them**: from the list raptaboard offers, with Install
-  or Update in ⚙ Settings → Content packs, or with `packs install` or `packs update` on the
-  command line (`raptaboard-cli` on Windows, `raptaboard` elsewhere).
-- **The list of packs** (a small file, the same for everyone) is read so raptaboard can tell you
-  about new packs and updates:
-  - on its first start, and on the first start after raptaboard is updated;
-  - when you open the Content packs window or press "Check for packs", or run a `packs`
-    command on the command line;
-  - in the background about once an hour, only while the robot isn't enabled. Change how often,
-    or turn this off, in ⚙ Settings ("Check for updates every … min"; 0 for never).
-- **What these requests send:** nothing about you. Like any download, the server sees your IP
-  address and that the request comes from raptaboard and which version. We don't receive these
-  requests. GitHub handles its own under the
-  [GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
-- **Without the internet** (on the robot's network or at an event), raptaboard works the same,
-  using the packs already installed; a check that can't connect just stops.
-
-Otherwise raptaboard doesn't connect to the internet. Links in its About window open in your web
-browser only when you click them.
-
-## What raptaboard stores on your computer
-
-raptaboard keeps these files on your computer, and never sends them anywhere:
-
-- its settings, such as your team number, robot address, window size and the last layout you
-  opened, in a `.raptaboard` folder in your home folder;
-- the dashboard layouts you save, wherever you choose to save them;
-- images you add to widgets, copied into the `.raptaboard` folder;
-- the content packs you download, in `.raptaboard/content`, with a note of which packs you've
-  been offered or dismissed and the raptaboard version that last started (`state.json`), and
-  the content sources you add, in its settings;
-- small values plugins keep between runs, such as a game's options, in
-  `.raptaboard/plugin-data`, a folder for each plugin that asks to (it says so before you
-  install it).
-
-You can delete any of these at any time. Uninstalling raptaboard doesn't remove them; delete the
-`.raptaboard` folder in your home folder to remove its settings.
+Its settings, the content packs you install and what plugins save, in a `.raptaboard` folder in
+your home folder, and the layouts you save, where you save them. None of it is sent anywhere. To
+remove it, delete the `.raptaboard` folder.
 
 ## Microsoft Store
 
-If you install raptaboard from the Microsoft Store, Microsoft handles the download, installation
-and updates under the
-[Microsoft Privacy Statement](https://privacy.microsoft.com/privacystatement). We don't receive
-any personal information about you from Microsoft.
-
-## Changes
-
-If a future version of raptaboard changes what it connects to or stores, we'll update this policy
-before that version is released, and change the date at the top.
+Installs and updates from the Microsoft Store are covered by the
+[Microsoft Privacy Statement](https://privacy.microsoft.com/privacystatement). We receive no
+personal information about you from Microsoft.
 
 ## Contact
 

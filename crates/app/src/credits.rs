@@ -375,14 +375,8 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert!(
-            headings.contains(&"We collect no personal data"),
-            "{headings:?}"
-        );
-        assert!(
-            headings.contains(&"What raptaboard connects to"),
-            "{headings:?}"
-        );
+        assert!(headings.contains(&"We collect no data"), "{headings:?}");
+        assert!(headings.contains(&"What it connects to"), "{headings:?}");
         // No Markdown left to show as symbols.
         for b in &blocks {
             let text = format!("{b:?}");
