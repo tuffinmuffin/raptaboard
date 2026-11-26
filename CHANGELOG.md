@@ -2,6 +2,32 @@
 
 What changes in each raptaboard release. Newest first.
 
+## 0.4.0
+
+Widget plugins: widgets and whole tabs made as small WebAssembly programs, installed from content
+packs without updating raptaboard.
+
+- **Plugin widgets** from content packs: ⚙ Settings → Content packs lists what each plugin may do
+  (send values to the robot, play sounds, keep running while its tab is closed, save values on
+  this computer) before installing, and raptaboard holds it to that. A plugin's widgets are in "Add
+  as" and the settings dialog for the topics and tables it shows, after the built-in ones. A
+  plugin that stops shows why, with Restart; one can't slow the window down or use more than its
+  share of memory.
+- **The "Example widget plugins" pack:** Number and Alerts, raptaboard's Text Display and Alerts
+  widgets remade as plugins, to show what plugins can do and as examples for writing your own.
+- **Tab plugins:** a plugin can fill a whole tab, which takes the keyboard (and the mouse, if it
+  asks) when clicked; Shift+Escape gives them back, as does the plugin stopping. It can play sound
+  through raptaboard's (off with the bell) and keep its settings between runs.
+- **The "Doom: the 2026 field" pack:** Doom on the 2026 FRC field, with KitBots as the monsters
+  (Freedoom's game data, the room4doom engine): an empty tab named "Doom" becomes the game.
+- **For plugin authors:** the plugin interface (API 0.3: shapes and pixel images, regions, keys
+  and the mouse, sound, the plugin's own files, small saved values), a Rust SDK, a test harness for
+  `cargo test` (`raptaboard-plugin-test`), `raptaboard plugin dev <folder>` (the plugin alone in a
+  window, with sample values, its time and memory against its limits, and its log), and the
+  examples in [raptaboard-examples](https://github.com/tuffinmuffin/raptaboard-examples). Packs can
+  take their files from a plugin's own repository's releases.
+- **Microsoft Store package:** only the dashboard, without `raptaboard-cli`.
+
 ## 0.3.0
 
 Content packs: extra sounds (and later plugins, fields and layouts) to download when you choose,
