@@ -272,86 +272,91 @@ fn styled(props: &Map<String, Json>, keys: Keys) -> bool {
         .any(|k| props.contains_key(*k))
 }
 
-/// A "Style…" button whose pop-up sets `keys`' font, color, bold and
-/// italic in `props`; `default_family` and `default_color` are the
-/// widget's own, used when not set. With no `default_color`, no color row:
-/// for a widget whose text colors are its own settings. Reset removes them
-/// all.
-pub fn style_button(
+/// A "Style…" button that shows or hides `keys`' style rows
+/// ([`style_rows`]), whether they're shown being kept in `ui`'s memory;
+/// returns whether to show them. It says "(set)" while any is set.
+fn style_toggle(ui: &mut egui::Ui, props: &Map<String, Json>, keys: Keys) -> bool {
+    let id = ui.scope_id().with(("text style shown", keys.family));
+    let mut shown = ui.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
+    let label = if styled(props, keys) {
+        "Style… (set)"
+    } else {
+        "Style…"
+    };
+    if ui
+        .add(egui::Button::new(label).selected(shown))
+        .on_hover_text("Font, color, bold and italic")
+        .clicked()
+    {
+        shown = !shown;
+        ui.data_mut(|d| d.insert_temp(id, shown));
+    }
+    shown
+}
+
+/// The settings dialog's rows for `keys`' style, under the row with its
+/// Style… button: Font (`default_family` is the widget's own), Color (none
+/// without `default_color`: a widget whose text colors are its own
+/// settings), Bold and Italic, and Reset style. Rows in the dialog, not a
+/// pop-up, so the color picker and each change leave them open.
+fn style_rows(
     ui: &mut egui::Ui,
     props: &mut Map<String, Json>,
     keys: Keys,
     default_family: Family,
     default_color: Option<Color32>,
 ) {
-    let label = if styled(props, keys) {
-        "Style… (set)"
-    } else {
-        "Style…"
-    };
-    ui.menu_button(label, |ui| {
-        egui::Grid::new(("text style", keys.family))
-            .num_columns(2)
-            .spacing([12.0, 6.0])
-            .show(ui, |ui| {
-                ui.label("Font");
-                let now = TextStyle::read(props, keys).family;
-                let shown = now.map_or_else(
-                    || format!("{} (usual)", default_family.label()),
-                    |f| f.label().to_owned(),
-                );
-                egui::ComboBox::from_id_salt(("font family", keys.family))
-                    .selected_text(shown)
-                    .show_ui(ui, |ui| {
-                        for family in [Family::Sans, Family::Mono] {
-                            if ui
-                                .selectable_label(now == Some(family), family.label())
-                                .clicked()
-                            {
-                                let value =
-                                    (family != default_family).then(|| Json::from(family.key()));
-                                set_property(props, keys.family, value);
-                            }
-                        }
-                    });
-                ui.end_row();
+    ui.label("    Font");
+    ui.horizontal(|ui| {
+        let now = TextStyle::read(props, keys)
+            .family
+            .unwrap_or(default_family);
+        for family in [Family::Sans, Family::Mono] {
+            let label = if family == default_family {
+                format!("{} (usual)", family.label())
+            } else {
+                family.label().to_owned()
+            };
+            if ui.selectable_label(now == family, label).clicked() {
+                let value = (family != default_family).then(|| Json::from(family.key()));
+                set_property(props, keys.family, value);
+            }
+        }
+    });
+    ui.end_row();
 
-                if let Some(default_color) = default_color {
-                    ui.label("Color");
-                    ui.horizontal(|ui| {
-                        let mut color = color_property(props, keys.color).unwrap_or(default_color);
-                        if egui::color_picker::color_edit_button_srgba(
-                            ui,
-                            &mut color,
-                            egui::color_picker::Alpha::Opaque,
-                        )
-                        .changed()
-                        {
-                            set_property(props, keys.color, Some(color_json(color)));
-                        }
-                        if ui
-                            .add_enabled(props.contains_key(keys.color), egui::Button::new("Theme"))
-                            .on_hover_text("Follow the theme's text color")
-                            .clicked()
-                        {
-                            set_property(props, keys.color, None);
-                        }
-                    });
-                    ui.end_row();
-                }
+    if let Some(default_color) = default_color {
+        ui.label("    Color");
+        ui.horizontal(|ui| {
+            let mut color = color_property(props, keys.color).unwrap_or(default_color);
+            if egui::color_picker::color_edit_button_srgba(
+                ui,
+                &mut color,
+                egui::color_picker::Alpha::Opaque,
+            )
+            .changed()
+            {
+                set_property(props, keys.color, Some(color_json(color)));
+            }
+            if ui
+                .add_enabled(props.contains_key(keys.color), egui::Button::new("Theme"))
+                .on_hover_text("Follow the theme's text color")
+                .clicked()
+            {
+                set_property(props, keys.color, None);
+            }
+        });
+        ui.end_row();
+    }
 
-                ui.label("");
-                ui.horizontal(|ui| {
-                    for (key, label) in [(keys.bold, "Bold"), (keys.italic, "Italic")] {
-                        let mut on = flag(props, key, false);
-                        if ui.checkbox(&mut on, label).changed() {
-                            set_property(props, key, on.then_some(Json::Bool(true)));
-                        }
-                    }
-                });
-                ui.end_row();
-            });
-        ui.separator();
+    ui.label("");
+    ui.horizontal(|ui| {
+        for (key, label) in [(keys.bold, "Bold"), (keys.italic, "Italic")] {
+            let mut on = flag(props, key, false);
+            if ui.checkbox(&mut on, label).changed() {
+                set_property(props, key, on.then_some(Json::Bool(true)));
+            }
+        }
         if ui
             .add_enabled(styled(props, keys), egui::Button::new("Reset style"))
             .clicked()
@@ -361,11 +366,13 @@ pub fn style_button(
             }
         }
     });
+    ui.end_row();
 }
 
 /// The value text's settings row, "Text": its size (when `size` gives the
-/// usual one; `None` for text fitted to the card) and a "Style…" button for
-/// its font (`family` usually), bold, italic and, with `color`, color.
+/// usual one; `None` for text fitted to the card) and a "Style…" button
+/// showing rows for its font (`family` usually), bold, italic and, with
+/// `color`, color.
 pub fn text_row(
     ui: &mut egui::Ui,
     p: &mut Map<String, Json>,
@@ -374,59 +381,70 @@ pub fn text_row(
     color: bool,
 ) {
     ui.label("Text");
-    ui.horizontal(|ui| {
-        if let Some(usual) = size {
-            let mut now = props::font_size_set(p).unwrap_or(usual);
+    let shown = ui
+        .horizontal(|ui| {
+            if let Some(usual) = size {
+                let mut now = props::font_size_set(p).unwrap_or(usual);
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut now)
+                            .range(props::MIN_FONT_SIZE..=props::MAX_FONT_SIZE)
+                            .speed(0.5)
+                            .fixed_decimals(0)
+                            .suffix(" pt"),
+                    )
+                    .on_hover_text("Text size")
+                    .changed()
+                {
+                    let value = (now != usual).then(|| f64::from(now).into());
+                    set_property(p, VALUE.size, value);
+                }
+                if ui
+                    .add_enabled(p.contains_key(VALUE.size), egui::Button::new("Reset"))
+                    .on_hover_text("The usual size")
+                    .clicked()
+                {
+                    set_property(p, VALUE.size, None);
+                }
+            }
+            style_toggle(ui, p, VALUE)
+        })
+        .inner;
+    ui.end_row();
+    if shown {
+        let color = color.then(|| ui.visuals().text_color());
+        style_rows(ui, p, VALUE, family, color);
+    }
+}
+
+/// The title's settings: its size and a "Style…" button showing its style
+/// rows, under the title's text box in the settings dialog.
+pub fn title_style_row(ui: &mut egui::Ui, props: &mut Map<String, Json>, text_color: Color32) {
+    ui.label("Title text");
+    let shown = ui
+        .horizontal(|ui| {
+            let mut size = title_size(props);
             if ui
                 .add(
-                    egui::DragValue::new(&mut now)
-                        .range(props::MIN_FONT_SIZE..=props::MAX_FONT_SIZE)
+                    egui::DragValue::new(&mut size)
+                        .range(props::MIN_FONT_SIZE..=MAX_TITLE_SIZE)
                         .speed(0.5)
                         .fixed_decimals(0)
                         .suffix(" pt"),
                 )
-                .on_hover_text("Text size")
+                .on_hover_text("Title size")
                 .changed()
             {
-                let value = (now != usual).then(|| f64::from(now).into());
-                set_property(p, VALUE.size, value);
+                let value = (size != DEFAULT_TITLE_SIZE).then(|| f64::from(size).into());
+                set_property(props, TITLE.size, value);
             }
-            if ui
-                .add_enabled(p.contains_key(VALUE.size), egui::Button::new("Reset"))
-                .on_hover_text("The usual size")
-                .clicked()
-            {
-                set_property(p, VALUE.size, None);
-            }
-        }
-        let color = color.then(|| ui.visuals().text_color());
-        style_button(ui, p, VALUE, family, color);
-    });
+            style_toggle(ui, props, TITLE)
+        })
+        .inner;
     ui.end_row();
-}
-
-/// The title's settings: its size and a "Style…" button, beside the
-/// title's text box in the settings dialog.
-pub fn title_style_row(ui: &mut egui::Ui, props: &mut Map<String, Json>, text_color: Color32) {
-    ui.label("Title text");
-    ui.horizontal(|ui| {
-        let mut size = title_size(props);
-        if ui
-            .add(
-                egui::DragValue::new(&mut size)
-                    .range(props::MIN_FONT_SIZE..=MAX_TITLE_SIZE)
-                    .speed(0.5)
-                    .fixed_decimals(0)
-                    .suffix(" pt"),
-            )
-            .changed()
-        {
-            let value = (size != DEFAULT_TITLE_SIZE).then(|| f64::from(size).into());
-            set_property(props, TITLE.size, value);
-        }
-        style_button(ui, props, TITLE, Family::Sans, Some(text_color));
-    });
-    ui.end_row();
+    if shown {
+        style_rows(ui, props, TITLE, Family::Sans, Some(text_color));
+    }
 }
 
 #[cfg(test)]
@@ -536,6 +554,53 @@ mod tests {
                     .italics
             );
         });
+    }
+
+    #[test]
+    fn the_style_rows_stay_open_while_its_settings_change() {
+        use egui_kittest::kittest::Queryable;
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(600.0, 400.0))
+            .build_ui_state(
+                |ui, p: &mut Map<String, Json>| {
+                    egui::Grid::new("rows").show(ui, |ui| {
+                        text_row(ui, p, Some(16.0), Family::Mono, true);
+                    });
+                    ui.label("elsewhere");
+                },
+                Map::new(),
+            );
+        let open =
+            |h: &egui_kittest::Harness<'_, Map<String, Json>>| h.query_by_label("Italic").is_some();
+        assert!(!open(&harness));
+        harness.get_by_label("Style…").click();
+        harness.run();
+        assert!(open(&harness));
+        // Each change leaves them open, clicks elsewhere too.
+        harness.get_by_label("Bold").click();
+        harness.run();
+        assert!(open(&harness), "closed after Bold");
+        assert_eq!(harness.state().get(VALUE.bold), Some(&Json::Bool(true)));
+        harness.get_by_label("Italic").click();
+        harness.run();
+        harness.get_by_label("Sans").click();
+        harness.run();
+        assert!(open(&harness), "closed after picking a font");
+        assert_eq!(harness.state().get(VALUE.family), Some(&Json::from("sans")));
+        harness.get_by_label("elsewhere").click();
+        harness.run();
+        assert!(open(&harness), "closed after a click elsewhere");
+        // The usual font removes the setting; Reset style removes the rest.
+        harness.get_by_label("Mono (usual)").click();
+        harness.run();
+        assert_eq!(harness.state().get(VALUE.family), None);
+        harness.get_by_label("Reset style").click();
+        harness.run();
+        assert!(harness.state().is_empty(), "{:?}", harness.state());
+        // The button hides them again.
+        harness.get_by_label("Style…").click();
+        harness.run();
+        assert!(!open(&harness));
     }
 
     #[test]

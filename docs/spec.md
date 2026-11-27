@@ -752,7 +752,8 @@ raptaboard is meant to rest in, apart from feature requests.
      it; Number Bar, Voltage View and Radial Gauge use it for their fill unless their own gradient (over
      their scale) is on. The colors are the scale's `low_color`, `mid_color`, `high_color`.
    - Text style (**done** for 0.5.0, 2026-11-26, `shared/text_style.rs`): the settings dialog's "Text"
-     row (size and a "Style…" pop-up: font, color, bold, italic) for the value text of Text Display,
+     row (size and a "Style…" button showing rows under it: font, color, bold, italic, Reset
+     style; rows, not a pop-up, as egui closes a pop-up when its color picker or a list opens) for the value text of Text Display,
      Boolean Box (no color: its true and false text colors are its own) and Struct, and a "Title
      text" row (size, Style…) for every widget's and List Layout's title. Fonts are Sans (egui's
      Ubuntu Light) and Mono (Hack), the same on every computer; bold uses `media/fonts/`'s Ubuntu
