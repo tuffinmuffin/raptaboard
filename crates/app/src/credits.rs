@@ -175,6 +175,35 @@ pub const MEDIA: &[MediaCredit] = &[
         note: "Unchanged.",
     },
     MediaCredit {
+        kind: "Font",
+        files: &["PTSerif-Regular.ttf", "PTSerif-Bold.ttf"],
+        what: "PT Serif, regular and bold, for the Serif font",
+        source: "PT Serif by ParaType Ltd., \
+                 https://github.com/google/fonts/tree/main/ofl/ptserif",
+        license: "SIL Open Font License 1.1",
+        link: Some("https://openfontlicense.org"),
+        note: "Unchanged.",
+    },
+    MediaCredit {
+        kind: "Font",
+        files: &["PTSansNarrow-Regular.ttf", "PTSansNarrow-Bold.ttf"],
+        what: "PT Sans Narrow, regular and bold, for the Narrow font",
+        source: "PT Sans Narrow by ParaType Ltd., \
+                 https://github.com/google/fonts/tree/main/ofl/ptsansnarrow",
+        license: "SIL Open Font License 1.1",
+        link: Some("https://openfontlicense.org"),
+        note: "Unchanged.",
+    },
+    MediaCredit {
+        kind: "Font",
+        files: &["DSEG7Classic-Regular.ttf", "DSEG7Classic-Bold.ttf"],
+        what: "DSEG7 Classic, regular and bold, for the seven-segment Digital font",
+        source: "DSEG 0.50 beta 1 by keshikan, https://github.com/keshikan/DSEG",
+        license: "SIL Open Font License 1.1",
+        link: Some("https://openfontlicense.org"),
+        note: "Unchanged.",
+    },
+    MediaCredit {
         kind: "Sound",
         files: &["danger.mp3"],
         what: "\"danger danger\" in a robot voice",

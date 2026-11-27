@@ -5,7 +5,7 @@ What changes in each raptaboard release. Newest first.
 ## 0.5.0 (not released yet)
 
 - **Text style:** a widget's title, and the value text of Text Display, Boolean Box and Struct, can
-  be Sans or Mono, bold, italic, and any color, from the settings dialog's "Style…" buttons; the
+  be Sans, Mono, Serif, Narrow or Digital (a seven-segment display), bold, italic, and any color, from the settings dialog's "Style…" buttons; the
   title's size too.
 
 ## 0.4.0

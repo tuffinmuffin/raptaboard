@@ -148,7 +148,7 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | --- | --- | --- | --- | --- |
 | `period` (Elastic) | `shared/props.rs` | all | update period, seconds (0.01–5) | 0.06 |
 | `font_size` | `shared/props.rs` | Text Display; Boolean Box text | points, 8–96 | 16 |
-| `font_family` | `shared/text_style.rs` | Text Display, Boolean Box text, Struct values | `"sans"` or `"mono"` | the widget's own (Text Display and Struct Mono, Boolean Box Sans) |
+| `font_family` | `shared/text_style.rs` | Text Display, Boolean Box text, Struct values | `"sans"`, `"mono"`, `"serif"`, `"narrow"` or `"digital"` | the widget's own (Text Display and Struct Mono, Boolean Box Sans) |
 | `font_color` | `shared/text_style.rs` | Text Display, Struct values | ARGB color; beats a color-by-value background's black or white | the theme's |
 | `font_bold`, `font_italic` | `shared/text_style.rs` | Text Display, Boolean Box text, Struct values | true or false | false |
 | `title_font_family`, `title_color`, `title_bold`, `title_italic` | `shared/text_style.rs` | all, List Layouts too | as the value text's | Sans, the theme's color, plain |

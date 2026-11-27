@@ -1,4 +1,4 @@
-//! A widget's text style: the font (Sans or Mono), color, bold and italic,
+//! A widget's text style: the font (Sans, Mono, Serif, Narrow or Digital), color, bold and italic,
 //! for its value text and for its title, set from the settings dialog's
 //! "Style…" buttons. Sizes are kept apart: the value's is `font_size`
 //! ([`props::font_size`](super::props::font_size)), the title's
@@ -8,7 +8,7 @@
 //!
 //! | | Value text | Title |
 //! | --- | --- | --- |
-//! | font | `font_family` (`"sans"` or `"mono"`) | `title_font_family` |
+//! | font | `font_family` (`"sans"`, `"mono"`, `"serif"`, `"narrow"` or `"digital"`) | `title_font_family` |
 //! | size | `font_size` | `title_font_size` |
 //! | color | `font_color` (ARGB, as Elastic saves colors) | `title_color` |
 //! | bold | `font_bold` | `title_bold` |
@@ -17,8 +17,9 @@
 //! Not set, each is the widget's own: a Text Display's value is Mono, a
 //! title is Sans at 14 points, colors follow the theme.
 //!
-//! Bold uses bold font files of our own (`media/fonts/`: Ubuntu Bold, Hack
-//! Bold), added to egui by [`install_fonts`] as their own font families;
+//! Fonts other than egui's own two (Ubuntu Light and Hack) are files of ours
+//! (`media/fonts/`: Ubuntu and Hack Bold, PT Serif, PT Sans Narrow, DSEG7
+//! Classic), added to egui by [`install_fonts`] as their own font families;
 //! italic is egui's slant.
 
 use std::sync::Arc;
@@ -82,14 +83,33 @@ pub enum Family {
     Sans,
     /// Hack: every letter the same width, so numbers don't jump about.
     Mono,
+    /// PT Serif: letters with serifs, for a book-like look.
+    Serif,
+    /// PT Sans Narrow: tall and thin, so more fits in a small tile.
+    Narrow,
+    /// DSEG7 Classic: a seven-segment display, for timers and scores.
+    /// It has digits and a few letters; the rest come from Sans.
+    Digital,
 }
 
 impl Family {
+    /// Every family, in the order the Font row shows them.
+    pub const ALL: [Family; 5] = [
+        Family::Sans,
+        Family::Mono,
+        Family::Serif,
+        Family::Narrow,
+        Family::Digital,
+    ];
+
     /// Its name in a layout file.
     pub fn key(self) -> &'static str {
         match self {
             Family::Sans => "sans",
             Family::Mono => "mono",
+            Family::Serif => "serif",
+            Family::Narrow => "narrow",
+            Family::Digital => "digital",
         }
     }
 
@@ -98,12 +118,11 @@ impl Family {
     /// ```
     /// use raptaboard::widgets::shared::text_style::Family;
     /// assert_eq!(Family::from_key("mono"), Some(Family::Mono));
+    /// assert_eq!(Family::from_key("digital"), Some(Family::Digital));
     /// assert_eq!(Family::from_key("comic"), None);
     /// ```
     pub fn from_key(key: &str) -> Option<Family> {
-        [Family::Sans, Family::Mono]
-            .into_iter()
-            .find(|f| f.key() == key)
+        Family::ALL.into_iter().find(|f| f.key() == key)
     }
 
     /// Its name for people.
@@ -111,16 +130,34 @@ impl Family {
         match self {
             Family::Sans => "Sans",
             Family::Mono => "Mono",
+            Family::Serif => "Serif",
+            Family::Narrow => "Narrow",
+            Family::Digital => "Digital",
         }
     }
 
-    /// egui's family for it, regular or bold.
+    /// egui's family for it, regular or bold: egui's own two for regular
+    /// Sans and Mono, else one of ours ([`install_fonts`]).
     fn egui_family(self, bold: bool) -> FontFamily {
         match (self, bold) {
             (Family::Sans, false) => FontFamily::Proportional,
             (Family::Mono, false) => FontFamily::Monospace,
-            (Family::Sans, true) => FontFamily::Name(SANS_BOLD.into()),
-            (Family::Mono, true) => FontFamily::Name(MONO_BOLD.into()),
+            _ => FontFamily::Name(Self::font_name(self, bold).into()),
+        }
+    }
+
+    /// Our name for its font file, regular or bold (not used for regular
+    /// Sans and Mono, which are egui's).
+    fn font_name(self, bold: bool) -> &'static str {
+        match (self, bold) {
+            (Family::Sans, _) => SANS_BOLD,
+            (Family::Mono, _) => MONO_BOLD,
+            (Family::Serif, false) => "raptaboard-serif",
+            (Family::Serif, true) => "raptaboard-serif-bold",
+            (Family::Narrow, false) => "raptaboard-narrow",
+            (Family::Narrow, true) => "raptaboard-narrow-bold",
+            (Family::Digital, false) => "raptaboard-digital",
+            (Family::Digital, true) => "raptaboard-digital-bold",
         }
     }
 }
@@ -130,29 +167,84 @@ const SANS_BOLD: &str = "raptaboard-sans-bold";
 /// egui's name for the bold Mono family.
 const MONO_BOLD: &str = "raptaboard-mono-bold";
 
-/// Add the bold fonts to egui, once per window: each in a family of its
-/// own. egui takes them from the next frame; until then bold text is
-/// drawn regular ([`TextStyle::font`]).
+/// Our font files (`media/fonts/`): the family each is in, bold or not,
+/// and the egui family that draws the characters it lacks.
+const FONT_FILES: [(Family, bool, FontFamily, &[u8]); 8] = [
+    (
+        Family::Sans,
+        true,
+        FontFamily::Proportional,
+        include_bytes!("../../../../../media/fonts/Ubuntu-Bold.ttf"),
+    ),
+    (
+        Family::Mono,
+        true,
+        FontFamily::Monospace,
+        include_bytes!("../../../../../media/fonts/Hack-Bold.ttf"),
+    ),
+    (
+        Family::Serif,
+        false,
+        FontFamily::Proportional,
+        include_bytes!("../../../../../media/fonts/PTSerif-Regular.ttf"),
+    ),
+    (
+        Family::Serif,
+        true,
+        FontFamily::Proportional,
+        include_bytes!("../../../../../media/fonts/PTSerif-Bold.ttf"),
+    ),
+    (
+        Family::Narrow,
+        false,
+        FontFamily::Proportional,
+        include_bytes!("../../../../../media/fonts/PTSansNarrow-Regular.ttf"),
+    ),
+    (
+        Family::Narrow,
+        true,
+        FontFamily::Proportional,
+        include_bytes!("../../../../../media/fonts/PTSansNarrow-Bold.ttf"),
+    ),
+    (
+        Family::Digital,
+        false,
+        FontFamily::Proportional,
+        include_bytes!("../../../../../media/fonts/DSEG7Classic-Regular.ttf"),
+    ),
+    (
+        Family::Digital,
+        true,
+        FontFamily::Proportional,
+        include_bytes!("../../../../../media/fonts/DSEG7Classic-Bold.ttf"),
+    ),
+];
+
+/// Add our fonts to egui, once per window: each in a family of its own,
+/// followed by egui's fonts for the characters it lacks. egui takes them
+/// from the next frame; until then text in them is drawn in egui's own
+/// ([`TextStyle::font`]).
 pub fn install_fonts(ctx: &egui::Context) {
-    for (name, bytes) in [
-        (
-            SANS_BOLD,
-            &include_bytes!("../../../../../media/fonts/Ubuntu-Bold.ttf")[..],
-        ),
-        (
-            MONO_BOLD,
-            &include_bytes!("../../../../../media/fonts/Hack-Bold.ttf")[..],
-        ),
-    ] {
-        ctx.add_font(egui::epaint::text::FontInsert::new(
-            name,
-            egui::FontData::from_static(bytes),
-            vec![egui::epaint::text::InsertFontFamily {
-                family: FontFamily::Name(name.into()),
-                priority: egui::epaint::text::FontPriority::Highest,
-            }],
-        ));
+    let mut fonts = ctx.fonts(|f| f.definitions().clone());
+    for (family, bold, fallback, bytes) in FONT_FILES {
+        let name = family.font_name(bold);
+        fonts
+            .font_data
+            .entry(name.to_owned())
+            .or_insert_with(|| Arc::new(egui::FontData::from_static(bytes)));
+        let mut chain = vec![name.to_owned()];
+        chain.extend(
+            fonts
+                .families
+                .get(&fallback)
+                .into_iter()
+                .flatten()
+                .filter(|font| font.as_str() != name)
+                .cloned(),
+        );
+        fonts.families.insert(family.egui_family(bold), chain);
     }
+    ctx.set_fonts(fonts);
 }
 
 /// How one piece of text is drawn: each part `None` or `false` where it
@@ -191,14 +283,21 @@ impl TextStyle {
     /// bold once [`install_fonts`] has taken effect in `ctx`'s window.
     pub fn font(&self, ctx: &egui::Context, default: Family, size: f32) -> FontId {
         let family = self.family.unwrap_or(default);
-        if self.bold {
-            let bold = family.egui_family(true);
-            if ctx.fonts(|f| f.definitions().families.contains_key(&bold)) {
-                return FontId::new(size, bold);
+        let wanted = family.egui_family(self.bold);
+        if matches!(wanted, FontFamily::Name(_)) {
+            if ctx.fonts(|f| f.definitions().families.contains_key(&wanted)) {
+                return FontId::new(size, wanted);
             }
             install_fonts(ctx);
+            // Until then, the nearest of egui's own.
+            let stand_in = if family == Family::Mono {
+                FontFamily::Monospace
+            } else {
+                FontFamily::Proportional
+            };
+            return FontId::new(size, stand_in);
         }
-        FontId::new(size, family.egui_family(false))
+        FontId::new(size, wanted)
     }
 
     /// Its color, or `default` if it has none.
@@ -311,12 +410,20 @@ fn style_rows(
         let now = TextStyle::read(props, keys)
             .family
             .unwrap_or(default_family);
-        for family in [Family::Sans, Family::Mono] {
+        let size = egui::TextStyle::Button.resolve(ui.style()).size;
+        for family in Family::ALL {
             let label = if family == default_family {
                 format!("{} (usual)", family.label())
             } else {
                 family.label().to_owned()
             };
+            // Each name in its own font, so you see what you'd get.
+            let font = TextStyle {
+                family: Some(family),
+                ..Default::default()
+            }
+            .font(ui.ctx(), family, size);
+            let label = egui::RichText::new(label).font(font);
             if ui.selectable_label(now == family, label).clicked() {
                 let value = (family != default_family).then(|| Json::from(family.key()));
                 set_property(props, keys.family, value);
@@ -522,6 +629,75 @@ mod tests {
                 thick.size().x,
                 regular.size().x
             );
+        });
+    }
+
+    #[test]
+    fn each_font_is_its_own_once_in_and_falls_back_to_sans() {
+        let ctx = egui::Context::default();
+        // Ask once so the fonts are installed, then they're in next frame.
+        for _ in 0..2 {
+            frame(&ctx, |ui| {
+                for family in Family::ALL {
+                    for bold in [false, true] {
+                        let style = TextStyle {
+                            family: Some(family),
+                            bold,
+                            ..Default::default()
+                        };
+                        style.font(ui.ctx(), Family::Sans, 16.0);
+                    }
+                }
+            });
+        }
+        frame(&ctx, |ui| {
+            let width = |family: Family, text: &str| {
+                let style = TextStyle {
+                    family: Some(family),
+                    ..Default::default()
+                };
+                let font = style.font(ui.ctx(), Family::Sans, 20.0);
+                style
+                    .galley(ui.painter(), text, font, Color32::WHITE)
+                    .size()
+                    .x
+            };
+            for family in [Family::Serif, Family::Narrow, Family::Digital] {
+                for bold in [false, true] {
+                    let style = TextStyle {
+                        family: Some(family),
+                        bold,
+                        ..Default::default()
+                    };
+                    assert_eq!(
+                        style.font(ui.ctx(), Family::Sans, 16.0),
+                        FontId::new(16.0, FontFamily::Name(family.font_name(bold).into())),
+                        "{family:?} bold {bold}"
+                    );
+                }
+                assert_ne!(
+                    width(family, "12.5"),
+                    width(Family::Sans, "12.5"),
+                    "{family:?} draws its own digits"
+                );
+            }
+            // Each is a font of its own: no two the same width.
+            let widths: Vec<f32> = Family::ALL
+                .iter()
+                .map(|&f| width(f, "Speed 12.5"))
+                .collect();
+            for (i, a) in widths.iter().enumerate() {
+                for b in &widths[i + 1..] {
+                    assert_ne!(a, b, "{widths:?}");
+                }
+            }
+            assert!(width(Family::Narrow, "Speed") < width(Family::Sans, "Speed"));
+            // What DSEG7 lacks comes from egui's Sans, not a missing box.
+            let chain = ctx.fonts(|f| {
+                f.definitions().families[&FontFamily::Name("raptaboard-digital".into())].clone()
+            });
+            assert_eq!(chain[0], "raptaboard-digital");
+            assert!(chain.contains(&"Ubuntu-Light".to_owned()), "{chain:?}");
         });
     }
 
