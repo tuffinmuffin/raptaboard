@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Check the book (book/src) and the README: every chapter SUMMARY.md links
-exists, every page is in SUMMARY.md, and every relative link and image in
-them resolves. Web links aren't fetched. CI runs it before building the book.
+exists, every page is in SUMMARY.md, every relative link and image in
+them resolves, and every `{{#include file:anchor}}` names a file with that
+anchor (mdBook includes nothing, without a word, when the anchor is
+gone). Web links aren't fetched. CI runs it before building the book.
 
     python3 scripts/check_book.py [repo]
 """
@@ -53,6 +55,35 @@ def broken(page: Path, text: str, root: Path) -> list[str]:
     return out
 
 
+# {{#include path}} or {{#include path:anchor}} (line ranges, path:3:9, are
+# only checked for the file).
+INCLUDE = re.compile(r"\{\{#include\s+([^}\s:]+)(?::([A-Za-z_][\w-]*))?[^}]*\}\}")
+
+
+def bad_includes(page: Path, text: str, root: Path) -> list[str]:
+    """The `{{#include}}`s in `page` whose file or anchor isn't there, or
+    whose anchor holds nothing."""
+    out = []
+    for n, line in enumerate(text.splitlines(), 1):
+        for m in INCLUDE.finditer(line):
+            path, anchor = m.group(1), m.group(2)
+            where = f"{page.relative_to(root)}:{n}"
+            source = (page.parent / path).resolve()
+            if not source.is_file():
+                out.append(f"{where}: {path} isn't there")
+                continue
+            if anchor is None:
+                continue
+            lines = source.read_text(encoding="utf-8").splitlines()
+            start = [i for i, l in enumerate(lines) if re.search(rf"ANCHOR:\s*{re.escape(anchor)}\b", l)]
+            end = [i for i, l in enumerate(lines) if re.search(rf"ANCHOR_END:\s*{re.escape(anchor)}\b", l)]
+            if not start or not end or end[0] <= start[0]:
+                out.append(f"{where}: {path} has no anchor {anchor!r}")
+            elif not any(l.strip() for l in lines[start[0] + 1 : end[0]]):
+                out.append(f"{where}: anchor {anchor!r} in {path} is empty")
+    return out
+
+
 def check(repo: Path) -> list[str]:
     """Every problem in the book and README, as `file:line: what`."""
     src = repo / "book" / "src"
@@ -69,7 +100,9 @@ def check(repo: Path) -> list[str]:
             problems.append(f"{page.relative_to(repo)}: not in SUMMARY.md")
     for page in [repo / "README.md", *sorted(src.rglob("*.md"))]:
         if page.is_file():
-            problems += broken(page, page.read_text(encoding="utf-8"), repo)
+            text = page.read_text(encoding="utf-8")
+            problems += broken(page, text, repo)
+            problems += bad_includes(page, text, repo)
     return problems
 
 
@@ -80,7 +113,7 @@ def main() -> int:
         print(p, file=sys.stderr)
     if problems:
         return 1
-    print("book: every chapter, link and image is there")
+    print("book: every chapter, link, image and include is there")
     return 0
 
 
