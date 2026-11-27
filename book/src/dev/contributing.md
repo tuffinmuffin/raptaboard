@@ -18,7 +18,9 @@ Run the same locally before pushing ([Testing and coverage](testing.md)).
 - **Tests** for new behavior, checked by breaking the code on purpose to see them fail.
 - **Docs** in the same pull request: the book's page for anything users see, a line in
   `CHANGELOG.md` under the version being built, and `docs/spec.md` when a decision or plan changes.
-- **Pictures** taken again (`record_docs_screenshots`) when what a page shows changes.
+- **Pictures** taken again (`record_docs_screenshots`) for what changed, and only that: the sim's
+  values move, so a picture taken again differs a little even when nothing changed, and can come out
+  worse. Look at each one before committing.
 
 ## How the code is written
 

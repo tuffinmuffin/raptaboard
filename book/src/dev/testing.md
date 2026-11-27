@@ -64,6 +64,8 @@ Some tests are `#[ignore]` because they need something CI doesn't have. Run them
 
 ```sh
 cargo test -p raptaboard --lib record_docs_screenshots -- --ignored --nocapture
+# Only some of the book's pictures: file names, or folder/name
+RAPTABOARD_SHOTS=battery,tabs/styles cargo test -p raptaboard --lib record_docs_screenshots -- --ignored
 cargo test -p raptaboard --release --test cpu_load -- --ignored --nocapture
 ```
 

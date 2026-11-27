@@ -140,14 +140,16 @@ sure a test goes red, then put it back. A test that passes whatever the code doe
 
 - Add the widget to the book's [Widgets](../guide/widgets.md) chapter, with a table of its
   settings named as the dialog shows them.
-- Put one on the sim layout (`layouts/robot2027_sim.json`), then take the pictures again with the
+- Put one on the sim layout (`layouts/robot2027_sim.json`), then take its picture with the
   robot-2027 sim running (the command is below). The recorder saves a picture of the first card of
   each widget type, named after the type (`book/src/images/widgets/battery.png`).
+  `RAPTABOARD_SHOTS` limits it to the pictures named: leave the others as they are, since the
+  sim's values move and every retaken picture changes a little.
 - Add a line to `CHANGELOG.md` under the version being built, and update `docs/spec.md` and
   `CLAUDE.md` where they list widgets.
 
 ```sh
-cargo test -p raptaboard --lib record_docs_screenshots -- --ignored --nocapture
+RAPTABOARD_SHOTS=battery cargo test -p raptaboard --lib record_docs_screenshots -- --ignored
 ```
 
 ## Other things a widget can do
