@@ -135,10 +135,10 @@ pub const THIRD_PARTY_LICENSES: &str = include_str!("../../../licenses/THIRD_PAR
 /// Where a built-in sound, image or field came from, and its license.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MediaCredit {
-    /// What kind of thing: `"Sound"`, `"Image"` or `"Field"`.
+    /// What kind of thing: `"Sound"`, `"Image"`, `"Field"` or `"Font"`.
     pub kind: &'static str,
     /// The files it covers, by name, in their folder (`media/audio/`,
-    /// `images/` or `fields/frc/`).
+    /// `images/`, `fields/frc/` or `media/fonts/`).
     pub files: &'static [&'static str],
     /// What it is, in a few words.
     pub what: &'static str,
@@ -154,6 +154,55 @@ pub struct MediaCredit {
 
 /// Every sound, image and field built into raptaboard.
 pub const MEDIA: &[MediaCredit] = &[
+    MediaCredit {
+        kind: "Font",
+        files: &["Ubuntu-Bold.ttf"],
+        what: "Ubuntu Bold, for bold text in the Sans font",
+        source: "the Ubuntu font family 0.83, by Dalton Maag for Canonical Ltd., \
+                 https://github.com/google/fonts/tree/main/ufl/ubuntu",
+        license: "Ubuntu Font Licence 1.0",
+        link: Some("https://ubuntu.com/legal/font-licence"),
+        note: "Unchanged.",
+    },
+    MediaCredit {
+        kind: "Font",
+        files: &["Hack-Bold.ttf"],
+        what: "Hack Bold, for bold text in the Mono font",
+        source: "Hack 3.003 by Source Foundry, from Bitstream Vera and DejaVu, \
+                 https://github.com/source-foundry/Hack",
+        license: "MIT and the Bitstream Vera License",
+        link: Some("https://github.com/source-foundry/Hack/blob/master/LICENSE.md"),
+        note: "Unchanged.",
+    },
+    MediaCredit {
+        kind: "Font",
+        files: &["PTSerif-Regular.ttf", "PTSerif-Bold.ttf"],
+        what: "PT Serif, regular and bold, for the Serif font",
+        source: "PT Serif by ParaType Ltd., \
+                 https://github.com/google/fonts/tree/main/ofl/ptserif",
+        license: "SIL Open Font License 1.1",
+        link: Some("https://openfontlicense.org"),
+        note: "Unchanged.",
+    },
+    MediaCredit {
+        kind: "Font",
+        files: &["PTSansNarrow-Regular.ttf", "PTSansNarrow-Bold.ttf"],
+        what: "PT Sans Narrow, regular and bold, for the Narrow font",
+        source: "PT Sans Narrow by ParaType Ltd., \
+                 https://github.com/google/fonts/tree/main/ofl/ptsansnarrow",
+        license: "SIL Open Font License 1.1",
+        link: Some("https://openfontlicense.org"),
+        note: "Unchanged.",
+    },
+    MediaCredit {
+        kind: "Font",
+        files: &["DSEG7Classic-Regular.ttf", "DSEG7Classic-Bold.ttf"],
+        what: "DSEG7 Classic, regular and bold, for the seven-segment Digital font",
+        source: "DSEG 0.50 beta 1 by keshikan, https://github.com/keshikan/DSEG",
+        license: "SIL Open Font License 1.1",
+        link: Some("https://openfontlicense.org"),
+        note: "Unchanged.",
+    },
     MediaCredit {
         kind: "Sound",
         files: &["danger.mp3"],
@@ -358,6 +407,13 @@ mod tests {
         }
         for (name, _) in crate::images::BUILT_IN {
             assert!(credited.contains(name), "no credit for {name}");
+        }
+        let fonts = concat!(env!("CARGO_MANIFEST_DIR"), "/../../media/fonts");
+        for entry in std::fs::read_dir(fonts).unwrap() {
+            let name = entry.unwrap().file_name().into_string().unwrap();
+            if name.ends_with(".ttf") {
+                assert!(credited.contains(name.as_str()), "no credit for {name}");
+            }
         }
     }
 

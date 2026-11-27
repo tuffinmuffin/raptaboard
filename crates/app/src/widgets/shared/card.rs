@@ -7,6 +7,8 @@ use eframe::egui::{self, CornerRadius, Rect, Stroke, StrokeKind};
 use nt4::Value;
 use raptaboard_layout::WidgetContainer;
 
+use super::text_style::{self, Family, TextStyle};
+
 // How cards look. All sizes are screen points, not grid pixels: they stay
 // the same at any grid size, so text stays readable.
 
@@ -21,21 +23,24 @@ pub const CORNER_RADIUS: u8 = 10;
 pub const BODY_CORNER_RADIUS: u8 = 6;
 /// Width of the card's border, in points.
 pub const BORDER_WIDTH: f32 = 1.0;
-/// Size of the title text, in points.
-pub const TITLE_FONT_SIZE: f32 = 14.0;
+/// Size of the title text, in points, unless the widget sets its own
+/// ([`text_style::title_size`]).
+pub const TITLE_FONT_SIZE: f32 = text_style::DEFAULT_TITLE_SIZE;
 /// Size of grey messages ("no value") and placeholder text, in points.
 pub const MESSAGE_FONT_SIZE: f32 = 12.0;
 /// Distance of each of the placeholder's two lines from the body's middle,
 /// in points.
 const PLACEHOLDER_LINE_OFFSET: f32 = 8.0;
 
-/// Draw an empty card with `title` in a strip along the top, and return
-/// the space left below the title for the body. Also used for List Layouts.
+/// Draw an empty card with `title` in a strip along the top, in the title
+/// style `props` sets ([`text_style::TITLE`]), and return the space left
+/// below the title for the body. Also used for List Layouts.
 pub fn draw_card(
     painter: &egui::Painter,
     visuals: &egui::Visuals,
     rect: Rect,
     title: &str,
+    props: &serde_json::Map<String, serde_json::Value>,
 ) -> Rect {
     painter.rect(
         rect,
@@ -56,15 +61,16 @@ pub fn draw_card(
         },
         visuals.faint_bg_color,
     );
-    painter
-        .with_clip_rect(title_rect.intersect(painter.clip_rect()))
-        .text(
-            title_rect.center(),
-            egui::Align2::CENTER_CENTER,
-            title,
-            egui::FontId::proportional(TITLE_FONT_SIZE),
-            visuals.text_color(),
-        );
+    let style = TextStyle::read(props, text_style::TITLE);
+    let font = style.font(painter.ctx(), Family::Sans, text_style::title_size(props));
+    style.text(
+        &painter.with_clip_rect(title_rect.intersect(painter.clip_rect())),
+        title_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        title,
+        font,
+        style.color_or(visuals.text_color()),
+    );
     body_rect
 }
 
@@ -108,7 +114,7 @@ pub fn draw(
         ty.draw(painter, visuals, rect, widget, value);
         return;
     }
-    let body = draw_card(painter, visuals, rect, &widget.title);
+    let body = draw_card(painter, visuals, rect, &widget.title, &widget.properties);
     let what = placeholder_text(&widget.widget_type);
     draw_clipped(painter, body, |painter, body| {
         let font = egui::FontId::proportional(MESSAGE_FONT_SIZE);
@@ -146,21 +152,41 @@ pub fn placeholder_text(widget_type: &str) -> String {
 /// Draw `text` as large as fits in `rect`, centered, in `color`. For
 /// widgets whose whole body is one value (a Text Display with Fit text, Match Time).
 pub fn draw_fitted(painter: &egui::Painter, rect: Rect, text: &str, color: egui::Color32) {
+    draw_fitted_styled(
+        painter,
+        rect,
+        text,
+        color,
+        &TextStyle::default(),
+        Family::Sans,
+    );
+}
+
+/// [`draw_fitted`] in `style` (its font, or `default`; bold; italic). The
+/// color is `color`: the caller picks between the style's and its own.
+pub fn draw_fitted_styled(
+    painter: &egui::Painter,
+    rect: Rect,
+    text: &str,
+    color: egui::Color32,
+    style: &TextStyle,
+    default: Family,
+) {
     // Measure at a known size, then scale to fit both ways.
     const MEASURE: f32 = 100.0;
-    let galley =
-        painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(MEASURE), color);
-    let size = galley.size();
+    let font = |size| style.font(painter.ctx(), default, size);
+    let size = style.galley(painter, text, font(MEASURE), color).size();
     if size.x <= 0.0 || size.y <= 0.0 {
         return;
     }
     let scale = (rect.width() / size.x).min(rect.height() / size.y);
-    let font = (MEASURE * scale).clamp(4.0, 400.0);
-    painter.text(
+    let fitted = (MEASURE * scale).clamp(4.0, 400.0);
+    style.text(
+        painter,
         rect.center(),
         egui::Align2::CENTER_CENTER,
         text,
-        egui::FontId::proportional(font),
+        font(fitted),
         color,
     );
 }

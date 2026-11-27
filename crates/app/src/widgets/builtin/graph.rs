@@ -650,8 +650,14 @@ impl WidgetType for Graph {
         widget: &WidgetContainer,
         live: &Live<'_>,
     ) -> Option<Value> {
-        let body = card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title)
-            .shrink(card::BODY_MARGIN);
+        let body = card::draw_card(
+            ui.painter(),
+            ui.visuals(),
+            rect,
+            &widget.title,
+            &widget.properties,
+        )
+        .shrink(card::BODY_MARGIN);
         let p = &widget.properties;
         let view_id = ui.scope_id().with("graph_view");
         let mut view: View = ui.ctx().data(|d| d.get_temp(view_id)).unwrap_or_default();

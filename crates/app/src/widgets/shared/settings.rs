@@ -27,7 +27,7 @@ pub fn has_custom_settings(widget: &WidgetContainer) -> bool {
 }
 
 /// Put `widget`'s settings back to their defaults: update period 0.06 s,
-/// and its type's settings
+/// the title's style, and its type's settings
 /// ([`setting_keys`](crate::widgets::WidgetType::setting_keys) removed,
 /// [`reset`](crate::widgets::WidgetType::reset) for the rest). The title and what
 /// the widget shows (`topic`, `struct_meta`, `data_type`) are kept, as are
@@ -53,6 +53,9 @@ pub fn reset_settings(widget: &mut WidgetContainer) {
     let props = &mut widget.properties;
     if props.get(PERIOD).and_then(Json::as_f64) != Some(DEFAULT_PERIOD_S) {
         set_property(props, PERIOD, Some(DEFAULT_PERIOD_S.into()));
+    }
+    for key in crate::widgets::shared::text_style::TITLE_KEYS {
+        props.remove(key);
     }
     if let Some(ty) = find(&widget.widget_type) {
         for key in ty.setting_keys() {
@@ -101,6 +104,12 @@ pub fn show(
                 }
             });
             ui.end_row();
+            let text_color = ui.visuals().text_color();
+            crate::widgets::shared::text_style::title_style_row(
+                ui,
+                &mut widget.properties,
+                text_color,
+            );
 
             ui.label("Shows");
             ui.vertical(|ui| {
@@ -301,12 +310,17 @@ mod tests {
     #[test]
     fn fit_text_hides_the_text_size() {
         let has = |labels: &[String], row: &str| labels.iter().any(|l| l == row);
-        // A Text Display: a text size until its text is fitted.
+        // A Text Display: a text size (its box shows 16) until its
+        // text is fitted; its style either way.
         let mut text = widget("Text Display", false);
         let labels = draw(&mut text, Some("double"), false);
-        assert!(has(&labels, "Fit text") && has(&labels, "Text size"));
+        assert!(
+            has(&labels, "Fit text") && has(&labels, "Text") && has(&labels, "16"),
+            "{labels:?}"
+        );
         text.properties.insert("fit_text".into(), true.into());
-        assert!(!has(&draw(&mut text, Some("double"), false), "Text size"));
+        let labels = draw(&mut text, Some("double"), false);
+        assert!(has(&labels, "Text") && has(&labels, "Style…") && !has(&labels, "16"));
     }
 
     #[test]
@@ -318,7 +332,7 @@ mod tests {
                 "Whole numbers",
                 "Digits",
                 "Enum shows",
-                "Text size",
+                "Text",
             ]
             .into_iter()
             .filter(|row| labels.iter().any(|l| l == row))
@@ -327,22 +341,22 @@ mod tests {
         let rows = |nt_type: Option<&str>, is_enum: bool| {
             rows_for(&mut widget("Text Display", is_enum), nt_type, is_enum)
         };
-        assert_eq!(rows(Some("double"), false), ["Decimal places", "Text size"]);
+        assert_eq!(rows(Some("double"), false), ["Decimal places", "Text"]);
         assert_eq!(
             rows(Some("int[]"), false),
-            ["Whole numbers", "Digits", "Text size"]
+            ["Whole numbers", "Digits", "Text"]
         );
-        assert_eq!(rows(Some("string"), false), ["Text size"]);
+        assert_eq!(rows(Some("string"), false), ["Text"]);
         // An enum shown by name has no number settings, until it shows its
         // number.
-        assert_eq!(rows(Some("int"), true), ["Enum shows", "Text size"]);
+        assert_eq!(rows(Some("int"), true), ["Enum shows", "Text"]);
         let mut by_number = widget("Text Display", true);
         by_number
             .properties
             .insert(ENUM_DISPLAY.into(), "both".into());
         assert_eq!(
             rows_for(&mut by_number, Some("int"), true),
-            ["Whole numbers", "Digits", "Enum shows", "Text size"]
+            ["Whole numbers", "Digits", "Enum shows", "Text"]
         );
         // The type row names the enum and lists its values.
         let labels = draw(&mut widget("Text Display", true), Some("int"), true);
@@ -354,7 +368,7 @@ mod tests {
         // Not known yet: offer both kinds of number setting.
         assert_eq!(
             rows(None, false),
-            ["Decimal places", "Whole numbers", "Digits", "Text size"]
+            ["Decimal places", "Whole numbers", "Digits", "Text"]
         );
     }
 

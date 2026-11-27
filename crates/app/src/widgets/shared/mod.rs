@@ -17,4 +17,5 @@ pub mod scale;
 pub mod settings;
 pub mod sound_pick;
 pub mod stats;
+pub mod text_style;
 pub mod value_colors;

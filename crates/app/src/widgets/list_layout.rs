@@ -485,7 +485,7 @@ fn draw_with(
     list: &LayoutContainer,
     child_body: &mut ChildBody<'_>,
 ) {
-    let body = card::draw_card(painter, visuals, rect, &list.title);
+    let body = card::draw_card(painter, visuals, rect, &list.title, &list.properties);
     let labels = labels(&list.properties);
     let font = egui::FontId::proportional(LABEL_FONT_SIZE);
     let title_edge = body.min.y;
@@ -756,6 +756,12 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
             ui.label("Title");
             ui.add(egui::TextEdit::singleline(&mut list.title).desired_width(180.0));
             ui.end_row();
+            let text_color = ui.visuals().text_color();
+            crate::widgets::shared::text_style::title_style_row(
+                ui,
+                &mut list.properties,
+                text_color,
+            );
 
             ui.label("Labels");
             let mut position = label_position(&list.properties);

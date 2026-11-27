@@ -20,6 +20,7 @@ use serde_json::{Map, Value as Json};
 use crate::images;
 use crate::widgets::shared::card;
 use crate::widgets::shared::props::{self, set_property};
+use crate::widgets::shared::text_style::{self, Family, TextStyle};
 use crate::widgets::{ValueInfo, WidgetType};
 
 /// Color when true, as an ARGB number (Elastic).
@@ -428,11 +429,10 @@ impl WidgetType for BooleanBox {
             draw_image(painter, visuals, icon_rect.shrink(4.0), name);
         }
         if let Some((text, color)) = look.text {
-            let galley = painter.layout_no_wrap(
-                text,
-                egui::FontId::proportional(props::font_size(props)),
-                color,
-            );
+            // Its colors are its own settings (true and false text color).
+            let style = TextStyle::read(props, text_style::VALUE);
+            let font = style.font(painter.ctx(), Family::Sans, props::font_size(props));
+            let galley = style.galley(painter, &text, font, color);
             let at = text_at - galley.size() / 2.0;
             if look.backing {
                 let pad = galley.size().y * 0.2;
@@ -485,7 +485,13 @@ impl WidgetType for BooleanBox {
                 }
                 ui.end_row();
             }
-            props::text_size_row(ui, props);
+            text_style::text_row(
+                ui,
+                props,
+                Some(props::DEFAULT_FONT_SIZE),
+                Family::Sans,
+                false,
+            );
             props::flag_row(
                 ui,
                 props,
@@ -528,6 +534,9 @@ impl WidgetType for BooleanBox {
             TRUE_TEXT,
             FALSE_TEXT,
             props::FONT_SIZE,
+            text_style::VALUE_STYLE_KEYS[0],
+            text_style::VALUE_STYLE_KEYS[2],
+            text_style::VALUE_STYLE_KEYS[3],
             TRUE_ICON,
             FALSE_ICON,
             TRUE_IMAGE,

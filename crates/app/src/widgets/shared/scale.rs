@@ -355,7 +355,13 @@ pub fn show(
     live: &Live<'_>,
     defaults: (f64, f64),
 ) {
-    let body = super::card::draw_card(ui.painter(), ui.visuals(), rect, &widget.title);
+    let body = super::card::draw_card(
+        ui.painter(),
+        ui.visuals(),
+        rect,
+        &widget.title,
+        &widget.properties,
+    );
     show_in(
         ty,
         ui,
