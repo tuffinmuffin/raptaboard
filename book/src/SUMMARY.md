@@ -8,7 +8,12 @@
 - [First start](guide/first-start.md)
 - [Connecting to the robot](guide/connecting.md)
 - [The window](guide/window.md)
-- [Widgets]()
+- [Widgets](guide/widgets.md)
+  - [Text and numbers](guide/widgets/text-and-numbers.md)
+  - [Booleans and choices](guide/widgets/booleans-and-choices.md)
+  - [Graphs](guide/widgets/graphs.md)
+  - [The robot and the field](guide/widgets/robot.md)
+  - [Match and alerts](guide/widgets/match-and-alerts.md)
 - [Layouts]()
 - [Content packs and plugins]()
 - [Troubleshooting]()
@@ -17,9 +22,9 @@
 
 - [Building from source](dev/building.md)
 - [Repo layout](dev/repo-layout.md)
-- [Tutorial: adding a built-in widget]()
-- [Testing and coverage]()
-- [Releasing]()
+- [Tutorial: adding a built-in widget](dev/widget-tutorial.md)
+- [Testing and coverage](dev/testing.md)
+- [Releasing](dev/releasing.md)
 - [Contributing](dev/contributing.md)
 
 # Writing plugins

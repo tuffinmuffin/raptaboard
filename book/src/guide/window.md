@@ -51,7 +51,7 @@ open. **Filter topics** narrows it to names containing what you type; **Show met
 the topics that describe others (`.type`, `.schema`). WPILib structs show their fields.
 
 Drag a topic onto the grid to make a widget for it, or right-click it for **Add to grid**, **Add
-as** (any widget type that can show it) and **Add to list**. Adding widgets is the next chapter.
+as** (any widget type that can show it) and **Add to list**. [Widgets](widgets.md) has the rest.
 
 ## The grid
 

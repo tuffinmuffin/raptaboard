@@ -7,7 +7,13 @@
 //!
 //! ```sh
 //! cargo test -p raptaboard --lib record_ -- --ignored --nocapture
+//! # Only some pictures: file names (or folder/name), the rest left as they are.
+//! RAPTABOARD_SHOTS=x-y-graph,tabs/styles cargo test -p raptaboard --lib record_docs -- --ignored
 //! ```
+//!
+//! Retake only the pictures whose widgets changed: the sim's values move,
+//! so every picture taken again differs a little, and some can come out
+//! worse (FMSInfo without a Driver Station says "No robot").
 
 // Tests written by Claude.
 
@@ -314,8 +320,46 @@ fn show_tab(harness: &mut Harness, tab: &str, seconds: u64) {
     }
 }
 
-/// Save `image` at `path` (from the repo's root), making its folder.
+/// Whether to save the picture at `path` when `only` (the `RAPTABOARD_SHOTS`
+/// setting) lists some: each a file name without `.png` (`fmsinfo`), or with
+/// its folder (`tabs/styles`), comma-separated. None set: every picture.
+/// Retaking only what changed keeps the others' values, and their good
+/// moments (a robot shown disabled, not "No robot"), as they were.
+fn wanted(path: &str, only: Option<&str>) -> bool {
+    let Some(only) = only.map(str::trim).filter(|o| !o.is_empty()) else {
+        return true;
+    };
+    let stem = path.trim_end_matches(".png");
+    let file = stem.rsplit('/').next().unwrap_or(stem);
+    let named = |name: &str| {
+        let by_file = name == file;
+        let by_folder = name.contains('/') && stem.ends_with(&format!("/{name}"));
+        by_file || by_folder
+    };
+    only.split(',').map(str::trim).any(named)
+}
+
+#[test]
+fn only_the_pictures_asked_for_are_retaken() {
+    let all = |path| wanted(path, None);
+    assert!(all("book/src/images/widgets/fmsinfo.png"));
+    let only = |path| wanted(path, Some("x-y-graph, tabs/styles"));
+    assert!(only("book/src/images/widgets/x-y-graph.png"));
+    assert!(only("book/src/images/tabs/styles.png"));
+    assert!(
+        !only("book/src/images/widgets/styles.png"),
+        "another folder's"
+    );
+    assert!(!only("book/src/images/widgets/fmsinfo.png"));
+    assert!(wanted("book/src/images/widgets/fmsinfo.png", Some(" ")));
+}
+
+/// Save `image` at `path` (from the repo's root), making its folder, unless
+/// `RAPTABOARD_SHOTS` names other pictures ([`wanted`]).
 fn save_png(image: &RgbaImage, path: &str) {
+    if !wanted(path, std::env::var("RAPTABOARD_SHOTS").ok().as_deref()) {
+        return;
+    }
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let out = root.join(path);
     std::fs::create_dir_all(out.parent().unwrap()).expect("make the folder");
@@ -466,6 +510,38 @@ fn record_docs_screenshots() {
         "widget types shown: {}",
         seen.into_iter().collect::<Vec<_>>().join(", ")
     );
+    // A widget's settings, with the value text's Style rows open: the
+    // Styles tab's serif Text Display.
+    harness.set_size(egui::vec2(1280.0, 800.0));
+    harness.state_mut().locked = false;
+    show_tab(&mut harness, "Styles", 1);
+    let tab = harness.state().current_tab;
+    let index = harness.state().layout.tabs[tab]
+        .grid_layout
+        .containers
+        .iter()
+        .position(|w| w.title == "Sine (Serif)")
+        .expect("the Styles tab's Sine (Serif)");
+    let original = harness.state().layout.tabs[tab].grid_layout.containers[index].clone();
+    harness.state_mut().selected = Some(Item::Widget(index));
+    harness.state_mut().editing = Some(Editing::Widget {
+        tab,
+        index,
+        original,
+    });
+    show_tab(&mut harness, "Styles", 1);
+    // Title text's Style… comes first, the value text's second.
+    harness
+        .get_all_by_label("Style… (set)")
+        .last()
+        .expect("the value text's Style…")
+        .click();
+    show_tab(&mut harness, "Styles", 1);
+    let image = harness.render().expect("render a frame");
+    save_png(&image, &format!("{BOOK_IMAGES}/window/widget-settings.png"));
+    harness.state_mut().editing = None;
+    harness.state_mut().selected = None;
+
     // The window as it's set up: unlocked, the tree shown, at a laptop's
     // size.
     harness.set_size(egui::vec2(1280.0, 800.0));

@@ -687,6 +687,101 @@
       }
     },
     {
+      "name": "Styles",
+      "grid_layout": {
+        "layouts": [],
+        "containers": [
+          {
+            "title": "Seconds (Digital)",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 384.0,
+            "height": 256.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/DashTest/Seconds",
+              "period": 0.06,
+              "data_type": "int",
+              "fit_text": true,
+              "font_family": "digital",
+              "font_color": 4284940134
+            }
+          },
+          {
+            "title": "Sine (Serif)",
+            "x": 384.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/DashTest/Sine",
+              "period": 0.06,
+              "data_type": "double",
+              "font_size": 28.0,
+              "font_family": "serif",
+              "title_font_family": "serif",
+              "title_italic": true,
+              "decimal_places": 3
+            }
+          },
+          {
+            "title": "Intake mode (Narrow, bold)",
+            "x": 384.0,
+            "y": 128.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/DashTest/IntakeMode",
+              "period": 0.06,
+              "data_type": "string",
+              "fit_text": true,
+              "font_family": "narrow",
+              "font_bold": true
+            }
+          },
+          {
+            "title": "INTAKE",
+            "x": 640.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 256.0,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/DashTest/IntakeDeployed",
+              "period": 0.06,
+              "data_type": "boolean",
+              "show_text": true,
+              "true_text": "OUT",
+              "false_text": "IN",
+              "font_size": 40.0,
+              "font_bold": true,
+              "title_bold": true,
+              "title_font_size": 18.0,
+              "title_color": 4294951175
+            }
+          },
+          {
+            "title": "Orbit pose (Mono, italic)",
+            "x": 0.0,
+            "y": 256.0,
+            "width": 384.0,
+            "height": 256.0,
+            "type": "Struct",
+            "properties": {
+              "topic": "/DashTest/OrbitPose",
+              "period": 0.06,
+              "data_type": "struct:Pose2d",
+              "font_italic": true,
+              "font_color": 4283417591,
+              "title_font_family": "mono"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "Writing",
       "grid_layout": {
         "layouts": [
