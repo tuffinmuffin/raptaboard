@@ -17,6 +17,7 @@
 use raptaboard_layout::overlap::{self, Piece, Problem};
 use raptaboard_layout::{GridLayout, MAX_GRID_CELLS, Rect};
 
+use crate::widgets::group;
 use crate::widgets::list_layout::{NEW_LIST_CELLS, cells_tall_for, labels, new_list};
 
 /// The setting that pins a widget or List Layout in place (raptaboard's,
@@ -219,8 +220,145 @@ impl Item {
 pub fn list_at(grid: &GridLayout, (x, y): (f64, f64)) -> Option<usize> {
     grid.layouts.iter().position(|l| {
         let r = l.rect;
-        x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
+        !group::is_group(l) && x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
     })
+}
+
+/// The group on `grid` under the point (`x`, `y`) in grid pixels, if any
+/// (its index in `layouts`).
+pub fn group_at(grid: &GridLayout, (x, y): (f64, f64)) -> Option<usize> {
+    grid.layouts.iter().position(|l| {
+        let r = l.rect;
+        group::is_group(l) && x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
+    })
+}
+
+/// Move widget `widget` (an index in `containers`) into group `group`, in
+/// the cells `rect` (saved inner pixels, from [`group::cell_rect`]),
+/// pushing what's there aside. Returns its index among the group's
+/// children, or `None` (changing nothing) if either doesn't exist or
+/// there's no room. Removing it shifts later widgets' indexes down by one.
+pub fn widget_into_group(
+    grid: &mut GridLayout,
+    widget: usize,
+    group: usize,
+    rect: Rect,
+) -> Option<usize> {
+    let g = grid.layouts.get(group).filter(|l| group::is_group(l))?;
+    if widget >= grid.containers.len() {
+        return None;
+    }
+    let (rect, pushed) = group::place(g, rect, (rect.x + 1.0, rect.y + 1.0), None)?;
+    let moving = grid.containers.remove(widget);
+    put_in_group(grid, group, moving, rect, &pushed)
+}
+
+/// Move child `child` of list or group `from` into group `group`, in the
+/// cells `rect`, pushing what's there aside; within the same group, it just
+/// moves. Returns its index among the group's children, or `None`
+/// (changing nothing) if any doesn't exist or there's no room.
+pub fn child_into_group(
+    grid: &mut GridLayout,
+    from: usize,
+    child: usize,
+    group: usize,
+    rect: Rect,
+) -> Option<usize> {
+    let g = grid.layouts.get(group).filter(|l| group::is_group(l))?;
+    grid.layouts.get(from)?.children.get(child)?;
+    let at = (rect.x + 1.0, rect.y + 1.0);
+    if from == group {
+        let (rect, pushed) = group::place(g, rect, at, Some(child))?;
+        let g = &mut grid.layouts[group];
+        for &(i, r) in &pushed {
+            g.children[i].rect = r;
+        }
+        g.children[child].rect = rect;
+        return Some(child);
+    }
+    let (rect, pushed) = group::place(g, rect, at, None)?;
+    let moving = grid.layouts[from].children.remove(child);
+    put_in_group(grid, group, moving, rect, &pushed)
+}
+
+/// Resize child `child` of group `group` to `rect` (saved inner pixels),
+/// pushing what's in the way aside inside the group. Returns whether it
+/// did (`false`, changing nothing, if there's no room or no such child).
+pub fn resize_in_group(grid: &mut GridLayout, group: usize, child: usize, rect: Rect) -> bool {
+    let Some(g) = grid.layouts.get(group).filter(|l| group::is_group(l)) else {
+        return false;
+    };
+    let inner = group::inner_grid(g);
+    let area = group::inner_area(g);
+    let Some(moves) = reflow(&inner, Item::Widget(child), rect, group::INNER_CELL, area) else {
+        return false;
+    };
+    let g = &mut grid.layouts[group];
+    for (item, r) in moves {
+        if let Item::Widget(i) = item {
+            g.children[i].rect = r;
+        }
+    }
+    true
+}
+
+/// Put new widgets into group `group`: the first in the cells `rect`,
+/// pushing what's there aside, the rest in the free cells nearest it.
+/// Returns how many went in.
+pub fn widgets_into_group(
+    grid: &mut GridLayout,
+    group: usize,
+    rect: Rect,
+    widgets: Vec<raptaboard_layout::WidgetContainer>,
+) -> usize {
+    let mut placed = 0;
+    for (n, widget) in widgets.into_iter().enumerate() {
+        let Some(g) = grid.layouts.get(group).filter(|l| group::is_group(l)) else {
+            break;
+        };
+        let spot = if n == 0 {
+            group::place(g, rect, (rect.x + 1.0, rect.y + 1.0), None)
+        } else {
+            let one = Rect {
+                width: group::INNER_CELL,
+                height: group::INNER_CELL,
+                ..rect
+            };
+            free_spot_near(
+                &group::inner_grid(g),
+                one,
+                group::INNER_CELL,
+                group::inner_area(g),
+            )
+            .map(|r| (r, Vec::new()))
+        };
+        let Some((r, pushed)) = spot else { break };
+        put_in_group(grid, group, widget, r, &pushed);
+        placed += 1;
+    }
+    placed
+}
+
+/// Put `widget` into group `group` at `rect` (saved inner pixels), moving
+/// the children in `pushed` (from [`group::place`]) out of its way.
+/// Returns its index among the group's children, or `None` (changing
+/// nothing) if there's no such group.
+pub fn put_in_group(
+    grid: &mut GridLayout,
+    group: usize,
+    mut widget: raptaboard_layout::WidgetContainer,
+    rect: Rect,
+    pushed: &[(usize, Rect)],
+) -> Option<usize> {
+    let g = grid.layouts.get_mut(group).filter(|l| group::is_group(l))?;
+    for &(i, r) in pushed {
+        if let Some(c) = g.children.get_mut(i) {
+            c.rect = r;
+        }
+    }
+    widget.rect = rect;
+    g.children.push(widget);
+    Some(g.children.len() - 1)
 }
 
 /// Move widget `widget` (an index in `containers`) into List Layout `list`,
@@ -309,6 +447,37 @@ pub fn add_list(
     area: (f64, f64),
 ) -> Option<usize> {
     add_list_holding(grid, at, Vec::new(), cell, area)
+}
+
+/// Add an empty group ([`group::NEW_GROUP_CELLS`] cells across and down)
+/// in the free spot nearest the cell at (`x`, `y`) grid pixels, within
+/// `area`. Returns its index in `layouts`, or `None` if there's no room.
+///
+/// ```
+/// use raptaboard::grid::add_group;
+/// use raptaboard::widgets::group::is_group;
+/// use raptaboard_layout::GridLayout;
+/// let mut grid = GridLayout::default();
+/// assert_eq!(add_group(&mut grid, (300.0, 10.0), 128.0, (1024.0, 512.0)), Some(0));
+/// assert!(is_group(&grid.layouts[0]));
+/// assert_eq!((grid.layouts[0].rect.x, grid.layouts[0].rect.width), (256.0, 512.0));
+/// ```
+pub fn add_group(
+    grid: &mut GridLayout,
+    (x, y): (f64, f64),
+    cell: f64,
+    area: (f64, f64),
+) -> Option<usize> {
+    let (w, h) = group::NEW_GROUP_CELLS;
+    let want = Rect {
+        x: (x / cell).floor() * cell,
+        y: (y / cell).floor() * cell,
+        width: w * cell,
+        height: h * cell,
+    };
+    let rect = free_spot_near(grid, want, cell, area)?;
+    grid.layouts.push(group::new_group(rect));
+    Some(grid.layouts.len() - 1)
 }
 
 /// Like [`add_list`], but the new list holds `children` and is tall
@@ -608,6 +777,16 @@ pub fn fits_over(grid: &GridLayout, item: Item, rect: Rect) -> bool {
     let Some(at) = piece_index(grid, item) else {
         return false;
     };
+    // Groups are drawn on layers of their own, above the grid: nothing may
+    // overlap one, and one may overlap nothing.
+    let a_group = |i: usize| grid.layouts.get(i).is_some_and(group::is_group);
+    if matches!(item, Item::List(i) if a_group(i))
+        || items(grid).into_iter().any(|(other, r)| {
+            other != item && matches!(other, Item::List(i) if a_group(i)) && r.overlaps(&rect)
+        })
+    {
+        return false;
+    }
     let mut pieces = grid.pieces();
     let front = pieces.iter().map(|p| p.z).max().unwrap_or(0) + 1;
     pieces[at] = Piece {
@@ -1436,6 +1615,131 @@ mod tests {
             assert!(!two.containers[0].properties.contains_key(overlap::Z));
             assert_eq!(order(&two), [Item::Widget(1), Item::Widget(0)]);
         });
+    }
+
+    /// A grid with one group (index 0 in `layouts`, at `at`, 4 by 2 inside)
+    /// holding a widget in each of `inside`'s cells.
+    fn with_group(at: Rect, inside: &[(f64, f64)]) -> GridLayout {
+        let mut grid = GridLayout::default();
+        let mut g = group::new_group(at);
+        let c = group::INNER_CELL;
+        for (i, &(x, y)) in inside.iter().enumerate() {
+            g.children.push(raptaboard_layout::WidgetContainer {
+                title: format!("in{i}"),
+                rect: Rect {
+                    x: x * c,
+                    y: y * c,
+                    width: c,
+                    height: c,
+                },
+                widget_type: "Text Display".into(),
+                properties: Map::new(),
+                extra: Map::new(),
+            });
+        }
+        grid.layouts.push(g);
+        grid
+    }
+
+    fn inner(x: f64, y: f64, w: f64, h: f64) -> Rect {
+        let c = group::INNER_CELL;
+        Rect {
+            x: x * c,
+            y: y * c,
+            width: w * c,
+            height: h * c,
+        }
+    }
+
+    #[test]
+    fn widgets_move_into_groups_between_them_and_inside_them() {
+        let at = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 512.0,
+            height: 256.0,
+        };
+        let mut grid = with_group(at, &[(0.0, 0.0)]);
+        // A list beside it, holding one, and a widget on the grid.
+        grid.layouts.push(new_list(Rect { x: 512.0, ..at }, vec![]));
+        let mut grid2 = g_widget(&mut grid);
+        // Groups aren't lists to drop into, and lists aren't groups.
+        assert_eq!(list_at(&grid2, (10.0, 10.0)), None);
+        assert_eq!(group_at(&grid2, (10.0, 10.0)), Some(0));
+        assert_eq!(group_at(&grid2, (600.0, 10.0)), None);
+        assert_eq!(list_at(&grid2, (600.0, 10.0)), Some(1));
+        // The grid widget into the group's first cell: in0 moves aside.
+        let i = widget_into_group(&mut grid2, 0, 0, inner(0.0, 0.0, 1.0, 1.0)).unwrap();
+        assert!(grid2.containers.is_empty());
+        let g = &grid2.layouts[0];
+        assert_eq!(g.children[i].title, "w");
+        assert_eq!(g.children[i].rect, inner(0.0, 0.0, 1.0, 1.0));
+        assert_eq!(g.children[0].rect, inner(1.0, 0.0, 1.0, 1.0));
+        // Within the group: "w" to the bottom row.
+        assert_eq!(
+            child_into_group(&mut grid2, 0, i, 0, inner(2.0, 1.0, 1.0, 1.0)),
+            Some(i)
+        );
+        assert_eq!(grid2.layouts[0].children[i].rect, inner(2.0, 1.0, 1.0, 1.0));
+        // Grown to two cells across (the next one is free).
+        assert!(resize_in_group(&mut grid2, 0, i, inner(2.0, 1.0, 2.0, 1.0)));
+        assert_eq!(grid2.layouts[0].children[i].rect, inner(2.0, 1.0, 2.0, 1.0));
+        // Out to the list, then from the list back into the group.
+        assert!(child_to_list(&mut grid2, 0, i, 1, 0).is_some());
+        assert_eq!(grid2.layouts[1].children.len(), 1);
+        assert!(child_into_group(&mut grid2, 1, 0, 0, inner(3.0, 0.0, 1.0, 1.0)).is_some());
+        assert!(grid2.layouts[1].children.is_empty());
+        assert_eq!(grid2.layouts[0].children.len(), 2);
+        // New widgets: the first where asked, the rest nearby.
+        let new = |t: &str| raptaboard_layout::WidgetContainer {
+            title: t.into(),
+            rect: inner(0.0, 0.0, 1.0, 1.0),
+            widget_type: "Text Display".into(),
+            properties: Map::new(),
+            extra: Map::new(),
+        };
+        let added = widgets_into_group(
+            &mut grid2,
+            0,
+            inner(0.0, 1.0, 1.0, 1.0),
+            vec![new("a"), new("b")],
+        );
+        assert_eq!(added, 2);
+        let rects: Vec<Rect> = grid2.layouts[0].children.iter().map(|c| c.rect).collect();
+        for (n, a) in rects.iter().enumerate() {
+            for b in &rects[n + 1..] {
+                assert!(!a.overlaps(b), "{a:?} on {b:?}");
+            }
+        }
+        // Four of the eight cells left: four more go in, then none.
+        assert_eq!(grid2.layouts[0].children.len(), 4);
+        let more = || vec![new("c"), new("d"), new("e"), new("f"), new("g")];
+        assert_eq!(
+            widgets_into_group(&mut grid2, 0, inner(0.0, 0.0, 1.0, 1.0), more()),
+            4
+        );
+        assert_eq!(
+            widgets_into_group(&mut grid2, 0, inner(0.0, 0.0, 1.0, 1.0), more()),
+            0
+        );
+    }
+
+    /// Adds a one-cell widget "w" to `grid`'s containers.
+    fn g_widget(grid: &mut GridLayout) -> GridLayout {
+        let mut g = grid.clone();
+        g.containers.push(raptaboard_layout::WidgetContainer {
+            title: "w".into(),
+            rect: Rect {
+                x: 0.0,
+                y: 512.0,
+                width: 128.0,
+                height: 128.0,
+            },
+            widget_type: "Text Display".into(),
+            properties: Map::new(),
+            extra: Map::new(),
+        });
+        g
     }
 
     #[test]

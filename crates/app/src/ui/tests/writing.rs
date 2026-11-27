@@ -431,3 +431,53 @@ fn right_clicking_a_list_child_offers_its_settings_and_the_lists() {
         "the list's settings"
     );
 }
+
+#[test]
+fn a_toggle_in_a_group_toggles_through_the_groups_scaling_when_locked() {
+    use crate::widgets::group;
+    let robot = Robot::start();
+    let mut harness = writing_harness(&robot);
+    // A group below the writing widgets, holding a toggle in its second
+    // cell: drawn scaled, so a click must find it through the scaling.
+    let at = LayoutRect {
+        x: 0.0,
+        y: 1024.0,
+        width: 512.0,
+        height: 256.0,
+    };
+    let mut g = group::new_group(at);
+    let mut toggle = widget("Toggle Switch", "/Test/enabled", "boolean", at);
+    toggle.rect = LayoutRect {
+        x: group::INNER_CELL,
+        y: 0.0,
+        width: group::INNER_CELL,
+        height: group::INNER_CELL,
+    };
+    g.children.push(toggle.clone());
+    let app = harness.state_mut();
+    app.layout.tabs[0].grid_layout.layouts.push(g);
+    app.locked = true;
+    settle(&mut harness);
+    dashboard_has(&mut harness, "/Test/enabled", nt4::Value::Boolean(false));
+    // Where the toggle is on screen: the group's card, mapped.
+    let area = harness.state().grid.area;
+    let card = Rect::from_min_size(
+        area.min + egui::vec2(at.x as f32, at.y as f32),
+        egui::vec2(at.width as f32, at.height as f32),
+    )
+    .shrink(4.0);
+    let grid = harness.state().layout.tabs[0].grid_layout.clone();
+    let m = group::Mapping::of(card, grid.layouts.last().unwrap());
+    let on_screen = m.to_screen(&toggle.rect);
+    // Its body, below its title.
+    let body = on_screen.center() + egui::vec2(0.0, on_screen.height() * 0.2);
+    harness.hover_at(body);
+    settle(&mut harness);
+    click_at(
+        &mut harness,
+        body,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    server_sees(&mut harness, &robot, true);
+}

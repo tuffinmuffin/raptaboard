@@ -21,7 +21,7 @@ use crate::grid::{self, Item};
 use crate::traces::SeriesKey;
 use crate::tree::DraggedTopics;
 use crate::widgets::shared::card;
-use crate::widgets::{self, list_layout};
+use crate::widgets::{self, group, list_layout};
 
 use super::DashboardApp;
 use super::dialogs::Editing;
@@ -51,7 +51,11 @@ pub(super) fn draw_item(
         }
         Item::List(i) => {
             let Some(l) = grid.layouts.get(i) else { return };
-            list_layout::draw(painter, visuals, rect, l, value_of);
+            if group::is_group(l) {
+                group::draw(painter, visuals, rect, l, value_of);
+            } else {
+                list_layout::draw(painter, visuals, rect, l, value_of);
+            }
         }
     }
 }
@@ -106,6 +110,10 @@ pub(super) struct Requests {
     pub new_list: bool,
     /// "Pack widgets" from the empty grid's menu.
     pub pack: bool,
+    /// "New Group" from the empty grid's menu.
+    pub new_group: bool,
+    /// "Remove from group" from a group child's menu: (group, child).
+    pub remove_child: Option<(usize, usize)>,
     /// "Fill space" from a widget's or list's menu.
     pub fill: Option<Item>,
     /// "Pin in place" ticked or unticked in a widget's or list's menu.
@@ -350,14 +358,23 @@ impl DashboardApp {
             let value_of = |w: &WidgetContainer| bound.of(w);
             requests.writes = self.draw_items(ui, &painter, view, &value_of, values, &effects);
             self.draw_outlines(&painter, ui.visuals(), view);
-            self.drag_preview(&painter, ui.visuals(), view, &value_of);
-            self.child_drag_preview(ui, &painter, view, &value_of, &mut requests);
+            // Over everything on the grid, groups' layers too.
+            let top = painter.clone().with_layer_id(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::unique("grid_drag_preview"),
+            ));
+            self.drag_preview(&top, ui.visuals(), view, &value_of);
+            self.child_drag_preview(ui, &top, view, &value_of, &mut requests);
         }
         self.sampler = sampler.into_inner();
         for effect in effects.into_inner() {
             self.apply_effect(effect);
         }
-        self.tree_drop(ui, &painter, view, &mut requests);
+        let top = painter.clone().with_layer_id(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::unique("grid_drag_preview"),
+        ));
+        self.tree_drop(ui, &top, view, &mut requests);
         // Any click on a widget finds it in the tree, locked or not, and
         // whatever the widget does with the click (a toggle, a chooser's
         // button). Clicks in a popup or dialog over the grid don't count.
@@ -393,6 +410,14 @@ impl DashboardApp {
                 Item::Widget(i) => grid.containers.get(i).cloned(),
                 Item::List(i) => {
                     let list = grid.layouts.get(i)?;
+                    if group::is_group(list) {
+                        let m = group::Mapping::of(rect.shrink(CELL_GAP), list);
+                        return list
+                            .children
+                            .iter()
+                            .find(|c| m.to_screen(&c.rect).contains(pos))
+                            .cloned();
+                    }
                     list_layout::rows_on_screen(rect.shrink(CELL_GAP), list)
                         .into_iter()
                         .find(|row| row.row.contains(pos))
@@ -438,6 +463,13 @@ impl DashboardApp {
                 requests.new_list = true;
             }
             if ui
+                .button("New Group")
+                .on_hover_text("An empty group here: a card with a small grid of its own")
+                .clicked()
+            {
+                requests.new_group = true;
+            }
+            if ui
                 .button("Pack widgets")
                 .on_hover_text(
                     "Slide every widget up, then left, closing the gaps (pinned ones stay put)",
@@ -462,10 +494,75 @@ impl DashboardApp {
             let id = ui.scope_id().with(("grid_item", self.current_tab, item));
             let corner = Rect::from_min_max(rect.max - Vec2::splat(RESIZE_HANDLE), rect.max);
             let body = ui.interact(rect, id, Sense::click_and_drag());
+            // A group's children: each moved by dragging it, resized by its
+            // own corner, on top of the group's body.
+            if let Item::List(index) = item
+                && let Some(g) = tab.grid_layout.layouts.get(index)
+                && group::is_group(g)
+            {
+                let card = rect.shrink(CELL_GAP);
+                let m = group::Mapping::of(card, g);
+                for (c, child) in g.children.iter().enumerate() {
+                    let at = m.to_screen(&child.rect).intersect(card);
+                    let child_id = id.with(("group_child", c));
+                    let body = ui.interact(at, child_id, Sense::click_and_drag());
+                    let corner = Rect::from_min_max(at.max - Vec2::splat(RESIZE_HANDLE), at.max);
+                    let corner = ui.interact(corner, child_id.with("resize"), Sense::drag());
+                    for (handle, resize) in [(&body, false), (&corner, true)] {
+                        if handle.drag_started()
+                            && let Some(p) = handle.interact_pointer_pos()
+                        {
+                            self.grid.child_drag = Some(ChildDrag {
+                                list: index,
+                                child: c,
+                                grab: p - at.min,
+                                resize,
+                            });
+                        }
+                    }
+                    if body.clicked() || body.secondary_clicked() || body.drag_started() {
+                        self.selected = Some(item);
+                    }
+                    if body.clicked() {
+                        requests.find_in_tree = Some(child.clone());
+                    }
+                    if body.double_clicked() {
+                        requests.edit_child = Some((index, c));
+                    }
+                    body.context_menu(|ui| {
+                        if ui
+                            .button("Edit…")
+                            .on_hover_text("This widget's settings")
+                            .clicked()
+                        {
+                            requests.edit_child = Some((index, c));
+                        }
+                        if ui
+                            .button("Edit group…")
+                            .on_hover_text("The group's settings")
+                            .clicked()
+                        {
+                            requests.menu_action = Some((item, EditAction::Edit));
+                        }
+                        if ui.button("Remove from group").clicked() {
+                            requests.remove_child = Some((index, c));
+                        }
+                        reset_button(ui, Some(child), &mut requests.reset_ranges);
+                    });
+                    if corner.hovered() || corner.dragged() {
+                        ui.ctx().set_cursor_icon(CursorIcon::ResizeNwSe);
+                    } else if body.dragged() {
+                        ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+                    } else if body.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::Grab);
+                    }
+                }
+            }
             // A list's children, on top of its body so a child can be
             // dragged on its own, but under its resize corner.
             if let Item::List(index) = item
                 && let Some(list) = tab.grid_layout.layouts.get(index)
+                && !group::is_group(list)
             {
                 let card = rect.shrink(CELL_GAP);
                 for row in list_layout::rows_on_screen(card, list) {
@@ -479,6 +576,7 @@ impl DashboardApp {
                             list: index,
                             child: row.index,
                             grab: p - row.row.min,
+                            resize: false,
                         });
                     }
                     if child.clicked() || child.secondary_clicked() || child.drag_started() {
@@ -683,6 +781,18 @@ impl DashboardApp {
                 }
             } else if let Item::List(i) = item
                 && let Some(l) = tab.grid_layout.layouts.get(i)
+                && group::is_group(l)
+            {
+                // Its widgets on a layer of their own, scaled onto it; they
+                // take input when locked (unlocked, the grid moves them).
+                let rect = view.to_screen(&r).shrink(CELL_GAP);
+                let id = egui::Id::unique(("group_layer", self.current_tab, i));
+                let shown = group::show(ui, rect, l, id, self.locked, value_of, &frame, place);
+                for (c, value) in shown {
+                    writes.push((Sender::Child { list: i, child: c }, value));
+                }
+            } else if let Item::List(i) = item
+                && let Some(l) = tab.grid_layout.layouts.get(i)
             {
                 let rect = view.to_screen(&r).shrink(CELL_GAP);
                 let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt((
@@ -808,6 +918,8 @@ impl DashboardApp {
         let Requests {
             new_list,
             pack,
+            new_group,
+            remove_child,
             fill,
             pin,
             front_back,
@@ -867,6 +979,26 @@ impl DashboardApp {
                             self.selected = Some(Item::List(list));
                         }
                     }
+                    // A group's child resized within it.
+                    Some(DropTarget::Group {
+                        group,
+                        rect,
+                        ok: true,
+                        ..
+                    }) if cd.resize => {
+                        grid::resize_in_group(grid, group, cd.child, rect);
+                        self.selected = Some(Item::List(group));
+                    }
+                    Some(DropTarget::Group {
+                        group,
+                        rect,
+                        ok: true,
+                        ..
+                    }) => {
+                        if grid::child_into_group(grid, cd.list, cd.child, group, rect).is_some() {
+                            self.selected = Some(Item::List(group));
+                        }
+                    }
                     Some(DropTarget::Grid { rect, free: true }) => {
                         // Room first, pushing what's in the way aside.
                         let pushed = grid::make_room(grid, rect, view.cell, view.room);
@@ -912,6 +1044,25 @@ impl DashboardApp {
             match made {
                 Some(list) => self.selected = Some(Item::List(list)),
                 None => self.status = "No free space for a new list".to_owned(),
+            }
+        }
+        if let Some((g, c)) = remove_child
+            && let Some(tab) = self.layout.tabs.get_mut(self.current_tab)
+            && let Some(l) = tab.grid_layout.layouts.get_mut(g)
+            && c < l.children.len()
+        {
+            l.children.remove(c);
+            self.selected = Some(Item::List(g));
+        }
+        if new_group && let Some(tab) = self.layout.tabs.get_mut(self.current_tab) {
+            match grid::add_group(
+                &mut tab.grid_layout,
+                self.grid.menu_at,
+                view.cell,
+                view.room,
+            ) {
+                Some(g) => self.selected = Some(Item::List(g)),
+                None => self.status = "No free space for a new group".to_owned(),
             }
         }
         if let Some(widget) = find_quietly {
@@ -1358,6 +1509,98 @@ mod tests {
         assert_eq!(grid.containers.len(), 2);
         assert_eq!(rect_of(&app, 0), (0.0, 256.0, 128.0, 128.0));
         assert_eq!(grid::draw_order(grid).last().unwrap().0, Item::Widget(0));
+    }
+
+    #[test]
+    fn a_widget_goes_into_a_group_moves_and_resizes_there_and_comes_back_out() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        // A group, four cells by two, at (256, 256); inside, a 4 by 2 grid.
+        let g = grid::add_group(
+            &mut app.layout.tabs[0].grid_layout,
+            (256.0, 256.0),
+            128.0,
+            (768.0, 512.0),
+        )
+        .unwrap();
+        let grid_of = |app: &DashboardApp| app.layout.tabs[0].grid_layout.clone();
+        let group_rect = grid_of(&app).layouts[g].rect;
+        assert_eq!((group_rect.x, group_rect.y), (256.0, 256.0));
+        // Inner cells in grid coordinates (the tests' drag positions).
+        let m = |app: &DashboardApp| {
+            let l = &grid_of(app).layouts[g];
+            let card = Rect::from_min_size(
+                Pos2::new(l.rect.x as f32, l.rect.y as f32),
+                egui::vec2(l.rect.width as f32, l.rect.height as f32),
+            )
+            .shrink(CELL_GAP);
+            group::Mapping::of(card, l)
+        };
+        let cell = |app: &DashboardApp, c: f64, r: f64| {
+            let p = m(app)
+                .to_screen(&LayoutRect {
+                    x: c * group::INNER_CELL,
+                    y: r * group::INNER_CELL,
+                    width: group::INNER_CELL,
+                    height: group::INNER_CELL,
+                })
+                .center();
+            (p.x, p.y)
+        };
+        let inner = |c: f64, r: f64, w: f64, h: f64| LayoutRect {
+            x: c * group::INNER_CELL,
+            y: r * group::INNER_CELL,
+            width: w * group::INNER_CELL,
+            height: h * group::INNER_CELL,
+        };
+
+        // A into the group's second cell.
+        let to = cell(&app, 1.0, 0.0);
+        drag(&ctx, &mut app, (40.0, 40.0), to);
+        let now = grid_of(&app);
+        assert_eq!(now.containers.len(), 1, "A left the grid");
+        assert_eq!(now.layouts[g].children.len(), 1);
+        assert_eq!(now.layouts[g].children[0].title, "A");
+        assert_eq!(now.layouts[g].children[0].rect, inner(1.0, 0.0, 1.0, 1.0));
+
+        // Moved within the group, to the last cell of the second row.
+        let from = cell(&app, 1.0, 0.0);
+        let to = cell(&app, 3.0, 1.0);
+        drag(&ctx, &mut app, from, to);
+        assert_eq!(
+            grid_of(&app).layouts[g].children[0].rect,
+            inner(3.0, 1.0, 1.0, 1.0)
+        );
+        // And back to the first cell.
+        let from = cell(&app, 3.0, 1.0);
+        let to = cell(&app, 0.0, 0.0);
+        drag(&ctx, &mut app, from, to);
+        assert_eq!(
+            grid_of(&app).layouts[g].children[0].rect,
+            inner(0.0, 0.0, 1.0, 1.0)
+        );
+
+        // Its corner dragged to the middle of the second row's second cell:
+        // two cells by two.
+        let corner = m(&app).to_screen(&inner(0.0, 0.0, 1.0, 1.0)).max - egui::vec2(3.0, 3.0);
+        let to = cell(&app, 1.0, 1.0);
+        drag(&ctx, &mut app, (corner.x, corner.y), to);
+        assert_eq!(
+            grid_of(&app).layouts[g].children[0].rect,
+            inner(0.0, 0.0, 2.0, 2.0)
+        );
+
+        // Out onto the empty grid at the top right.
+        let from = cell(&app, 0.0, 0.0);
+        drag(&ctx, &mut app, from, (from.0 + 300.0, 20.0));
+        let now = grid_of(&app);
+        assert!(now.layouts[g].children.is_empty(), "out of the group");
+        let a = now.containers.iter().find(|w| w.title == "A").unwrap();
+        assert_eq!(
+            (a.rect.width, a.rect.height),
+            (256.0, 256.0),
+            "two cells by two"
+        );
     }
 
     #[test]

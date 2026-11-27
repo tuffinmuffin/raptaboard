@@ -30,6 +30,7 @@
 //! [`crate::nt::NtConnection::write`].
 
 pub mod builtin;
+pub mod group;
 pub mod list_layout;
 pub mod shared;
 

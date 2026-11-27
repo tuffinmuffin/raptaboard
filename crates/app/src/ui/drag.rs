@@ -9,7 +9,7 @@ use raptaboard_layout::{Rect as LayoutRect, WidgetContainer};
 use crate::grid::{self, Item};
 use crate::tree::DraggedTopics;
 use crate::widgets::shared::card;
-use crate::widgets::{self, list_layout};
+use crate::widgets::{self, group, list_layout};
 
 use super::DashboardApp;
 use super::grid_view::{GridView, Requests, draw_item};
@@ -66,17 +66,20 @@ impl Drag {
     }
 }
 
-/// A List Layout's child being dragged: to another place in its list, into
-/// another list, or out onto the grid.
+/// A List Layout's or group's child being dragged: to another place in its
+/// list or group, into another, or out onto the grid; or (a group's, by its
+/// corner) resized within its group.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ChildDrag {
-    /// The list, by its index in the tab's `layouts`.
+    /// The list or group, by its index in the tab's `layouts`.
     pub(super) list: usize,
     /// The child, by its index in the list's `children`.
     pub(super) child: usize,
     /// Where in its row the pointer took hold, in points, so the preview
     /// keeps the same spot under the pointer.
     pub(super) grab: Vec2,
+    /// Resizing a group's child by its corner, not moving it.
+    pub(super) resize: bool,
 }
 
 /// Where something dropped on the grid would go.
@@ -95,6 +98,15 @@ pub(super) enum DropTarget {
     /// Onto the widget at `index` in the tab's `containers`, one that takes
     /// topics (a graph, as more lines); `card` is the widget on screen.
     Widget { index: usize, card: Rect },
+    /// Into group `group` (its index in the tab's `layouts`) in the cells
+    /// `rect` (saved inner pixels), if there's room (`ok`); `card` is those
+    /// cells on screen.
+    Group {
+        group: usize,
+        rect: LayoutRect,
+        ok: bool,
+        card: Rect,
+    },
 }
 
 /// Whether a drag places over others instead of pushing them aside: Alt
@@ -131,6 +143,7 @@ pub(super) fn draw_drop(
         }
         DropTarget::Grid { rect, free } => draw_landing(painter, to_screen(&rect), free),
         DropTarget::Widget { card, .. } => draw_landing(painter, card, true),
+        DropTarget::Group { card, ok, .. } => draw_landing(painter, card, ok),
     }
 }
 
@@ -171,6 +184,36 @@ impl DashboardApp {
         })
     }
 
+    /// The group under screen point `p` as a drop target for something
+    /// `size` big (saved pixels), in the cells under the pointer, with
+    /// whether there's room. `moving` is a group's child already being
+    /// moved (group, child), left out of its own way.
+    pub(super) fn group_drop(
+        &self,
+        view: GridView,
+        p: Pos2,
+        size: LayoutRect,
+        moving: Option<(usize, usize)>,
+    ) -> Option<DropTarget> {
+        if !view.visible.contains(p) {
+            return None;
+        }
+        let tab = self.tab()?;
+        let index = grid::group_at(&tab.grid_layout, view.to_grid(p))?;
+        let g = &tab.grid_layout.layouts[index];
+        let m = group::Mapping::of(view.to_screen(&g.rect).shrink(CELL_GAP), g);
+        let at = m.to_inner(p);
+        let except = moving.filter(|&(from, _)| from == index).map(|(_, c)| c);
+        let rect = group::cell_rect(g, size, at);
+        let ok = group::place(g, size, at, except).is_some();
+        Some(DropTarget::Group {
+            group: index,
+            rect,
+            ok,
+            card: m.to_screen(&rect),
+        })
+    }
+
     /// The widget under screen point `p` that takes dropped topics (a
     /// graph), as a drop target, if there is one.
     pub(super) fn topic_taker_drop(&self, view: GridView, p: Pos2) -> Option<DropTarget> {
@@ -194,8 +237,8 @@ impl DashboardApp {
             })
     }
 
-    /// The list a widget being moved would go into: the list under the
-    /// pointer, if any. Resizing, lists being dragged, and anything dragged
+    /// The list or group a widget being moved would go into: the one under
+    /// the pointer, if any. Resizing, lists being dragged, and anything dragged
     /// with Alt held (placed over what's there: [`overlapping`]) never go
     /// into a list.
     pub(super) fn drag_into_list(
@@ -208,7 +251,9 @@ impl DashboardApp {
             return None;
         }
         match (drag.item, drag.mode, ctx.pointer_latest_pos()) {
-            (Item::Widget(_), DragMode::Move, Some(p)) => self.list_drop(view, p),
+            (Item::Widget(_), DragMode::Move, Some(p)) => self
+                .list_drop(view, p)
+                .or_else(|| self.group_drop(view, p, drag.start, None)),
             _ => None,
         }
     }
@@ -257,7 +302,11 @@ impl DashboardApp {
             .get(cd.list)?
             .children
             .get(cd.child)?;
-        if self.list_drop(view, p).is_some() || !view.visible.contains(p) {
+        let over_group = self
+            .tab()
+            .and_then(|t| grid::group_at(&t.grid_layout, view.to_grid(p)))
+            .is_some();
+        if self.list_drop(view, p).is_some() || over_group || !view.visible.contains(p) {
             return None;
         }
         let size = grid::snap_resize(child.rect, view.cell);
@@ -285,7 +334,14 @@ impl DashboardApp {
         {
             return None;
         }
-        if self.topic_taker_drop(view, p).is_some() || self.list_drop(view, p).is_some() {
+        let over_group = self
+            .tab()
+            .and_then(|t| grid::group_at(&t.grid_layout, view.to_grid(p)))
+            .is_some();
+        if self.topic_taker_drop(view, p).is_some()
+            || self.list_drop(view, p).is_some()
+            || over_group
+        {
             return None;
         }
         let (x, y) = view.to_grid(p);
@@ -361,27 +417,61 @@ impl DashboardApp {
         else {
             return;
         };
-        let size = grid::snap_resize(child.rect, view.cell);
-        let corner = p - cd.grab;
-        // Onto the grid, pushing what's in the way aside if it can.
-        let target = self.list_drop(view, p).or_else(|| {
-            self.child_grid_target(view, p)
-                .map(|rect| DropTarget::Grid {
-                    rect,
-                    free: grid::make_room(&tab.grid_layout, rect, view.cell, view.room).is_some(),
+        let from = &tab.grid_layout.layouts[cd.list];
+        let target = if cd.resize {
+            // A group's child by its corner: its new size, in its group.
+            let m = group::Mapping::of(view.to_screen(&from.rect).shrink(CELL_GAP), from);
+            let rect = group::resized(from, child.rect, m.to_inner(p));
+            let inner = group::inner_grid(from);
+            let ok = grid::reflow(
+                &inner,
+                Item::Widget(cd.child),
+                rect,
+                group::INNER_CELL,
+                group::inner_area(from),
+            )
+            .is_some();
+            Some(DropTarget::Group {
+                group: cd.list,
+                rect,
+                ok,
+                card: m.to_screen(&rect),
+            })
+        } else {
+            // Into a list or group, or onto the grid pushing what's in the
+            // way aside if it can.
+            self.list_drop(view, p)
+                .or_else(|| self.group_drop(view, p, child.rect, Some((cd.list, cd.child))))
+                .or_else(|| {
+                    self.child_grid_target(view, p)
+                        .map(|rect| DropTarget::Grid {
+                            rect,
+                            free: grid::make_room(&tab.grid_layout, rect, view.cell, view.room)
+                                .is_some(),
+                        })
                 })
-        });
+        };
         if let Some(target) = &target {
             draw_drop(painter, target, &|r: &LayoutRect| view.to_screen(r));
         }
-        let preview = Rect::from_min_size(corner, Vec2::new(size.width as f32, size.height as f32));
-        card::draw(
-            painter,
-            ui.visuals(),
-            preview.shrink(CELL_GAP),
-            child,
-            value_of(child).as_ref(),
-        );
+        if !cd.resize {
+            // A group's child is drawn at its size there; a list's at its own.
+            let size = if group::is_group(from) {
+                let m = group::Mapping::of(view.to_screen(&from.rect).shrink(CELL_GAP), from);
+                m.to_screen(&child.rect).size()
+            } else {
+                let size = grid::snap_resize(child.rect, view.cell);
+                Vec2::new(size.width as f32, size.height as f32)
+            };
+            let preview = Rect::from_min_size(p - cd.grab, size);
+            card::draw(
+                painter,
+                ui.visuals(),
+                preview.shrink(CELL_GAP),
+                child,
+                value_of(child).as_ref(),
+            );
+        }
         // Let go: here, or outside the window, where the release may not
         // reach us (it then stays where it was).
         if !ui.input(|i| i.pointer.primary_down()) {
@@ -413,9 +503,16 @@ impl DashboardApp {
             return;
         };
         // Over a widget that takes topics, they go to it (a graph's lines).
+        let one = LayoutRect {
+            x: 0.0,
+            y: 0.0,
+            width: group::INNER_CELL,
+            height: group::INNER_CELL,
+        };
         let into = self
             .topic_taker_drop(view, p)
-            .or_else(|| self.list_drop(view, p));
+            .or_else(|| self.list_drop(view, p))
+            .or_else(|| self.group_drop(view, p, one, None));
         let Some(target) = self.tree_grid_target(ui.ctx(), view, p).or_else(|| {
             let (x, y) = view.to_grid(p);
             Some(LayoutRect {
@@ -462,6 +559,18 @@ impl DashboardApp {
             (Item::Widget(widget), Some(DropTarget::List { list, at, .. })) => {
                 if grid::widget_into_list(grid, widget, list, at).is_some() {
                     self.selected = Some(Item::List(list));
+                }
+            }
+            (
+                Item::Widget(widget),
+                Some(DropTarget::Group {
+                    group, rect, ok, ..
+                }),
+            ) => {
+                if ok && grid::widget_into_group(grid, widget, group, rect).is_some() {
+                    self.selected = Some(Item::List(group));
+                } else {
+                    self.status = "No room in that group".to_owned();
                 }
             }
             // Alt held: over what's there, in front, unless that would
@@ -528,6 +637,19 @@ impl DashboardApp {
                 let children = &mut grid.layouts[list].children;
                 children.splice(at..at, made);
                 self.selected = Some(Item::List(list));
+            }
+            Some(DropTarget::Group {
+                group,
+                rect,
+                ok: true,
+                ..
+            }) => {
+                let count = made.len();
+                let added = grid::widgets_into_group(grid, group, rect, made);
+                self.selected = Some(Item::List(group));
+                if added < count {
+                    self.status = format!("Added {added} of {count} widgets; the group is full");
+                }
             }
             Some(DropTarget::Widget { index, .. }) => {
                 let widget = &mut grid.containers[index];

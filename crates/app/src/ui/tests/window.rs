@@ -520,3 +520,27 @@ fn the_right_click_menus_pin_fill_and_pack() {
     settle(&mut harness);
     assert!(!harness.state().status.is_empty());
 }
+
+#[test]
+fn new_group_from_the_empty_grids_menu() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    // The empty tab: room for a group.
+    harness.state_mut().current_tab = 1;
+    settle(&mut harness);
+    let area = harness.state().grid.area.min;
+    click_at(
+        &mut harness,
+        area + egui::vec2(300.0, 200.0),
+        egui::PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    harness.get_by_label("New Group").click();
+    settle(&mut harness);
+    let layouts = &harness.state().layout.tabs[1].grid_layout.layouts;
+    assert_eq!(layouts.len(), 1);
+    assert!(crate::widgets::group::is_group(&layouts[0]));
+    // Near where it was asked for: the cell under the click.
+    assert_eq!((layouts[0].rect.x, layouts[0].rect.y), (256.0, 128.0));
+    assert_eq!(harness.state().selected, Some(crate::grid::Item::List(0)));
+}

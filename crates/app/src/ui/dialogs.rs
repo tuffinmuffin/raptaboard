@@ -340,8 +340,17 @@ impl DashboardApp {
         };
         let mut close = None;
         let mut action = None;
-        show_settings(ctx, "list_settings", "List settings", |ui| {
-            action = list_layout::settings(ui, list);
+        let heading = if crate::widgets::group::is_group(list) {
+            "Group settings"
+        } else {
+            "List settings"
+        };
+        show_settings(ctx, "list_settings", heading, |ui| {
+            if crate::widgets::group::is_group(list) {
+                crate::widgets::group::settings(ui, list);
+            } else {
+                action = list_layout::settings(ui, list);
+            }
             pin_checkbox(ui, &mut list.properties);
             ui.add_space(4.0);
             ui.separator();

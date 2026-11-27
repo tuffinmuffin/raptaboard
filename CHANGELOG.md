@@ -15,6 +15,10 @@ What changes in each raptaboard release. Newest first.
 - **Widgets make room:** a widget moved or resized onto others, a topic dropped from the tree, or a
   list's widget dragged out pushes what's in the way aside to the nearest free spots, shown as you
   drag, instead of being refused. One Undo puts them all back; Escape calls a drag off.
+- **Group widget:** a card with a small grid of its own, so widgets can sit side by side in one
+  card at any size. Make one from the empty grid's right-click menu, then drag widgets or topics
+  into it; move and resize them inside, or drag them back out. Resizing the Group scales
+  everything in it, text too.
 - **Overlap with Alt:** hold Alt (Option on a Mac) while dragging or resizing a widget to place it
   partly over others, in front, instead of pushing them aside, such as a label on a camera view.
   No widget can be hidden completely. **Bring to front** and **Send to back** are in the

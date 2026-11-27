@@ -122,3 +122,22 @@ CAN status. Make one with **Put in a new list** on a widget's right-click menu, 
 into it or use **Add to list** in the tree. Its settings set where the labels go and whether there
 are dividers between rows; double-click a row for that widget's own settings. Graphs in a list
 show their newest value as text.
+
+## Groups
+
+A **Group** is a card with a small grid of its own, so widgets inside can sit side by side and be
+any size: a drive panel, say, with speeds, a gyro and a few lights in one card. Everything inside
+is drawn as a shrunk copy, text too, so resizing the Group grows or shrinks what's in it.
+
+- **Make one** with right-click on empty grid → **New Group**.
+- **Put widgets in** by dragging them onto it, or dropping topics on it from the tree: each goes in
+  the cell under the pointer, pushing what's there aside. Nothing can overlap a Group, even
+  with **Alt**.
+- **Arrange them** (unlocked) as on the grid: drag a widget to move it, drag its corner to resize
+  it. Drag it out of the Group onto the grid, or into a list or another Group.
+- **Right-click** a widget inside for **Edit…**, **Edit group…** and **Remove from group**;
+  double-click it for its settings.
+- The Group's settings set its title and how many **Columns** and **Rows** its grid has (4 by 2
+  unless set).
+
+Locked, the widgets inside work as they do on the grid: toggles toggle, sliders slide.
