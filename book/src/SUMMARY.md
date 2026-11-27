@@ -25,10 +25,10 @@
 # Writing plugins
 
 - [Plugins at a glance](plugins/overview.md)
-- [plugin.toml reference]()
-- [Tutorial: a table widget]()
-- [Tab plugins]()
-- [Content packs]()
+- [plugin.toml reference](plugins/manifest.md)
+- [Tutorial: the example plugins](plugins/tutorial.md)
+- [Tab plugins](plugins/tab-plugins.md)
+- [Content packs](plugins/content-packs.md)
 
 ---
 
