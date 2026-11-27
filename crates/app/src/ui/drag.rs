@@ -203,9 +203,31 @@ impl DashboardApp {
         }
     }
 
+    /// Where the items a drag pushes aside are, if it were dropped now on
+    /// the grid with the pointer at `pointer` ([`grid::reflow`]): each one
+    /// moved, not the dragged item itself. Empty with no drag, a drag going
+    /// into a list, or one that can't go where it is.
+    pub(super) fn pushed_aside(
+        &self,
+        view: GridView,
+        pointer: Option<Pos2>,
+    ) -> Vec<(Item, LayoutRect)> {
+        let (Some(drag), Some(tab)) = (self.grid.drag, self.tab()) else {
+            return Vec::new();
+        };
+        if self.drag_into_list(drag, view, pointer).is_some() {
+            return Vec::new();
+        }
+        let target = drag.target(view.cell, view.room);
+        grid::reflow(&tab.grid_layout, drag.item, target, view.cell, view.room)
+            .map(|moves| moves.into_iter().skip(1).collect())
+            .unwrap_or_default()
+    }
+
     /// The dragged item follows the pointer on top of everything, with an
-    /// outline where it will land: green if it fits, red if not. A widget
-    /// over a list goes into the list instead.
+    /// outline where it will land: green if it can go there (pushing what's
+    /// in the way aside, drawn where it would go), red if not. A widget over
+    /// a list goes into the list instead.
     pub(super) fn drag_preview(
         &self,
         painter: &egui::Painter,
@@ -221,7 +243,8 @@ impl DashboardApp {
             Some(target) => draw_drop(painter, &target, &to_screen),
             None => {
                 let target = drag.target(view.cell, view.room);
-                let ok = grid::fits(&tab.grid_layout, drag.item, target);
+                let ok = grid::reflow(&tab.grid_layout, drag.item, target, view.cell, view.room)
+                    .is_some();
                 draw_landing(painter, view.to_screen(&target), ok);
             }
         }
@@ -341,7 +364,9 @@ impl DashboardApp {
     }
 
     /// Put a widget or list let go after a drag `into` a list, or where it
-    /// was dragged to on the grid if it fits there (else it goes back).
+    /// was dragged to on the grid, pushing what's in the way to the nearest
+    /// free spots ([`grid::reflow`]); if something has nowhere to go, it
+    /// goes back.
     pub(super) fn drop_dragged(&mut self, drag: Drag, into: Option<DropTarget>, view: GridView) {
         let Some(tab) = self.layout.tabs.get_mut(self.current_tab) else {
             return;
@@ -355,8 +380,15 @@ impl DashboardApp {
             }
             _ => {
                 let target = drag.target(view.cell, view.room);
-                if grid::fits(grid, drag.item, target) {
-                    drag.item.set_rect(grid, target);
+                if let Some(moves) = grid::reflow(grid, drag.item, target, view.cell, view.room) {
+                    for &(item, rect) in &moves {
+                        item.set_rect(grid, rect);
+                    }
+                    self.status = match moves.len() - 1 {
+                        0 => String::new(),
+                        1 => "Moved 1 widget out of the way".to_owned(),
+                        n => format!("Moved {n} widgets out of the way"),
+                    };
                 }
             }
         }

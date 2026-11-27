@@ -506,6 +506,11 @@ impl DashboardApp {
         };
         let visuals = ui.visuals().clone();
         let dragging = self.grid.drag.map(|d| d.item);
+        // What the drag pushes aside shows where it would go.
+        let pushed: HashMap<Item, LayoutRect> = self
+            .pushed_aside(view, ui.ctx().pointer_latest_pos())
+            .into_iter()
+            .collect();
         let frame = widgets::Frame {
             traces: &self.traces,
             now_us: self.nt.client().map_or(0, |c| c.now_us()),
@@ -525,6 +530,7 @@ impl DashboardApp {
             if Some(item) == dragging {
                 continue;
             }
+            let r = pushed.get(&item).copied().unwrap_or(r);
             // Single widgets get a Ui of their own, for those that need
             // one (graphs, toggles), and so does each list child.
             if let Item::Widget(i) = item
@@ -946,6 +952,33 @@ mod tests {
         origin
     }
 
+    /// One frame with `events`, and where the text `title` was drawn (its
+    /// left edge on screen), if it was.
+    fn drawn_at(
+        ctx: &egui::Context,
+        app: &mut DashboardApp,
+        events: Vec<Event>,
+        title: &str,
+    ) -> Option<f32> {
+        let raw = RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0))),
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(raw, |ui| {
+            app.grid(ui, &HashMap::new(), Instant::now());
+        });
+        output.textures_delta.clear();
+        fn find(shape: &egui::Shape, title: &str) -> Option<f32> {
+            match shape {
+                egui::Shape::Text(t) if t.galley.text() == title => Some(t.pos.x),
+                egui::Shape::Vec(v) => v.iter().find_map(|s| find(s, title)),
+                _ => None,
+            }
+        }
+        output.shapes.iter().find_map(|s| find(&s.shape, title))
+    }
+
     fn button(pos: Pos2, pressed: bool) -> Event {
         Event::PointerButton {
             pos,
@@ -1005,12 +1038,60 @@ mod tests {
     }
 
     #[test]
-    fn a_drop_onto_another_widget_is_refused() {
+    fn a_drop_onto_another_widget_pushes_it_aside_in_one_undo() {
         let ctx = egui::Context::default();
         let mut app = app();
-        // A onto B: it stays where it was.
+        app.history = crate::edit::History::new(&app.layout);
+        // A onto B: A goes there, and B to the nearest free cell, beside it
+        // on the left (as near as right; on the same row, the left wins).
         drag(&ctx, &mut app, (40.0, 40.0), (40.0 + 384.0, 40.0));
+        assert_eq!(rect_of(&app, 0), (384.0, 0.0, 128.0, 128.0));
+        assert_eq!(rect_of(&app, 1), (256.0, 0.0, 128.0, 128.0));
+        assert_eq!(app.status, "Moved 1 widget out of the way");
+        // One undo puts both back.
+        app.history.record(&app.layout);
+        assert!(app.history.undo(&mut app.layout));
         assert_eq!(rect_of(&app, 0), (0.0, 0.0, 128.0, 128.0));
+        assert_eq!(rect_of(&app, 1), (384.0, 0.0, 128.0, 128.0));
+    }
+
+    #[test]
+    fn widgets_in_the_way_are_drawn_where_they_will_go_during_the_drag() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        // Press on A and hold it over B.
+        let origin = frame(&ctx, &mut app, vec![]);
+        let start = origin + Vec2::new(40.0, 40.0);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(start)]);
+        frame(&ctx, &mut app, vec![button(start, true)]);
+        for step in 1..=8 {
+            let at = start + Vec2::new(384.0 * step as f32 / 8.0, 0.0);
+            frame(&ctx, &mut app, vec![Event::PointerMoved(at)]);
+        }
+        let window = Rect::from_min_size(origin, egui::vec2(768.0, 512.0));
+        let grid_view = GridView {
+            area: window,
+            visible: window,
+            cell: 128.0,
+            room: (768.0, 512.0),
+        };
+        let view = |app: &DashboardApp| app.pushed_aside(grid_view, None);
+        let pushed = view(&app);
+        assert_eq!(pushed.len(), 1);
+        assert_eq!(pushed[0].0, Item::Widget(1));
+        assert_eq!(pushed[0].1.x, 256.0);
+        // Nothing has moved yet, but B is drawn where it would go: a cell
+        // and a half left of its own middle.
+        assert_eq!(rect_of(&app, 1), (384.0, 0.0, 128.0, 128.0));
+        let b_x = drawn_at(&ctx, &mut app, vec![], "B").expect("B drawn") - origin.x;
+        assert!((256.0..384.0).contains(&b_x), "B's title at {b_x}");
+        // Back off B: it stays put.
+        let back = start + Vec2::new(128.0, 0.0);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(back)]);
+        assert!(view(&app).is_empty());
+        let b_x = drawn_at(&ctx, &mut app, vec![], "B").expect("B drawn") - origin.x;
+        assert!(b_x >= 384.0, "B's title back at {b_x}");
+        frame(&ctx, &mut app, vec![button(back, false)]);
     }
 
     #[test]

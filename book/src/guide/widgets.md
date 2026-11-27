@@ -39,8 +39,10 @@ all.
 
 Unlocked:
 
-- **Move** a widget by dragging it; it snaps to the grid.
-- **Resize** it by dragging its bottom-right corner.
+- **Move** a widget by dragging it; it snaps to the grid. Widgets in the way slide aside to the
+  nearest free spots, shown as you drag; move on and they slide back. The outline is red only when
+  one of them has nowhere to go.
+- **Resize** it by dragging its bottom-right corner. Growing over others pushes them aside too.
 - **Click** it to select it. That also finds its topic in the tree.
 - **Double-click** it, or press **Enter** while it's selected, to open its settings.
 - **Right-click** it for **Edit…**, **Duplicate** (Ctrl+D), **Delete** (Delete), and **Put in a
