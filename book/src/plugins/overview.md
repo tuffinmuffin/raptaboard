@@ -22,6 +22,13 @@ example plugins are in [raptaboard-examples](https://github.com/tuffinmuffin/rap
 Number, a small one, and Alerts, the built-in Alerts widget remade, a bigger one. The plugins in
 `plugins/` are the ones raptaboard's own tests use.
 
+The chapters after this one go further:
+
+- [plugin.toml reference](manifest.md): every key of the manifest.
+- [Tutorial: the example plugins](tutorial.md): Number and Alerts taken apart, from setup to tests.
+- [Tab plugins](tab-plugins.md): plugins that fill a tab, such as a game.
+- [Content packs](content-packs.md): sharing plugins so teams can install them.
+
 ## Trying one
 
 Build it and start the dashboard with it:

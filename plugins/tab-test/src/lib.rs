@@ -84,6 +84,7 @@ impl Widget for TabTest {
         Vec::new()
     }
 
+    // ANCHOR: render
     fn render(&mut self, frame: FrameInfo) -> Picture {
         let hello = self
             .hello
@@ -128,7 +129,9 @@ impl Widget for TabTest {
         picture.summary = Some(line);
         picture
     }
+    // ANCHOR_END: render
 
+    // ANCHOR: input
     fn on_input(&mut self, event: Input) {
         match &event {
             Input::Focus(f) => self.focused = *f,
@@ -151,6 +154,7 @@ impl Widget for TabTest {
             }
         }
     }
+    // ANCHOR_END: input
 }
 
 raptaboard_plugin::widget!(TabTest);
