@@ -235,3 +235,28 @@ fn an_overlap_with_no_room_is_left_and_reported() {
         rect(0.0, 0.0, 1024.0, 1024.0)
     );
 }
+
+#[test]
+fn allowed_partial_overlaps_are_kept_and_others_moved() {
+    // "label" may overlap and sits on half of "camera": kept as it is.
+    let label = r#"{"title": "label", "x": 128.0, "y": 0.0, "width": 128.0, "height": 128.0,
+        "type": "Text Display", "properties": {"may_overlap": true}}"#;
+    let camera = widget("camera", 0.0, 0.0, 256.0, 128.0);
+    let mut l = layout("128", &format!("{camera}, {label}"), "");
+    assert!(l.sanitize().is_empty());
+    assert_eq!(
+        l.tabs[0].grid_layout.containers[1].rect,
+        rect(128.0, 0.0, 128.0, 128.0)
+    );
+
+    // One that may overlap but would hide "small" completely: moved.
+    let small = widget("small", 0.0, 0.0, 128.0, 128.0);
+    let cover = r#"{"title": "cover", "x": 0.0, "y": 0.0, "width": 256.0, "height": 128.0,
+        "type": "Text Display", "properties": {"may_overlap": true}}"#;
+    let mut l = layout("128", &format!("{small}, {cover}"), "");
+    let fixes = l.sanitize();
+    assert_eq!(fixes.len(), 1, "{fixes:?}");
+    assert!(fixes[0].contains("covers widget \"small\""), "{fixes:?}");
+    let moved = l.tabs[0].grid_layout.containers[1].rect;
+    assert!(!moved.overlaps(&rect(0.0, 0.0, 128.0, 128.0)));
+}

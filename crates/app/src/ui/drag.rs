@@ -97,6 +97,12 @@ pub(super) enum DropTarget {
     Widget { index: usize, card: Rect },
 }
 
+/// Whether a drag places over others instead of pushing them aside: Alt
+/// (Option on a Mac) held.
+pub(super) fn overlapping(ctx: &egui::Context) -> bool {
+    ctx.input(|i| i.modifiers.alt)
+}
+
 /// The outline where a dragged widget or topic will land: green if it fits
 /// there, red if it would cover another widget.
 pub(super) fn draw_landing(painter: &egui::Painter, rect: Rect, ok: bool) {
@@ -217,7 +223,8 @@ impl DashboardApp {
             return Vec::new();
         };
         if let Some(drag) = self.grid.drag {
-            if self.drag_into_list(drag, view, pointer).is_some() {
+            // With Alt held it goes over them instead.
+            if self.drag_into_list(drag, view, pointer).is_some() || overlapping(ctx) {
                 return Vec::new();
             }
             let target = drag.target(view.cell, view.room);
@@ -306,8 +313,12 @@ impl DashboardApp {
             Some(target) => draw_drop(painter, &target, &to_screen),
             None => {
                 let target = drag.target(view.cell, view.room);
-                let ok = grid::reflow(&tab.grid_layout, drag.item, target, view.cell, view.room)
-                    .is_some();
+                let grid = &tab.grid_layout;
+                let ok = if overlapping(painter.ctx()) {
+                    grid::fits_over(grid, drag.item, target)
+                } else {
+                    grid::reflow(grid, drag.item, target, view.cell, view.room).is_some()
+                };
                 draw_landing(painter, view.to_screen(&target), ok);
             }
         }
@@ -432,7 +443,13 @@ impl DashboardApp {
     /// was dragged to on the grid, pushing what's in the way to the nearest
     /// free spots ([`grid::reflow`]); if something has nowhere to go, it
     /// goes back.
-    pub(super) fn drop_dragged(&mut self, drag: Drag, into: Option<DropTarget>, view: GridView) {
+    pub(super) fn drop_dragged(
+        &mut self,
+        drag: Drag,
+        into: Option<DropTarget>,
+        view: GridView,
+        over: bool,
+    ) {
         let Some(tab) = self.layout.tabs.get_mut(self.current_tab) else {
             return;
         };
@@ -443,16 +460,31 @@ impl DashboardApp {
                     self.selected = Some(Item::List(list));
                 }
             }
+            // Alt held: over what's there, in front, unless that would
+            // hide something.
+            _ if over => {
+                let target = drag.target(view.cell, view.room);
+                if grid::fits_over(grid, drag.item, target) {
+                    grid::place_over(grid, drag.item, target);
+                } else {
+                    self.status = "It would hide a widget completely there".to_owned();
+                }
+            }
             _ => {
                 let target = drag.target(view.cell, view.room);
                 if let Some(moves) = grid::reflow(grid, drag.item, target, view.cell, view.room) {
                     for &(item, rect) in &moves {
                         item.set_rect(grid, rect);
                     }
+                    grid::tidy_overlaps(grid);
                     self.status = match moves.len() - 1 {
                         0 => String::new(),
-                        1 => "Moved 1 widget out of the way".to_owned(),
-                        n => format!("Moved {n} widgets out of the way"),
+                        1 => {
+                            "Moved 1 widget out of the way (hold Alt to overlap instead)".to_owned()
+                        }
+                        n => format!(
+                            "Moved {n} widgets out of the way (hold Alt to overlap instead)"
+                        ),
                     };
                 }
             }

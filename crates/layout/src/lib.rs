@@ -20,6 +20,8 @@
 //! assert_eq!(pose.grid_cells(layout.grid_size()), (2, 2));
 //! ```
 
+pub mod overlap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -209,7 +211,9 @@ impl ElasticLayout {
     ///   free spot on its tab.
     /// - A widget or List Layout covering one before it on its tab (widgets
     ///   first, then lists, in file order) moves to the free spot nearest
-    ///   where it was. With no free spot it stays, and the fix says so.
+    ///   where it was, unless the [`overlap`] rules allow it (one of them may
+    ///   overlap, and neither is hidden completely).
+    ///   With no free spot it stays, and the fix says so.
     ///
     /// ```
     /// let json = r#"{"version": 1.0, "grid_size": 0, "tabs": []}"#;
@@ -320,13 +324,23 @@ impl GridLayout {
     }
 
     /// [`ElasticLayout::sanitize`]'s overlap fix for one tab: anything that
-    /// covers an item before it moves to the nearest free spot.
+    /// covers an item before it where the [`overlap`] rules don't allow it
+    /// (neither may overlap, or one would be hidden completely) moves to the
+    /// nearest free spot.
     fn fix_overlaps(&mut self, cell: f64, limit: f64, tab: &str, fixes: &mut Vec<String>) {
         let count = self.containers.len() + self.layouts.len();
         for i in 0..count {
             let rect = self.rect_at(i);
-            let Some(covered) = (0..i).find(|&j| rect.overlaps(&self.rect_at(j))) else {
-                continue;
+            // Those before it were fine together, so a problem now is its.
+            let pieces = self.pieces();
+            let covered = match overlap::problem(&pieces[..=i]) {
+                None => continue,
+                Some(overlap::Problem::Overlap(j, _)) => j,
+                Some(overlap::Problem::Hidden(j)) if j != i => j,
+                // It's the one hidden: by whichever before it overlaps it.
+                Some(overlap::Problem::Hidden(_)) => (0..i)
+                    .find(|&j| rect.overlaps(&self.rect_at(j)))
+                    .unwrap_or(i),
             };
             let what = format!(
                 "tab \"{tab}\", {}: covers {}",

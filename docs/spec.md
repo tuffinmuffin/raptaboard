@@ -797,12 +797,21 @@ raptaboard is meant to rest in, apart from feature requests.
      checkbox in its settings dialog, not for list children) is never pushed aside (a drop that
      would push it is refused) or packed, but still moves when dragged itself; unlocked, a pin
      shows in its top-left corner. Each is one undo step, said in the status line.
-   - Allow partial overlap: a per-widget setting (this widget may partly overlap others, such as a
-     label over a corner of a camera view) and a layout-wide setting allowing it everywhere.
-     Partial only: no widget may be completely covered, so every widget keeps some part visible to
-     see and grab. A 1x1 on top of a 1x2 is fine (part of the 1x2 still shows); two 1x1s on the same
-     cell, or a big widget over a smaller one, are not. Needs a draw order (front/back), and the
-     overlap fix when opening a layout must allow the same partial overlaps.
+   - Partial overlap (**done** for 0.5.0, 2026-11-27; decided with the user to use a modifier
+     instead of settings, reflow staying the default): holding **Alt** (Option on a Mac) while
+     dragging or resizing a widget or list places it over others instead of pushing them aside,
+     in front of everything (`grid::fits_over`, `grid::place_over`): it gets raptaboard's
+     `may_overlap: true` and a front `z`, which `grid::tidy_overlaps` takes off again once it
+     overlaps nothing. Partial only: no widget may be completely covered, alone or with others
+     (`raptaboard_layout::overlap`, exact, cutting along every edge), so every widget keeps some
+     part visible to see and grab; a 1x1 on a 1x2 is fine, two 1x1s on one cell or a big one over a
+     smaller one are not (refused, red outline, "It would hide a widget completely there"). Drawn,
+     clicked and hit-tested back to front by `z`, then widgets before lists, in file order
+     (`grid::draw_order`); a widget overlapping another has **Bring to front** and **Send to back**
+     in its right-click menu (refused if it would hide one). Opening a layout keeps overlaps the
+     rules allow and fixes the rest as before. Plain drags still push aside (and say "hold Alt to
+     overlap instead"); Pack widgets never piles things up. Not yet: Alt for topics dropped from
+     the tree or list children dragged out.
    - Boolean Box text (**done**): `text_backing`, a see-through box behind the text so it reads over
      any color, and `true_text_color` / `false_text_color` (automatic black or white if not set; white
      on the backing).

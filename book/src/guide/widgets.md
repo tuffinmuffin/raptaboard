@@ -44,6 +44,10 @@ Unlocked:
 - **Move** a widget by dragging it; it snaps to the grid. Widgets in the way slide aside to the
   nearest free spots, shown as you drag; move on and they slide back. The outline is red only when
   one of them has nowhere to go. **Escape** calls the drag off, leaving everything as it was.
+  Hold **Alt** (Option on a Mac) to place it partly *over* others instead, in front, such as a
+  label on a corner of a camera view: no widget may be hidden completely, so the outline turns red
+  where it would hide one. A widget overlapping another has **Bring to front** and **Send to back**
+  in its right-click menu.
 - **Resize** it by dragging its bottom-right corner. Growing over others pushes them aside too.
 - **Click** it to select it. That also finds its topic in the tree.
 - **Double-click** it, or press **Enter** while it's selected, to open its settings.
