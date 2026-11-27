@@ -23,3 +23,4 @@ pub mod struct_view;
 pub mod swerve;
 pub mod text_display;
 pub mod toggle;
+pub mod xy_graph;

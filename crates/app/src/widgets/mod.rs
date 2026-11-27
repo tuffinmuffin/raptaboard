@@ -412,6 +412,8 @@ pub static TYPES: &[&dyn WidgetType] = &[
     &builtin::alerts::AlertsWidget,
     &builtin::fms_info::FmsInfo,
     &builtin::graph::Graph,
+    &builtin::xy_graph::XyGraph,
+    &builtin::xy_graph::PolarGraph,
     &builtin::field::FieldWidget,
     &builtin::gyro::Gyro,
     &builtin::swerve::SwerveDrive,

@@ -234,7 +234,8 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   Multi Color View, Graph (`egui_plot`; widgets needing a full `Ui` override `WidgetType::show`; records
   `history_kept` seconds, and paused, the wheel or a drag moves back through them, `graph::Window`, with lines
   thinned per pixel column, `graph::thin`; `show_stats` gives each line's min, max and average over the time shown or
-  between the cursors, `graph::stats_between`),
+  between the cursors, `graph::stats_between`), X/Y Graph and Polar Graph (`builtin/xy_graph.rs`: pairs of values
+  recorded at the same time, `xy_graph::paired`, with a fading trail; `known_pair` for the structs that are an x and y),
   Toggle Switch and Toggle Button (`builtin/toggle.rs`), Number Slider (`builtin/number_slider.rs`), Dropdown and Split Button Chooser (`builtin/chooser.rs`: bound to a SendableChooser table, `table_types`, `sends_to` and `Frame::others`), Enum Dropdown and Enum Toggle (`builtin/enums.rs`: string or int topics, names from a list, a string[] topic or a chooser, guessed by `WidgetType::chosen`), Field (`builtin/field/`: a Pose2d/Pose3d (or array) struct topic or a `Field2d` table on a field from `fields.rs`,
   WPILib `fields` JSONs from the repo's `fields/` folder (2026 built in) or one picked with a file dialog;
   poses read by `types/field.rs` in the 2027 centered frame, `origin` for the old one; `layers.rs` the

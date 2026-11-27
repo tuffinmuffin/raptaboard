@@ -7,6 +7,10 @@ What changes in each raptaboard release. Newest first.
 - **Text style:** a widget's title, and the value text of Text Display, Boolean Box and Struct, can
   be Sans, Mono, Serif, Narrow or Digital (a seven-segment display), bold, italic, and any color, from the settings dialog's "Style…" buttons; the
   title's size too.
+- **X/Y and polar graphs:** the X/Y Graph plots one value against another (a joystick, a robot's
+  path, commanded against measured speeds) and the Polar Graph a distance at an angle (a turret's
+  aim), each with a fading trail. Make one with "Add as" on a number, then drop the second value
+  on it from the tree, or on a Pose, Translation or ChassisSpeeds for its x and y at once.
 
 ## 0.4.0
 
