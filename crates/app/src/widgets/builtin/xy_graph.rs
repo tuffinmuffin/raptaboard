@@ -153,9 +153,14 @@ impl Source {
         }
     }
 
-    /// Its name: the topic's last part, and the field's path.
+    /// Its name: the topic's last part, and the field's path (but not a
+    /// Rotation2d's `value`: it's the whole rotation).
     pub fn label(&self) -> String {
-        source_title(&self.topic, self.field.as_ref())
+        let field = self
+            .field
+            .as_ref()
+            .filter(|f| !(f.schema_name == "Rotation2d" && f.path == ["value"]));
+        source_title(&self.topic, field)
     }
 
     fn to_json(&self) -> Json {
@@ -273,10 +278,14 @@ pub fn known_pair(nt_type: &str) -> Option<(StructMeta, StructMeta)> {
     Some((meta(x), meta(y)))
 }
 
-/// Whether a value of NT type `nt_type` is one number of a pair.
+/// Whether a value of NT type `nt_type` is one number of a pair: a number,
+/// a boolean, or a Rotation2d (its angle, in radians).
 fn is_number(nt_type: &str) -> bool {
-    matches!(nt_type, "double" | "float" | "int" | "boolean")
+    matches!(nt_type, "double" | "float" | "int" | "boolean") || nt_type == ROTATION
 }
+
+/// A Rotation2d, which is one number: its `value`, in radians.
+const ROTATION: &str = "struct:Rotation2d";
 
 /// A pair made from one topic (or field) of NT type `nt_type`: a whole
 /// pair for a struct with a [`known_pair`], else the first value of one.
@@ -302,11 +311,21 @@ fn pair_from(
             name: None,
         });
     }
+    let (data_type, field) = match field {
+        None if nt_type == ROTATION => (
+            "double",
+            Some(StructMeta {
+                path: vec!["value".to_owned()],
+                schema_name: "Rotation2d".to_owned(),
+            }),
+        ),
+        field => (nt_type, field.cloned()),
+    };
     is_number(nt_type).then(|| Pair {
         x: Source {
             topic: topic.to_owned(),
-            data_type: Some(nt_type.to_owned()),
-            field: field.cloned(),
+            data_type: Some(data_type.to_owned()),
+            field,
         },
         y: None,
         color,
@@ -1170,6 +1189,16 @@ impl WidgetType for PolarGraph {
     fn shows(&self, nt_type: &str) -> bool {
         is_number(nt_type)
     }
+    /// A Rotation2d's angle is in radians, so a polar graph made for one
+    /// reads radians unless it already says.
+    fn chosen(&self, props: &mut Map<String, Json>, value: ValueInfo<'_>) {
+        let nt_type = value
+            .nt_type
+            .or(props.get(DATA_TYPE).and_then(Json::as_str));
+        if nt_type == Some(ROTATION) && !props.contains_key(ANGLE_UNIT) {
+            set_property(props, ANGLE_UNIT, Some("radians".into()));
+        }
+    }
     fn show(
         &self,
         ui: &mut egui::Ui,
@@ -1307,6 +1336,35 @@ mod tests {
         assert!(crate::widgets::types_showing("struct:Pose2d").contains(&"X/Y Graph"));
         assert!(!crate::widgets::types_showing("struct:Pose2d").contains(&"Polar Graph"));
         assert!(crate::widgets::types_showing("double").contains(&"Polar Graph"));
+    }
+
+    #[test]
+    fn a_rotation_is_a_polar_graphs_angle_in_radians() {
+        // Offered for a Rotation2d, so a widget changed away can come back.
+        assert!(crate::widgets::types_showing(ROTATION).contains(&"Polar Graph"));
+        let mut w = widget("/Drive/heading", ROTATION, "Polar Graph");
+        let info = ValueInfo {
+            nt_type: Some(ROTATION),
+            field: None,
+            topics: &[],
+        };
+        PolarGraph.chosen(&mut w.properties, info);
+        assert_eq!(w.properties[ANGLE_UNIT], "radians");
+        let first = &pairs(&w.properties)[0];
+        assert_eq!(first.x.field.as_ref().unwrap().path, ["value"]);
+        assert_eq!(first.label(), "heading");
+        // A unit already chosen stays.
+        w.properties.insert(ANGLE_UNIT.into(), "degrees".into());
+        PolarGraph.chosen(&mut w.properties, info);
+        assert_eq!(w.properties[ANGLE_UNIT], "degrees");
+        // A number isn't changed.
+        let mut n = widget("/Turret/angle", "double", "Polar Graph");
+        let number = ValueInfo {
+            nt_type: Some("double"),
+            ..info
+        };
+        PolarGraph.chosen(&mut n.properties, number);
+        assert!(!n.properties.contains_key(ANGLE_UNIT));
     }
 
     #[test]

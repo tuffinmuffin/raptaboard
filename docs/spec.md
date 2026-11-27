@@ -943,7 +943,8 @@ raptaboard is meant to rest in, apart from feature requests.
      graph (`pairs`), each its own color, named after the struct or the topics' folder. Pairs come
      from "Add as" on a number (the first value; the next number dropped on finishes it, more
      drops start new pairs) or on a struct with a known pair (`xy_graph::known_pair`:
-     Translation2d/3d, Pose2d/3d, ChassisSpeeds' vx and vy; X/Y only). X/Y: fixed x and y ranges
+     Translation2d/3d, Pose2d/3d, ChassisSpeeds' vx and vy; X/Y only). A Rotation2d is one number, its angle in
+     radians; a Polar Graph chosen for one reads radians (`chosen`). X/Y: fixed x and y ranges
      or fit, `same_scale`. Polar: rings and 30° spokes, the outer ring fixed or fit, degrees or
      radians (spokes labelled in π for radians), 0 right, up, left or down, clockwise or not.
      Shares Graph's recording (`traces.rs`) and pause (freeze), and hover shows the pointer's
