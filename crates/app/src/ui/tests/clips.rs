@@ -7,7 +7,13 @@
 //!
 //! ```sh
 //! cargo test -p raptaboard --lib record_ -- --ignored --nocapture
+//! # Only some pictures: file names (or folder/name), the rest left as they are.
+//! RAPTABOARD_SHOTS=x-y-graph,tabs/styles cargo test -p raptaboard --lib record_docs -- --ignored
 //! ```
+//!
+//! Retake only the pictures whose widgets changed: the sim's values move,
+//! so every picture taken again differs a little, and some can come out
+//! worse (FMSInfo without a Driver Station says "No robot").
 
 // Tests written by Claude.
 
@@ -314,8 +320,46 @@ fn show_tab(harness: &mut Harness, tab: &str, seconds: u64) {
     }
 }
 
-/// Save `image` at `path` (from the repo's root), making its folder.
+/// Whether to save the picture at `path` when `only` (the `RAPTABOARD_SHOTS`
+/// setting) lists some: each a file name without `.png` (`fmsinfo`), or with
+/// its folder (`tabs/styles`), comma-separated. None set: every picture.
+/// Retaking only what changed keeps the others' values, and their good
+/// moments (a robot shown disabled, not "No robot"), as they were.
+fn wanted(path: &str, only: Option<&str>) -> bool {
+    let Some(only) = only.map(str::trim).filter(|o| !o.is_empty()) else {
+        return true;
+    };
+    let stem = path.trim_end_matches(".png");
+    let file = stem.rsplit('/').next().unwrap_or(stem);
+    let named = |name: &str| {
+        let by_file = name == file;
+        let by_folder = name.contains('/') && stem.ends_with(&format!("/{name}"));
+        by_file || by_folder
+    };
+    only.split(',').map(str::trim).any(named)
+}
+
+#[test]
+fn only_the_pictures_asked_for_are_retaken() {
+    let all = |path| wanted(path, None);
+    assert!(all("book/src/images/widgets/fmsinfo.png"));
+    let only = |path| wanted(path, Some("x-y-graph, tabs/styles"));
+    assert!(only("book/src/images/widgets/x-y-graph.png"));
+    assert!(only("book/src/images/tabs/styles.png"));
+    assert!(
+        !only("book/src/images/widgets/styles.png"),
+        "another folder's"
+    );
+    assert!(!only("book/src/images/widgets/fmsinfo.png"));
+    assert!(wanted("book/src/images/widgets/fmsinfo.png", Some(" ")));
+}
+
+/// Save `image` at `path` (from the repo's root), making its folder, unless
+/// `RAPTABOARD_SHOTS` names other pictures ([`wanted`]).
 fn save_png(image: &RgbaImage, path: &str) {
+    if !wanted(path, std::env::var("RAPTABOARD_SHOTS").ok().as_deref()) {
+        return;
+    }
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let out = root.join(path);
     std::fs::create_dir_all(out.parent().unwrap()).expect("make the folder");

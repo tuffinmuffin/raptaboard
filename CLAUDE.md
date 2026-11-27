@@ -41,8 +41,10 @@ python3 scripts/check_book.py      # every chapter, link and image resolves
 cargo test -p raptaboard --lib record_field_clip -- --ignored --nocapture
 # The Microsoft Store listing's screenshots (media/store/; needs a GPU and robot-2027's sim running here):
 cargo test -p raptaboard --lib record_store_screenshots -- --ignored --nocapture
-# The book's screenshots (book/src/images/tabs, widgets, window; needs a GPU and robot-2027's sim running here):
-cargo test -p raptaboard --lib record_docs_screenshots -- --ignored --nocapture
+# The book's screenshots (book/src/images/tabs, widgets, window; needs a GPU and robot-2027's sim running here).
+# Retake only the pictures that changed (RAPTABOARD_SHOTS: file names or folder/name), so the others keep their
+# values and good moments; review each picture before committing, and revert any that came out worse:
+RAPTABOARD_SHOTS=x-y-graph,tabs/styles cargo test -p raptaboard --lib record_docs_screenshots -- --ignored --nocapture
 # Log pointer and touch input to the terminal (input_log.rs: egui's events each frame and what the
 # Field's target made of them), for odd clicks and taps:
 RAPTABOARD_LOG_INPUT=1 cargo run -p raptaboard -- --address sim layouts/robot2027_sim.json
