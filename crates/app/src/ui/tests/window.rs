@@ -453,3 +453,70 @@ fn the_driver_station_choice_connects_where_the_driver_station_says() {
     drop(tell);
     ds.join().unwrap();
 }
+
+#[test]
+fn the_right_click_menus_pin_fill_and_pack() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    let area = harness.state().grid.area.min;
+    let grid = |h: &Harness| h.state().layout.tabs[0].grid_layout.clone();
+    // Pin the first widget from its menu.
+    let first = area + egui::vec2(128.0, 160.0);
+    click_at(
+        &mut harness,
+        first,
+        egui::PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    harness.get_by_label("Pin in place").click();
+    settle(&mut harness);
+    assert!(crate::grid::Item::Widget(0).pinned(&grid(&harness)));
+    // A checkbox leaves the menu open; a click on empty grid closes it.
+    // (Past the fifth column of 256-point cells, inside the window.)
+    let empty = area + egui::vec2(1350.0, 100.0);
+    click_at(
+        &mut harness,
+        empty,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    // Take the second widget away, and pack: the third slides left into
+    // the gap; the pinned first stays.
+    let third_before = grid(&harness).containers[2].rect;
+    harness.state_mut().layout.tabs[0]
+        .grid_layout
+        .containers
+        .remove(1);
+    settle(&mut harness);
+    // Right-click empty grid, past the last column of widgets.
+    click_at(
+        &mut harness,
+        empty,
+        egui::PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    harness.get_by_label("Pack widgets").click();
+    settle(&mut harness);
+    let after = grid(&harness);
+    assert_eq!(after.containers[0].rect.x, 0.0, "pinned stays");
+    assert!(
+        after.containers[1].rect.x < third_before.x,
+        "slid into the gap"
+    );
+    assert!(
+        harness.state().status.starts_with("Packed"),
+        "{}",
+        harness.state().status
+    );
+    // Fill space from the first widget's menu: nothing beside it is free
+    // after packing, so it says so.
+    click_at(
+        &mut harness,
+        first,
+        egui::PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    harness.get_by_label("Fill space").click();
+    settle(&mut harness);
+    assert!(!harness.state().status.is_empty());
+}

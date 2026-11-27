@@ -788,6 +788,15 @@ raptaboard is meant to rest in, apart from feature requests.
      children dragged out onto the grid make room the same way (`grid::make_room`; for several
      topics, room for the first, the rest around it). Escape calls any drag off, putting everything
      back (asked for by the user 2026-11-27).
+   - Fill space, Pack widgets and Pin in place (**done** for 0.5.0, asked for by the user
+     2026-11-27, `grid::fill_space`, `grid::pack`, `grid::PINNED`): a widget's or list's right-click
+     menu has **Fill space** (it grows to the biggest rectangle of empty, fully shown cells holding
+     its own; ties keep its corner) and **Pin in place**; the empty grid's has **Pack widgets** (in
+     reading order each item slides up, then left, a cell at a time, until nothing moves: sizes and
+     arrangement kept). A pinned item (`pinned: true` in its properties, raptaboard's; also a
+     checkbox in its settings dialog, not for list children) is never pushed aside (a drop that
+     would push it is refused) or packed, but still moves when dragged itself; unlocked, a pin
+     shows in its top-left corner. Each is one undo step, said in the status line.
    - Allow partial overlap: a per-widget setting (this widget may partly overlap others, such as a
      label over a corner of a camera view) and a layout-wide setting allowing it everywhere.
      Partial only: no widget may be completely covered, so every widget keeps some part visible to
