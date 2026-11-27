@@ -406,30 +406,39 @@ fn style_rows(
     default_color: Option<Color32>,
 ) {
     ui.label("    Font");
-    ui.horizontal(|ui| {
-        let now = TextStyle::read(props, keys)
-            .family
-            .unwrap_or(default_family);
-        let size = egui::TextStyle::Button.resolve(ui.style()).size;
-        for family in Family::ALL {
-            let label = if family == default_family {
-                format!("{} (usual)", family.label())
-            } else {
-                family.label().to_owned()
-            };
-            // Each name in its own font, so you see what you'd get.
-            let font = TextStyle {
-                family: Some(family),
-                ..Default::default()
-            }
-            .font(ui.ctx(), family, size);
-            let label = egui::RichText::new(label).font(font);
-            if ui.selectable_label(now == family, label).clicked() {
-                let value = (family != default_family).then(|| Json::from(family.key()));
-                set_property(props, keys.family, value);
-            }
+    let now = TextStyle::read(props, keys)
+        .family
+        .unwrap_or(default_family);
+    let size = egui::TextStyle::Button.resolve(ui.style()).size;
+    // Each name in its own font, so you see what you'd get.
+    let label = |ui: &egui::Ui, family: Family| {
+        let text = if family == default_family {
+            format!("{} (usual)", family.label())
+        } else {
+            family.label().to_owned()
+        };
+        let font = TextStyle {
+            family: Some(family),
+            ..Default::default()
         }
-    });
+        .font(ui.ctx(), family, size);
+        egui::RichText::new(text).font(font)
+    };
+    let mut picked = now;
+    egui::ComboBox::from_id_salt(("text style font", keys.family))
+        .selected_text(label(ui, now))
+        .show_ui(ui, |ui| {
+            for family in Family::ALL {
+                let text = label(ui, family);
+                ui.selectable_value(&mut picked, family, text);
+            }
+        })
+        .response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::ComboBox, true, "Font"));
+    if picked != now {
+        let value = (picked != default_family).then(|| Json::from(picked.key()));
+        set_property(props, keys.family, value);
+    }
     ui.end_row();
 
     if let Some(default_color) = default_color {
@@ -759,14 +768,28 @@ mod tests {
         assert_eq!(harness.state().get(VALUE.bold), Some(&Json::Bool(true)));
         harness.get_by_label("Italic").click();
         harness.run();
+        let font_list = |h: &egui_kittest::Harness<'_, Map<String, Json>>| {
+            h.get_by(|n| {
+                n.role() == egui::accesskit::Role::ComboBox && n.label().as_deref() == Some("Font")
+            })
+            .click();
+        };
+        font_list(&harness);
+        harness.run();
         harness.get_by_label("Sans").click();
         harness.run();
         assert!(open(&harness), "closed after picking a font");
+        assert!(
+            harness.query_by_label("Digital").is_none(),
+            "the list closed"
+        );
         assert_eq!(harness.state().get(VALUE.family), Some(&Json::from("sans")));
         harness.get_by_label("elsewhere").click();
         harness.run();
         assert!(open(&harness), "closed after a click elsewhere");
         // The usual font removes the setting; Reset style removes the rest.
+        font_list(&harness);
+        harness.run();
         harness.get_by_label("Mono (usual)").click();
         harness.run();
         assert_eq!(harness.state().get(VALUE.family), None);

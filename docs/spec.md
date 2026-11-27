@@ -752,13 +752,14 @@ raptaboard is meant to rest in, apart from feature requests.
      it; Number Bar, Voltage View and Radial Gauge use it for their fill unless their own gradient (over
      their scale) is on. The colors are the scale's `low_color`, `mid_color`, `high_color`.
    - Text style (**done** for 0.5.0, 2026-11-26, `shared/text_style.rs`): the settings dialog's "Text"
-     row (size and a "Style…" button showing rows under it: font, color, bold, italic, Reset
-     style; rows, not a pop-up, as egui closes a pop-up when its color picker or a list opens) for the value text of Text Display,
+     row (size and a "Style…" button showing rows under it: a font dropdown with each name in its
+     own font, color, bold, italic, Reset style; rows, not a pop-up, as egui closes a pop-up when its color picker or a list opens) for the value text of Text Display,
      Boolean Box (no color: its true and false text colors are its own) and Struct, and a "Title
      text" row (size, Style…) for every widget's and List Layout's title. Fonts are Sans (egui's
-     Ubuntu Light) and Mono (Hack), the same on every computer; bold uses `media/fonts/`'s Ubuntu
-     Bold and Hack Bold (added to egui as their own families, `install_fonts`; drawn regular for the
-     one frame before they're in); italic is egui's slant. "Reset settings" clears both styles.
+     Ubuntu Light), Mono (Hack), Serif (PT Serif), Narrow (PT Sans Narrow) and Digital (DSEG7
+     Classic, seven-segment), the same on every computer; all but egui's two regular ones are
+     `media/fonts/` files (added to egui as their own families with egui's fonts after them for
+     missing characters, `install_fonts`; drawn in egui's own for the one frame before they're in); italic is egui's slant. "Reset settings" clears both styles.
      Not yet: the choosers' and enum widgets' text (egui's own combo boxes and buttons, which can't
      slant), the number widgets' value text, and a layout-wide default style.
    - Copy settings to the rest of a list (**done**, `list_layout::copy_settings`): in the list settings,
