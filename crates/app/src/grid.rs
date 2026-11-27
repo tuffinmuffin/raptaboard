@@ -6,10 +6,15 @@
 //! nearest free spots ([`reflow`]). A widget can grow into the empty cells
 //! around it ([`fill_space`]), and a tab's widgets can slide up and left to
 //! close gaps ([`pack`]). A pinned item ([`PINNED`]) is never moved by any
-//! of these, only by being dragged itself. This module holds those rules without any drawing, so they can be
+//! of these, only by being dragged itself.
+//!
+//! Items may overlap in part where the layout crate's overlap rules allow
+//! it (one of the two may overlap, or the tab allows it; nothing hidden
+//! completely); they're drawn back to front in [`draw_order`]. This module holds those rules without any drawing, so they can be
 //! tested without a window. Positions and sizes are pixels at the layout's
 //! grid size, as Elastic saves them.
 
+use raptaboard_layout::overlap::{self, Piece, Problem};
 use raptaboard_layout::{GridLayout, MAX_GRID_CELLS, Rect};
 
 use crate::widgets::list_layout::{NEW_LIST_CELLS, cells_tall_for, labels, new_list};
@@ -55,26 +60,90 @@ impl Item {
 }
 
 impl Item {
-    /// Whether this item is pinned in place ([`PINNED`]).
-    pub fn pinned(self, grid: &GridLayout) -> bool {
-        let props = match self {
+    /// This item's settings, if it exists.
+    fn properties(self, grid: &GridLayout) -> Option<&serde_json::Map<String, serde_json::Value>> {
+        match self {
             Item::Widget(i) => grid.containers.get(i).map(|w| &w.properties),
             Item::List(i) => grid.layouts.get(i).map(|l| &l.properties),
-        };
-        props.and_then(|p| p.get(PINNED)).and_then(|v| v.as_bool()) == Some(true)
+        }
+    }
+
+    /// This item's settings, to change, if it exists.
+    fn properties_mut(
+        self,
+        grid: &mut GridLayout,
+    ) -> Option<&mut serde_json::Map<String, serde_json::Value>> {
+        match self {
+            Item::Widget(i) => grid.containers.get_mut(i).map(|w| &mut w.properties),
+            Item::List(i) => grid.layouts.get_mut(i).map(|l| &mut l.properties),
+        }
+    }
+
+    /// Whether this item's `key` setting is `true`.
+    fn flag(self, grid: &GridLayout, key: &str) -> bool {
+        self.properties(grid)
+            .and_then(|p| p.get(key))
+            .and_then(|v| v.as_bool())
+            == Some(true)
+    }
+
+    /// Set this item's `key` setting to `true`, or remove it.
+    fn set_flag(self, grid: &mut GridLayout, key: &str, on: bool) {
+        if let Some(props) = self.properties_mut(grid) {
+            if on {
+                props.insert(key.into(), true.into());
+            } else {
+                props.remove(key);
+            }
+        }
+    }
+
+    /// Whether this item is pinned in place ([`PINNED`]).
+    pub fn pinned(self, grid: &GridLayout) -> bool {
+        self.flag(grid, PINNED)
     }
 
     /// Pin this item in place, or unpin it (the setting removed).
     pub fn set_pinned(self, grid: &mut GridLayout, pinned: bool) {
-        let props = match self {
-            Item::Widget(i) => grid.containers.get_mut(i).map(|w| &mut w.properties),
-            Item::List(i) => grid.layouts.get_mut(i).map(|l| &mut l.properties),
+        self.set_flag(grid, PINNED, pinned);
+    }
+
+    /// Whether this item may overlap others in part ([`overlap::MAY_OVERLAP`]).
+    pub fn may_overlap(self, grid: &GridLayout) -> bool {
+        self.flag(grid, overlap::MAY_OVERLAP)
+    }
+
+    /// Let this item overlap others in part, or not (the setting removed).
+    pub fn set_may_overlap(self, grid: &mut GridLayout, on: bool) {
+        self.set_flag(grid, overlap::MAY_OVERLAP, on);
+    }
+
+    /// Its place front to back ([`overlap::Z`]): 0 unless set.
+    pub fn z(self, grid: &GridLayout) -> i64 {
+        self.properties(grid)
+            .and_then(|p| p.get(overlap::Z))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0)
+    }
+
+    /// Put it in front of everything else on the tab (`front`), or behind.
+    /// Its `z` becomes one more than the highest (or less than the lowest);
+    /// back at 0, the setting is removed.
+    pub fn to_front_or_back(self, grid: &mut GridLayout, front: bool) {
+        let others = items(grid)
+            .into_iter()
+            .filter(|&(other, _)| other != self)
+            .map(|(other, _)| other.z(grid));
+        let z = if front {
+            others.max().map_or(0, |z| z + 1)
+        } else {
+            others.min().map_or(0, |z| z - 1)
         };
-        if let Some(props) = props {
-            if pinned {
-                props.insert(PINNED.into(), true.into());
+        if let Some(props) = self.properties_mut(grid) {
+            if z == 0 {
+                props.remove(overlap::Z);
             } else {
-                props.remove(PINNED);
+                props.insert(overlap::Z.into(), z.into());
             }
         }
     }
@@ -481,6 +550,24 @@ pub fn is_free(grid: &GridLayout, rect: Rect) -> bool {
     items(grid).into_iter().all(|(_, r)| !rect.overlaps(&r))
 }
 
+/// The place of `item` in [`GridLayout::pieces`] (and [`items`]).
+fn piece_index(grid: &GridLayout, item: Item) -> Option<usize> {
+    match item {
+        Item::Widget(i) => (i < grid.containers.len()).then_some(i),
+        Item::List(i) => (i < grid.layouts.len()).then_some(grid.containers.len() + i),
+    }
+}
+
+/// Everything on `grid` with its place, back to front: drawn in this order,
+/// so later is on top ([`overlap::draw_order`]).
+pub fn draw_order(grid: &GridLayout) -> Vec<(Item, Rect)> {
+    let all = items(grid);
+    overlap::draw_order(&grid.pieces())
+        .into_iter()
+        .map(|i| all[i])
+        .collect()
+}
+
 /// Whether `item` can go at `rect` on `grid` without covering anything else.
 ///
 /// ```
@@ -499,6 +586,71 @@ pub fn fits(grid: &GridLayout, item: Item, rect: Rect) -> bool {
     items(grid)
         .into_iter()
         .all(|(other, r)| other == item || !rect.overlaps(&r))
+}
+
+/// Whether `item` can go at `rect` over others, as when dropped with Alt
+/// held ([`place_over`]): in front of everything, it may overlap anything,
+/// but mustn't hide one completely (alone or with what's already over it).
+///
+/// ```
+/// use raptaboard::grid::{fits_over, Item};
+/// use raptaboard_layout::{GridLayout, Rect};
+/// let grid: GridLayout = serde_json::from_str(r#"{"containers": [
+///     {"title": "a", "x": 0.0, "y": 0.0, "width": 256.0, "height": 128.0, "type": "Text Display"},
+///     {"title": "b", "x": 0.0, "y": 128.0, "width": 128.0, "height": 128.0, "type": "Text Display"}
+/// ]}"#).unwrap();
+/// let half_of_a = Rect { x: 128.0, y: 0.0, width: 128.0, height: 128.0 };
+/// assert!(fits_over(&grid, Item::Widget(1), half_of_a));
+/// let all_of_a = Rect { width: 256.0, ..half_of_a };
+/// assert!(!fits_over(&grid, Item::Widget(1), Rect { x: 0.0, ..all_of_a }));
+/// ```
+pub fn fits_over(grid: &GridLayout, item: Item, rect: Rect) -> bool {
+    let Some(at) = piece_index(grid, item) else {
+        return false;
+    };
+    let mut pieces = grid.pieces();
+    let front = pieces.iter().map(|p| p.z).max().unwrap_or(0) + 1;
+    pieces[at] = Piece {
+        rect,
+        may_overlap: true,
+        z: front,
+    };
+    overlap::problems(&pieces).into_iter().all(|p| match p {
+        Problem::Overlap(a, b) => a != at && b != at,
+        Problem::Hidden(j) => j != at && !pieces[j].rect.overlaps(&rect),
+    })
+}
+
+/// Put `item` at `rect` over whatever is there, in front of everything:
+/// it's marked as allowed to overlap, so opening the layout keeps it
+/// there. The caller checks [`fits_over`] first.
+pub fn place_over(grid: &mut GridLayout, item: Item, rect: Rect) {
+    item.set_rect(grid, rect);
+    let overlaps = items(grid)
+        .into_iter()
+        .any(|(other, r)| other != item && r.overlaps(&rect));
+    if overlaps {
+        item.set_may_overlap(grid, true);
+        item.to_front_or_back(grid, true);
+    }
+    tidy_overlaps(grid);
+}
+
+/// Take the overlap marks (`may_overlap`, `z`) off everything that overlaps
+/// nothing any more, so they don't linger.
+pub fn tidy_overlaps(grid: &mut GridLayout) {
+    let all = items(grid);
+    for &(item, r) in &all {
+        let alone = all
+            .iter()
+            .all(|&(other, o)| other == item || !o.overlaps(&r));
+        if alone {
+            item.set_may_overlap(grid, false);
+            if let Some(props) = item.properties_mut(grid) {
+                props.remove(overlap::Z);
+            }
+        }
+    }
 }
 
 /// Where things go if `item` is put at `target`, moving whatever is in the
@@ -1191,6 +1343,98 @@ mod tests {
             // A pinned item can still be dragged itself.
             let free = g.at(1.0, 1.0, 1.0, 1.0);
             assert!(reflow(&grid, Item::Widget(1), free, g.cell, window).is_some());
+        });
+    }
+
+    #[test]
+    fn placed_over_others_in_front_but_never_hiding_one() {
+        each_size(|g| {
+            // "camera" two cells wide; "label" and "other" one each.
+            let mut grid = g.grid(
+                &[
+                    ("camera", g.at(0.0, 0.0, 2.0, 1.0)),
+                    ("label", g.at(0.0, 2.0, 1.0, 1.0)),
+                    ("other", g.at(3.0, 0.0, 1.0, 1.0)),
+                ],
+                &[],
+            );
+            let half = g.at(1.0, 0.0, 1.0, 1.0);
+            // Over half the camera: it fits, but not with a plain move.
+            assert!(fits_over(&grid, Item::Widget(1), half));
+            assert!(!fits(&grid, Item::Widget(1), half));
+            // Exactly on "other": it would hide it.
+            assert!(!fits_over(&grid, Item::Widget(1), g.at(3.0, 0.0, 1.0, 1.0)));
+            place_over(&mut grid, Item::Widget(1), half);
+            assert_eq!(Item::Widget(1).rect(&grid), Some(half));
+            assert!(Item::Widget(1).may_overlap(&grid));
+            assert_eq!(Item::Widget(1).z(&grid), 1, "in front");
+            assert_eq!(grid.overlap_problem(), None);
+            // Another over the camera's other half would hide it, with the
+            // label: refused.
+            assert!(!fits_over(&grid, Item::Widget(2), g.at(0.0, 0.0, 1.0, 1.0)));
+            // A plain move onto the camera still pushes it aside (reflow).
+            let moves = reflow(
+                &grid,
+                Item::Widget(2),
+                g.at(0.0, 0.0, 1.0, 1.0),
+                g.cell,
+                g.window(4.0, 3.0),
+            )
+            .unwrap();
+            assert!(moves.iter().any(|&(item, _)| item == Item::Widget(0)));
+            // Packing never piles them up: the label stays where it is.
+            let packed = pack(&grid, g.cell);
+            assert!(
+                packed.iter().all(|&(item, _)| item != Item::Widget(1)),
+                "{packed:?}"
+            );
+            // Moved off the camera, it loses its marks.
+            place_over(&mut grid, Item::Widget(1), g.at(2.0, 2.0, 1.0, 1.0));
+            assert!(!Item::Widget(1).may_overlap(&grid));
+            assert_eq!(Item::Widget(1).z(&grid), 0);
+        });
+    }
+
+    #[test]
+    fn front_and_back_order_the_drawing() {
+        each_size(|g| {
+            let mut grid = g.grid(
+                &[
+                    ("a", g.at(0.0, 0.0, 2.0, 1.0)),
+                    ("b", g.at(1.0, 0.0, 2.0, 1.0)),
+                ],
+                &[("list", g.at(0.0, 1.0, 1.0, 1.0))],
+            );
+            let order = |grid: &GridLayout| -> Vec<Item> {
+                draw_order(grid).into_iter().map(|(i, _)| i).collect()
+            };
+            // Widgets, then lists, in their order.
+            assert_eq!(
+                order(&grid),
+                [Item::Widget(0), Item::Widget(1), Item::List(0)]
+            );
+            Item::Widget(0).to_front_or_back(&mut grid, true);
+            assert_eq!(Item::Widget(0).z(&grid), 1);
+            assert_eq!(
+                order(&grid),
+                [Item::Widget(1), Item::List(0), Item::Widget(0)]
+            );
+            Item::List(0).to_front_or_back(&mut grid, false);
+            assert_eq!(order(&grid)[0], Item::List(0));
+            // Back to 0 (in front of "b" at -1): the setting goes.
+            let mut two = g.grid(
+                &[
+                    ("a", g.at(0.0, 0.0, 2.0, 1.0)),
+                    ("b", g.at(1.0, 0.0, 2.0, 1.0)),
+                ],
+                &[],
+            );
+            Item::Widget(1).to_front_or_back(&mut two, false);
+            assert_eq!(Item::Widget(1).z(&two), -1);
+            Item::Widget(0).to_front_or_back(&mut two, true);
+            assert_eq!(Item::Widget(0).z(&two), 0);
+            assert!(!two.containers[0].properties.contains_key(overlap::Z));
+            assert_eq!(order(&two), [Item::Widget(1), Item::Widget(0)]);
         });
     }
 

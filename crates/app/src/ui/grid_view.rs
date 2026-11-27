@@ -110,6 +110,9 @@ pub(super) struct Requests {
     pub fill: Option<Item>,
     /// "Pin in place" ticked or unticked in a widget's or list's menu.
     pub pin: Option<(Item, bool)>,
+    /// "Bring to front" (`true`) or "Send to back" from a widget's or list's
+    /// menu, when it overlaps another.
+    pub front_back: Option<(Item, bool)>,
     /// A widget or list let go after a drag.
     pub dropped: Option<Drag>,
     /// A list child let go, and where (if anywhere it can go).
@@ -133,6 +136,17 @@ pub(super) struct Requests {
     /// Series whose range and statistics to start again: "Reset scale" or
     /// "Reset min/max" from a widget's menu.
     pub reset_ranges: Vec<SeriesKey>,
+}
+
+/// `item`'s settings on `grid`, to change.
+fn item_props(
+    grid: &mut GridLayout,
+    item: Item,
+) -> Option<&mut serde_json::Map<String, serde_json::Value>> {
+    match item {
+        Item::Widget(i) => grid.containers.get_mut(i).map(|w| &mut w.properties),
+        Item::List(i) => grid.layouts.get_mut(i).map(|l| &mut l.properties),
+    }
 }
 
 /// A small pin in `card`'s top-left corner: the item is pinned in place.
@@ -369,7 +383,8 @@ impl DashboardApp {
     /// The widget (or List Layout child) under `pos` on screen, if any.
     fn widget_under(&self, view: GridView, pos: Pos2) -> Option<WidgetContainer> {
         let grid = &self.tab()?.grid_layout;
-        for (item, r) in grid::items(grid) {
+        // Front first: what's drawn on top is what's under the pointer.
+        for (item, r) in grid::draw_order(grid).into_iter().rev() {
             let rect = view.to_screen(&r);
             if !rect.contains(pos) {
                 continue;
@@ -442,7 +457,7 @@ impl DashboardApp {
         let Some(tab) = self.layout.tabs.get(self.current_tab) else {
             return;
         };
-        for (item, r) in grid::items(&tab.grid_layout) {
+        for (item, r) in grid::draw_order(&tab.grid_layout) {
             let rect = view.to_screen(&r);
             let id = ui.scope_id().with(("grid_item", self.current_tab, item));
             let corner = Rect::from_min_max(rect.max - Vec2::splat(RESIZE_HANDLE), rect.max);
@@ -565,6 +580,18 @@ impl DashboardApp {
                 {
                     requests.fill = Some(item);
                 }
+                // Overlapping another: front and back.
+                let overlaps = grid::items(&tab.grid_layout)
+                    .into_iter()
+                    .any(|(other, o)| other != item && o.overlaps(&r));
+                if overlaps {
+                    if ui.button("Bring to front").clicked() {
+                        requests.front_back = Some((item, true));
+                    }
+                    if ui.button("Send to back").clicked() {
+                        requests.front_back = Some((item, false));
+                    }
+                }
                 let mut pinned = item.pinned(&tab.grid_layout);
                 if ui
                     .checkbox(&mut pinned, "Pin in place")
@@ -632,7 +659,7 @@ impl DashboardApp {
             locked: self.locked,
             ..Default::default()
         };
-        for (item, r) in grid::items(&tab.grid_layout) {
+        for (item, r) in grid::draw_order(&tab.grid_layout) {
             if Some(item) == dragging {
                 continue;
             }
@@ -683,7 +710,7 @@ impl DashboardApp {
         let dragging = self.grid.drag.map(|d| d.item);
         // Unlocked, a pin in the top-left corner of each pinned item.
         if !self.locked {
-            for (item, r) in grid::items(&tab.grid_layout) {
+            for (item, r) in grid::draw_order(&tab.grid_layout) {
                 if Some(item) != dragging && item.pinned(&tab.grid_layout) {
                     draw_pin(painter, visuals, view.to_screen(&r).shrink(CELL_GAP));
                 }
@@ -783,6 +810,7 @@ impl DashboardApp {
             pack,
             fill,
             pin,
+            front_back,
             dropped,
             child_dropped,
             topics_dropped,
@@ -798,6 +826,25 @@ impl DashboardApp {
             self.traces.reset(key);
         }
         self.arrange(pack, fill, pin, view);
+        if let Some((item, front)) = front_back
+            && let Some(tab) = self.layout.tabs.get_mut(self.current_tab)
+        {
+            let grid = &mut tab.grid_layout;
+            let was = item.z(grid);
+            item.to_front_or_back(grid, front);
+            // Sent back, it mustn't end up hidden; nor may it hide one.
+            if grid.overlap_problem().is_some() {
+                if let Some(props) = item_props(grid, item) {
+                    if was == 0 {
+                        props.remove(raptaboard_layout::overlap::Z);
+                    } else {
+                        props.insert(raptaboard_layout::overlap::Z.into(), was.into());
+                    }
+                }
+                self.status = "That would hide a widget completely".to_owned();
+            }
+            self.selected = Some(item);
+        }
         for (sender, value) in writes {
             self.send(sender, value);
         }
@@ -807,8 +854,8 @@ impl DashboardApp {
         if let Some(drag) = dropped {
             // Worked out here, where it's let go: the preview stops
             // drawing on the frame the drag ends, so it can't say.
-            let into = self.drag_into_list(drag, view, ui.ctx().pointer_latest_pos());
-            self.drop_dragged(drag, into, view);
+            let into = self.drag_into_list(ui.ctx(), drag, view);
+            self.drop_dragged(drag, into, view, super::drag::overlapping(ui.ctx()));
         }
         if let Some((cd, target)) = child_dropped {
             self.grid.child_drag = None;
@@ -1170,7 +1217,10 @@ mod tests {
         drag(&ctx, &mut app, (40.0, 40.0), (40.0 + 384.0, 40.0));
         assert_eq!(rect_of(&app, 0), (384.0, 0.0, 128.0, 128.0));
         assert_eq!(rect_of(&app, 1), (256.0, 0.0, 128.0, 128.0));
-        assert_eq!(app.status, "Moved 1 widget out of the way");
+        assert_eq!(
+            app.status,
+            "Moved 1 widget out of the way (hold Alt to overlap instead)"
+        );
         // One undo puts both back.
         app.history.record(&app.layout);
         assert!(app.history.undo(&mut app.layout));
@@ -1244,6 +1294,70 @@ mod tests {
         assert_eq!(pins(&mut app), 1);
         app.locked = true;
         assert_eq!(pins(&mut app), 0);
+    }
+
+    /// [`drag`] with Alt held all the way.
+    fn alt_drag(ctx: &egui::Context, app: &mut DashboardApp, from: (f32, f32), to: (f32, f32)) {
+        let held = |m| Event::ModifiersChanged(m);
+        let origin = frame(ctx, app, vec![held(egui::Modifiers::ALT)]);
+        let start = origin + Vec2::new(from.0, from.1);
+        let end = origin + Vec2::new(to.0, to.1);
+        frame(ctx, app, vec![Event::PointerMoved(start)]);
+        frame(ctx, app, vec![button(start, true)]);
+        for step in 1..=8 {
+            let at = start + (end - start) * (step as f32 / 8.0);
+            frame(ctx, app, vec![Event::PointerMoved(at)]);
+        }
+        frame(ctx, app, vec![button(end, false)]);
+        frame(ctx, app, vec![held(egui::Modifiers::NONE)]);
+    }
+
+    #[test]
+    fn with_alt_a_widget_goes_over_others_instead_of_pushing_them() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        // B made two cells wide, so A can cover half of it.
+        app.layout.tabs[0].grid_layout.containers[1].rect.width = 256.0;
+        // Alt: A over B's left half, nothing pushed, A in front.
+        alt_drag(&ctx, &mut app, (40.0, 40.0), (40.0 + 384.0, 40.0));
+        assert_eq!(rect_of(&app, 0), (384.0, 0.0, 128.0, 128.0));
+        assert_eq!(rect_of(&app, 1), (384.0, 0.0, 256.0, 128.0), "B stayed");
+        let grid = &app.layout.tabs[0].grid_layout;
+        assert!(Item::Widget(0).may_overlap(grid));
+        assert_eq!(grid::draw_order(grid).last().unwrap().0, Item::Widget(0));
+        assert_eq!(grid.overlap_problem(), None);
+        // A click there picks A, drawn on top.
+        click(&ctx, &mut app, (430.0, 60.0));
+        assert_eq!(app.selected, Some(Item::Widget(0)));
+
+        // Alt over all of B would hide it: refused, and said.
+        app.layout.tabs[0].grid_layout.containers[0].rect.width = 256.0;
+        alt_drag(&ctx, &mut app, (420.0, 40.0), (420.0, 40.0 + 128.0));
+        alt_drag(&ctx, &mut app, (420.0, 168.0), (420.0, 40.0));
+        assert_eq!(app.status, "It would hide a widget completely there");
+
+        // Without Alt, A moved back onto B pushes B aside as before.
+        let mut app = super::tests::app();
+        drag(&ctx, &mut app, (40.0, 40.0), (40.0 + 384.0, 40.0));
+        assert_ne!(rect_of(&app, 1), (384.0, 0.0, 128.0, 128.0));
+        assert!(
+            app.status.ends_with("(hold Alt to overlap instead)"),
+            "{}",
+            app.status
+        );
+    }
+
+    #[test]
+    fn with_alt_a_widget_goes_over_a_list_not_into_it() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        // A onto the list's top half (the list is two cells tall).
+        alt_drag(&ctx, &mut app, (40.0, 40.0), (40.0, 256.0 + 40.0));
+        let grid = &app.layout.tabs[0].grid_layout;
+        assert!(grid.layouts[0].children.is_empty(), "not put in the list");
+        assert_eq!(grid.containers.len(), 2);
+        assert_eq!(rect_of(&app, 0), (0.0, 256.0, 128.0, 128.0));
+        assert_eq!(grid::draw_order(grid).last().unwrap().0, Item::Widget(0));
     }
 
     #[test]
