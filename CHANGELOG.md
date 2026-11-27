@@ -12,6 +12,9 @@ What changes in each raptaboard release. Newest first.
   aim), each with a fading trail. Make one with "Add as" on a number, then drop the second value
   on it from the tree, or on a Pose, Translation or ChassisSpeeds for its x and y at once.
 
+- **The book's Widgets chapter:** every widget, how to add and change widgets, the settings dialog
+  and text styles, with pictures from the sim robot.
+
 ## 0.4.0
 
 Widget plugins: widgets and whole tabs made as small WebAssembly programs, installed from content

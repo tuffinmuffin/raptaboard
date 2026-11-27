@@ -466,6 +466,38 @@ fn record_docs_screenshots() {
         "widget types shown: {}",
         seen.into_iter().collect::<Vec<_>>().join(", ")
     );
+    // A widget's settings, with the value text's Style rows open: the
+    // Styles tab's serif Text Display.
+    harness.set_size(egui::vec2(1280.0, 800.0));
+    harness.state_mut().locked = false;
+    show_tab(&mut harness, "Styles", 1);
+    let tab = harness.state().current_tab;
+    let index = harness.state().layout.tabs[tab]
+        .grid_layout
+        .containers
+        .iter()
+        .position(|w| w.title == "Sine (Serif)")
+        .expect("the Styles tab's Sine (Serif)");
+    let original = harness.state().layout.tabs[tab].grid_layout.containers[index].clone();
+    harness.state_mut().selected = Some(Item::Widget(index));
+    harness.state_mut().editing = Some(Editing::Widget {
+        tab,
+        index,
+        original,
+    });
+    show_tab(&mut harness, "Styles", 1);
+    // Title text's Style… comes first, the value text's second.
+    harness
+        .get_all_by_label("Style… (set)")
+        .last()
+        .expect("the value text's Style…")
+        .click();
+    show_tab(&mut harness, "Styles", 1);
+    let image = harness.render().expect("render a frame");
+    save_png(&image, &format!("{BOOK_IMAGES}/window/widget-settings.png"));
+    harness.state_mut().editing = None;
+    harness.state_mut().selected = None;
+
     // The window as it's set up: unlocked, the tree shown, at a laptop's
     // size.
     harness.set_size(egui::vec2(1280.0, 800.0));
