@@ -60,7 +60,8 @@ fn selectable_row(
         if response.drag_started() {
             egui::DragAndDrop::set_payload(ui.ctx(), DraggedTopics(sel.group(&row)));
         }
-        if response.dragged() {
+        // Until let go, or called off with Escape.
+        if response.dragged() && egui::DragAndDrop::has_payload_of_type::<DraggedTopics>(ui.ctx()) {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             drag_preview(ui.ctx(), id, &sel.group(&row));
         } else if response.hovered() {

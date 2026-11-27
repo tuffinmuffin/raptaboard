@@ -784,8 +784,10 @@ raptaboard is meant to rest in, apart from feature requests.
      instead of the drop being refused. While dragging they're drawn where they'd go, worked out
      from where everything was when the drag began (so moving on lets them slide back); bigger ones
      are placed first; the drop moves them all in one undo step and the status says how many moved.
-     Refused (red outline) only when one has nowhere to go. Not yet: topics dropped from the tree
-     and list children dragged out onto the grid still need a free spot.
+     Refused (red outline) only when one has nowhere to go. Topics dropped from the tree and list
+     children dragged out onto the grid make room the same way (`grid::make_room`; for several
+     topics, room for the first, the rest around it). Escape calls any drag off, putting everything
+     back (asked for by the user 2026-11-27).
    - Allow partial overlap: a per-widget setting (this widget may partly overlap others, such as a
      label over a corner of a camera view) and a layout-wide setting allowing it everywhere.
      Partial only: no widget may be completely covered, so every widget keeps some part visible to

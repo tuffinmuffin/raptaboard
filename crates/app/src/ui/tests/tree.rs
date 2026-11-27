@@ -226,3 +226,35 @@ fn add_as_makes_any_type_that_shows_the_topic_and_sets_it_up() {
         crate::widgets::find("Graph").map(|g| g.default_period())
     );
 }
+
+#[test]
+fn a_topic_dropped_on_a_widget_pushes_it_aside() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    open(&mut harness, "Test  (");
+    let grid = |h: &Harness| h.state().layout.tabs[0].grid_layout.clone();
+    let first = grid(&harness).containers[0].clone();
+    assert_eq!((first.rect.x, first.rect.y), (0.0, 0.0));
+    let before = grid(&harness).containers.len();
+    // Onto the first widget's top-left cell.
+    let to = harness.state().grid.area.min + egui::vec2(64.0, 64.0);
+    drag_row(&mut harness, "flag", 0, to);
+    let after = grid(&harness);
+    assert_eq!(after.containers.len(), before + 1);
+    let made = after.containers.last().unwrap();
+    assert_eq!(made.topic(), Some("/Test/flag"));
+    assert_eq!((made.rect.x, made.rect.y), (0.0, 0.0));
+    // The widget that was there moved, and nothing covers anything.
+    // (Still first in the list: new widgets go on the end.)
+    let moved = &after.containers[0];
+    assert_ne!(moved.rect, first.rect);
+    let rects: Vec<_> = crate::grid::items(&after)
+        .into_iter()
+        .map(|(_, r)| r)
+        .collect();
+    for (i, a) in rects.iter().enumerate() {
+        for b in &rects[i + 1..] {
+            assert!(!a.overlaps(b), "{a:?} on {b:?}");
+        }
+    }
+}

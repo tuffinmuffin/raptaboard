@@ -170,7 +170,7 @@ pub fn child_to_list(
 }
 
 /// Take child `child` out of List Layout `list` and put it on the grid as a
-/// widget at `rect`. The caller checks `rect` is free first ([`is_free`]).
+/// widget at `rect`. The caller makes room there first ([`make_room`]).
 /// Returns its index in `containers`, or `None` (changing nothing) if there
 /// is no such child.
 pub fn child_out_of_list(
@@ -500,9 +500,58 @@ pub fn reflow(
     let mut placed = grid.clone();
     item.rect(&placed)?;
     item.set_rect(&mut placed, target);
-    let mut in_the_way: Vec<(Item, Rect)> = items(&placed)
+    let pushed = push_aside(&mut placed, target, Some(item), cell, area)?;
+    Some(std::iter::once((item, target)).chain(pushed).collect())
+}
+
+/// Make room at `target` for something new (a widget dropped from the tree,
+/// or a list child dragged out): each item it would cover goes to the free
+/// spot nearest where it was, as [`reflow`] does. Returns only the items
+/// that move, or `None` if one has nowhere to go.
+///
+/// ```
+/// use raptaboard::grid::{make_room, Item};
+/// use raptaboard_layout::{GridLayout, Rect};
+/// let grid: GridLayout = serde_json::from_str(r#"{"containers": [
+///     {"title": "a", "x": 0.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "Text Display"}
+/// ]}"#).unwrap();
+/// let cell = Rect { x: 0.0, y: 0.0, width: 128.0, height: 128.0 };
+/// let moves = make_room(&grid, cell, 128.0, (256.0, 128.0)).unwrap();
+/// assert_eq!(moves, [(Item::Widget(0), Rect { x: 128.0, ..cell })]);
+/// ```
+pub fn make_room(
+    grid: &GridLayout,
+    target: Rect,
+    cell: f64,
+    area: (f64, f64),
+) -> Option<Vec<(Item, Rect)>> {
+    let mut placed = grid.clone();
+    // The new thing holds its place while the others are placed: a widget
+    // standing in for it.
+    placed.containers.push(raptaboard_layout::WidgetContainer {
+        title: String::new(),
+        rect: target,
+        widget_type: String::new(),
+        properties: Default::default(),
+        extra: Default::default(),
+    });
+    let new = Item::Widget(placed.containers.len() - 1);
+    push_aside(&mut placed, target, Some(new), cell, area)
+}
+
+/// Move every item on `placed` that overlaps `target` (but `keep`) to the
+/// free spot nearest where it was, biggest first, and say where each went.
+/// `None` if one has nowhere to go.
+fn push_aside(
+    placed: &mut GridLayout,
+    target: Rect,
+    keep: Option<Item>,
+    cell: f64,
+    area: (f64, f64),
+) -> Option<Vec<(Item, Rect)>> {
+    let mut in_the_way: Vec<(Item, Rect)> = items(placed)
         .into_iter()
-        .filter(|&(other, r)| other != item && target.overlaps(&r))
+        .filter(|&(other, r)| Some(other) != keep && target.overlaps(&r))
         .collect();
     // Biggest first; equal sizes in the order they're on the tab.
     in_the_way.sort_by(|a, b| (b.1.width * b.1.height).total_cmp(&(a.1.width * a.1.height)));
@@ -513,12 +562,12 @@ pub fn reflow(
             y: -r.height - 1.0e9,
             ..r
         };
-        other.set_rect(&mut placed, away);
+        other.set_rect(placed, away);
     }
-    let mut moves = vec![(item, target)];
+    let mut moves = Vec::new();
     for (other, was) in in_the_way {
-        let spot = free_spot_near(&placed, was, cell, area)?;
-        other.set_rect(&mut placed, spot);
+        let spot = free_spot_near(placed, was, cell, area)?;
+        other.set_rect(placed, spot);
         moves.push((other, spot));
     }
     Some(moves)
@@ -735,6 +784,13 @@ mod tests {
             )
             .unwrap();
             assert_eq!(moves[1], (Item::Widget(1), g.at(1.0, 1.0, 1.0, 2.0)));
+            // Room for something new on "b": "b" moves, the rest stay.
+            let new = g.at(1.0, 0.0, 1.0, 1.0);
+            let moves = make_room(&grid, new, g.cell, window).unwrap();
+            assert_eq!(moves, vec![(Item::Widget(1), g.at(1.0, 1.0, 1.0, 1.0))]);
+            assert_eq!(make_room(&grid, below, g.cell, window), Some(vec![]));
+            // No room for a full window's worth.
+            assert_eq!(make_room(&grid, g.at(0.0, 0.0, 3.0, 2.0), g.cell, window), None);
             // Grown over everything with nowhere left: refused.
             assert_eq!(flow(&grid, Item::Widget(0), g.at(0.0, 0.0, 3.0, 2.0)), None);
             // An item that isn't there: nothing.

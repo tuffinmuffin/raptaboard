@@ -147,6 +147,7 @@ impl DashboardApp {
     /// move widgets and their bottom-right corner to resize them. Drops snap
     /// to the grid and are refused if they would cover another widget.
     pub(super) fn grid(&mut self, ui: &mut egui::Ui, values: &HashMap<&str, &Value>, now: Instant) {
+        self.cancel_drag_on_escape(ui.ctx());
         let tab = self.current_tab;
         let shown = ui.available_size();
         let mut offset = self.grid.scroll.get(&tab).copied().unwrap_or_default();
@@ -215,6 +216,23 @@ impl DashboardApp {
         }
         self.grid.scroll.insert(tab, now);
         self.grid.visible = out.inner_rect;
+    }
+
+    /// Escape while dragging calls the drag off: a widget or list moved or
+    /// resized, a list child, or topics from the tree. Nothing changes, and
+    /// letting go afterwards drops nothing. Escape is used up, so it doesn't
+    /// also deselect.
+    fn cancel_drag_on_escape(&mut self, ctx: &egui::Context) {
+        let tree = egui::DragAndDrop::has_payload_of_type::<DraggedTopics>(ctx);
+        if self.grid.drag.is_none() && self.grid.child_drag.is_none() && !tree {
+            return;
+        }
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            self.grid.drag = None;
+            self.grid.child_drag = None;
+            egui::DragAndDrop::clear_payload(ctx);
+            self.status = "Drag cancelled".to_owned();
+        }
     }
 
     /// The grid itself, `content` points big, inside its scroll area.
@@ -508,7 +526,7 @@ impl DashboardApp {
         let dragging = self.grid.drag.map(|d| d.item);
         // What the drag pushes aside shows where it would go.
         let pushed: HashMap<Item, LayoutRect> = self
-            .pushed_aside(view, ui.ctx().pointer_latest_pos())
+            .pushed_aside(ui.ctx(), view, ui.ctx().pointer_latest_pos())
             .into_iter()
             .collect();
         let frame = widgets::Frame {
@@ -703,6 +721,11 @@ impl DashboardApp {
                         }
                     }
                     Some(DropTarget::Grid { rect, free: true }) => {
+                        // Room first, pushing what's in the way aside.
+                        let pushed = grid::make_room(grid, rect, view.cell, view.room);
+                        for &(item, to) in pushed.iter().flatten() {
+                            item.set_rect(grid, to);
+                        }
                         if let Some(w) = grid::child_out_of_list(grid, cd.list, cd.child, rect) {
                             self.selected = Some(Item::Widget(w));
                         }
@@ -1056,6 +1079,99 @@ mod tests {
     }
 
     #[test]
+    fn escape_calls_a_drag_off_and_letting_go_then_drops_nothing() {
+        let escape = Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        };
+        let ctx = egui::Context::default();
+        let mut app = app();
+        app.selected = None;
+        // Hold A over B (pushing B aside), then Escape, then let go there.
+        let origin = frame(&ctx, &mut app, vec![]);
+        let start = origin + Vec2::new(40.0, 40.0);
+        let over_b = start + Vec2::new(384.0, 0.0);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(start)]);
+        frame(&ctx, &mut app, vec![button(start, true)]);
+        for step in 1..=8 {
+            let at = start + (over_b - start) * (step as f32 / 8.0);
+            frame(&ctx, &mut app, vec![Event::PointerMoved(at)]);
+        }
+        assert!(app.grid.drag.is_some());
+        frame(&ctx, &mut app, vec![escape.clone()]);
+        assert!(app.grid.drag.is_none(), "called off");
+        assert_eq!(app.status, "Drag cancelled");
+        // B is drawn back in its own place at once.
+        let b_x = drawn_at(&ctx, &mut app, vec![], "B").expect("B drawn") - origin.x;
+        assert!(b_x >= 384.0, "B's title at {b_x}");
+        frame(&ctx, &mut app, vec![button(over_b, false)]);
+        frame(&ctx, &mut app, vec![]);
+        assert_eq!(rect_of(&app, 0), (0.0, 0.0, 128.0, 128.0));
+        assert_eq!(rect_of(&app, 1), (384.0, 0.0, 128.0, 128.0));
+
+        // A resize called off the same way keeps the old size.
+        let corner = origin + Vec2::new(124.0, 124.0);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(corner)]);
+        frame(&ctx, &mut app, vec![button(corner, true)]);
+        for step in 1..=8 {
+            let at = corner + Vec2::new(256.0 * step as f32 / 8.0, 0.0);
+            frame(&ctx, &mut app, vec![Event::PointerMoved(at)]);
+        }
+        frame(&ctx, &mut app, vec![escape]);
+        frame(
+            &ctx,
+            &mut app,
+            vec![button(corner + Vec2::new(256.0, 0.0), false)],
+        );
+        frame(&ctx, &mut app, vec![]);
+        assert_eq!(rect_of(&app, 0), (0.0, 0.0, 128.0, 128.0));
+    }
+
+    #[test]
+    fn a_list_child_dragged_out_onto_a_widget_pushes_it_aside() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        let child: WidgetContainer = serde_json::from_value(serde_json::json!({
+            "title": "C", "x": 0, "y": 0, "width": 128, "height": 128,
+            "type": "Text Display", "properties": { "topic": "/C" }
+        }))
+        .unwrap();
+        app.layout.tabs[0].grid_layout.layouts[0]
+            .children
+            .push(child);
+        let origin = frame(&ctx, &mut app, vec![]);
+        let list = app.layout.tabs[0].grid_layout.layouts[0].clone();
+        let card = Rect::from_min_size(
+            origin + Vec2::new(list.rect.x as f32, list.rect.y as f32),
+            Vec2::new(list.rect.width as f32, list.rect.height as f32),
+        )
+        .shrink(CELL_GAP);
+        let row = list_layout::rows_on_screen(card, &list)[0].row;
+        // Hold the row in its middle, and move it so its corner lands on
+        // B's cell.
+        let start = row.center();
+        let b_corner = origin + Vec2::new(384.0, 0.0);
+        let end = start + (b_corner - row.min);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(start)]);
+        frame(&ctx, &mut app, vec![button(start, true)]);
+        for step in 1..=8 {
+            let at = start + (end - start) * (step as f32 / 8.0);
+            frame(&ctx, &mut app, vec![Event::PointerMoved(at)]);
+        }
+        assert!(app.grid.child_drag.is_some(), "the child is being dragged");
+        frame(&ctx, &mut app, vec![button(end, false)]);
+        frame(&ctx, &mut app, vec![]);
+        let grid = &app.layout.tabs[0].grid_layout;
+        assert!(grid.layouts[0].children.is_empty(), "out of the list");
+        let c = grid.containers.iter().find(|w| w.title == "C").unwrap();
+        assert_eq!((c.rect.x, c.rect.y), (384.0, 0.0));
+        assert_ne!(rect_of(&app, 1), (384.0, 0.0, 128.0, 128.0), "B moved");
+    }
+
+    #[test]
     fn widgets_in_the_way_are_drawn_where_they_will_go_during_the_drag() {
         let ctx = egui::Context::default();
         let mut app = app();
@@ -1075,7 +1191,7 @@ mod tests {
             cell: 128.0,
             room: (768.0, 512.0),
         };
-        let view = |app: &DashboardApp| app.pushed_aside(grid_view, None);
+        let view = |app: &DashboardApp| app.pushed_aside(&ctx, grid_view, None);
         let pushed = view(&app);
         assert_eq!(pushed.len(), 1);
         assert_eq!(pushed[0].0, Item::Widget(1));
