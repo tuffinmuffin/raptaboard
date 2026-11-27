@@ -15,8 +15,8 @@
   - [The robot and the field](guide/widgets/robot.md)
   - [Match and alerts](guide/widgets/match-and-alerts.md)
 - [Layouts]()
-- [Content packs and plugins]()
-- [Troubleshooting]()
+- [Content packs and plugins](guide/content-packs.md)
+- [Troubleshooting](guide/troubleshooting.md)
 
 # Developing raptaboard
 

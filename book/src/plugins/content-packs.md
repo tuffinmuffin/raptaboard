@@ -67,11 +67,11 @@ its address in the catalog, so raptaboard downloads it from there. To update a p
 Install a pack folder straight away, without a catalog, with the command-line tool:
 
 ```sh
-raptaboard-cli packs install --package path/to/my-pack --unsigned
+raptaboard packs install --package path/to/my-pack --unsigned
 ```
 
 `--unsigned` is needed because the pack isn't signed by raptaboard. The same tool lists, updates and
-removes packs (`raptaboard-cli packs --help`). The window picks up a pack installed this way at once,
+removes packs (`raptaboard packs --help`). The window picks up a pack installed this way at once,
 plugins too.
 
 ## Publishing in the official packs
