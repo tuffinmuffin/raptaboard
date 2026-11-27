@@ -4,6 +4,7 @@
 
 use super::*;
 
+// ANCHOR: ui_test
 #[test]
 fn a_battery_shows_its_volts_charge_and_level() {
     let robot = Robot::start();
@@ -43,3 +44,4 @@ fn a_battery_shows_its_volts_charge_and_level() {
     volts.set(10.4);
     labelled_soon(&mut harness, "Battery: 10.40 V, 0%, low");
 }
+// ANCHOR_END: ui_test

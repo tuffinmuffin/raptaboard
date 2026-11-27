@@ -18,12 +18,14 @@ use crate::widgets::shared::format::number_of;
 use crate::widgets::shared::{card, props};
 use crate::widgets::{Live, ValueInfo, WidgetType};
 
+// ANCHOR: keys
 /// Below this many volts the battery is yellow (raptaboard).
 pub const WARN_BELOW: &str = "warn_below";
 /// Below this many volts it's red (raptaboard).
 pub const LOW_BELOW: &str = "low_below";
 
 const KEYS: [&str; 4] = [MIN_VALUE, MAX_VALUE, WARN_BELOW, LOW_BELOW];
+// ANCHOR_END: keys
 
 /// An empty battery, volts (a 12 V lead-acid battery under load).
 const DEFAULT_EMPTY: f64 = 11.0;
@@ -39,6 +41,7 @@ const RED: Color32 = Color32::from_rgb(0xF4, 0x43, 0x36);
 /// The Battery widget.
 pub struct Battery;
 
+// ANCHOR: charge
 /// How full a battery at `volts` is, 0 to 1, between `empty` and `full`.
 ///
 /// ```
@@ -53,6 +56,7 @@ pub fn charge(volts: f64, empty: f64, full: f64) -> f64 {
     }
     ((volts - empty) / (full - empty)).clamp(0.0, 1.0)
 }
+// ANCHOR_END: charge
 
 /// The battery's color at `volts`: red below `low`, yellow below `warn`,
 /// else green.
@@ -143,6 +147,7 @@ impl Battery {
         let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
         let visuals = ui.visuals().clone();
         let p = &widget.properties;
+        // ANCHOR: reading
         let Some(volts) = live.value.and_then(number_of) else {
             let why = if live.value.is_some() {
                 "not a number"
@@ -164,6 +169,7 @@ impl Battery {
         let low = props::number(p, LOW_BELOW, DEFAULT_LOW);
         let charge = charge(volts, empty, full);
         let color = level_color(volts, warn, low);
+        // ANCHOR_END: reading
         draw_battery(&painter, &visuals, rect, charge, color);
         let (v, pct) = label(volts, charge);
         let size = (rect.width().min(rect.height()) * 0.18).clamp(10.0, 36.0);
@@ -207,12 +213,15 @@ impl Battery {
         } else {
             "ok"
         };
+        // ANCHOR: accessible
         let text = format!("{}: {v}, {pct}, {level}", widget.title);
         ui.interact(rect, ui.scope_id().with("battery"), Sense::hover())
             .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Image, true, &text));
+        // ANCHOR_END: accessible
     }
 }
 
+// ANCHOR: identity
 impl WidgetType for Battery {
     fn names(&self) -> &'static [&'static str] {
         &["Battery"]
@@ -226,7 +235,9 @@ impl WidgetType for Battery {
     fn shows(&self, nt_type: &str) -> bool {
         matches!(nt_type, "double" | "float" | "int")
     }
+    // ANCHOR_END: identity
 
+    // ANCHOR: drawing
     fn show(
         &self,
         ui: &mut egui::Ui,
@@ -266,7 +277,9 @@ impl WidgetType for Battery {
     ) {
         draw_battery(painter, visuals, rect, 0.7, GREEN);
     }
+    // ANCHOR_END: drawing
 
+    // ANCHOR: settings
     fn settings(&self, ui: &mut egui::Ui, p: &mut Map<String, Json>, _: ValueInfo<'_>) {
         props::number_row(ui, p, "Empty (V)", MIN_VALUE, DEFAULT_EMPTY, 0.0..=30.0);
         props::number_row(ui, p, "Full (V)", MAX_VALUE, DEFAULT_FULL, 0.0..=30.0);
@@ -284,6 +297,7 @@ impl WidgetType for Battery {
     fn setting_keys(&self) -> &'static [&'static str] {
         &KEYS
     }
+    // ANCHOR_END: settings
 }
 
 #[cfg(test)]
@@ -291,6 +305,7 @@ mod tests {
     // Tests written by Claude.
     use super::*;
 
+    // ANCHOR: unit_test
     #[test]
     fn the_color_follows_the_level_and_the_text_rounds() {
         assert_eq!(level_color(12.6, 12.0, 11.5), GREEN);
@@ -306,4 +321,5 @@ mod tests {
         assert_eq!(charge(10.0, 13.0, 11.0), 0.0);
         assert!(Battery.shows("double") && !Battery.accepts("double"));
     }
+    // ANCHOR_END: unit_test
 }

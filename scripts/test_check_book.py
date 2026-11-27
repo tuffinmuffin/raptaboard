@@ -70,6 +70,32 @@ class Book(unittest.TestCase):
         )
         self.assertEqual(cb.check(self.repo), [])
 
+    def test_includes_need_their_file_and_anchor(self):
+        self.write(
+            "src/widget.rs",
+            "// ANCHOR: shown\nfn shown() {}\n// ANCHOR_END: shown\n"
+            "// ANCHOR: empty\n// ANCHOR_END: empty\n",
+        )
+        self.write(
+            "book/src/install.md",
+            "# Install\n\n```rust\n{{#include ../../src/widget.rs:shown}}\n```\n"
+            "{{#include ../../src/widget.rs}}\n",
+        )
+        self.assertEqual(cb.check(self.repo), [])
+        self.write(
+            "book/src/install.md",
+            "{{#include ../../src/widget.rs:gone}}\n{{#include ../../src/widget.rs:empty}}\n"
+            "{{#include ../../src/nope.rs:shown}}\n",
+        )
+        self.assertEqual(
+            cb.check(self.repo),
+            [
+                "book/src/install.md:1: ../../src/widget.rs has no anchor 'gone'",
+                "book/src/install.md:2: anchor 'empty' in ../../src/widget.rs is empty",
+                "book/src/install.md:3: ../../src/nope.rs isn't there",
+            ],
+        )
+
     def test_no_summary_is_one_problem(self):
         (self.repo / "book/src/SUMMARY.md").unlink()
         self.assertEqual(cb.check(self.repo), ["book/src/SUMMARY.md isn't there"])

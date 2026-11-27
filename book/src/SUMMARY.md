@@ -22,9 +22,9 @@
 
 - [Building from source](dev/building.md)
 - [Repo layout](dev/repo-layout.md)
-- [Tutorial: adding a built-in widget]()
-- [Testing and coverage]()
-- [Releasing]()
+- [Tutorial: adding a built-in widget](dev/widget-tutorial.md)
+- [Testing and coverage](dev/testing.md)
+- [Releasing](dev/releasing.md)
 - [Contributing](dev/contributing.md)
 
 # Writing plugins
