@@ -2,11 +2,12 @@
 //! inside can sit side by side at any size (a List Layout only stacks
 //! them).
 //!
-//! The group's inner grid is `columns` by `rows` cells (4 by 2 unless
-//! set). Widgets inside are saved as if each inner cell were
-//! [`INNER_CELL`] pixels, whatever the tab's grid size, and the whole inner
-//! grid is scaled to fit the group's card: resizing the group grows or
-//! shrinks everything inside, text too (the widgets are drawn at full size
+//! The group's inner grid is `rows` cells tall (2 unless set), its cells
+//! square, and as many columns as fit across the group ([`cells`]): a wider
+//! group has more columns, a taller one bigger cells. Widgets inside are
+//! saved as if each inner cell were [`INNER_CELL`] pixels, whatever the
+//! tab's grid size, and the whole inner grid is scaled to fit the group's
+//! card: resizing the group grows or shrinks everything inside, text too (the widgets are drawn at full size
 //! on a layer of their own and scaled, [`show`]). The grid rules
 //! ([`crate::grid`]) work inside a group unchanged: its children are a
 //! grid of their own ([`inner_grid`]), [`INNER_CELL`] to a cell.
@@ -17,20 +18,21 @@
 use eframe::egui::{self, Pos2, Rect, Vec2};
 use nt4::Value;
 use raptaboard_layout::{GridLayout, LayoutContainer, Rect as LayoutRect, WidgetContainer};
-use serde_json::{Map, Value as Json};
+use serde_json::Map;
 
 use crate::widgets::shared::{card, props};
 
 /// A group's `type` in a layout file.
 pub const TYPE_NAME: &str = "Group";
-/// The inner grid's columns (raptaboard's).
-pub const COLUMNS: &str = "columns";
 /// The inner grid's rows (raptaboard's).
 pub const ROWS: &str = "rows";
-/// Columns unless set.
-pub const DEFAULT_COLUMNS: u32 = 4;
 /// Rows unless set.
 pub const DEFAULT_ROWS: u32 = 2;
+/// Whether its inner grid's lines show (raptaboard's; on unless set).
+pub const GRID_LINES: &str = "grid_lines";
+/// The gap between a card and the edge of its cells on the tab, in points
+/// (the tab's own).
+const CARD_GAP: f32 = 4.0;
 /// The most columns or rows a group can have.
 pub const MAX_CELLS: u32 = 24;
 /// The size of one inner cell as saved, in pixels: widgets inside are
@@ -54,25 +56,50 @@ pub fn is_group(layout: &LayoutContainer) -> bool {
     layout.layout_type == TYPE_NAME
 }
 
-/// The inner grid's columns and rows, each 1 to [`MAX_CELLS`].
+/// The inner grid's columns and rows. Rows are as set (2 unless set);
+/// columns are as many square cells as fit across the group's body. Both
+/// are at least enough to hold every widget inside (so a group made too
+/// narrow shrinks its widgets rather than cutting them off), and at most
+/// [`MAX_CELLS`].
 ///
 /// ```
 /// use raptaboard::widgets::group::{cells, new_group};
 /// use raptaboard_layout::Rect;
-/// let g = new_group(Rect { x: 0.0, y: 0.0, width: 256.0, height: 128.0 });
-/// assert_eq!(cells(&g.properties), (4, 2));
+/// // Four tab cells by two: two rows, and four columns fit across.
+/// let g = new_group(Rect { x: 0.0, y: 0.0, width: 512.0, height: 256.0 });
+/// assert_eq!(cells(&g), (4, 2));
+/// // Twice as wide: twice the columns.
+/// let wide = new_group(Rect { x: 0.0, y: 0.0, width: 1024.0, height: 256.0 });
+/// assert_eq!(cells(&wide), (9, 2));
 /// ```
-pub fn cells(props: &Map<String, Json>) -> (u32, u32) {
-    let get = |key, default| {
-        (props::number(props, key, f64::from(default)).round() as i64)
-            .clamp(1, i64::from(MAX_CELLS)) as u32
+pub fn cells(group: &LayoutContainer) -> (u32, u32) {
+    let most = f64::from(MAX_CELLS);
+    let rows = props::number(&group.properties, ROWS, f64::from(DEFAULT_ROWS))
+        .round()
+        .clamp(1.0, most);
+    // The body of the card at its size on the tab.
+    let r = group.rect;
+    let card = Rect::from_min_size(Pos2::ZERO, egui::vec2(r.width as f32, r.height as f32))
+        .shrink(CARD_GAP);
+    let body = body_rect(card);
+    let cell = f64::from(body.height()) / rows;
+    let fit = (f64::from(body.width()) / cell.max(1.0)).floor().max(1.0);
+    // At least enough for the widgets already inside.
+    let reach = |end: fn(&WidgetContainer) -> f64| {
+        group
+            .children
+            .iter()
+            .map(|c| (end(c) / INNER_CELL).ceil())
+            .fold(0.0, f64::max)
     };
-    (get(COLUMNS, DEFAULT_COLUMNS), get(ROWS, DEFAULT_ROWS))
+    let cols = fit.max(reach(|c| c.rect.x + c.rect.width)).min(most);
+    let rows = rows.max(reach(|c| c.rect.y + c.rect.height)).min(most);
+    (cols as u32, rows as u32)
 }
 
 /// The inner grid's size, in saved pixels ([`INNER_CELL`] a cell).
 pub fn inner_area(group: &LayoutContainer) -> (f64, f64) {
-    let (cols, rows) = cells(&group.properties);
+    let (cols, rows) = cells(group);
     (f64::from(cols) * INNER_CELL, f64::from(rows) * INNER_CELL)
 }
 
@@ -111,7 +138,7 @@ pub struct Mapping {
 impl Mapping {
     /// Where the inner grid of `group` goes for its card on screen at
     /// `card`: in the body below the title, as large as fits with square
-    /// cells, at the body's top left.
+    /// cells ([`cells`] makes it fill the body), at the body's top left.
     pub fn of(card: Rect, group: &LayoutContainer) -> Mapping {
         let body = body_rect(card);
         let (w, h) = inner_area(group);
@@ -174,7 +201,7 @@ pub fn body_rect(card: Rect) -> Rect {
 /// assert_eq!((r.x, r.y), (2.0 * INNER_CELL, INNER_CELL));
 /// ```
 pub fn cell_rect(group: &LayoutContainer, size: LayoutRect, at: (f64, f64)) -> LayoutRect {
-    let (cols, rows) = cells(&group.properties);
+    let (cols, rows) = cells(group);
     let whole = |len: f64, most: u32| ((len / INNER_CELL).round().max(1.0) as u32).min(most);
     let (w, h) = (whole(size.width, cols), whole(size.height, rows));
     let cell_at = |pos: f64, span: u32, most: u32| {
@@ -234,7 +261,7 @@ pub fn place(
 /// dragged to inner point `to`: whole cells, at least one each way, inside
 /// the inner grid; its top left stays.
 pub fn resized(group: &LayoutContainer, child: LayoutRect, to: (f64, f64)) -> LayoutRect {
-    let (cols, rows) = cells(&group.properties);
+    let (cols, rows) = cells(group);
     let span = |start: f64, end: f64, most: u32| {
         let first = (start / INNER_CELL).round().max(0.0);
         let cells = ((end - start) / INNER_CELL).round().max(1.0);
@@ -244,6 +271,31 @@ pub fn resized(group: &LayoutContainer, child: LayoutRect, to: (f64, f64)) -> La
         width: span(child.x, to.0, cols),
         height: span(child.y, to.1, rows),
         ..child
+    }
+}
+
+/// Draw `group`'s inner grid lines on `painter` (unless turned off): a
+/// line along each cell's edge, faint, as the tab's own grid is drawn.
+fn draw_grid_lines(
+    painter: &egui::Painter,
+    visuals: &egui::Visuals,
+    m: &Mapping,
+    group: &LayoutContainer,
+) {
+    if !props::flag(&group.properties, GRID_LINES, true) {
+        return;
+    }
+    let (cols, rows) = cells(group);
+    let cell = INNER_CELL as f32 * m.scale;
+    let (w, h) = (cols as f32 * cell, rows as f32 * cell);
+    let stroke = egui::Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3));
+    for c in 0..=cols {
+        let x = m.origin.x + c as f32 * cell;
+        painter.vline(x, m.origin.y..=m.origin.y + h, stroke);
+    }
+    for r in 0..=rows {
+        let y = m.origin.y + r as f32 * cell;
+        painter.hline(m.origin.x..=m.origin.x + w, y, stroke);
     }
 }
 
@@ -258,6 +310,7 @@ pub fn draw(
 ) {
     card::draw_card(painter, visuals, rect, &group.title, &group.properties);
     let m = Mapping::of(rect, group);
+    draw_grid_lines(painter, visuals, &m, group);
     let clip = body_rect(rect).intersect(painter.clip_rect());
     let inner = painter.with_clip_rect(clip);
     for child in &group.children {
@@ -290,6 +343,7 @@ pub fn show(
         &group.properties,
     );
     let m = Mapping::of(card_rect, group);
+    draw_grid_lines(ui.painter(), ui.visuals(), &m, group);
     let clip = body_rect(card_rect).intersect(ui.clip_rect());
     let mut writes = Vec::new();
     let area = egui::Area::new(id)
@@ -343,8 +397,8 @@ pub fn show(
     writes
 }
 
-/// A group's settings dialog rows: its title (and its style), and its inner
-/// grid's columns and rows. Widgets inside are edited by double-clicking
+/// A group's settings dialog rows: its title (and its style), its inner
+/// grid's rows, and whether its grid lines show. Widgets inside are edited by double-clicking
 /// them.
 pub fn settings(ui: &mut egui::Ui, group: &mut LayoutContainer) {
     egui::Grid::new("group_settings")
@@ -362,17 +416,21 @@ pub fn settings(ui: &mut egui::Ui, group: &mut LayoutContainer) {
             );
             let most = i64::from(MAX_CELLS);
             let p = &mut group.properties;
-            props::whole_row(
+            props::whole_row(ui, p, "Rows", ROWS, i64::from(DEFAULT_ROWS), 1..=most);
+            props::flag_row(
                 ui,
                 p,
-                "Columns",
-                COLUMNS,
-                i64::from(DEFAULT_COLUMNS),
-                1..=most,
+                "Grid lines",
+                "Show the group's cells",
+                GRID_LINES,
+                true,
             );
-            props::whole_row(ui, p, "Rows", ROWS, i64::from(DEFAULT_ROWS), 1..=most);
         });
-    ui.weak("Double-click a widget in the group for its settings.");
+    let (cols, rows) = cells(group);
+    ui.weak(format!(
+        "{cols} columns by {rows} rows: rows set the cells' size; as many columns as fit across \
+         the group. Double-click a widget in the group for its settings."
+    ));
 }
 
 #[cfg(test)]
@@ -426,11 +484,63 @@ mod tests {
         let r = m.to_screen(&cells_rect(1.0, 1.0, 1.0, 1.0));
         let (x, y) = m.to_inner(r.min);
         assert!((x - INNER_CELL).abs() < 1e-3 && (y - INNER_CELL).abs() < 1e-3);
-        // Columns and rows from settings, kept in range.
+        // Rows from the setting, kept in range; columns as many as fit.
         let mut g = g;
-        g.properties.insert(COLUMNS.into(), 99.into());
-        g.properties.insert(ROWS.into(), 0.into());
-        assert_eq!(cells(&g.properties), (MAX_CELLS, 1));
+        g.properties.insert(ROWS.into(), 99.into());
+        assert_eq!(cells(&g).1, MAX_CELLS);
+        g.properties.insert(ROWS.into(), 1.into());
+        // One row: cells as tall as the body (212), two fit across (492).
+        assert_eq!(cells(&g), (2, 1));
+    }
+
+    #[test]
+    fn columns_follow_the_groups_width_but_never_cut_off_a_widget() {
+        // Six tab cells by four, four rows: six columns fill it.
+        let mut g = new_group(LayoutRect {
+            x: 0.0,
+            y: 0.0,
+            width: 768.0,
+            height: 512.0,
+        });
+        g.properties.insert(ROWS.into(), 4.into());
+        assert_eq!(cells(&g), (6, 4));
+        // The columns leave less than one cell spare across the body.
+        let card = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(760.0, 504.0));
+        let m = Mapping::of(card, &g);
+        let spare = body_rect(card).width() - 6.0 * INNER_CELL as f32 * m.scale;
+        assert!(
+            (0.0..INNER_CELL as f32 * m.scale).contains(&spare),
+            "{spare}"
+        );
+        // Made narrow with a wide widget inside: enough columns for it.
+        g.rect.width = 256.0;
+        g.children = group_with(&[(0.0, 0.0, 5.0, 1.0)]).children;
+        assert_eq!(cells(&g).0, 5);
+        // And rows for one reaching below the set rows.
+        g.properties.insert(ROWS.into(), 1.into());
+        g.children = group_with(&[(0.0, 2.0, 1.0, 1.0)]).children;
+        assert_eq!(cells(&g).1, 3);
+    }
+
+    #[test]
+    fn grid_lines_show_unless_turned_off() {
+        let lines = |g: &LayoutContainer| {
+            let ctx = egui::Context::default();
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let card = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(504.0, 248.0));
+                draw(ui.painter(), ui.visuals(), card, g, &|_| None);
+            });
+            out.textures_delta.clear();
+            out.shapes
+                .iter()
+                .filter(|s| matches!(s.shape, egui::Shape::LineSegment { .. }))
+                .count()
+        };
+        let mut g = group_with(&[]);
+        // 4 by 2: five lines down, three across.
+        assert_eq!(lines(&g), 8);
+        g.properties.insert(GRID_LINES.into(), false.into());
+        assert_eq!(lines(&g), 0);
     }
 
     #[test]

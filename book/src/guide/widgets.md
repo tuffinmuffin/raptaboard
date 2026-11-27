@@ -137,7 +137,9 @@ is drawn as a shrunk copy, text too, so resizing the Group grows or shrinks what
   it. Drag it out of the Group onto the grid, or into a list or another Group.
 - **Right-click** a widget inside for **Edit…**, **Edit group…** and **Remove from group**;
   double-click it for its settings.
-- The Group's settings set its title and how many **Columns** and **Rows** its grid has (4 by 2
-  unless set).
+- Its cells are square. **Rows** (in its settings, 2 unless set) sets how tall they are: the
+  Group's height divided by the rows. As many columns as fit go across, so a wider Group has
+  more columns, and a taller one bigger cells. The cells show as faint lines; **Grid lines** in
+  its settings hides them.
 
 Locked, the widgets inside work as they do on the grid: toggles toggle, sliders slide.

@@ -819,8 +819,12 @@ raptaboard is meant to rest in, apart from feature requests.
    - Group widget (**part 1 done** for 0.5.0, 2026-11-27, `widgets/group.rs`): a card holding its
      own small grid, so widgets inside can sit side by side and be any size (a List Layout only
      stacks them). Saved in a tab's `layouts` with type `"Group"` (raptaboard-only; Elastic would
-     show a placeholder), `columns` and `rows` (4 by 2 unless set). Decided with the user
-     2026-11-27: the inner cells scale with the group, and text scales too. Children are saved at
+     show a placeholder), `rows` (2 unless set) and `grid_lines` (on unless set). Decided with the user
+     2026-11-27: the inner cells scale with the group, and text scales too; after trying it, the
+     user found square cells in a fixed columns-by-rows grid left unusable space, so the cells stay
+     square, `rows` sets their size (the body's height over rows) and as many columns as fit go
+     across (`group::cells`; never fewer than the widgets inside need), and the inner grid's lines
+     show unless `grid_lines` is off. Children are saved at
      `group::INNER_CELL` (128) pixels a cell whatever the tab's grid size, so the grid rules work
      inside unchanged (`group::inner_grid`); they're drawn at full size on an egui `Area` layer of
      their own, a sublayer of the grid's, scaled onto the card by a layer transform
