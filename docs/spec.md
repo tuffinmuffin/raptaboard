@@ -779,8 +779,15 @@ raptaboard is meant to rest in, apart from feature requests.
      ahead of it, so a widget can be dragged past the window. Each tab keeps its own scroll.
      Locked, the grid doesn't scroll and the bars hide, so a stray swipe while driving can't move
      the view (asked for by the user 2026-11-22); it stays where it was, and unlocking scrolls again.
-   - Reflow while dragging: widgets in the way slide aside (to the nearest free spot) as a widget is
-     dragged or resized over them, instead of the drop being refused.
+   - Reflow while dragging (**done** for 0.5.0, 2026-11-27, `grid::reflow`): widgets in the way slide
+     aside (to the nearest free spot) as a widget or List Layout is dragged or resized over them,
+     instead of the drop being refused. While dragging they're drawn where they'd go, worked out
+     from where everything was when the drag began (so moving on lets them slide back); bigger ones
+     are placed first; the drop moves them all in one undo step and the status says how many moved.
+     Refused (red outline) only when one has nowhere to go. Topics dropped from the tree and list
+     children dragged out onto the grid make room the same way (`grid::make_room`; for several
+     topics, room for the first, the rest around it). Escape calls any drag off, putting everything
+     back (asked for by the user 2026-11-27).
    - Allow partial overlap: a per-widget setting (this widget may partly overlap others, such as a
      label over a corner of a camera view) and a layout-wide setting allowing it everywhere.
      Partial only: no widget may be completely covered, so every widget keeps some part visible to

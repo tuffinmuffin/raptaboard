@@ -2,7 +2,8 @@
 //!
 //! A tab is a grid of square cells (128 pixels by default). Widgets and List
 //! Layouts are moved and resized in whole cells, and two of them may never
-//! overlap. This module holds those rules without any drawing, so they can be
+//! overlap: one moved or resized onto others pushes them aside to the
+//! nearest free spots ([`reflow`]). This module holds those rules without any drawing, so they can be
 //! tested without a window. Positions and sizes are pixels at the layout's
 //! grid size, as Elastic saves them.
 
@@ -169,7 +170,7 @@ pub fn child_to_list(
 }
 
 /// Take child `child` out of List Layout `list` and put it on the grid as a
-/// widget at `rect`. The caller checks `rect` is free first ([`is_free`]).
+/// widget at `rect`. The caller makes room there first ([`make_room`]).
 /// Returns its index in `containers`, or `None` (changing nothing) if there
 /// is no such child.
 pub fn child_out_of_list(
@@ -469,6 +470,109 @@ pub fn fits(grid: &GridLayout, item: Item, rect: Rect) -> bool {
         .all(|(other, r)| other == item || !rect.overlaps(&r))
 }
 
+/// Where things go if `item` is put at `target`, moving whatever is in the
+/// way: `item` at `target`, then each item it would cover at the free spot
+/// nearest where it was (on whole cells inside `area`, the visible grid's
+/// width and height in pixels). Bigger items in the way are placed first,
+/// as they're the hardest to fit. Only the items that move are listed.
+/// `None` if one of them has nowhere to go.
+///
+/// ```
+/// use raptaboard::grid::{reflow, Item};
+/// use raptaboard_layout::{GridLayout, Rect};
+/// let grid: GridLayout = serde_json::from_str(r#"{"containers": [
+///     {"title": "a", "x": 0.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "Text Display"},
+///     {"title": "b", "x": 128.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "Text Display"}
+/// ]}"#).unwrap();
+/// // "a" moved onto "b": "b" goes to the nearest free spot, where "a" was.
+/// let onto_b = Rect { x: 128.0, y: 0.0, width: 128.0, height: 128.0 };
+/// let moves = reflow(&grid, Item::Widget(0), onto_b, 128.0, (256.0, 128.0)).unwrap();
+/// assert_eq!(moves[0], (Item::Widget(0), onto_b));
+/// assert_eq!(moves[1], (Item::Widget(1), Rect { x: 0.0, ..onto_b }));
+/// ```
+pub fn reflow(
+    grid: &GridLayout,
+    item: Item,
+    target: Rect,
+    cell: f64,
+    area: (f64, f64),
+) -> Option<Vec<(Item, Rect)>> {
+    let mut placed = grid.clone();
+    item.rect(&placed)?;
+    item.set_rect(&mut placed, target);
+    let pushed = push_aside(&mut placed, target, Some(item), cell, area)?;
+    Some(std::iter::once((item, target)).chain(pushed).collect())
+}
+
+/// Make room at `target` for something new (a widget dropped from the tree,
+/// or a list child dragged out): each item it would cover goes to the free
+/// spot nearest where it was, as [`reflow`] does. Returns only the items
+/// that move, or `None` if one has nowhere to go.
+///
+/// ```
+/// use raptaboard::grid::{make_room, Item};
+/// use raptaboard_layout::{GridLayout, Rect};
+/// let grid: GridLayout = serde_json::from_str(r#"{"containers": [
+///     {"title": "a", "x": 0.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "Text Display"}
+/// ]}"#).unwrap();
+/// let cell = Rect { x: 0.0, y: 0.0, width: 128.0, height: 128.0 };
+/// let moves = make_room(&grid, cell, 128.0, (256.0, 128.0)).unwrap();
+/// assert_eq!(moves, [(Item::Widget(0), Rect { x: 128.0, ..cell })]);
+/// ```
+pub fn make_room(
+    grid: &GridLayout,
+    target: Rect,
+    cell: f64,
+    area: (f64, f64),
+) -> Option<Vec<(Item, Rect)>> {
+    let mut placed = grid.clone();
+    // The new thing holds its place while the others are placed: a widget
+    // standing in for it.
+    placed.containers.push(raptaboard_layout::WidgetContainer {
+        title: String::new(),
+        rect: target,
+        widget_type: String::new(),
+        properties: Default::default(),
+        extra: Default::default(),
+    });
+    let new = Item::Widget(placed.containers.len() - 1);
+    push_aside(&mut placed, target, Some(new), cell, area)
+}
+
+/// Move every item on `placed` that overlaps `target` (but `keep`) to the
+/// free spot nearest where it was, biggest first, and say where each went.
+/// `None` if one has nowhere to go.
+fn push_aside(
+    placed: &mut GridLayout,
+    target: Rect,
+    keep: Option<Item>,
+    cell: f64,
+    area: (f64, f64),
+) -> Option<Vec<(Item, Rect)>> {
+    let mut in_the_way: Vec<(Item, Rect)> = items(placed)
+        .into_iter()
+        .filter(|&(other, r)| Some(other) != keep && target.overlaps(&r))
+        .collect();
+    // Biggest first; equal sizes in the order they're on the tab.
+    in_the_way.sort_by(|a, b| (b.1.width * b.1.height).total_cmp(&(a.1.width * a.1.height)));
+    // Off the grid while they're placed, so none blocks another.
+    for &(other, r) in &in_the_way {
+        let away = Rect {
+            x: -r.width - 1.0e9,
+            y: -r.height - 1.0e9,
+            ..r
+        };
+        other.set_rect(placed, away);
+    }
+    let mut moves = Vec::new();
+    for (other, was) in in_the_way {
+        let spot = free_spot_near(placed, was, cell, area)?;
+        other.set_rect(placed, spot);
+        moves.push((other, spot));
+    }
+    Some(moves)
+}
+
 #[cfg(test)]
 mod tests {
     // Tests written by Claude.
@@ -608,6 +712,122 @@ mod tests {
             Item::List(0).set_rect(&mut grid, moved);
             assert_eq!(Item::List(0).rect(&grid), Some(moved));
             assert_eq!(Item::Widget(5).rect(&grid), None);
+        });
+    }
+
+    #[test]
+    fn a_move_onto_others_pushes_them_to_the_nearest_free_spots() {
+        each_size(|g| {
+            // a b c
+            // . . .
+            let grid = g.grid(
+                &[
+                    ("a", g.at(0.0, 0.0, 1.0, 1.0)),
+                    ("b", g.at(1.0, 0.0, 1.0, 1.0)),
+                    ("c", g.at(2.0, 0.0, 1.0, 1.0)),
+                ],
+                &[],
+            );
+            let window = g.window(3.0, 2.0);
+            let flow = |grid: &GridLayout, item, to| reflow(grid, item, to, g.cell, window);
+            // Nothing in the way: just the move.
+            let below = g.at(0.0, 1.0, 1.0, 1.0);
+            assert_eq!(
+                flow(&grid, Item::Widget(0), below),
+                Some(vec![(Item::Widget(0), below)])
+            );
+            // "a" onto "b": "b" takes the free spot nearest it, where "a" was
+            // (as near as the one below it; the higher wins).
+            let onto_b = g.at(1.0, 0.0, 1.0, 1.0);
+            let moves = flow(&grid, Item::Widget(0), onto_b).unwrap();
+            assert_eq!(
+                moves,
+                vec![
+                    (Item::Widget(0), onto_b),
+                    (Item::Widget(1), g.at(0.0, 0.0, 1.0, 1.0)),
+                ]
+            );
+            // "a" grown to two cells wide covers "b": "b" goes below.
+            let wide = g.at(0.0, 0.0, 2.0, 1.0);
+            let moves = flow(&grid, Item::Widget(0), wide).unwrap();
+            assert_eq!(moves[1], (Item::Widget(1), g.at(1.0, 1.0, 1.0, 1.0)));
+            // Over "b" and "c" at once: neither lands on the other.
+            let row = g.at(1.0, 0.0, 2.0, 1.0);
+            let moves = flow(&grid, Item::Widget(0), row).unwrap();
+            let mut after = grid.clone();
+            for &(item, r) in &moves {
+                item.set_rect(&mut after, r);
+            }
+            let rects: Vec<Rect> = items(&after).into_iter().map(|(_, r)| r).collect();
+            for (i, a) in rects.iter().enumerate() {
+                for b in &rects[i + 1..] {
+                    assert!(!a.overlaps(b), "{a:?} on {b:?}");
+                }
+            }
+            assert_eq!(moves.len(), 3);
+            // Partly covered, a tall widget slides down past its own old
+            // place (which no longer counts as taken).
+            let tall = g.grid(
+                &[
+                    ("a", g.at(0.0, 0.0, 1.0, 1.0)),
+                    ("t", g.at(1.0, 0.0, 1.0, 2.0)),
+                    ("x", g.at(0.0, 1.0, 1.0, 1.0)),
+                ],
+                &[],
+            );
+            let moves = reflow(
+                &tall,
+                Item::Widget(0),
+                g.at(1.0, 0.0, 1.0, 1.0),
+                g.cell,
+                g.window(2.0, 3.0),
+            )
+            .unwrap();
+            assert_eq!(moves[1], (Item::Widget(1), g.at(1.0, 1.0, 1.0, 2.0)));
+            // Room for something new on "b": "b" moves, the rest stay.
+            let new = g.at(1.0, 0.0, 1.0, 1.0);
+            let moves = make_room(&grid, new, g.cell, window).unwrap();
+            assert_eq!(moves, vec![(Item::Widget(1), g.at(1.0, 1.0, 1.0, 1.0))]);
+            assert_eq!(make_room(&grid, below, g.cell, window), Some(vec![]));
+            // No room for a full window's worth.
+            assert_eq!(
+                make_room(&grid, g.at(0.0, 0.0, 3.0, 2.0), g.cell, window),
+                None
+            );
+            // Grown over everything with nowhere left: refused.
+            assert_eq!(flow(&grid, Item::Widget(0), g.at(0.0, 0.0, 3.0, 2.0)), None);
+            // An item that isn't there: nothing.
+            assert_eq!(flow(&grid, Item::Widget(9), below), None);
+        });
+    }
+
+    #[test]
+    fn bigger_items_in_the_way_are_placed_first() {
+        each_size(|g| {
+            // m L . x      m: grown to two by two, over the list L and "s".
+            // s L . .      Free after: the third column and the bottom right.
+            let grid = g.grid(
+                &[
+                    ("m", g.at(0.0, 0.0, 1.0, 1.0)),
+                    ("s", g.at(0.0, 1.0, 1.0, 1.0)),
+                    ("x", g.at(3.0, 0.0, 1.0, 1.0)),
+                ],
+                &[("L", g.at(1.0, 0.0, 1.0, 2.0))],
+            );
+            let window = g.window(4.0, 2.0);
+            let grown = g.at(0.0, 0.0, 2.0, 2.0);
+            let moves = reflow(&grid, Item::Widget(0), grown, g.cell, window).unwrap();
+            // The list first, to the only column tall enough; then "s" to
+            // the bottom right. "s" first would take the third column's
+            // bottom, leaving the list nowhere.
+            assert_eq!(
+                moves,
+                vec![
+                    (Item::Widget(0), grown),
+                    (Item::List(0), g.at(2.0, 0.0, 1.0, 2.0)),
+                    (Item::Widget(1), g.at(3.0, 1.0, 1.0, 1.0)),
+                ]
+            );
         });
     }
 

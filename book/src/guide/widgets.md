@@ -24,7 +24,9 @@ Unlock the layout first (**🔒 Locked** in the settings bar). Then, from the Ne
 - **Drag a topic onto the grid.** It becomes the usual widget for its type: a Boolean Box for a
   boolean, a Text Display for a number or text, a Struct for a struct. Drag a table, such as a
   SendableChooser, a Mechanism2d or the Driver Station's, and it becomes the widget made for that
-  table. Drag one field of a struct, such as a pose's `x`, to show just that field.
+  table. Drag one field of a struct, such as a pose's `x`, to show just that field. Dropped on a
+  widget, the new one takes its place and pushes it aside (except onto a widget that takes topics,
+  below).
 - **Right-click a topic** for **Add to grid** (the same as dragging it), **Add as**, which lists
   every widget that can show it (a number can be a Text Display, a Number Bar, a Graph and more),
   and **Add to list** to add it to a List Layout.
@@ -39,8 +41,10 @@ all.
 
 Unlocked:
 
-- **Move** a widget by dragging it; it snaps to the grid.
-- **Resize** it by dragging its bottom-right corner.
+- **Move** a widget by dragging it; it snaps to the grid. Widgets in the way slide aside to the
+  nearest free spots, shown as you drag; move on and they slide back. The outline is red only when
+  one of them has nowhere to go. **Escape** calls the drag off, leaving everything as it was.
+- **Resize** it by dragging its bottom-right corner. Growing over others pushes them aside too.
 - **Click** it to select it. That also finds its topic in the tree.
 - **Double-click** it, or press **Enter** while it's selected, to open its settings.
 - **Right-click** it for **Edit…**, **Duplicate** (Ctrl+D), **Delete** (Delete), and **Put in a

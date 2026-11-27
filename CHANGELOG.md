@@ -12,6 +12,9 @@ What changes in each raptaboard release. Newest first.
   aim), each with a fading trail. Make one with "Add as" on a number, then drop the second value
   on it from the tree, or on a Pose, Translation or ChassisSpeeds for its x and y at once.
 
+- **Widgets make room:** a widget moved or resized onto others, a topic dropped from the tree, or a
+  list's widget dragged out pushes what's in the way aside to the nearest free spots, shown as you
+  drag, instead of being refused. One Undo puts them all back; Escape calls a drag off.
 - **The book's Widgets chapter:** every widget, how to add and change widgets, the settings dialog
   and text styles, with pictures from the sim robot.
 

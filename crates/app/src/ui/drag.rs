@@ -203,9 +203,94 @@ impl DashboardApp {
         }
     }
 
+    /// Where the items a drag pushes aside are, if it were dropped now on
+    /// the grid with the pointer at `pointer` ([`grid::reflow`]): each one
+    /// moved, not the dragged item itself. Empty with no drag, a drag going
+    /// into a list, or one that can't go where it is.
+    pub(super) fn pushed_aside(
+        &self,
+        ctx: &egui::Context,
+        view: GridView,
+        pointer: Option<Pos2>,
+    ) -> Vec<(Item, LayoutRect)> {
+        let Some(tab) = self.tab() else {
+            return Vec::new();
+        };
+        if let Some(drag) = self.grid.drag {
+            if self.drag_into_list(drag, view, pointer).is_some() {
+                return Vec::new();
+            }
+            let target = drag.target(view.cell, view.room);
+            return grid::reflow(&tab.grid_layout, drag.item, target, view.cell, view.room)
+                .map(|moves| moves.into_iter().skip(1).collect())
+                .unwrap_or_default();
+        }
+        // Something new coming onto the grid: a list child dragged out, or
+        // topics from the tree.
+        let new = match self.grid.child_drag {
+            Some(_) => pointer.and_then(|p| self.child_grid_target(view, p)),
+            None => pointer.and_then(|p| self.tree_grid_target(ctx, view, p)),
+        };
+        new.and_then(|rect| grid::make_room(&tab.grid_layout, rect, view.cell, view.room))
+            .unwrap_or_default()
+    }
+
+    /// Where the list child being dragged lands on the grid, with the
+    /// pointer at `p`: `None` over a list (it goes in) or off the grid.
+    pub(super) fn child_grid_target(&self, view: GridView, p: Pos2) -> Option<LayoutRect> {
+        let cd = self.grid.child_drag?;
+        let child = self
+            .tab()?
+            .grid_layout
+            .layouts
+            .get(cd.list)?
+            .children
+            .get(cd.child)?;
+        if self.list_drop(view, p).is_some() || !view.visible.contains(p) {
+            return None;
+        }
+        let size = grid::snap_resize(child.rect, view.cell);
+        let (x, y) = view.to_grid(p - cd.grab);
+        Some(grid::snap_move(
+            LayoutRect { x, y, ..size },
+            view.cell,
+            view.room,
+        ))
+    }
+
+    /// Where the first widget for topics dragged from the tree lands on the
+    /// grid, with the pointer at `p`: the cell under it. `None` with no
+    /// topics dragged, while locked, off the grid, or over a list or a
+    /// widget that takes topics (they go into it).
+    pub(super) fn tree_grid_target(
+        &self,
+        ctx: &egui::Context,
+        view: GridView,
+        p: Pos2,
+    ) -> Option<LayoutRect> {
+        if self.locked
+            || !view.visible.contains(p)
+            || !egui::DragAndDrop::has_payload_of_type::<DraggedTopics>(ctx)
+        {
+            return None;
+        }
+        if self.topic_taker_drop(view, p).is_some() || self.list_drop(view, p).is_some() {
+            return None;
+        }
+        let (x, y) = view.to_grid(p);
+        let under = LayoutRect {
+            x: x - view.cell / 2.0,
+            y: y - view.cell / 2.0,
+            width: view.cell,
+            height: view.cell,
+        };
+        Some(grid::snap_move(under, view.cell, view.room))
+    }
+
     /// The dragged item follows the pointer on top of everything, with an
-    /// outline where it will land: green if it fits, red if not. A widget
-    /// over a list goes into the list instead.
+    /// outline where it will land: green if it can go there (pushing what's
+    /// in the way aside, drawn where it would go), red if not. A widget over
+    /// a list goes into the list instead.
     pub(super) fn drag_preview(
         &self,
         painter: &egui::Painter,
@@ -221,7 +306,8 @@ impl DashboardApp {
             Some(target) => draw_drop(painter, &target, &to_screen),
             None => {
                 let target = drag.target(view.cell, view.room);
-                let ok = grid::fits(&tab.grid_layout, drag.item, target);
+                let ok = grid::reflow(&tab.grid_layout, drag.item, target, view.cell, view.room)
+                    .is_some();
                 draw_landing(painter, view.to_screen(&target), ok);
             }
         }
@@ -262,15 +348,13 @@ impl DashboardApp {
         };
         let size = grid::snap_resize(child.rect, view.cell);
         let corner = p - cd.grab;
+        // Onto the grid, pushing what's in the way aside if it can.
         let target = self.list_drop(view, p).or_else(|| {
-            view.visible.contains(p).then(|| {
-                let (x, y) = view.to_grid(corner);
-                let rect = grid::snap_move(LayoutRect { x, y, ..size }, view.cell, view.room);
-                DropTarget::Grid {
+            self.child_grid_target(view, p)
+                .map(|rect| DropTarget::Grid {
                     rect,
-                    free: grid::is_free(&tab.grid_layout, rect),
-                }
-            })
+                    free: grid::make_room(&tab.grid_layout, rect, view.cell, view.room).is_some(),
+                })
         });
         if let Some(target) = &target {
             draw_drop(painter, target, &|r: &LayoutRect| view.to_screen(r));
@@ -313,26 +397,30 @@ impl DashboardApp {
         let Some(topics) = egui::DragAndDrop::payload::<DraggedTopics>(ui.ctx()) else {
             return;
         };
-        let (x, y) = view.to_grid(p);
-        let under = LayoutRect {
-            x: x - view.cell / 2.0,
-            y: y - view.cell / 2.0,
-            width: view.cell,
-            height: view.cell,
-        };
         // Over a widget that takes topics, they go to it (a graph's lines).
         let into = self
             .topic_taker_drop(view, p)
             .or_else(|| self.list_drop(view, p));
-        let target = grid::snap_move(under, view.cell, view.room);
+        let Some(target) = self.tree_grid_target(ui.ctx(), view, p).or_else(|| {
+            let (x, y) = view.to_grid(p);
+            Some(LayoutRect {
+                x,
+                y,
+                width: view.cell,
+                height: view.cell,
+            })
+        }) else {
+            return;
+        };
         match &into {
             Some(drop) => draw_drop(painter, drop, &|r: &LayoutRect| view.to_screen(r)),
-            // Several go around the first, so only the first must fit.
+            // The first goes here, pushing what's in the way aside; several
+            // go around it, so only the first must have room.
             None => {
-                let free = self
-                    .tab()
-                    .is_some_and(|t| grid::is_free(&t.grid_layout, target));
-                draw_landing(painter, view.to_screen(&target), free);
+                let room = self.tab().is_some_and(|t| {
+                    grid::make_room(&t.grid_layout, target, view.cell, view.room).is_some()
+                });
+                draw_landing(painter, view.to_screen(&target), room);
             }
         }
         if ui.input(|i| i.pointer.any_released()) {
@@ -341,7 +429,9 @@ impl DashboardApp {
     }
 
     /// Put a widget or list let go after a drag `into` a list, or where it
-    /// was dragged to on the grid if it fits there (else it goes back).
+    /// was dragged to on the grid, pushing what's in the way to the nearest
+    /// free spots ([`grid::reflow`]); if something has nowhere to go, it
+    /// goes back.
     pub(super) fn drop_dragged(&mut self, drag: Drag, into: Option<DropTarget>, view: GridView) {
         let Some(tab) = self.layout.tabs.get_mut(self.current_tab) else {
             return;
@@ -355,8 +445,15 @@ impl DashboardApp {
             }
             _ => {
                 let target = drag.target(view.cell, view.room);
-                if grid::fits(grid, drag.item, target) {
-                    drag.item.set_rect(grid, target);
+                if let Some(moves) = grid::reflow(grid, drag.item, target, view.cell, view.room) {
+                    for &(item, rect) in &moves {
+                        item.set_rect(grid, rect);
+                    }
+                    self.status = match moves.len() - 1 {
+                        0 => String::new(),
+                        1 => "Moved 1 widget out of the way".to_owned(),
+                        n => format!("Moved {n} widgets out of the way"),
+                    };
                 }
             }
         }
@@ -404,6 +501,11 @@ impl DashboardApp {
                 self.selected = Some(Item::Widget(index));
             }
             None => {
+                // Room for the first, pushing what's in the way aside.
+                let pushed = grid::make_room(grid, target, cell, view.room).unwrap_or_default();
+                for &(item, rect) in &pushed {
+                    item.set_rect(grid, rect);
+                }
                 let placed = grid::place_near(grid, made, (target.x, target.y), cell, view.room);
                 self.selected = placed.first().map(|&i| Item::Widget(i));
                 if placed.len() < topics.0.len() {
