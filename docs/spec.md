@@ -810,8 +810,9 @@ raptaboard is meant to rest in, apart from feature requests.
      (`grid::draw_order`); a widget overlapping another has **Bring to front** and **Send to back**
      in its right-click menu (refused if it would hide one). Opening a layout keeps overlaps the
      rules allow and fixes the rest as before. Plain drags still push aside (and say "hold Alt to
-     overlap instead"); Pack widgets never piles things up. Not yet: Alt for topics dropped from
-     the tree or list children dragged out.
+     overlap instead"); Pack widgets never piles things up. With Alt held a widget never goes
+     into a List Layout (nor will it into a Group): it goes over it (asked for by the user
+     2026-11-27). Not yet: Alt for topics dropped from the tree or list children dragged out.
    - Boolean Box text (**done**): `text_backing`, a see-through box behind the text so it reads over
      any color, and `true_text_color` / `false_text_color` (automatic black or white if not set; white
      on the backing).

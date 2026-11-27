@@ -194,16 +194,20 @@ impl DashboardApp {
             })
     }
 
-    /// The list a widget being moved would go into, with the pointer at
-    /// `pointer`: the list under the pointer, if any. Resizing, and lists
-    /// being dragged, never go into a list.
+    /// The list a widget being moved would go into: the list under the
+    /// pointer, if any. Resizing, lists being dragged, and anything dragged
+    /// with Alt held (placed over what's there: [`overlapping`]) never go
+    /// into a list.
     pub(super) fn drag_into_list(
         &self,
+        ctx: &egui::Context,
         drag: Drag,
         view: GridView,
-        pointer: Option<Pos2>,
     ) -> Option<DropTarget> {
-        match (drag.item, drag.mode, pointer) {
+        if overlapping(ctx) {
+            return None;
+        }
+        match (drag.item, drag.mode, ctx.pointer_latest_pos()) {
             (Item::Widget(_), DragMode::Move, Some(p)) => self.list_drop(view, p),
             _ => None,
         }
@@ -224,7 +228,7 @@ impl DashboardApp {
         };
         if let Some(drag) = self.grid.drag {
             // With Alt held it goes over them instead.
-            if self.drag_into_list(drag, view, pointer).is_some() || overlapping(ctx) {
+            if self.drag_into_list(ctx, drag, view).is_some() || overlapping(ctx) {
                 return Vec::new();
             }
             let target = drag.target(view.cell, view.room);
@@ -309,7 +313,7 @@ impl DashboardApp {
             return;
         };
         let to_screen = |r: &LayoutRect| view.to_screen(r);
-        match self.drag_into_list(drag, view, painter.ctx().pointer_latest_pos()) {
+        match self.drag_into_list(painter.ctx(), drag, view) {
             Some(target) => draw_drop(painter, &target, &to_screen),
             None => {
                 let target = drag.target(view.cell, view.room);

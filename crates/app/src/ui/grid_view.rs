@@ -854,7 +854,7 @@ impl DashboardApp {
         if let Some(drag) = dropped {
             // Worked out here, where it's let go: the preview stops
             // drawing on the frame the drag ends, so it can't say.
-            let into = self.drag_into_list(drag, view, ui.ctx().pointer_latest_pos());
+            let into = self.drag_into_list(ui.ctx(), drag, view);
             self.drop_dragged(drag, into, view, super::drag::overlapping(ui.ctx()));
         }
         if let Some((cd, target)) = child_dropped {
@@ -1345,6 +1345,19 @@ mod tests {
             "{}",
             app.status
         );
+    }
+
+    #[test]
+    fn with_alt_a_widget_goes_over_a_list_not_into_it() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        // A onto the list's top half (the list is two cells tall).
+        alt_drag(&ctx, &mut app, (40.0, 40.0), (40.0, 256.0 + 40.0));
+        let grid = &app.layout.tabs[0].grid_layout;
+        assert!(grid.layouts[0].children.is_empty(), "not put in the list");
+        assert_eq!(grid.containers.len(), 2);
+        assert_eq!(rect_of(&app, 0), (0.0, 256.0, 128.0, 128.0));
+        assert_eq!(grid::draw_order(grid).last().unwrap().0, Item::Widget(0));
     }
 
     #[test]
