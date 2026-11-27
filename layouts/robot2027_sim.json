@@ -782,6 +782,242 @@
       }
     },
     {
+      "name": "Groups",
+      "grid_layout": {
+        "layouts": [
+          {
+            "title": "Drive panel",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 768.0,
+            "height": 640.0,
+            "type": "Group",
+            "properties": {
+              "rows": 4
+            },
+            "children": [
+              {
+                "title": "Heading",
+                "x": 0.0,
+                "y": 0.0,
+                "width": 256.0,
+                "height": 256.0,
+                "type": "Gyro",
+                "properties": {
+                  "topic": "/DashTest/OrbitHeading",
+                  "period": 0.02,
+                  "data_type": "struct:Rotation2d"
+                }
+              },
+              {
+                "title": "Modules",
+                "x": 256.0,
+                "y": 0.0,
+                "width": 256.0,
+                "height": 256.0,
+                "type": "SwerveDrive",
+                "properties": {
+                  "topic": "/DashTest/ModuleStates",
+                  "period": 0.02,
+                  "data_type": "struct:SwerveModuleState[]",
+                  "heading_topic": "/DashTest/OrbitHeading"
+                }
+              },
+              {
+                "title": "Sine",
+                "x": 0.0,
+                "y": 256.0,
+                "width": 256.0,
+                "height": 256.0,
+                "type": "Graph",
+                "properties": {
+                  "topic": "/DashTest/Sine",
+                  "period": 0.033,
+                  "data_type": "double",
+                  "time_displayed": 10.0,
+                  "series": [
+                    {
+                      "topic": "/DashTest/OrbitPose",
+                      "data_type": "double",
+                      "struct_meta": {
+                        "path": [
+                          "translation",
+                          "x"
+                        ],
+                        "schema_name": "Pose2d",
+                        "type": "double"
+                      }
+                    },
+                    {
+                      "topic": "/DashTest/OrbitPose",
+                      "data_type": "double",
+                      "struct_meta": {
+                        "path": [
+                          "translation",
+                          "y"
+                        ],
+                        "schema_name": "Pose2d",
+                        "type": "double"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "title": "Battery",
+                "x": 256.0,
+                "y": 256.0,
+                "width": 256.0,
+                "height": 128.0,
+                "type": "Battery",
+                "properties": {
+                  "topic": "/DashTest/BatteryVoltage",
+                  "period": 0.06,
+                  "data_type": "double"
+                }
+              },
+              {
+                "title": "Blink",
+                "x": 512.0,
+                "y": 0.0,
+                "width": 128.0,
+                "height": 128.0,
+                "type": "Boolean Box",
+                "properties": {
+                  "topic": "/DashTest/Blink",
+                  "period": 0.06,
+                  "data_type": "boolean",
+                  "true_color": 4283215696,
+                  "false_color": 4294198070
+                }
+              },
+              {
+                "title": "Toggle",
+                "x": 512.0,
+                "y": 128.0,
+                "width": 128.0,
+                "height": 128.0,
+                "type": "Toggle Switch",
+                "properties": {
+                  "topic": "/DashTest/Toggle",
+                  "period": 0.06,
+                  "data_type": "boolean"
+                }
+              },
+              {
+                "title": "Sine bar",
+                "x": 256.0,
+                "y": 384.0,
+                "width": 256.0,
+                "height": 128.0,
+                "type": "Number Bar",
+                "properties": {
+                  "topic": "/DashTest/Sine",
+                  "period": 0.06,
+                  "data_type": "double",
+                  "show_stats": true,
+                  "stats_window": 5.0
+                }
+              },
+              {
+                "title": "Seconds",
+                "x": 512.0,
+                "y": 256.0,
+                "width": 128.0,
+                "height": 128.0,
+                "type": "Text Display",
+                "properties": {
+                  "topic": "/DashTest/Seconds",
+                  "period": 0.06,
+                  "data_type": "int"
+                }
+              },
+              {
+                "title": "Mode",
+                "x": 512.0,
+                "y": 384.0,
+                "width": 128.0,
+                "height": 128.0,
+                "type": "Text Display",
+                "properties": {
+                  "topic": "/DashTest/ModeName",
+                  "period": 0.06,
+                  "data_type": "string"
+                }
+              }
+            ]
+          },
+          {
+            "title": "Module CAN (no grid lines)",
+            "x": 768.0,
+            "y": 0.0,
+            "width": 256.0,
+            "height": 256.0,
+            "type": "Group",
+            "properties": {
+              "rows": 2,
+              "grid_lines": false
+            },
+            "children": [
+              {
+                "title": "frontLeft",
+                "x": 0.0,
+                "y": 0.0,
+                "width": 128.0,
+                "height": 128.0,
+                "type": "Boolean Box",
+                "properties": {
+                  "topic": "/Drive/Module/frontLeft/drive_connected",
+                  "period": 0.06,
+                  "data_type": "boolean"
+                }
+              },
+              {
+                "title": "frontRight",
+                "x": 128.0,
+                "y": 0.0,
+                "width": 128.0,
+                "height": 128.0,
+                "type": "Boolean Box",
+                "properties": {
+                  "topic": "/Drive/Module/frontRight/drive_connected",
+                  "period": 0.06,
+                  "data_type": "boolean"
+                }
+              },
+              {
+                "title": "backLeft",
+                "x": 0.0,
+                "y": 128.0,
+                "width": 128.0,
+                "height": 128.0,
+                "type": "Boolean Box",
+                "properties": {
+                  "topic": "/Drive/Module/backLeft/drive_connected",
+                  "period": 0.06,
+                  "data_type": "boolean"
+                }
+              },
+              {
+                "title": "backRight",
+                "x": 128.0,
+                "y": 128.0,
+                "width": 128.0,
+                "height": 128.0,
+                "type": "Boolean Box",
+                "properties": {
+                  "topic": "/Drive/Module/backRight/drive_connected",
+                  "period": 0.06,
+                  "data_type": "boolean"
+                }
+              }
+            ]
+          }
+        ],
+        "containers": []
+      }
+    },
+    {
       "name": "Writing",
       "grid_layout": {
         "layouts": [
