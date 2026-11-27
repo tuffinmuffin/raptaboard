@@ -790,7 +790,10 @@ mod tests {
             assert_eq!(moves, vec![(Item::Widget(1), g.at(1.0, 1.0, 1.0, 1.0))]);
             assert_eq!(make_room(&grid, below, g.cell, window), Some(vec![]));
             // No room for a full window's worth.
-            assert_eq!(make_room(&grid, g.at(0.0, 0.0, 3.0, 2.0), g.cell, window), None);
+            assert_eq!(
+                make_room(&grid, g.at(0.0, 0.0, 3.0, 2.0), g.cell, window),
+                None
+            );
             // Grown over everything with nowhere left: refused.
             assert_eq!(flow(&grid, Item::Widget(0), g.at(0.0, 0.0, 3.0, 2.0)), None);
             // An item that isn't there: nothing.
