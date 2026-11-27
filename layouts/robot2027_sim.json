@@ -561,6 +561,132 @@
       }
     },
     {
+      "name": "X/Y",
+      "grid_layout": {
+        "layouts": [],
+        "containers": [
+          {
+            "title": "Orbit (X/Y)",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 384.0,
+            "height": 384.0,
+            "type": "X/Y Graph",
+            "properties": {
+              "topic": "/DashTest/OrbitPose",
+              "period": 0.016,
+              "data_type": "struct:Pose2d",
+              "same_scale": true
+            }
+          },
+          {
+            "title": "Speeds: commanded and measured",
+            "x": 384.0,
+            "y": 0.0,
+            "width": 384.0,
+            "height": 384.0,
+            "type": "X/Y Graph",
+            "properties": {
+              "topic": "/DashTest/CommandedSpeeds",
+              "period": 0.016,
+              "data_type": "struct:ChassisSpeeds",
+              "trail_time": 2.0,
+              "pairs": [
+                {
+                  "x": {
+                    "topic": "/DashTest/CommandedSpeeds",
+                    "data_type": "double",
+                    "struct_meta": {
+                      "path": [
+                        "vx"
+                      ],
+                      "schema_name": "ChassisSpeeds",
+                      "type": "double"
+                    }
+                  },
+                  "y": {
+                    "topic": "/DashTest/CommandedSpeeds",
+                    "data_type": "double",
+                    "struct_meta": {
+                      "path": [
+                        "vy"
+                      ],
+                      "schema_name": "ChassisSpeeds",
+                      "type": "double"
+                    }
+                  },
+                  "color": 4278238420,
+                  "name": "commanded"
+                },
+                {
+                  "x": {
+                    "topic": "/DashTest/MeasuredSpeeds",
+                    "data_type": "double",
+                    "struct_meta": {
+                      "path": [
+                        "vx"
+                      ],
+                      "schema_name": "ChassisSpeeds",
+                      "type": "double"
+                    }
+                  },
+                  "y": {
+                    "topic": "/DashTest/MeasuredSpeeds",
+                    "data_type": "double",
+                    "struct_meta": {
+                      "path": [
+                        "vy"
+                      ],
+                      "schema_name": "ChassisSpeeds",
+                      "type": "double"
+                    }
+                  },
+                  "color": 4294940672,
+                  "name": "measured"
+                }
+              ]
+            }
+          },
+          {
+            "title": "Heading and intake reach (polar)",
+            "x": 768.0,
+            "y": 0.0,
+            "width": 384.0,
+            "height": 384.0,
+            "type": "Polar Graph",
+            "properties": {
+              "topic": "/DashTest/OrbitHeading",
+              "period": 0.016,
+              "data_type": "struct:Rotation2d",
+              "angle_unit": "radians",
+              "zero_at": "up",
+              "pairs": [
+                {
+                  "x": {
+                    "topic": "/DashTest/OrbitHeading",
+                    "data_type": "double",
+                    "struct_meta": {
+                      "path": [
+                        "value"
+                      ],
+                      "schema_name": "Rotation2d",
+                      "type": "double"
+                    }
+                  },
+                  "y": {
+                    "topic": "/DashTest/IntakeExtensionIn",
+                    "data_type": "double"
+                  },
+                  "color": 4278238420,
+                  "name": "intake reach (in)"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "Writing",
       "grid_layout": {
         "layouts": [

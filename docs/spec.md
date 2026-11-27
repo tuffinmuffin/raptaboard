@@ -811,7 +811,7 @@ raptaboard is meant to rest in, apart from feature requests.
      (`graph::Window`, kept to what's recorded), and the wheel is used up so the grid behind
      doesn't scroll. Lines are thinned to each pixel column's lowest and highest before drawing
      (`graph::thin`); the cursors and hover read every value. Still to do: the same for X/Y and
-     polar graphs, when they exist.
+     polar graphs (they keep only their trail).
    - Graph sample statistics (**done**, after 0.1.0): `show_stats` on a Graph shows each line's min,
      max and average bottom left, in its color, above the cursor readout: over the time shown (live,
      or the paused window after looking back), or between the A and B cursors once both are placed
@@ -934,13 +934,23 @@ raptaboard is meant to rest in, apart from feature requests.
      licenses and a filter, from `licenses/rust-crates.tsv`) and their full license texts
      (`licenses/THIRD_PARTY_LICENSES.txt`, with copy). `scripts/crate_licenses.py` makes both
      files; a test fails when they don't match `Cargo.lock`.
-   - X/Y and polar graphs (`egui_plot`): pair two values recorded at the same time (x with y, or
-     angle with distance) and plot one against the other, for a joystick's position, an arm
-     joint's path or a turret's aim. Modes: a trail that fades out over a set time (time decay),
-     or just the current point (tracking). Several pairs per graph, like Graph's lines; pairs come
-     from two topics, two struct fields (Pose2d x/y, Translation2d), or a dropped struct with a
-     known pair. Angle units for polar (degrees or radians, zero direction, clockwise or not).
-     Shares Graph's recording (`traces.rs`), pause and measuring.
+   - X/Y and polar graphs (**done** for 0.5.0, 2026-11-27, `builtin/xy_graph.rs`, `egui_plot`): the
+     "X/Y Graph" and "Polar Graph" widgets (raptaboard's own) pair two values recorded at the same
+     time (x with y, or angle with distance; `xy_graph::paired` holds each one's last value until
+     the other changes) and plot one against the other, for a joystick's position, a robot's path,
+     an arm joint's reach or a turret's aim. A trail of the last `trail_time` seconds (3) fades as
+     it ages, with a dot at the newest point; 0 shows the dot only (tracking). Several pairs per
+     graph (`pairs`), each its own color, named after the struct or the topics' folder. Pairs come
+     from "Add as" on a number (the first value; the next number dropped on finishes it, more
+     drops start new pairs) or on a struct with a known pair (`xy_graph::known_pair`:
+     Translation2d/3d, Pose2d/3d, ChassisSpeeds' vx and vy; X/Y only). A Rotation2d is one number, its angle in
+     radians; a Polar Graph chosen for one reads radians (`chosen`). X/Y: fixed x and y ranges
+     or fit, `same_scale`. Polar: rings and 30° spokes, the outer ring fixed or fit, degrees or
+     radians (spokes labelled in π for radians), 0 right, up, left or down, clockwise or not.
+     Shares Graph's recording (`traces.rs`) and pause (freeze), and hover shows the pointer's
+     place and each pair's newest values. Not yet: looking back while paused and the measuring
+     cursors (Graph's), naming a pair in the settings. The sim layout's "X/Y" tab has one of
+     each: OrbitPose, commanded and measured ChassisSpeeds, OrbitHeading against the intake's reach.
    - Battery widget (**done**, `builtin/battery.rs`): a battery icon filled by charge (the voltage
      between `min_value` and `max_value`, 11 to 13 V), green, yellow below `warn_below` (12 V) and red
      below `low_below` (11.5 V), with the volts and charge on a see-through backing; on its side on a

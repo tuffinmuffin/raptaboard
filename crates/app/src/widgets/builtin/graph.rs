@@ -107,7 +107,7 @@ const MIN_SPAN: f64 = 0.05;
 pub const DEFAULT_COLOR: Color32 = Color32::from_rgb(0x00, 0xBC, 0xD4);
 const DEFAULT_WIDTH: f64 = 2.0;
 /// Colors for the lines after the main one, in order, until they repeat.
-const PALETTE: [Color32; 8] = [
+pub(crate) const PALETTE: [Color32; 8] = [
     Color32::from_rgb(0xFF, 0x98, 0x00),
     Color32::from_rgb(0x8B, 0xC3, 0x4A),
     Color32::from_rgb(0xE9, 0x1E, 0x63),
