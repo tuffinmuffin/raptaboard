@@ -104,6 +104,12 @@ pub(super) enum Sender {
 pub(super) struct Requests {
     /// "New List Layout" from the empty grid's menu.
     pub new_list: bool,
+    /// "Pack widgets" from the empty grid's menu.
+    pub pack: bool,
+    /// "Fill space" from a widget's or list's menu.
+    pub fill: Option<Item>,
+    /// "Pin in place" ticked or unticked in a widget's or list's menu.
+    pub pin: Option<(Item, bool)>,
     /// A widget or list let go after a drag.
     pub dropped: Option<Drag>,
     /// A list child let go, and where (if anywhere it can go).
@@ -128,6 +134,21 @@ pub(super) struct Requests {
     /// "Reset min/max" from a widget's menu.
     pub reset_ranges: Vec<SeriesKey>,
 }
+
+/// A small pin in `card`'s top-left corner: the item is pinned in place.
+fn draw_pin(painter: &egui::Painter, visuals: &egui::Visuals, card: Rect) {
+    let head = card.min + Vec2::new(PIN_INSET + PIN_HEAD, PIN_INSET + PIN_HEAD);
+    let color = visuals.text_color();
+    let tip = head + Vec2::new(-PIN_LENGTH, PIN_LENGTH) * std::f32::consts::FRAC_1_SQRT_2;
+    painter.line_segment([head, tip], Stroke::new(2.0, color));
+    painter.circle_filled(head, PIN_HEAD, color);
+}
+
+/// How far the pin sits in from a card's corner, its head's radius and its
+/// length, in points.
+const PIN_INSET: f32 = 5.0;
+const PIN_HEAD: f32 = 4.5;
+const PIN_LENGTH: f32 = 10.0;
 
 /// The reset in a widget's right-click menu ("Reset scale", "Reset
 /// min/max"), if it has one ([`widgets::WidgetType::resettable`]); clicked,
@@ -232,6 +253,46 @@ impl DashboardApp {
             self.grid.child_drag = None;
             egui::DragAndDrop::clear_payload(ctx);
             self.status = "Drag cancelled".to_owned();
+        }
+    }
+
+    /// "Pack widgets", "Fill space" and "Pin in place" from the right-click
+    /// menus, each one undo step, said in the status line.
+    fn arrange(
+        &mut self,
+        pack: bool,
+        fill: Option<Item>,
+        pin: Option<(Item, bool)>,
+        view: GridView,
+    ) {
+        let Some(tab) = self.layout.tabs.get_mut(self.current_tab) else {
+            return;
+        };
+        let grid = &mut tab.grid_layout;
+        if let Some((item, pinned)) = pin {
+            item.set_pinned(grid, pinned);
+            self.selected = Some(item);
+        }
+        if let Some(item) = fill {
+            self.selected = Some(item);
+            self.status = match grid::fill_space(grid, item, view.cell, view.room) {
+                Some(rect) => {
+                    item.set_rect(grid, rect);
+                    String::new()
+                }
+                None => "No empty space next to it".to_owned(),
+            };
+        }
+        if pack {
+            let moves = grid::pack(grid, view.cell);
+            for &(item, rect) in &moves {
+                item.set_rect(grid, rect);
+            }
+            self.status = match moves.len() {
+                0 => "Already packed".to_owned(),
+                1 => "Packed: moved 1 widget".to_owned(),
+                n => format!("Packed: moved {n} widgets"),
+            };
         }
     }
 
@@ -361,6 +422,15 @@ impl DashboardApp {
             {
                 requests.new_list = true;
             }
+            if ui
+                .button("Pack widgets")
+                .on_hover_text(
+                    "Slide every widget up, then left, closing the gaps (pinned ones stay put)",
+                )
+                .clicked()
+            {
+                requests.pack = true;
+            }
         });
     }
 
@@ -488,6 +558,24 @@ impl DashboardApp {
                 {
                     requests.wrap = Some(widget);
                 }
+                if ui
+                    .button("Fill space")
+                    .on_hover_text("Grow into the empty cells around it")
+                    .clicked()
+                {
+                    requests.fill = Some(item);
+                }
+                let mut pinned = item.pinned(&tab.grid_layout);
+                if ui
+                    .checkbox(&mut pinned, "Pin in place")
+                    .on_hover_text(
+                        "Never pushed aside by another widget or moved by Pack widgets; \
+                         it still moves when you drag it",
+                    )
+                    .clicked()
+                {
+                    requests.pin = Some((item, pinned));
+                }
                 if let Item::Widget(widget) = item {
                     reset_button(
                         ui,
@@ -593,6 +681,14 @@ impl DashboardApp {
     fn draw_outlines(&self, painter: &egui::Painter, visuals: &egui::Visuals, view: GridView) {
         let Some(tab) = self.tab() else { return };
         let dragging = self.grid.drag.map(|d| d.item);
+        // Unlocked, a pin in the top-left corner of each pinned item.
+        if !self.locked {
+            for (item, r) in grid::items(&tab.grid_layout) {
+                if Some(item) != dragging && item.pinned(&tab.grid_layout) {
+                    draw_pin(painter, visuals, view.to_screen(&r).shrink(CELL_GAP));
+                }
+            }
+        }
         if let Some(item) = self.selected
             && Some(item) != dragging
             && let Some(r) = item.rect(&tab.grid_layout)
@@ -684,6 +780,9 @@ impl DashboardApp {
     fn apply(&mut self, ui: &egui::Ui, view: GridView, requests: Requests) {
         let Requests {
             new_list,
+            pack,
+            fill,
+            pin,
             dropped,
             child_dropped,
             topics_dropped,
@@ -698,6 +797,7 @@ impl DashboardApp {
         for key in &reset_ranges {
             self.traces.reset(key);
         }
+        self.arrange(pack, fill, pin, view);
         for (sender, value) in writes {
             self.send(sender, value);
         }
@@ -1076,6 +1176,74 @@ mod tests {
         assert!(app.history.undo(&mut app.layout));
         assert_eq!(rect_of(&app, 0), (0.0, 0.0, 128.0, 128.0));
         assert_eq!(rect_of(&app, 1), (384.0, 0.0, 128.0, 128.0));
+    }
+
+    /// The grid's view in a window 768 by 512 points, as the tests draw it.
+    fn test_view(origin: Pos2) -> GridView {
+        let window = Rect::from_min_size(origin, egui::vec2(768.0, 512.0));
+        GridView {
+            area: window,
+            visible: window,
+            cell: 128.0,
+            room: (768.0, 512.0),
+        }
+    }
+
+    #[test]
+    fn pack_fill_and_pin_from_the_menus_each_say_what_they_did() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        let origin = frame(&ctx, &mut app, vec![]);
+        let view = test_view(origin);
+        // B pinned: Pack slides A and the list but not B.
+        app.arrange(false, None, Some((Item::Widget(1), true)), view);
+        assert!(Item::Widget(1).pinned(&app.layout.tabs[0].grid_layout));
+        app.layout.tabs[0].grid_layout.containers[0].rect.y = 128.0;
+        app.arrange(true, None, None, view);
+        assert_eq!(rect_of(&app, 0), (0.0, 0.0, 128.0, 128.0));
+        assert_eq!(rect_of(&app, 1), (384.0, 0.0, 128.0, 128.0), "pinned");
+        let list = app.layout.tabs[0].grid_layout.layouts[0].rect;
+        assert_eq!((list.x, list.y), (0.0, 128.0), "the list slid up under A");
+        assert_eq!(app.status, "Packed: moved 2 widgets");
+        app.arrange(true, None, None, view);
+        assert_eq!(app.status, "Already packed");
+        // A fills the space left of B: three columns, the whole window's
+        // height but the list's column below it.
+        app.arrange(false, Some(Item::Widget(0)), None, view);
+        assert_eq!(rect_of(&app, 0), (0.0, 0.0, 384.0, 128.0));
+        assert_eq!(app.selected, Some(Item::Widget(0)));
+        app.arrange(false, Some(Item::Widget(0)), None, view);
+        assert_eq!(app.status, "No empty space next to it");
+    }
+
+    #[test]
+    fn a_drop_onto_a_pinned_widget_is_refused_and_pins_show_while_unlocked() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        Item::Widget(1).set_pinned(&mut app.layout.tabs[0].grid_layout, true);
+        drag(&ctx, &mut app, (40.0, 40.0), (40.0 + 384.0, 40.0));
+        assert_eq!(rect_of(&app, 0), (0.0, 0.0, 128.0, 128.0), "refused");
+        assert_eq!(rect_of(&app, 1), (384.0, 0.0, 128.0, 128.0));
+        // The pin is drawn unlocked, not locked.
+        let pins = |app: &mut DashboardApp| {
+            let raw = RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0))),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(raw, |ui| app.grid(ui, &HashMap::new(), Instant::now()));
+            output.textures_delta.clear();
+            fn count(shape: &egui::Shape) -> usize {
+                match shape {
+                    egui::Shape::Circle(c) if c.radius == PIN_HEAD => 1,
+                    egui::Shape::Vec(v) => v.iter().map(count).sum(),
+                    _ => 0,
+                }
+            }
+            output.shapes.iter().map(|s| count(&s.shape)).sum::<usize>()
+        };
+        assert_eq!(pins(&mut app), 1);
+        app.locked = true;
+        assert_eq!(pins(&mut app), 0);
     }
 
     #[test]

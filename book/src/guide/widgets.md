@@ -47,12 +47,24 @@ Unlocked:
 - **Resize** it by dragging its bottom-right corner. Growing over others pushes them aside too.
 - **Click** it to select it. That also finds its topic in the tree.
 - **Double-click** it, or press **Enter** while it's selected, to open its settings.
-- **Right-click** it for **Edit…**, **Duplicate** (Ctrl+D), **Delete** (Delete), and **Put in a
-  new list**. A widget that keeps a min and max or a scale from the values it has seen also has
-  **Reset min/max** or **Reset scale**.
+- **Right-click** it for **Edit…**, **Duplicate** (Ctrl+D), **Delete** (Delete), **Put in a
+  new list**, **Fill space** and **Pin in place** (below). A widget that keeps a min and max or a
+  scale from the values it has seen also has **Reset min/max** or **Reset scale**.
 
 Every change can be undone with **Undo** (Ctrl+Z). Locked, nothing moves, but widgets that send
 values (toggles, sliders, choosers, typing into a Text Display) still work.
+
+### Tidying up
+
+- **Fill space** (a widget's right-click menu): the widget grows into the empty cells around it,
+  taking the biggest space it can without covering anything, within what shows in the window.
+- **Pack widgets** (right-click empty grid): every widget slides up, then left, as far as it can,
+  closing the gaps. Sizes and the order stay the same.
+- **Pin in place** (a widget's right-click menu, or its settings): a pinned widget is never pushed
+  aside by another or moved by Pack widgets; a drop that would push it is refused. You can still
+  drag it yourself. While the layout is unlocked, a pin shows in its top-left corner.
+
+Each is one **Undo** away.
 
 ## The settings dialog
 

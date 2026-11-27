@@ -278,7 +278,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   widget is a new file in `builtin/` (listed in `builtin/mod.rs`) plus one line in `TYPES`, `layout_file.rs` opening and saving layout files (atomic
   writes, Ctrl+O/S/Shift+S; a file that's missing or isn't a layout, at startup or from Open, gets a dialog,
   `LayoutFile::load_problem`, offering Open, a new layout saved at that path (missing only), or Close), `grid.rs` the snap-grid rules
-  (snapping, overlap; `reflow` pushes what's in a drag's way to the nearest free spots, `DashboardApp::pushed_aside` draws them there mid-drag) and `tabs.rs` tab actions (moving one by dragging it along the tab bar: `TabAction::Move`, `drop_place`) and their shortcuts, `edit.rs` undo/redo (`History`, which
+  (snapping, overlap; `reflow` and `make_room` push what's in a drag's way to the nearest free spots, `DashboardApp::pushed_aside` draws them there mid-drag; `fill_space`, `pack` and `PINNED` for the right-click menus' Fill space, Pack widgets and Pin in place, done in `DashboardApp::arrange`) and `tabs.rs` tab actions (moving one by dragging it along the tab bar: `TabAction::Move`, `drop_place`) and their shortcuts, `edit.rs` undo/redo (`History`, which
   notices any layout change once a frame) and the widget editing shortcuts; the drag handling is in
   `ui/drag.rs` and `ui/grid_view.rs`. A widget draws from `widgets::Live`: its value (`Live::newest` for its topic's newest, the part for a
   widget bound to part of a struct), the frame's shared

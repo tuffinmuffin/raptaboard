@@ -3,6 +3,7 @@
 use eframe::egui::{self, Color32, Sense};
 use raptaboard_layout::{LayoutContainer, WidgetContainer};
 
+use crate::grid;
 use crate::tabs::TabAction;
 use crate::types::structs::{self, FieldInfo};
 use crate::widgets::list_layout;
@@ -81,7 +82,8 @@ pub(super) fn show_settings(
 }
 
 /// One widget's settings in a dialog titled `heading`, with Done, Cancel
-/// and Reset settings. Returns `Some(true)` for Done, `Some(false)` for
+/// and Reset settings, and (for a widget on the grid, `pinnable`) "Pin in
+/// place". Returns `Some(true)` for Done, `Some(false)` for
 /// Cancel or Esc, `None` while it stays open. Changes are made to `widget`
 /// as they happen; on Cancel the caller puts the original back.
 pub(super) fn widget_window(
@@ -91,10 +93,14 @@ pub(super) fn widget_window(
     nt_type: Option<&str>,
     field: Option<&FieldInfo>,
     topics: &[(String, String)],
+    pinnable: bool,
 ) -> Option<bool> {
     let mut close = None;
     show_settings(ctx, "widget_settings", heading, |ui| {
         widget_settings::show(ui, widget, nt_type, field, topics);
+        if pinnable {
+            pin_checkbox(ui, &mut widget.properties);
+        }
         ui.add_space(4.0);
         ui.separator();
         ui.horizontal(|ui| {
@@ -125,6 +131,29 @@ pub(super) fn widget_window(
         close = Some(false);
     }
     close
+}
+
+/// "Pin in place" for a widget or List Layout on the grid
+/// ([`grid::PINNED`]): never pushed aside or packed.
+pub(super) fn pin_checkbox(
+    ui: &mut egui::Ui,
+    props: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    let mut pinned = props.get(grid::PINNED).and_then(|v| v.as_bool()) == Some(true);
+    if ui
+        .checkbox(&mut pinned, "Pin in place")
+        .on_hover_text(
+            "Never pushed aside by another widget or moved by Pack widgets; \
+             it still moves when you drag it",
+        )
+        .changed()
+    {
+        if pinned {
+            props.insert(grid::PINNED.into(), true.into());
+        } else {
+            props.remove(grid::PINNED);
+        }
+    }
 }
 
 impl DashboardApp {
@@ -219,6 +248,7 @@ impl DashboardApp {
             nt_type.as_deref(),
             field.as_ref(),
             &topics,
+            true,
         );
         match close {
             Some(true) => self.editing = None,
@@ -282,6 +312,7 @@ impl DashboardApp {
                 nt_type.as_deref(),
                 field.as_ref(),
                 &topics,
+                false,
             ) {
                 Some(true) => self.close_child(),
                 Some(false) => {
@@ -311,6 +342,7 @@ impl DashboardApp {
         let mut action = None;
         show_settings(ctx, "list_settings", "List settings", |ui| {
             action = list_layout::settings(ui, list);
+            pin_checkbox(ui, &mut list.properties);
             ui.add_space(4.0);
             ui.separator();
             ui.horizontal(|ui| {

@@ -15,6 +15,9 @@ What changes in each raptaboard release. Newest first.
 - **Widgets make room:** a widget moved or resized onto others, a topic dropped from the tree, or a
   list's widget dragged out pushes what's in the way aside to the nearest free spots, shown as you
   drag, instead of being refused. One Undo puts them all back; Escape calls a drag off.
+- **Fill space, Pack widgets and Pin in place:** right-click a widget for **Fill space** (it grows
+  into the empty cells around it) or **Pin in place** (nothing pushes it aside or packs it), or
+  empty grid for **Pack widgets** (everything slides up and left, closing the gaps).
 - **The book's Widgets chapter:** every widget, how to add and change widgets, the settings dialog
   and text styles, with pictures from the sim robot.
 

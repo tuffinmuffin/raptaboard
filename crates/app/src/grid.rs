@@ -3,13 +3,20 @@
 //! A tab is a grid of square cells (128 pixels by default). Widgets and List
 //! Layouts are moved and resized in whole cells, and two of them may never
 //! overlap: one moved or resized onto others pushes them aside to the
-//! nearest free spots ([`reflow`]). This module holds those rules without any drawing, so they can be
+//! nearest free spots ([`reflow`]). A widget can grow into the empty cells
+//! around it ([`fill_space`]), and a tab's widgets can slide up and left to
+//! close gaps ([`pack`]). A pinned item ([`PINNED`]) is never moved by any
+//! of these, only by being dragged itself. This module holds those rules without any drawing, so they can be
 //! tested without a window. Positions and sizes are pixels at the layout's
 //! grid size, as Elastic saves them.
 
 use raptaboard_layout::{GridLayout, MAX_GRID_CELLS, Rect};
 
 use crate::widgets::list_layout::{NEW_LIST_CELLS, cells_tall_for, labels, new_list};
+
+/// The setting that pins a widget or List Layout in place (raptaboard's,
+/// `true` or unset): pushing aside and packing leave it where it is.
+pub const PINNED: &str = "pinned";
 
 /// Something on a tab's grid: a single widget or a List Layout, by its index
 /// in [`GridLayout::containers`] or [`GridLayout::layouts`].
@@ -48,6 +55,30 @@ impl Item {
 }
 
 impl Item {
+    /// Whether this item is pinned in place ([`PINNED`]).
+    pub fn pinned(self, grid: &GridLayout) -> bool {
+        let props = match self {
+            Item::Widget(i) => grid.containers.get(i).map(|w| &w.properties),
+            Item::List(i) => grid.layouts.get(i).map(|l| &l.properties),
+        };
+        props.and_then(|p| p.get(PINNED)).and_then(|v| v.as_bool()) == Some(true)
+    }
+
+    /// Pin this item in place, or unpin it (the setting removed).
+    pub fn set_pinned(self, grid: &mut GridLayout, pinned: bool) {
+        let props = match self {
+            Item::Widget(i) => grid.containers.get_mut(i).map(|w| &mut w.properties),
+            Item::List(i) => grid.layouts.get_mut(i).map(|l| &mut l.properties),
+        };
+        if let Some(props) = props {
+            if pinned {
+                props.insert(PINNED.into(), true.into());
+            } else {
+                props.remove(PINNED);
+            }
+        }
+    }
+
     /// The item's title, or `None` if it doesn't exist.
     pub fn title(self, grid: &GridLayout) -> Option<&str> {
         match self {
@@ -541,7 +572,7 @@ pub fn make_room(
 
 /// Move every item on `placed` that overlaps `target` (but `keep`) to the
 /// free spot nearest where it was, biggest first, and say where each went.
-/// `None` if one has nowhere to go.
+/// `None` if one has nowhere to go, or is pinned.
 fn push_aside(
     placed: &mut GridLayout,
     target: Rect,
@@ -553,6 +584,9 @@ fn push_aside(
         .into_iter()
         .filter(|&(other, r)| Some(other) != keep && target.overlaps(&r))
         .collect();
+    if in_the_way.iter().any(|&(other, _)| other.pinned(placed)) {
+        return None;
+    }
     // Biggest first; equal sizes in the order they're on the tab.
     in_the_way.sort_by(|a, b| (b.1.width * b.1.height).total_cmp(&(a.1.width * a.1.height)));
     // Off the grid while they're placed, so none blocks another.
@@ -571,6 +605,187 @@ fn push_aside(
         moves.push((other, spot));
     }
     Some(moves)
+}
+
+/// Which whole cells are taken, by every item but `except`: `taken[row][col]`
+/// for the first `cols` by `rows` cells.
+fn taken_cells(
+    grid: &GridLayout,
+    except: Option<Item>,
+    cell: f64,
+    cols: usize,
+    rows: usize,
+) -> Vec<Vec<bool>> {
+    let mut taken = vec![vec![false; cols]; rows];
+    for (item, r) in items(grid) {
+        if Some(item) == except {
+            continue;
+        }
+        let from = |pos: f64| (pos / cell).floor().max(0.0) as usize;
+        let to = |end: f64| (end / cell).ceil().max(0.0) as usize;
+        for row in taken
+            .iter_mut()
+            .take(to(r.y + r.height).min(rows))
+            .skip(from(r.y))
+        {
+            for c in row
+                .iter_mut()
+                .take(to(r.x + r.width).min(cols))
+                .skip(from(r.x))
+            {
+                *c = true;
+            }
+        }
+    }
+    taken
+}
+
+/// Where `item` goes if it grows to fill the empty cells around it: the
+/// biggest rectangle of free whole cells holding its own, within the cells
+/// of `area` (the visible grid, in pixels) that show in full. Ties keep its
+/// top-left corner if they can, then the higher, then the further left.
+/// `None` if it can't grow (or doesn't exist).
+///
+/// ```
+/// use raptaboard::grid::{fill_space, Item};
+/// use raptaboard_layout::{GridLayout, Rect};
+/// let grid: GridLayout = serde_json::from_str(r#"{"containers": [
+///     {"title": "a", "x": 0.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "Text Display"},
+///     {"title": "b", "x": 384.0, "y": 0.0, "width": 128.0, "height": 256.0, "type": "Text Display"}
+/// ]}"#).unwrap();
+/// // Four cells across, two down: "a" grows to fill the three columns left of "b".
+/// let grown = fill_space(&grid, Item::Widget(0), 128.0, (512.0, 256.0)).unwrap();
+/// assert_eq!((grown.width, grown.height), (384.0, 256.0));
+/// ```
+pub fn fill_space(grid: &GridLayout, item: Item, cell: f64, area: (f64, f64)) -> Option<Rect> {
+    let own = item.rect(grid)?;
+    let cols = ((area.0 / cell).floor() as usize).min(MAX_GRID_CELLS as usize);
+    let rows = ((area.1 / cell).floor() as usize).min(MAX_GRID_CELLS as usize);
+    let taken = taken_cells(grid, Some(item), cell, cols, rows);
+    // Free cells above and left of each corner, for checking a rectangle
+    // in one step: free[r][c] counts cells in rows < r and columns < c.
+    let mut free = vec![vec![0usize; cols + 1]; rows + 1];
+    for r in 0..rows {
+        for c in 0..cols {
+            free[r + 1][c + 1] =
+                free[r][c + 1] + free[r + 1][c] - free[r][c] + usize::from(!taken[r][c]);
+        }
+    }
+    let all_free = |top: usize, left: usize, bottom: usize, right: usize| {
+        let count = free[bottom][right] + free[top][left] - free[top][right] - free[bottom][left];
+        count == (bottom - top) * (right - left)
+    };
+    // Its own cells (it must fit on screen to grow).
+    let left0 = (own.x / cell).round() as usize;
+    let top0 = (own.y / cell).round() as usize;
+    let right0 = left0 + ((own.width / cell).round() as usize).max(1);
+    let bottom0 = top0 + ((own.height / cell).round() as usize).max(1);
+    if right0 > cols || bottom0 > rows || !all_free(top0, left0, bottom0, right0) {
+        return None;
+    }
+    // How good a fill is, best highest: its area, then keeping the corner,
+    // then higher up, then further left.
+    type Rank = (
+        usize,
+        bool,
+        std::cmp::Reverse<usize>,
+        std::cmp::Reverse<usize>,
+    );
+    let mut best: Option<(Rank, Rect)> = None;
+    for top in (0..=top0).rev() {
+        for left in (0..=left0).rev() {
+            if !all_free(top, left, bottom0, right0) {
+                continue;
+            }
+            for bottom in bottom0..=rows {
+                if !all_free(top, left, bottom, right0) {
+                    break;
+                }
+                for right in right0..=cols {
+                    if !all_free(top, left, bottom, right) {
+                        break;
+                    }
+                    let area = (bottom - top) * (right - left);
+                    let key = (
+                        area,
+                        top == top0 && left == left0,
+                        std::cmp::Reverse(top),
+                        std::cmp::Reverse(left),
+                    );
+                    if best.as_ref().is_none_or(|(k, _)| key > *k) {
+                        let rect = Rect {
+                            x: left as f64 * cell,
+                            y: top as f64 * cell,
+                            width: (right - left) as f64 * cell,
+                            height: (bottom - top) as f64 * cell,
+                        };
+                        best = Some((key, rect));
+                    }
+                }
+            }
+        }
+    }
+    best.map(|(_, r)| r).filter(|r| *r != own)
+}
+
+/// Close the gaps on `grid`: in reading order (top to bottom, then left to
+/// right), each item slides up as far as it can, then left as far as it
+/// can, a whole cell at a time, until nothing more moves. Sizes and the
+/// arrangement stay; pinned items stay put and others pack around them.
+/// Returns where each item that moved goes.
+///
+/// ```
+/// use raptaboard::grid::{pack, Item};
+/// use raptaboard_layout::GridLayout;
+/// let grid: GridLayout = serde_json::from_str(r#"{"containers": [
+///     {"title": "a", "x": 256.0, "y": 256.0, "width": 128.0, "height": 128.0, "type": "Text Display"}
+/// ]}"#).unwrap();
+/// let moves = pack(&grid, 128.0);
+/// assert_eq!(moves.len(), 1);
+/// assert_eq!((moves[0].1.x, moves[0].1.y), (0.0, 0.0));
+/// ```
+pub fn pack(grid: &GridLayout, cell: f64) -> Vec<(Item, Rect)> {
+    let mut placed = grid.clone();
+    let mut order: Vec<(Item, Rect)> = items(&placed)
+        .into_iter()
+        .filter(|&(item, _)| !item.pinned(&placed))
+        .collect();
+    order.sort_by(|a, b| {
+        (a.1.y, a.1.x)
+            .partial_cmp(&(b.1.y, b.1.x))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    // Each pass can open room for one already done; stop when still.
+    loop {
+        let mut moved = false;
+        for &(item, _) in &order {
+            let Some(mut r) = item.rect(&placed) else {
+                continue;
+            };
+            for (dx, dy) in [(0.0, -cell), (-cell, 0.0)] {
+                loop {
+                    let next = Rect {
+                        x: r.x + dx,
+                        y: r.y + dy,
+                        ..r
+                    };
+                    if next.x < 0.0 || next.y < 0.0 || !fits(&placed, item, next) {
+                        break;
+                    }
+                    r = next;
+                    item.set_rect(&mut placed, r);
+                    moved = true;
+                }
+            }
+        }
+        if !moved {
+            break;
+        }
+    }
+    items(&placed)
+        .into_iter()
+        .filter(|&(item, r)| item.rect(grid) != Some(r))
+        .collect()
 }
 
 #[cfg(test)]
@@ -828,6 +1043,154 @@ mod tests {
                     (Item::Widget(1), g.at(3.0, 1.0, 1.0, 1.0)),
                 ]
             );
+        });
+    }
+
+    #[test]
+    fn a_widget_fills_the_biggest_empty_space_around_it() {
+        each_size(|g| {
+            // . . . . b        "a" at (1, 1); "b" in the last column; "c"
+            // . a . . b        under "a"'s right. The window is 5 by 3 and
+            // . . c . .        a bit (the part-shown row doesn't count).
+            let grid = g.grid(
+                &[
+                    ("a", g.at(1.0, 1.0, 1.0, 1.0)),
+                    ("b", g.at(4.0, 0.0, 1.0, 2.0)),
+                    ("c", g.at(2.0, 2.0, 1.0, 1.0)),
+                ],
+                &[],
+            );
+            let window = g.window(5.0, 3.4);
+            let fill = |grid: &GridLayout, item| fill_space(grid, item, g.cell, window);
+            // The biggest: four across the top two rows, left of "b".
+            assert_eq!(fill(&grid, Item::Widget(0)), Some(g.at(0.0, 0.0, 4.0, 2.0)));
+            // "c" can't take "a"'s cell: the two columns above and beside it.
+            assert_eq!(fill(&grid, Item::Widget(2)), Some(g.at(2.0, 0.0, 2.0, 3.0)));
+            // Hemmed in: no growing.
+            let boxed = g.grid(
+                &[
+                    ("a", g.at(0.0, 0.0, 1.0, 1.0)),
+                    ("b", g.at(1.0, 0.0, 1.0, 1.0)),
+                    ("c", g.at(0.0, 1.0, 2.0, 1.0)),
+                ],
+                &[],
+            );
+            assert_eq!(
+                fill_space(&boxed, Item::Widget(0), g.cell, g.window(2.0, 2.0)),
+                None
+            );
+            // Off screen: can't grow; missing: nothing.
+            assert_eq!(fill(&grid, Item::Widget(9)), None);
+            let far = g.grid(&[("a", g.at(6.0, 0.0, 1.0, 1.0))], &[]);
+            assert_eq!(fill(&far, Item::Widget(0)), None);
+        });
+    }
+
+    #[test]
+    fn equal_fills_keep_the_corner() {
+        each_size(|g| {
+            // "a" in the middle of an empty 3 by 1 row could take the whole
+            // row, the only biggest; in a 2 by 2 square from (0, 0), the
+            // biggest holding it keeps its corner.
+            let grid = g.grid(&[("a", g.at(1.0, 0.0, 1.0, 1.0))], &[]);
+            assert_eq!(
+                fill_space(&grid, Item::Widget(0), g.cell, g.window(3.0, 1.0)),
+                Some(g.at(0.0, 0.0, 3.0, 1.0))
+            );
+            let grid = g.grid(&[("a", g.at(1.0, 1.0, 1.0, 1.0))], &[]);
+            // 2 by 2 window: the whole window, whatever the corner.
+            assert_eq!(
+                fill_space(&grid, Item::Widget(0), g.cell, g.window(2.0, 2.0)),
+                Some(g.at(0.0, 0.0, 2.0, 2.0))
+            );
+            // Two equal biggest: up (moving its corner) or right (keeping it).
+            // x .      ". x" above, "a ." below with the right taken: it
+            // a . x    grows right, keeping its corner.
+            let grid = g.grid(
+                &[
+                    ("a", g.at(0.0, 1.0, 1.0, 1.0)),
+                    ("x", g.at(1.0, 0.0, 1.0, 1.0)),
+                    ("y", g.at(2.0, 1.0, 1.0, 1.0)),
+                ],
+                &[],
+            );
+            assert_eq!(
+                fill_space(&grid, Item::Widget(0), g.cell, g.window(3.0, 2.0)),
+                Some(g.at(0.0, 1.0, 2.0, 1.0))
+            );
+            // 3 by 2 with the first column taken: the free 2 by 2 holding it.
+            let grid = g.grid(
+                &[
+                    ("a", g.at(1.0, 0.0, 1.0, 1.0)),
+                    ("x", g.at(0.0, 0.0, 1.0, 2.0)),
+                ],
+                &[],
+            );
+            assert_eq!(
+                fill_space(&grid, Item::Widget(0), g.cell, g.window(3.0, 2.0)),
+                Some(g.at(1.0, 0.0, 2.0, 2.0))
+            );
+        });
+    }
+
+    #[test]
+    fn packing_slides_up_then_left_around_pinned_items() {
+        each_size(|g| {
+            // . . . .      "a" slides up to row 0, then left to column 0;
+            // . p a .      "b" up, then left until "a". "p" is pinned: "c"
+            // . c . b      can't go up past it, so goes left, then up.
+            let mut grid = g.grid(
+                &[
+                    ("a", g.at(2.0, 1.0, 1.0, 1.0)),
+                    ("p", g.at(1.0, 1.0, 1.0, 1.0)),
+                    ("b", g.at(3.0, 2.0, 1.0, 1.0)),
+                    ("c", g.at(1.0, 2.0, 1.0, 1.0)),
+                ],
+                &[],
+            );
+            Item::Widget(1).set_pinned(&mut grid, true);
+            assert!(Item::Widget(1).pinned(&grid));
+            let moves = pack(&grid, g.cell);
+            let mut after = grid.clone();
+            for &(item, r) in &moves {
+                item.set_rect(&mut after, r);
+            }
+            assert_eq!(Item::Widget(0).rect(&after), Some(g.at(0.0, 0.0, 1.0, 1.0)));
+            assert_eq!(Item::Widget(1).rect(&after), Some(g.at(1.0, 1.0, 1.0, 1.0)));
+            assert_eq!(Item::Widget(2).rect(&after), Some(g.at(1.0, 0.0, 1.0, 1.0)));
+            assert_eq!(Item::Widget(3).rect(&after), Some(g.at(0.0, 1.0, 1.0, 1.0)));
+            assert!(moves.iter().all(|&(item, _)| item != Item::Widget(1)));
+            // Packed already: nothing moves.
+            assert!(pack(&after, g.cell).is_empty());
+            // Unpinned, the setting goes.
+            Item::Widget(1).set_pinned(&mut grid, false);
+            assert!(!grid.containers[1].properties.contains_key(PINNED));
+        });
+    }
+
+    #[test]
+    fn pinned_items_are_never_pushed_aside() {
+        each_size(|g| {
+            let mut grid = g.grid(
+                &[
+                    ("a", g.at(0.0, 0.0, 1.0, 1.0)),
+                    ("p", g.at(1.0, 0.0, 1.0, 1.0)),
+                ],
+                &[("list", g.at(2.0, 0.0, 1.0, 1.0))],
+            );
+            let window = g.window(3.0, 2.0);
+            let onto_p = g.at(1.0, 0.0, 1.0, 1.0);
+            assert!(reflow(&grid, Item::Widget(0), onto_p, g.cell, window).is_some());
+            Item::Widget(1).set_pinned(&mut grid, true);
+            assert_eq!(reflow(&grid, Item::Widget(0), onto_p, g.cell, window), None);
+            assert_eq!(make_room(&grid, onto_p, g.cell, window), None);
+            // A pinned list too.
+            Item::List(0).set_pinned(&mut grid, true);
+            let onto_list = g.at(2.0, 0.0, 1.0, 1.0);
+            assert_eq!(make_room(&grid, onto_list, g.cell, window), None);
+            // A pinned item can still be dragged itself.
+            let free = g.at(1.0, 1.0, 1.0, 1.0);
+            assert!(reflow(&grid, Item::Widget(1), free, g.cell, window).is_some());
         });
     }
 
