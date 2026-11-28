@@ -2,6 +2,11 @@
 
 What changes in each raptaboard release. Newest first.
 
+## 0.5.1 (not released yet)
+
+- **Smaller downloads:** raptaboard itself is about a quarter smaller on Windows (32 MB, from 43),
+  and smaller on macOS and Linux too.
+
 ## 0.5.0
 
 Arranging the dashboard: widgets that make room, overlap, Groups, and text styles, with the book

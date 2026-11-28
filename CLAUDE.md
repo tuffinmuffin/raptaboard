@@ -55,8 +55,13 @@ RAPTABOARD_LOG_INPUT=1 cargo run -p raptaboard -- --address sim layouts/robot202
 cargo test -p raptaboard --release --test cpu_load -- --ignored --nocapture
 ```
 
-Release builds (`--release`) use full LTO and one codegen unit and strip the program (about
-11.5 MB instead of 20 MB; about a minute to build). Debug info goes to a file beside it
+Release builds (`--release`) use full LTO and one codegen unit, strip the program, and abort on a
+panic rather than unwinding (`panic = "abort"`, from 0.5.1: no unwinding tables; plugins don't need
+unwinding, as wasmtime stops a misbehaving plugin with a trap of its own). Sizes measured for 0.5.1:
+Windows `raptaboard.exe` 31.9 MiB (42.8 with unwinding), the macOS universal binary 55.5 MiB (63.3),
+Linux 38.1 MiB (42.3). Plugin support (wasmtime and its Cranelift compiler) is about a third of the
+code, and fonts, the field image and the license texts about 4 MB; about 3 minutes to build. Debug
+info goes to a file beside it
 (`raptaboard.dSYM` on macOS, `.pdb` on Windows, `.dwp` on Linux) for decoding crash dumps; keep it with
 each build handed out. Day-to-day work uses debug builds, which the release profile doesn't touch.
 

@@ -36,6 +36,12 @@ all = { level = "warn", priority = -1 }
 # so a crash dump can still be decoded with function names and line
 # numbers; keep that file with each build that's handed out.
 [profile.release]
+# A panic ends the program rather than unwinding: no unwinding tables, about a
+# quarter smaller on Windows (0.5.1). Plugins don't need unwinding: wasmtime
+# stops a plugin that panics or breaks a limit as a trap of its own. A panic in
+# raptaboard's own code already ended the program (a worker panicking holds a
+# lock the window then fails on).
+panic = "abort"
 lto = "fat"
 codegen-units = 1
 debug = "line-tables-only"
