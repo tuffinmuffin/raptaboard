@@ -61,6 +61,13 @@ jobs:
       - name: Linux GUI libraries
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev
+      # The repo's plugins first: the tests build them once if they're out of
+      # date, and the plugin tests waiting on that build all start at once,
+      # loading the same plugin together, which can overrun its first
+      # render's time limit (it's then stopped and the test fails).
+      - name: Plugins for the tests
+        working-directory: plugins
+        run: cargo build --release --target wasm32-wasip2
       - run: cargo test --workspace
       # Code only a Windows release build has (main.rs's
       # `all(windows, not(debug_assertions))`: joining the terminal for
@@ -102,6 +109,11 @@ jobs:
           tool: cargo-llvm-cov
       - name: Linux GUI libraries
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev
+      # As in the test job; into plugins/target, where the tests look
+      # (they don't pass on CARGO_TARGET_DIR either).
+      - name: Plugins for the tests
+        working-directory: plugins
+        run: env -u CARGO_TARGET_DIR cargo build --release --target wasm32-wasip2
       - name: Measure this commit
         run: |
           cargo llvm-cov $COV_ARGS --json --summary-only --output-path coverage.json
