@@ -481,3 +481,45 @@ fn a_toggle_in_a_group_toggles_through_the_groups_scaling_when_locked() {
     );
     server_sees(&mut harness, &robot, true);
 }
+
+#[test]
+fn a_toggle_in_front_of_a_group_still_toggles_when_locked() {
+    use crate::widgets::group;
+    let robot = Robot::start();
+    let mut harness = writing_harness(&robot);
+    // A group below the writing widgets, and a toggle placed over its
+    // top-left cell, in front: drawn on a layer above the group's.
+    let at = LayoutRect {
+        x: 0.0,
+        y: 1024.0,
+        width: 512.0,
+        height: 256.0,
+    };
+    let toggle_at = LayoutRect {
+        width: 128.0,
+        height: 128.0,
+        ..at
+    };
+    let toggle = widget("Toggle Switch", "/Test/enabled", "boolean", toggle_at);
+    let app = harness.state_mut();
+    let grid = &mut app.layout.tabs[0].grid_layout;
+    grid.layouts.push(group::new_group(at));
+    grid.containers.push(toggle);
+    let i = grid.containers.len() - 1;
+    assert!(crate::grid::fits_over(grid, Item::Widget(i), toggle_at));
+    crate::grid::place_over(grid, Item::Widget(i), toggle_at);
+    app.locked = true;
+    settle(&mut harness);
+    dashboard_has(&mut harness, "/Test/enabled", nt4::Value::Boolean(false));
+    let area = harness.state().grid.area;
+    let body = area.min + egui::vec2(64.0, 1024.0 + 76.0);
+    harness.hover_at(body);
+    settle(&mut harness);
+    click_at(
+        &mut harness,
+        body,
+        egui::PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    server_sees(&mut harness, &robot, true);
+}

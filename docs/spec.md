@@ -837,8 +837,14 @@ raptaboard is meant to rest in, apart from feature requests.
      (`group::place`, `grid::widget_into_group`, `child_into_group`, `widgets_into_group`); its
      children move and resize inside (the list-child drag with a `resize` mode,
      `grid::resize_in_group`) and drag out onto the grid or into a list; their menu has Edit,
-     Edit group and Remove from group. Nothing overlaps a group, even with Alt. Drag previews
-     are drawn on a layer above the groups'. Part 2 (done): while `shared_on` is set (off unless
+     Edit group and Remove from group. Groups overlap like anything else with Alt (decided with
+     the user 2026-11-27: a list and a group should behave alike; at first nothing could overlap a
+     group, as its widgets' layer sat above the whole grid). The grid draws front to back
+     (`grid::draw_order`): a group's card where it falls, its widgets on a layer of its own, and
+     whatever comes after it on a new layer above that (`DashboardApp::draw_items`); those layers are
+     sublayers of the grid's, named by their place in the stack, and each asks egui to be on top
+     every frame so none passes the others; outlines go on the topmost. Drag previews are drawn
+     on a layer above them all. Part 2 (done): while `shared_on` is set (off unless
      set, "Apply to the widgets inside"), the group sets every one of `group::SHARED_KEYS` for its
      children in place of their own (`group::with_shared`, used wherever a child is drawn,
      subscribed or recorded): the update period, the value text's size and style, and the title's,

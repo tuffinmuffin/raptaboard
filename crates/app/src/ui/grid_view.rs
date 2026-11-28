@@ -356,8 +356,10 @@ impl DashboardApp {
         {
             let bound = WidgetValues::new(&sampler, values, self.nt.structs(), now);
             let value_of = |w: &WidgetContainer| bound.of(w);
-            requests.writes = self.draw_items(ui, &painter, view, &value_of, values, &effects);
-            self.draw_outlines(&painter, ui.visuals(), view);
+            let (writes, top) = self.draw_items(ui, &painter, view, &value_of, values, &effects);
+            requests.writes = writes;
+            // Over every item, groups' widgets too.
+            self.draw_outlines(&top, ui.visuals(), view);
             // Over everything on the grid, groups' layers too.
             let top = painter.clone().with_layer_id(egui::LayerId::new(
                 egui::Order::Foreground,
@@ -720,8 +722,13 @@ impl DashboardApp {
     }
 
     /// Draw every item but the one being dragged (drawn on top later),
-    /// with resize corners when unlocked. Returns the values widgets (and
-    /// list children) want sent.
+    /// front to back ([`grid::draw_order`]), with resize corners when
+    /// unlocked. A group's widgets are on a layer of their own above the
+    /// grid's ([`group::show`]), so whatever comes after a group in the
+    /// order is drawn on a new layer above that, keeping things in front of
+    /// a group in front of it. Returns the values widgets (and list
+    /// children) want sent, and a painter over everything drawn, for the
+    /// outlines.
     fn draw_items(
         &self,
         ui: &mut egui::Ui,
@@ -730,10 +737,10 @@ impl DashboardApp {
         value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
         others: &HashMap<&str, &Value>,
         effects: &RefCell<Vec<widgets::Effect>>,
-    ) -> Vec<(Sender, Value)> {
+    ) -> (Vec<(Sender, Value)>, egui::Painter) {
         let mut writes = Vec::new();
         let Some(tab) = self.tab() else {
-            return writes;
+            return (writes, painter.clone());
         };
         let visuals = ui.visuals().clone();
         let dragging = self.grid.drag.map(|d| d.item);
@@ -757,25 +764,50 @@ impl DashboardApp {
             locked: self.locked,
             ..Default::default()
         };
+        let base = ui.layer_id();
+        let clip = painter.clip_rect();
+        let tab_id = self.current_tab;
+        // The layers above the grid's, bottom to top, named by their place
+        // in that stack. egui keeps layers in the order it first saw them,
+        // and these are first seen bottom to top; but it moves a layer that
+        // asks to be on top (a new area, one clicked) past the others, so
+        // each frame every one of them asks, and none passes the others.
+        let mut stacked = Vec::new();
+        let mut next_layer = |ctx: &egui::Context| {
+            let id = egui::Id::unique(("grid_layer", stacked.len()));
+            let layer = egui::LayerId::new(base.order, id);
+            ctx.set_sublayer(base, layer);
+            stacked.push(layer);
+            id
+        };
+        // Where items are drawn: the grid's own Ui until a group, then one
+        // on a layer above the last group's.
+        let mut above: Option<egui::Ui> = None;
         for (item, r) in grid::draw_order(&tab.grid_layout) {
             if Some(item) == dragging {
                 continue;
             }
             let r = pushed.get(&item).copied().unwrap_or(r);
+            let rect = view.to_screen(&r).shrink(CELL_GAP);
+            let on: &mut egui::Ui = match above.as_mut() {
+                Some(layer_ui) => layer_ui,
+                None => &mut *ui,
+            };
+            let mut new_group = false;
             // Single widgets get a Ui of their own, for those that need
-            // one (graphs, toggles), and so does each list child.
+            // one (graphs, toggles), and so does each list child. Their ids
+            // stay the same whichever layer they're on.
             if let Item::Widget(i) = item
                 && let Some(w) = tab.grid_layout.containers.get(i)
             {
-                let rect = view.to_screen(&r).shrink(CELL_GAP);
                 let value = value_of(w);
                 let live = frame.live(value.as_ref(), place);
-                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt((
-                    "widget",
-                    self.current_tab,
-                    i,
-                )));
-                child.set_clip_rect(rect.intersect(painter.clip_rect()));
+                let mut child = on.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(rect)
+                        .scope_id(egui::Id::unique(("widget", tab_id, i))),
+                );
+                child.set_clip_rect(rect.intersect(clip));
                 if let Some(value) = card::show(&mut child, rect, w, &live) {
                     writes.push((Sender::Widget(i), value));
                 }
@@ -783,33 +815,61 @@ impl DashboardApp {
                 && let Some(l) = tab.grid_layout.layouts.get(i)
                 && group::is_group(l)
             {
-                // Its widgets on a layer of their own, scaled onto it; they
-                // take input when locked (unlocked, the grid moves them).
-                let rect = view.to_screen(&r).shrink(CELL_GAP);
-                let id = egui::Id::unique(("group_layer", self.current_tab, i));
-                let shown = group::show(ui, rect, l, id, self.locked, value_of, &frame, place);
+                // Its card here, its widgets on a layer of their own above,
+                // scaled onto it; they take input when locked (unlocked,
+                // the grid moves them).
+                let layer = next_layer(on.ctx());
+                let key = egui::Id::unique(("group", tab_id, i));
+                let shown = group::show(
+                    on,
+                    rect,
+                    l,
+                    layer,
+                    base,
+                    key,
+                    self.locked,
+                    value_of,
+                    &frame,
+                    place,
+                );
                 for (c, value) in shown {
                     writes.push((Sender::Child { list: i, child: c }, value));
                 }
+                new_group = true;
             } else if let Item::List(i) = item
                 && let Some(l) = tab.grid_layout.layouts.get(i)
             {
-                let rect = view.to_screen(&r).shrink(CELL_GAP);
-                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt((
-                    "list",
-                    self.current_tab,
-                    i,
-                )));
-                child.set_clip_rect(rect.intersect(painter.clip_rect()));
+                let mut child = on.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(rect)
+                        .scope_id(egui::Id::unique(("list", tab_id, i))),
+                );
+                child.set_clip_rect(rect.intersect(clip));
                 for (c, value) in list_layout::show(&mut child, rect, l, value_of, &frame, place) {
                     writes.push((Sender::Child { list: i, child: c }, value));
                 }
             }
             if !self.locked {
-                draw_resize_handle(painter, &visuals, view.to_screen(&r));
+                let corners = on.painter().with_clip_rect(clip);
+                draw_resize_handle(&corners, &visuals, view.to_screen(&r));
+            }
+            if new_group {
+                // What comes next goes in front of the group's widgets.
+                let id = next_layer(ui.ctx());
+                let mut layer_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .layer_id(egui::LayerId::new(base.order, id))
+                        .max_rect(ui.max_rect()),
+                );
+                layer_ui.set_clip_rect(clip);
+                above = Some(layer_ui);
             }
         }
-        writes
+        for layer in stacked {
+            ui.ctx().move_to_top(layer);
+        }
+        let top = above.map_or_else(|| painter.clone(), |u| u.painter().with_clip_rect(clip));
+        (writes, top)
     }
 
     /// Outlines: the selected item in the selection color, and widgets
@@ -1519,6 +1579,128 @@ mod tests {
         assert_eq!(grid.containers.len(), 2);
         assert_eq!(rect_of(&app, 0), (0.0, 256.0, 128.0, 128.0));
         assert_eq!(grid::draw_order(grid).last().unwrap().0, Item::Widget(0));
+    }
+
+    /// The texts drawn in one frame, in the order they're painted (layer
+    /// by layer, bottom to top).
+    fn painted_texts(ctx: &egui::Context, app: &mut DashboardApp) -> Vec<String> {
+        let raw = RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0))),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(raw, |ui| app.grid(ui, &HashMap::new(), Instant::now()));
+        output.textures_delta.clear();
+        fn texts(shape: &egui::Shape, out: &mut Vec<String>) {
+            match shape {
+                egui::Shape::Text(t) => out.push(t.galley.text().to_owned()),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        for s in &output.shapes {
+            texts(&s.shape, &mut out);
+        }
+        out
+    }
+
+    #[test]
+    fn a_widget_over_a_group_is_drawn_in_front_or_behind_its_widgets_by_its_place() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        // A group, four cells by two, at (256, 256), with a widget inside;
+        // A moved over the group's top-left cell, in front.
+        let grid = &mut app.layout.tabs[0].grid_layout;
+        let g = grid::add_group(grid, (256.0, 256.0), 128.0, (768.0, 512.0)).unwrap();
+        let mut inside = grid.containers[1].clone();
+        inside.title = "Inside".into();
+        inside.rect = LayoutRect {
+            x: 0.0,
+            y: 0.0,
+            width: group::INNER_CELL,
+            height: group::INNER_CELL,
+        };
+        grid.layouts[g].children.push(inside);
+        let over = LayoutRect {
+            x: 256.0,
+            y: 256.0,
+            width: 128.0,
+            height: 128.0,
+        };
+        assert!(grid::fits_over(grid, Item::Widget(0), over));
+        grid::place_over(grid, Item::Widget(0), over);
+        assert_eq!(grid.overlap_problem(), None);
+        let at = |texts: &[String], t: &str| {
+            texts
+                .iter()
+                .position(|x| x == t)
+                .unwrap_or_else(|| panic!("{t} not drawn: {texts:?}"))
+        };
+        // In front: painted after the group's widgets.
+        frame(&ctx, &mut app, vec![]);
+        let texts = painted_texts(&ctx, &mut app);
+        assert!(at(&texts, "A") > at(&texts, "Inside"), "{texts:?}");
+        // Sent back: painted before them, under the group.
+        Item::Widget(0).to_front_or_back(&mut app.layout.tabs[0].grid_layout, false);
+        frame(&ctx, &mut app, vec![]);
+        let texts = painted_texts(&ctx, &mut app);
+        assert!(at(&texts, "A") < at(&texts, "Inside"), "{texts:?}");
+        // A click where it's in front of the group picks it; behind, the
+        // group.
+        click(&ctx, &mut app, (256.0 + 20.0, 256.0 + 60.0));
+        assert_eq!(app.selected, Some(Item::List(g)));
+        Item::Widget(0).to_front_or_back(&mut app.layout.tabs[0].grid_layout, true);
+        click(&ctx, &mut app, (256.0 + 20.0, 256.0 + 60.0));
+        assert_eq!(app.selected, Some(Item::Widget(0)));
+    }
+
+    #[test]
+    fn with_alt_a_widget_goes_over_part_of_a_group_and_a_group_over_a_widget() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        let g = grid::add_group(
+            &mut app.layout.tabs[0].grid_layout,
+            (256.0, 256.0),
+            128.0,
+            (768.0, 512.0),
+        )
+        .unwrap();
+        // A, Alt-dragged onto the group's top-left cell: over it, nothing
+        // pushed, and not into it.
+        alt_drag(&ctx, &mut app, (40.0, 40.0), (256.0 + 40.0, 256.0 + 40.0));
+        let grid = &app.layout.tabs[0].grid_layout;
+        assert_eq!(rect_of(&app, 0), (256.0, 256.0, 128.0, 128.0));
+        assert!(grid.layouts[g].children.is_empty(), "not into the group");
+        assert_eq!(
+            (grid.layouts[g].rect.x, grid.layouts[g].rect.y),
+            (256.0, 256.0)
+        );
+        assert_eq!(grid::draw_order(grid).last().unwrap().0, Item::Widget(0));
+
+        // A group two cells wide, Alt-dragged by its title over half of B
+        // (two cells wide too): over it, B stays.
+        let mut app = super::tests::app();
+        let grid = &mut app.layout.tabs[0].grid_layout;
+        grid.containers[1].rect.width = 256.0;
+        let g = grid::add_group(grid, (256.0, 256.0), 128.0, (768.0, 512.0)).unwrap();
+        grid.layouts[g].rect.width = 256.0;
+        let b = grid.containers[1].rect;
+        alt_drag(
+            &ctx,
+            &mut app,
+            (256.0 + 40.0, 256.0 + 12.0),
+            (512.0 + 40.0, 12.0),
+        );
+        let grid = &app.layout.tabs[0].grid_layout;
+        assert_eq!(
+            (grid.layouts[g].rect.x, grid.layouts[g].rect.y),
+            (512.0, 0.0),
+            "{}",
+            app.status
+        );
+        assert_eq!(grid.containers[1].rect, b, "B stayed");
+        assert_eq!(grid::draw_order(grid).last().unwrap().0, Item::List(g));
+        assert_eq!(grid.overlap_problem(), None);
     }
 
     #[test]
