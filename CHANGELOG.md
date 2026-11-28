@@ -2,37 +2,46 @@
 
 What changes in each raptaboard release. Newest first.
 
-## 0.5.0 (not released yet)
+## 0.5.0
 
-- **Text style:** a widget's title, and the value text of Text Display, Boolean Box and Struct, can
-  be Sans, Mono, Serif, Narrow or Digital (a seven-segment display), bold, italic, and any color, from the settings dialog's "Style…" buttons; the
-  title's size too.
-- **X/Y and polar graphs:** the X/Y Graph plots one value against another (a joystick, a robot's
-  path, commanded against measured speeds) and the Polar Graph a distance at an angle (a turret's
-  aim), each with a fading trail. Make one with "Add as" on a number, then drop the second value
-  on it from the tree, or on a Pose, Translation or ChassisSpeeds for its x and y at once.
+Arranging the dashboard: widgets that make room, overlap, Groups, and text styles, with the book
+covering all of raptaboard. Back in the Microsoft Store.
 
-- **Widgets make room:** a widget moved or resized onto others, a topic dropped from the tree, or a
-  list's widget dragged out pushes what's in the way aside to the nearest free spots, shown as you
-  drag, instead of being refused. One Undo puts them all back; Escape calls a drag off.
-- **Group widget:** a card with a small grid of its own, so widgets can sit side by side in one
-  card at any size. Make one from the empty grid's right-click menu or a widget's (**Put in a new
-  group**), then drag widgets or topics into it, or use **Add to group** in the tree; move and resize them inside, or drag them back out. Its cells show as faint lines;
-  its rows set their size, and as many columns as fit go across. Resizing the Group scales
-  everything in it, text too. Turned on in its settings, it sets the update period, text and title
-  style for every widget inside, in place of their own; a List Layout can too, with its labels'
-  size and style. One widget can opt out to keep its own.
+- **Widgets make room:** a widget moved or resized onto others, a topic dropped from the tree, or
+  a list's widget dragged out pushes what's in the way aside to the nearest free spots, shown as
+  you drag, instead of being refused. One Undo puts them all back; Escape calls a drag off.
 - **Overlap with Alt:** hold Alt (Option on a Mac) while dragging or resizing a widget, dropping
-  topics from the tree, or dragging a widget out of a list, to place it partly over others, in
-  front, instead of pushing them aside, such as a label on a camera view.
-  No widget can be hidden completely. **Bring to front** and **Send to back** are in the
-  right-click menu of a widget that overlaps another.
-- **Fill space, Pack widgets and Pin in place:** right-click a widget for **Fill space** (it grows
-  into the empty cells around it) or **Pin in place** (nothing pushes it aside or packs it), or
-  empty grid for **Pack widgets** (everything slides up and left, closing the gaps).
-- **The book's Widgets chapter:** every widget, how to add and change widgets, the settings dialog
-  and text styles, with pictures from the sim robot.
+  topics from the tree, or dragging a widget out of a list or Group, to place it partly over
+  others, in front, such as a label on a camera view. No widget can be hidden completely.
+  **Bring to front** and **Send to back** are in the right-click menu of anything overlapping
+  another, Groups and lists too.
+- **Fill space, Pack widgets and Pin in place:** right-click a widget for **Fill space** (it
+  grows into the empty cells around it) or **Pin in place** (nothing pushes it aside or packs it),
+  or empty grid for **Pack widgets** (everything slides up and left, closing the gaps).
+- **Groups:** a card with a small grid of its own, so widgets sit side by side in one card at any
+  size. Make one from the empty grid's right-click menu, a widget's (**Put in a new group**) or
+  the tree's (**Add to group**), then drag widgets or topics into it; move and resize them inside,
+  or drag them back out. Its rows set its cells' size, and as many columns as fit go across;
+  resizing the Group scales everything in it, text too.
+- **Settings for every widget in a Group or list:** turned on in its settings, a Group or List
+  Layout sets the update period, text and title style of every widget inside (a list styles its
+  labels); one widget can opt out to keep its own.
+- **Text style:** a widget's title, and the value text of Text Display, Boolean Box and Struct,
+  can be Sans, Mono, Serif, Narrow or Digital (a seven-segment display), bold, italic and any
+  color, from the settings dialog's **Style…** buttons; the title's size too.
+- **X/Y and Polar Graphs:** the X/Y Graph plots one value against another (a joystick, a robot's
+  path, commanded against measured speeds) and the Polar Graph a distance at an angle (a turret's
+  aim), each with a fading trail. Make one with **Add as** on a number, then drop the second value
+  on it from the tree, or on a Pose, Translation or ChassisSpeeds for its x and y at once.
 - **Screen readers:** every control in the settings dialogs is named by its row's label.
+- **Fixes:** **Add to list** in the tree offered Groups too, and put widgets on top of each other
+  there; opening a layout now also fixes a Group's widgets (off its cells, or on top of each
+  other).
+- **Documentation:** the book at <https://tuffinmuffin.github.io/raptaboard/> now covers all of
+  raptaboard: every widget with pictures from the sim robot, layouts and arranging them,
+  troubleshooting, a tutorial for adding a built-in widget, testing and releasing, and the plugin
+  guide's reference and tutorial.
+- **Microsoft Store:** 0.5.0 goes to the Store too (it stayed at 0.3.0 through 0.4.0).
 
 ## 0.4.0
 

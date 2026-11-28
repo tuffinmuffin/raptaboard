@@ -6,15 +6,16 @@ does, a richer set of widget settings, and **widget plugins**: small WebAssembly
 without rebuilding the dashboard and draw a NetworkTables table, such as an arm subsystem, or fill
 a whole tab.
 
-It opens and saves Elastic layouts, with tabs, a snap grid, List Layouts, undo and a lock for
-driving. It connects to the robot over NetworkTables (by team number, the Driver Station,
-SystemCore or the sim) and shows a live tree of every topic, WPILib structs included; drag a topic
-onto the grid to make a widget. Widgets: Text Display, Boolean Box, Number Bar, Voltage View,
-Radial Gauge, Battery, Graph, Match Time, Single and Multi Color View, Toggle Switch and Button,
-Number Slider, Dropdown and Split Button Chooser, Enum Dropdown and Toggle, Field, Gyro, Swerve,
-Chassis Speeds, 3D Pose, Mechanism2d, Struct, Alerts (with an alert history) and FMSInfo (the
-robot's state and the match, with a sound for each change of state). Content packs add sounds and
-plugins, downloaded only when you choose.
+It opens and saves Elastic layouts, with tabs, a snap grid where widgets make room for each other
+(or overlap, with Alt), List Layouts and Groups, text styles, undo and a lock for driving. It
+connects to the robot over NetworkTables (by team number, the Driver Station, SystemCore or the sim)
+and shows a live tree of every topic, WPILib structs included; drag a topic onto the grid to make a
+widget. Widgets: Text Display, Boolean Box, Number Bar, Voltage View, Radial Gauge, Battery, Graph,
+X/Y Graph, Polar Graph, Match Time, Single and Multi Color View, Toggle Switch and Button, Number
+Slider, Dropdown and Split Button Chooser, Enum Dropdown and Toggle, Field, Gyro, Swerve, Chassis
+Speeds, 3D Pose, Mechanism2d, Struct, Alerts (with an alert history) and FMSInfo (the robot's state
+and the match, with a sound for each change of state). Content packs add sounds and plugins,
+downloaded only when you choose.
 
 ![raptaboard connected to the robot sim, showing Text Display and Boolean Box widgets](images/m1-widgets.png)
 
@@ -35,5 +36,4 @@ the 2026 field).
 - **Writing plugins**: widgets and tabs of your own, in your own repository, shared in a content
   pack.
 
-Pages not written yet are listed in grey. What changed in each release is in the
-[changelog](https://github.com/tuffinmuffin/raptaboard/blob/main/CHANGELOG.md).
+What changed in each release is in the [changelog](https://github.com/tuffinmuffin/raptaboard/blob/main/CHANGELOG.md).
