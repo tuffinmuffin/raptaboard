@@ -568,6 +568,14 @@ pub fn settings(ui: &mut egui::Ui, group: &mut LayoutContainer) {
 /// (in `properties`): update period, text, and the title (a list's labels,
 /// with `labels`), each with a way back to unset (each widget's own).
 pub fn shared_rows(ui: &mut egui::Ui, properties: &mut Map<String, Json>, labels: bool) {
+    // Ids of their own: the title rows use the same keys as the group's or
+    // list's own title (its Style… and Font list would clash).
+    ui.push_id("shared settings", |ui| {
+        shared_rows_in(ui, properties, labels)
+    });
+}
+
+fn shared_rows_in(ui: &mut egui::Ui, properties: &mut Map<String, Json>, labels: bool) {
     let mut shared = properties
         .get(SHARED)
         .and_then(Json::as_object)
@@ -888,5 +896,33 @@ mod tests {
         assert!(matches!(with_shared(&g, &plain), Cow::Borrowed(_)));
         assert_eq!(shared_note(&g, &plain), None);
         assert!(g.properties.contains_key(SHARED));
+    }
+
+    #[test]
+    fn the_groups_title_style_and_the_shared_one_open_apart() {
+        // Both use the title's keys: the shared rows need ids of their own,
+        // or opening one opens both (and egui reports the clash).
+        use egui_kittest::kittest::Queryable;
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(600.0, 900.0))
+            // The dialog's title box and Rows have no accessible names yet.
+            .with_accessibility_check(false)
+            .build_ui_state(
+                |ui, g: &mut LayoutContainer| settings(ui, g),
+                group_with(&[]),
+            );
+        let fonts = |h: &egui_kittest::Harness<'_, LayoutContainer>| {
+            h.query_all(egui_kittest::kittest::by().label("Font"))
+                .count()
+        };
+        assert_eq!(fonts(&harness), 0);
+        // The group's own title's Style… comes first.
+        harness.get_all_by_label("Style…").next().unwrap().click();
+        harness.run();
+        assert_eq!(fonts(&harness), 1);
+        // The shared title's, last: a second list of its own.
+        harness.get_all_by_label("Style…").last().unwrap().click();
+        harness.run();
+        assert_eq!(fonts(&harness), 2);
     }
 }
