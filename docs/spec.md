@@ -816,12 +816,29 @@ raptaboard is meant to rest in, apart from feature requests.
    - Boolean Box text (**done**): `text_backing`, a see-through box behind the text so it reads over
      any color, and `true_text_color` / `false_text_color` (automatic black or white if not set; white
      on the backing).
-   - Group widget: a card holding its own small grid, so widgets inside can sit side by side and
-     be any size (a List Layout only stacks them). Same dragging in and out as lists; saved as a
-     raptaboard-only container type (Elastic would show a placeholder). Its settings can reach the
-     widgets inside: group-level settings (font size, period, colors) that every child uses
-     unless it sets its own, and resizing the group scales its children's sizes (and text) to
-     match.
+   - Group widget (**part 1 done** for 0.5.0, 2026-11-27, `widgets/group.rs`): a card holding its
+     own small grid, so widgets inside can sit side by side and be any size (a List Layout only
+     stacks them). Saved in a tab's `layouts` with type `"Group"` (raptaboard-only; Elastic would
+     show a placeholder), `rows` (2 unless set) and `grid_lines` (on unless set). Decided with the user
+     2026-11-27: the inner cells scale with the group, and text scales too; after trying it, the
+     user found square cells in a fixed columns-by-rows grid left unusable space, so the cells stay
+     square, `rows` sets their size (the body's height over rows) and as many columns as fit go
+     across (`group::cells`; never fewer than the widgets inside need), and the inner grid's lines
+     show unless `grid_lines` is off. Children are saved at
+     `group::INNER_CELL` (128) pixels a cell whatever the tab's grid size, so the grid rules work
+     inside unchanged (`group::inner_grid`); they're drawn at full size on an egui `Area` layer of
+     their own, a sublayer of the grid's, scaled onto the card by a layer transform
+     (`group::Mapping`), which scales input too (locked, the layer takes input: toggles, sliders;
+     unlocked, it doesn't, and the grid moves and resizes the children). Right-click empty grid →
+     New Group (`grid::add_group`); widgets dragged onto it, list or group children dragged onto
+     it, and tree topics dropped on it go in the inner cell under the pointer, making room
+     (`group::place`, `grid::widget_into_group`, `child_into_group`, `widgets_into_group`); its
+     children move and resize inside (the list-child drag with a `resize` mode,
+     `grid::resize_in_group`) and drag out onto the grid or into a list; their menu has Edit,
+     Edit group and Remove from group. Nothing overlaps a group, even with Alt. Drag previews
+     are drawn on a layer above the groups'. Part 2 (to do): group-level settings (font size,
+     period, colors) that every child uses unless it sets its own. Not yet: a group's children's
+     positions aren't checked when a layout opens.
    - Autoscale for bars and gauges (**done**, after 0.1.0): `autoscale` (and `autoscale_keep_range`)
      in `shared/scale.rs`. The range comes from every value received: an autoscaled widget asks for
      its series through `traced` (keeping no points), and `Traces` keeps each series' lowest and

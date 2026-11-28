@@ -458,7 +458,7 @@ fn record_docs_screenshots() {
             .chain(
                 grid.layouts
                     .iter()
-                    .map(|l| ("List Layout".to_string(), l.title.clone(), l.rect)),
+                    .map(|l| (l.layout_type.clone(), l.title.clone(), l.rect)),
             )
             .collect();
         if cards.is_empty() {
@@ -539,6 +539,34 @@ fn record_docs_screenshots() {
     show_tab(&mut harness, "Styles", 1);
     let image = harness.render().expect("render a frame");
     save_png(&image, &format!("{BOOK_IMAGES}/window/widget-settings.png"));
+    harness.state_mut().editing = None;
+    harness.state_mut().selected = None;
+
+    // The Groups tab unlocked, as it's arranged: each widget inside with
+    // its resize corner, and the Drive panel's settings (Rows, Grid lines,
+    // and the columns and rows that gives).
+    show_tab(&mut harness, "Groups", 8);
+    let image = harness.render().expect("render a frame");
+    save_png(&image, &format!("{BOOK_IMAGES}/window/group-editing.png"));
+    let tab = harness.state().current_tab;
+    let index = harness.state().layout.tabs[tab]
+        .grid_layout
+        .layouts
+        .iter()
+        .position(|l| l.title == "Drive panel")
+        .expect("the Groups tab's Drive panel");
+    let original = Box::new(harness.state().layout.tabs[tab].grid_layout.layouts[index].clone());
+    harness.state_mut().selected = Some(Item::List(index));
+    harness.state_mut().editing = Some(Editing::List {
+        tab,
+        index,
+        original,
+        child: None,
+        child_only: false,
+    });
+    show_tab(&mut harness, "Groups", 1);
+    let image = harness.render().expect("render a frame");
+    save_png(&image, &format!("{BOOK_IMAGES}/window/group-settings.png"));
     harness.state_mut().editing = None;
     harness.state_mut().selected = None;
 

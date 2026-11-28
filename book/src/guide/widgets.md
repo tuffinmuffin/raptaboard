@@ -122,3 +122,38 @@ CAN status. Make one with **Put in a new list** on a widget's right-click menu, 
 into it or use **Add to list** in the tree. Its settings set where the labels go and whether there
 are dividers between rows; double-click a row for that widget's own settings. Graphs in a list
 show their newest value as text.
+
+## Groups
+
+![Two Groups, locked: a drive panel of nine widgets on a 5 by 4 grid with its grid lines, and four
+module lights with grid lines off](../images/tabs/groups.png)
+
+A **Group** is a card with a small grid of its own, so widgets inside can sit side by side and be
+any size: a drive panel, say, with speeds, a gyro and a few lights in one card. Everything inside
+is drawn as a shrunk copy, text too, so resizing the Group grows or shrinks what's in it.
+
+- **Make one** with right-click on empty grid → **New Group**.
+- **Put widgets in** by dragging them onto it, or dropping topics on it from the tree: each goes in
+  the cell under the pointer, pushing what's there aside. Nothing can overlap a Group, even
+  with **Alt**.
+- **Arrange them** (unlocked) as on the grid: drag a widget to move it, drag its corner to resize
+  it. Drag it out of the Group onto the grid, or into a list or another Group.
+
+  ![The same Groups unlocked: each widget inside has its own resize corner, and so does each
+  Group](../images/window/group-editing.png)
+
+- **Right-click** a widget inside for **Edit…**, **Edit group…** and **Remove from group**;
+  double-click it for its settings.
+- Its cells are square. **Rows** (in its settings, 2 unless set) sets how tall they are: the
+  Group's height divided by the rows. As many columns as fit go across, so a wider Group has
+  more columns, and a taller one bigger cells. The cells show as faint lines; **Grid lines** in
+  its settings hides them.
+
+  ![The Drive panel's settings: Rows 4, Grid lines on, and "5 columns by 4 rows" below
+  them](../images/window/group-settings.png)
+
+  To leave no space at the right, choose Rows to suit the Group's shape: the settings show the
+  columns and rows it gives. The Drive panel above is 6 cells by 5 on the tab, and 4 rows gives
+  5 columns that fill it.
+
+Locked, the widgets inside work as they do on the grid: toggles toggle, sliders slide.

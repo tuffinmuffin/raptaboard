@@ -258,3 +258,42 @@ fn a_topic_dropped_on_a_widget_pushes_it_aside() {
         }
     }
 }
+
+#[test]
+fn a_topic_dropped_on_a_group_goes_into_the_cell_under_the_pointer() {
+    use crate::widgets::group;
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    // Just a group on the tab, four cells by two.
+    let at = LayoutRect {
+        x: 0.0,
+        y: 0.0,
+        width: 512.0,
+        height: 256.0,
+    };
+    let app = harness.state_mut();
+    app.layout.tabs[0].grid_layout = raptaboard_layout::GridLayout::default();
+    app.layout.tabs[0]
+        .grid_layout
+        .layouts
+        .push(group::new_group(at));
+    settle(&mut harness);
+    open(&mut harness, "Test  (");
+    let area = harness.state().grid.area;
+    let card = Rect::from_min_size(area.min, egui::vec2(512.0, 256.0)).shrink(4.0);
+    let grid = harness.state().layout.tabs[0].grid_layout.clone();
+    let m = group::Mapping::of(card, &grid.layouts[0]);
+    let third = LayoutRect {
+        x: 2.0 * group::INNER_CELL,
+        y: group::INNER_CELL,
+        width: group::INNER_CELL,
+        height: group::INNER_CELL,
+    };
+    drag_row(&mut harness, "flag", 0, m.to_screen(&third).center());
+    let grid = harness.state().layout.tabs[0].grid_layout.clone();
+    assert!(grid.containers.is_empty(), "not onto the grid");
+    let inside = &grid.layouts[0].children;
+    assert_eq!(inside.len(), 1);
+    assert_eq!(inside[0].topic(), Some("/Test/flag"));
+    assert_eq!(inside[0].rect, third);
+}
