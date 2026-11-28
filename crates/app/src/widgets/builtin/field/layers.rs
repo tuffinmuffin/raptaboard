@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 
-use eframe::egui::{self, Color32, Shape, Stroke};
+use eframe::egui::{self, Color32, Shape, Stroke, accesskit::Role};
 use nt4::Value;
 use nt4::proto::structs::StructDatabase;
 use serde_json::{Map, Value as Json, json};
@@ -595,13 +595,15 @@ pub fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, topics: &[(St
         ui.label(format!("Layer {}", i + 1));
         ui.horizontal(|ui| {
             let mut kind = layer.kind;
-            egui::ComboBox::from_id_salt(("layer kind", i))
+            let r = egui::ComboBox::from_id_salt(("layer kind", i))
                 .selected_text(kind.label())
                 .show_ui(ui, |ui| {
                     for k in LayerKind::ALL {
                         ui.selectable_value(&mut kind, k, k.label());
                     }
-                });
+                })
+                .response;
+            props::name_control(&r, Role::ComboBox, &format!("Layer {} kind", i + 1));
             if kind != layer.kind {
                 layer.kind = kind;
                 changed = true;
@@ -611,7 +613,7 @@ pub fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, topics: &[(St
             } else {
                 layer.topic.as_str()
             };
-            egui::ComboBox::from_id_salt(("layer topic", i))
+            let r = egui::ComboBox::from_id_salt(("layer topic", i))
                 .selected_text(shown)
                 .width(260.0)
                 .show_ui(ui, |ui| {
@@ -625,7 +627,9 @@ pub fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, topics: &[(St
                             changed = true;
                         }
                     }
-                });
+                })
+                .response;
+            props::name_control(&r, Role::ComboBox, &format!("Layer {} topic", i + 1));
             let mut color = color_of(layer, i);
             if egui::color_picker::color_edit_button_srgba(
                 ui,
@@ -646,24 +650,27 @@ pub fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, topics: &[(St
             ui.label("");
             ui.horizontal(|ui| {
                 let mut marker = layer.marker;
-                egui::ComboBox::from_id_salt(("layer marker", i))
+                let r = egui::ComboBox::from_id_salt(("layer marker", i))
                     .selected_text(marker.label())
                     .show_ui(ui, |ui| {
                         for m in Marker::ALL {
                             ui.selectable_value(&mut marker, m, m.label());
                         }
-                    });
+                    })
+                    .response;
+                props::name_control(&r, Role::ComboBox, &format!("Layer {} marker", i + 1));
                 if marker != layer.marker {
                     layer.marker = marker;
                     changed = true;
                 }
-                ui.label("Size (m)");
+                let size_name = ui.label("Size (m)").id;
                 if ui
                     .add(
                         egui::DragValue::new(&mut layer.size_m)
                             .range(0.02..=5.0)
                             .speed(0.01),
                     )
+                    .labelled_by(size_name)
                     .changed()
                 {
                     changed = true;

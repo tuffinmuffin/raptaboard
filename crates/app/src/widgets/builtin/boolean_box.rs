@@ -325,7 +325,7 @@ fn picture_row(
 ) {
     // Where a failed import's message is kept, to show under the row.
     let id = ui.scope_id().with(("image import", image_key));
-    ui.label(label);
+    let row_name = ui.label(label).id;
     ui.horizontal(|ui| {
         let current = picture_of(props, icon_key, image_key);
         let mut picked = current.clone();
@@ -353,6 +353,7 @@ fn picture_row(
                 }
             })
             .response
+            .labelled_by(row_name)
             .on_hover_text(
                 "Built in: Elastic's icons (drawn in the state's color) and raptaboard's \
                  images. Below the line: images in the images folders (images/ where \
@@ -471,7 +472,7 @@ impl WidgetType for BooleanBox {
                 ("Text when true", TRUE_TEXT),
                 ("Text when false", FALSE_TEXT),
             ] {
-                ui.label(label);
+                let row_name = ui.label(label).id;
                 let mut text = props
                     .get(key)
                     .and_then(Json::as_str)
@@ -480,7 +481,7 @@ impl WidgetType for BooleanBox {
                 let edit = egui::TextEdit::singleline(&mut text)
                     .hint_text("none")
                     .desired_width(180.0);
-                if ui.add(edit).changed() {
+                if ui.add(edit).labelled_by(row_name).changed() {
                     set_property(props, key, Some(text.into()));
                 }
                 ui.end_row();

@@ -121,7 +121,7 @@ pub fn paint_background(
 /// The settings dialog rows: how (off, thresholds, gradient), the two
 /// numbers and the three colors.
 pub fn rows(ui: &mut egui::Ui, p: &mut Map<String, Json>) {
-    ui.label("Color by value");
+    let row_name = ui.label("Color by value").id;
     let current = props::text(p, COLOR_BY, "").to_owned();
     let mut picked = current.clone();
     let name = |v: &str| match v {
@@ -137,6 +137,7 @@ pub fn rows(ui: &mut egui::Ui, p: &mut Map<String, Json>) {
             }
         })
         .response
+        .labelled_by(row_name)
         .on_hover_text(
             "Thresholds: low color below the first number, high above the second, \
              middle between. Gradient: blended from low to high between them.",

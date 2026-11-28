@@ -110,7 +110,7 @@ pub fn font_size_set(props: &Map<String, Json>) -> Option<f32> {
 
 /// The "Text size" row of the settings dialog, for `font_size`.
 pub fn text_size_row(ui: &mut egui::Ui, props: &mut Map<String, Json>) {
-    ui.label("Text size");
+    let name = ui.label("Text size").id;
     ui.horizontal(|ui| {
         if is_controlled(ui, FONT_SIZE) {
             ui.disable();
@@ -124,6 +124,7 @@ pub fn text_size_row(ui: &mut egui::Ui, props: &mut Map<String, Json>) {
                     .fixed_decimals(0)
                     .suffix(" pt"),
             )
+            .labelled_by(name)
             .changed()
         {
             let value = (size != DEFAULT_FONT_SIZE).then(|| f64::from(size).into());
@@ -137,6 +138,12 @@ pub fn text_size_row(ui: &mut egui::Ui, props: &mut Map<String, Json>) {
         }
     });
     ui.end_row();
+}
+
+/// Name a control `name` for screen readers (and tests), for one sharing
+/// its row's label with others (a layer's kind and its topic).
+pub fn name_control(response: &egui::Response, role: egui::accesskit::Role, name: &str) {
+    response.widget_info(|| egui::WidgetInfo::labeled(role, response.enabled(), name));
 }
 
 /// What a greyed-out setting says on hover: a group or list sets it.
@@ -201,10 +208,11 @@ pub fn number_row(
     default: f64,
     range: std::ops::RangeInclusive<f64>,
 ) {
-    ui.label(label);
+    let name = ui.label(label).id;
     let mut value = number(props, key, default);
     if ui
         .add(egui::DragValue::new(&mut value).range(range).speed(0.1))
+        .labelled_by(name)
         .changed()
     {
         set_property(props, key, (value != default).then(|| value.into()));
@@ -222,10 +230,11 @@ pub fn whole_row(
     default: i64,
     range: std::ops::RangeInclusive<i64>,
 ) {
-    ui.label(label);
+    let name = ui.label(label).id;
     let mut value = number(props, key, default as f64).round() as i64;
     if ui
         .add(egui::DragValue::new(&mut value).range(range))
+        .labelled_by(name)
         .changed()
     {
         set_property(props, key, (value != default).then(|| value.into()));
@@ -261,7 +270,7 @@ pub fn choice_row(
     default: &str,
     choices: &[&str],
 ) {
-    ui.label(label);
+    let name = ui.label(label).id;
     let current = text(props, key, default).to_owned();
     let mut picked = current.clone();
     egui::ComboBox::from_id_salt(key)
@@ -270,7 +279,9 @@ pub fn choice_row(
             for choice in choices {
                 ui.selectable_value(&mut picked, (*choice).to_owned(), *choice);
             }
-        });
+        })
+        .response
+        .labelled_by(name);
     if picked != current {
         set_property(props, key, (picked != default).then(|| picked.into()));
     }
@@ -279,9 +290,11 @@ pub fn choice_row(
 
 /// A topic picker: one of the server's `topics` (name, NT type) of the
 /// types `fits` says, or none (an empty `topic`). Returns whether it
-/// changed. `id` tells pickers in one dialog apart.
+/// changed. `label` is its row label's id (its name for screen readers);
+/// `id` tells pickers in one dialog apart.
 pub fn topic_picker(
     ui: &mut egui::Ui,
+    label: egui::Id,
     id: impl std::hash::Hash + std::fmt::Debug,
     topic: &mut String,
     topics: &[(String, String)],
@@ -310,7 +323,9 @@ pub fn topic_picker(
                     changed = true;
                 }
             }
-        });
+        })
+        .response
+        .labelled_by(label);
     changed
 }
 
