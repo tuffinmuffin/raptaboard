@@ -123,6 +123,11 @@ into it or use **Add to list** in the tree. Its settings set where the labels go
 are dividers between rows; double-click a row for that widget's own settings. Graphs in a list
 show their newest value as text.
 
+Like a Group's, a list's settings have **Widgets inside**: an **Update period** and **Text** for
+every widget in it that doesn't set its own (see [Groups](#groups)), and **Labels**, the size,
+font, color, bold and italic of the labels. A widget's own title style still wins for its label;
+the size is the list's, so the rows stay even.
+
 ## Groups
 
 ![Two Groups, locked: a drive panel of nine widgets on a 5 by 4 grid with its grid lines, and four

@@ -135,11 +135,11 @@ pub fn new_group(rect: LayoutRect) -> LayoutContainer {
     }
 }
 
-/// `child` of `layout` as it's shown: with the group's shared settings
+/// `child` of `layout` (a group or a List Layout) as it's shown: with its
+/// shared settings
 /// ([`SHARED`]) wherever it doesn't set its own. A period counts as its
 /// own only when it isn't its type's usual one (widgets are saved with a
-/// period, chosen or not). The child itself for a List Layout, or a group
-/// sharing nothing.
+/// period, chosen or not). The child itself if nothing is shared.
 ///
 /// ```
 /// use raptaboard::widgets::{for_topic, group::{new_group, with_shared}};
@@ -184,11 +184,8 @@ pub fn with_shared<'a>(
     Cow::Owned(shown)
 }
 
-/// The group's shared settings ([`SHARED`]), if it has any.
+/// A group's or list's shared settings ([`SHARED`]), if it has any.
 pub fn shared(layout: &LayoutContainer) -> Option<&Map<String, Json>> {
-    if !is_group(layout) {
-        return None;
-    }
     layout
         .properties
         .get(SHARED)
@@ -544,28 +541,24 @@ pub fn settings(ui: &mut egui::Ui, group: &mut LayoutContainer) {
     ui.separator();
     ui.strong("Widgets inside");
     ui.weak("Used by every widget in the group that doesn't set its own.");
-    let mut shared = group
-        .properties
+    shared_rows(ui, &mut group.properties, false);
+}
+
+/// The settings dialog's rows for a group's or list's [`SHARED`] settings
+/// (in `properties`): update period, text, and the title (a list's labels,
+/// with `labels`), each with a way back to unset (each widget's own).
+pub fn shared_rows(ui: &mut egui::Ui, properties: &mut Map<String, Json>, labels: bool) {
+    let mut shared = properties
         .get(SHARED)
         .and_then(Json::as_object)
         .cloned()
         .unwrap_or_default();
     let before = shared.clone();
-    shared_rows(ui, &mut shared);
-    if shared != before {
-        let value = (!shared.is_empty()).then_some(Json::Object(shared));
-        props::set_property(&mut group.properties, SHARED, value);
-    }
-}
-
-/// The settings dialog's rows for a group's [`SHARED`] settings: update
-/// period, text and title, each with a way back to unset (each widget's
-/// own).
-fn shared_rows(ui: &mut egui::Ui, shared: &mut Map<String, Json>) {
     egui::Grid::new("group_shared")
         .num_columns(2)
         .spacing([12.0, 8.0])
         .show(ui, |ui| {
+            let shared = &mut shared;
             ui.label("Update period");
             ui.horizontal(|ui| {
                 let set = shared.get(props::PERIOD).and_then(Json::as_f64);
@@ -603,8 +596,22 @@ fn shared_rows(ui: &mut egui::Ui, shared: &mut Map<String, Json>) {
                 true,
             );
             let text_color = ui.visuals().text_color();
-            text_style::title_style_row(ui, shared, text_color);
+            if labels {
+                text_style::title_style_row_as(
+                    ui,
+                    shared,
+                    text_color,
+                    "Labels",
+                    crate::widgets::list_layout::LABEL_FONT_SIZE,
+                );
+            } else {
+                text_style::title_style_row(ui, shared, text_color);
+            }
         });
+    if shared != before {
+        let value = (!shared.is_empty()).then_some(Json::Object(shared));
+        props::set_property(properties, SHARED, value);
+    }
 }
 
 #[cfg(test)]
@@ -779,10 +786,13 @@ mod tests {
         assert_eq!(props::font_size(&shown.properties), 30.0);
         assert_eq!(props::period_s(&shown), 0.2);
         assert_eq!(plain.period(), Some(props::DEFAULT_PERIOD_S));
-        // A List Layout shares nothing, whatever its properties say.
+        // A List Layout shares the same way.
         let mut list = g.clone();
         list.layout_type = "List Layout".into();
-        assert!(matches!(with_shared(&list, &plain), Cow::Borrowed(_)));
+        assert_eq!(
+            props::font_size(&with_shared(&list, &plain).properties),
+            24.0
+        );
         // The child's dialog says what it gets from the group.
         assert_eq!(
             shared_note(&g, &plain).as_deref(),

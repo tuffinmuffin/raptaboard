@@ -15,8 +15,8 @@ use raptaboard_layout::{LayoutContainer, WidgetContainer};
 use serde_json::{Map, Value as Json};
 
 use super::find;
-use super::shared::card;
 use super::shared::props::{self, set_property};
+use super::shared::{card, text_style};
 
 /// The `type` Elastic saves List Layouts as.
 pub const TYPE_NAME: &str = "List Layout";
@@ -55,10 +55,12 @@ pub const CHILD_GAP: f32 = 6.0;
 const CHILD_CHROME: f32 = 48.0;
 /// The least height a child's value gets, in points (Elastic's).
 pub const MIN_CHILD_CONTENT: f32 = 32.0;
-/// Height of a label above or below a child's value, in points.
+/// Height of a label above or below a child's value, in points, at the
+/// usual label size ([`LABEL_FONT_SIZE`]); a bigger label gets more.
 pub const LABEL_HEIGHT: f32 = 18.0;
-/// Size of the label text, in points.
-const LABEL_FONT_SIZE: f32 = 13.0;
+/// Size of the label text unless the list's shared title size
+/// ([`group::SHARED`](crate::widgets::group::SHARED)) sets it, in points.
+pub const LABEL_FONT_SIZE: f32 = 13.0;
 /// Space between a side label and the child's value, in points.
 const SIDE_LABEL_GAP: f32 = 5.0;
 /// The most of a row's width a side label may take, from 0 to 1.
@@ -141,16 +143,41 @@ pub fn label_position(props: &Map<String, Json>) -> LabelPosition {
         .unwrap_or_default()
 }
 
-/// How a list labels its children: `label_position` and `label_inside`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// How a list labels its children: `label_position`, `label_inside`, and
+/// the size from its shared title text.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Labels {
     /// Where each label goes.
     pub position: LabelPosition,
     /// Over the value, rather than beside it.
     pub inside: bool,
+    /// The labels' text size, in points.
+    pub size: f32,
 }
 
-/// The `label_position` and `label_inside` settings together.
+impl Default for Labels {
+    fn default() -> Self {
+        Labels {
+            position: LabelPosition::default(),
+            inside: false,
+            size: LABEL_FONT_SIZE,
+        }
+    }
+}
+
+impl Labels {
+    /// The height of a label strip above or below a value, in points:
+    /// [`LABEL_HEIGHT`], and more for bigger labels.
+    pub fn height(&self) -> f32 {
+        LABEL_HEIGHT + (self.size - LABEL_FONT_SIZE).max(0.0)
+    }
+}
+
+/// The `label_position` and `label_inside` settings together, with the
+/// labels' size: the shared title size ([`group::SHARED`]), or
+/// [`LABEL_FONT_SIZE`].
+///
+/// [`group::SHARED`]: crate::widgets::group::SHARED
 ///
 /// ```
 /// use raptaboard::widgets::list_layout::{labels, LabelPosition};
@@ -165,6 +192,15 @@ pub fn labels(props: &Map<String, Json>) -> Labels {
             .get(LABEL_INSIDE)
             .and_then(Json::as_bool)
             .unwrap_or(false),
+        size: props
+            .get(crate::widgets::group::SHARED)
+            .and_then(Json::as_object)
+            .and_then(|shared| shared.get(text_style::TITLE.size))
+            .and_then(Json::as_f64)
+            .filter(|s| s.is_finite())
+            .map_or(LABEL_FONT_SIZE, |s| {
+                (s as f32).clamp(props::MIN_FONT_SIZE, text_style::MAX_TITLE_SIZE)
+            }),
     }
 }
 
@@ -244,7 +280,10 @@ pub fn rows(
     labels: Labels,
     label_width: impl Fn(usize) -> f32,
 ) -> Vec<ChildRow> {
-    let Labels { position, inside } = labels;
+    let Labels {
+        position, inside, ..
+    } = labels;
+    let label_height = labels.height();
     let mut top = body.min.y;
     children
         .iter()
@@ -254,7 +293,7 @@ pub fn rows(
             let content_height = content_height(child);
             let height = match position {
                 LabelPosition::Top | LabelPosition::Bottom if !inside => {
-                    LABEL_HEIGHT + content_height
+                    label_height + content_height
                 }
                 _ => content_height,
             };
@@ -267,10 +306,10 @@ pub fn rows(
             if inside {
                 let label = match position {
                     LabelPosition::Top => {
-                        Some(row.with_max_y(row.min.y + LABEL_HEIGHT.min(row.height())))
+                        Some(row.with_max_y(row.min.y + label_height.min(row.height())))
                     }
                     LabelPosition::Bottom => {
-                        Some(row.with_min_y(row.max.y - LABEL_HEIGHT.min(row.height())))
+                        Some(row.with_min_y(row.max.y - label_height.min(row.height())))
                     }
                     LabelPosition::Left => Some(row.with_max_x(row.min.x + side)),
                     LabelPosition::Right => Some(row.with_min_x(row.max.x - side)),
@@ -285,11 +324,11 @@ pub fn rows(
             }
             let (content, label) = match position {
                 LabelPosition::Top => {
-                    let (label, content) = row.split_top_bottom_at_y(row.min.y + LABEL_HEIGHT);
+                    let (label, content) = row.split_top_bottom_at_y(row.min.y + label_height);
                     (content, Some(label))
                 }
                 LabelPosition::Bottom => {
-                    let (content, label) = row.split_top_bottom_at_y(row.max.y - LABEL_HEIGHT);
+                    let (content, label) = row.split_top_bottom_at_y(row.max.y - label_height);
                     (content, Some(label))
                 }
                 LabelPosition::Left => {
@@ -487,15 +526,24 @@ fn draw_with(
 ) {
     let body = card::draw_card(painter, visuals, rect, &list.title, &list.properties);
     let labels = labels(&list.properties);
-    let font = egui::FontId::proportional(LABEL_FONT_SIZE);
+    // Each label in its widget's title style (its own, or the list's
+    // shared one), at the list's label size.
+    let shown: Vec<_> = list
+        .children
+        .iter()
+        .map(|c| crate::widgets::group::with_shared(list, c))
+        .collect();
+    let label_font = |i: usize| {
+        let style = text_style::TextStyle::read(&shown[i].properties, text_style::TITLE);
+        let font = style.font(painter.ctx(), text_style::Family::Sans, labels.size);
+        (font, style.color_or(visuals.text_color()))
+    };
     let title_edge = body.min.y;
     card::draw_clipped(painter, body, |painter, body| {
         let width = |i: usize| {
             let title = list.children[i].title.clone();
-            painter
-                .layout_no_wrap(title, font.clone(), visuals.text_color())
-                .size()
-                .x
+            let (font, color) = label_font(i);
+            painter.layout_no_wrap(title, font, color).size().x
         };
         let placed = rows(body, &list.children, labels, width);
         if dividers(&list.properties) {
@@ -511,7 +559,8 @@ fn draw_with(
             }
         }
         for place in placed {
-            let child = &list.children[place.index];
+            let child = &*shown[place.index];
+            let (font, color) = label_font(place.index);
             if let Some(label) = place.label
                 && !labels.inside
             {
@@ -522,7 +571,7 @@ fn draw_with(
                         egui::Align2::LEFT_CENTER,
                         &child.title,
                         font.clone(),
-                        visuals.text_color(),
+                        color,
                     );
             }
             let inside = place.label.filter(|_| labels.inside);
@@ -538,6 +587,7 @@ fn draw_with(
                     labels.position,
                     &child.title,
                     &font,
+                    color,
                 );
             }
         }
@@ -554,9 +604,10 @@ fn draw_inside_label(
     position: LabelPosition,
     title: &str,
     font: &egui::FontId,
+    color: egui::Color32,
 ) {
     let painter = painter.with_clip_rect(area.intersect(painter.clip_rect()));
-    let galley = painter.layout_no_wrap(title.to_owned(), font.clone(), visuals.text_color());
+    let galley = painter.layout_no_wrap(title.to_owned(), font.clone(), color);
     let size = galley.size();
     let x = match position {
         LabelPosition::Right => area.max.x - size.x - INSIDE_LABEL_PAD,
@@ -575,7 +626,7 @@ fn draw_inside_label(
             .extreme_bg_color
             .gamma_multiply(INSIDE_LABEL_BACKING),
     );
-    painter.galley(text_rect.min, galley, visuals.text_color());
+    painter.galley(text_rect.min, galley, color);
 }
 
 /// How many grid cells tall a list must be to show all its `children`
@@ -587,7 +638,7 @@ fn draw_inside_label(
 /// use raptaboard::widgets::list_layout::{cells_tall_for, Labels, LabelPosition};
 /// # let child = |t: &str| serde_json::from_value(serde_json::json!({"title": t,
 /// #     "x": 0.0, "y": 0.0, "width": 128.0, "height": 128.0, "type": "Text Display"})).unwrap();
-/// let inside = Labels { position: LabelPosition::Top, inside: true };
+/// let inside = Labels { position: LabelPosition::Top, inside: true, size: 13.0 };
 /// assert_eq!(cells_tall_for(&[child("a")], inside, 128.0), 2.0);
 /// let five: Vec<_> = (0..5).map(|_| child("x")).collect();
 /// assert_eq!(cells_tall_for(&five, inside, 128.0), 4.0);
@@ -806,6 +857,11 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
         });
 
     ui.add_space(8.0);
+    ui.strong("Widgets inside");
+    ui.weak("Used by every widget in the list that doesn't set its own; Labels styles each label.");
+    crate::widgets::group::shared_rows(ui, &mut list.properties, true);
+
+    ui.add_space(8.0);
     ui.strong("Children");
     if list.children.is_empty() {
         ui.weak("None yet.");
@@ -915,6 +971,7 @@ enum Change {
 mod tests {
     // Tests written by Claude.
     use super::*;
+    use crate::widgets::group;
 
     #[test]
     fn copying_settings_never_copies_what_a_child_shows() {
@@ -1038,6 +1095,7 @@ mod tests {
             Labels {
                 position: LabelPosition::Top,
                 inside: false,
+                size: LABEL_FONT_SIZE,
             },
             |_| 30.0,
         );
@@ -1055,6 +1113,7 @@ mod tests {
             Labels {
                 position: LabelPosition::Bottom,
                 inside: false,
+                size: LABEL_FONT_SIZE,
             },
             |_| 30.0,
         );
@@ -1068,6 +1127,7 @@ mod tests {
             Labels {
                 position: LabelPosition::Hidden,
                 inside: false,
+                size: LABEL_FONT_SIZE,
             },
             |_| 30.0,
         );
@@ -1085,6 +1145,7 @@ mod tests {
             Labels {
                 position: LabelPosition::Left,
                 inside: false,
+                size: LABEL_FONT_SIZE,
             },
             |_| 30.0,
         );
@@ -1098,6 +1159,7 @@ mod tests {
             Labels {
                 position: LabelPosition::Right,
                 inside: false,
+                size: LABEL_FONT_SIZE,
             },
             |_| 500.0,
         );
@@ -1170,6 +1232,7 @@ mod tests {
             Labels {
                 position: LabelPosition::Hidden,
                 inside: false,
+                size: LABEL_FONT_SIZE,
             },
             |_| 0.0,
         );
@@ -1187,6 +1250,7 @@ mod tests {
             Labels {
                 position: LabelPosition::Hidden,
                 inside: false,
+                size: LABEL_FONT_SIZE,
             },
             |_| 0.0,
         );
@@ -1216,6 +1280,7 @@ mod tests {
                 Labels {
                     position,
                     inside: true,
+                    size: LABEL_FONT_SIZE,
                 },
                 |_| 30.0,
             )
@@ -1259,6 +1324,7 @@ mod tests {
         let hidden = Labels {
             position: LabelPosition::Hidden,
             inside: false,
+            size: LABEL_FONT_SIZE,
         };
         let placed = rows(body(), &children, hidden, |_| 0.0);
         // Rows 0..80, 86..166, 172..252: lines at 83, 169, and 255 below
@@ -1278,5 +1344,69 @@ mod tests {
         );
         l.properties.insert(DIVIDERS.into(), true.into());
         assert!(dividers(&l.properties));
+    }
+
+    /// Draw `l` once in a window-less frame and return each piece of text
+    /// drawn: its text, size and color.
+    fn drawn_text(l: &LayoutContainer) -> Vec<(String, f32, egui::Color32)> {
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let rect = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(256.0, 512.0));
+            draw(ui.painter(), ui.visuals(), rect, l, &|_| None);
+        });
+        output.textures_delta.clear();
+        output
+            .shapes
+            .into_iter()
+            .filter_map(|s| match s.shape {
+                egui::epaint::Shape::Text(t) => {
+                    let format = &t.galley.job.sections.first()?.format;
+                    Some((
+                        t.galley.text().to_owned(),
+                        format.font_id.size,
+                        format.color,
+                    ))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_lists_shared_title_text_styles_its_labels() {
+        let red = egui::Color32::from_rgb(255, 0, 0);
+        let mut l = list(vec![child("a", 128.0), child("b", 128.0)], Some("TOP"));
+        let label = |text: &[(String, f32, egui::Color32)], title: &str| {
+            text.iter()
+                .find(|(t, _, _)| t == title)
+                .map(|(_, size, color)| (*size, *color))
+                .unwrap_or_else(|| panic!("no label {title}: {text:?}"))
+        };
+        // Unset: the usual small labels.
+        assert_eq!(labels(&l.properties).height(), LABEL_HEIGHT);
+        let plain = drawn_text(&l);
+        assert_eq!(label(&plain, "a").0, LABEL_FONT_SIZE);
+        // Shared: every label bigger and red, the strips taller to fit.
+        l.properties.insert(
+            group::SHARED.into(),
+            serde_json::json!({"title_font_size": 18.0, "title_color": 4294901760u32}),
+        );
+        let l18 = labels(&l.properties);
+        assert_eq!(l18.size, 18.0);
+        assert_eq!(l18.height(), LABEL_HEIGHT + 5.0);
+        let top = rows(body(), &l.children, l18, |_| 0.0);
+        assert_eq!(top[0].label.unwrap().height(), LABEL_HEIGHT + 5.0);
+        assert_eq!(label(&drawn_text(&l), "a"), (18.0, red));
+        // A widget's own title color wins for its label; the size is the
+        // list's.
+        l.children[1]
+            .properties
+            .insert("title_color".into(), 4278255360u32.into());
+        let text = drawn_text(&l);
+        assert_eq!(label(&text, "a"), (18.0, red));
+        assert_eq!(
+            label(&text, "b"),
+            (18.0, egui::Color32::from_rgb(0, 255, 0))
+        );
     }
 }

@@ -536,10 +536,26 @@ pub fn text_row(
 /// The title's settings: its size and a "Style…" button showing its style
 /// rows, under the title's text box in the settings dialog.
 pub fn title_style_row(ui: &mut egui::Ui, props: &mut Map<String, Json>, text_color: Color32) {
-    ui.label("Title text");
+    title_style_row_as(ui, props, text_color, "Title text", DEFAULT_TITLE_SIZE);
+}
+
+/// [`title_style_row`] named `label`, with `usual` the size when none is
+/// set (a list's labels are smaller than titles).
+pub fn title_style_row_as(
+    ui: &mut egui::Ui,
+    props: &mut Map<String, Json>,
+    text_color: Color32,
+    label: &str,
+    usual: f32,
+) {
+    ui.label(label);
     let shown = ui
         .horizontal(|ui| {
-            let mut size = title_size(props);
+            let mut size = props
+                .get(TITLE.size)
+                .and_then(Json::as_f64)
+                .map_or(usual, |s| s as f32)
+                .clamp(props::MIN_FONT_SIZE, MAX_TITLE_SIZE);
             if ui
                 .add(
                     egui::DragValue::new(&mut size)
@@ -551,7 +567,7 @@ pub fn title_style_row(ui: &mut egui::Ui, props: &mut Map<String, Json>, text_co
                 .on_hover_text("Title size")
                 .changed()
             {
-                let value = (size != DEFAULT_TITLE_SIZE).then(|| f64::from(size).into());
+                let value = (size != usual).then(|| f64::from(size).into());
                 set_property(props, TITLE.size, value);
             }
             style_toggle(ui, props, TITLE)

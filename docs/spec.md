@@ -846,7 +846,11 @@ raptaboard is meant to rest in, apart from feature requests.
      (`group::shared_note`). Opening a layout checks a group's children (`ElasticLayout::sanitize`,
      `LayoutContainer::sanitize_group`): sizes and places fixed as on the tab, rounded to whole
      cells (`GROUP_CELL`, at most `GROUP_MAX_CELLS`), and any overlap moved to the nearest free
-     cell, `may_overlap` or not.
+     cell, `may_overlap` or not. List Layouts share the same way (asked for by the user
+     2026-11-27): the same `shared` object and "Widgets inside" rows (`group::shared_rows`), with
+     the title row styling the list's labels instead ("Labels": `list_layout::labels` takes the
+     size, one for the whole list so rows stay even, the label strip growing to fit; each label's
+     font, color, bold and italic are its widget's title style as shown, so its own still wins).
    - Autoscale for bars and gauges (**done**, after 0.1.0): `autoscale` (and `autoscale_keep_range`)
      in `shared/scale.rs`. The range comes from every value received: an autoscaled widget asks for
      its series through `traced` (keeping no points), and `Traces` keeps each series' lowest and
