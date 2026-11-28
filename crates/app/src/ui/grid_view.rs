@@ -961,7 +961,8 @@ impl DashboardApp {
             self.send(sender, value);
         }
         if let Some((topics, into, target)) = topics_dropped {
-            self.add_dropped_topics(&topics, into, target, view);
+            let over = super::drag::overlapping(ui.ctx());
+            self.add_dropped_topics(&topics, into, target, view, over);
         }
         if let Some(drag) = dropped {
             // Worked out here, where it's let go: the preview stops
@@ -997,6 +998,15 @@ impl DashboardApp {
                     }) => {
                         if grid::child_into_group(grid, cd.list, cd.child, group, rect).is_some() {
                             self.selected = Some(Item::List(group));
+                        }
+                    }
+                    // Alt held: over what's there, in front.
+                    Some(DropTarget::Grid { rect, free: true })
+                        if super::drag::overlapping(ui.ctx()) =>
+                    {
+                        if let Some(w) = grid::child_out_of_list(grid, cd.list, cd.child, rect) {
+                            grid::place_over(grid, Item::Widget(w), rect);
+                            self.selected = Some(Item::Widget(w));
                         }
                     }
                     Some(DropTarget::Grid { rect, free: true }) => {
@@ -1694,6 +1704,79 @@ mod tests {
         let c = grid.containers.iter().find(|w| w.title == "C").unwrap();
         assert_eq!((c.rect.x, c.rect.y), (384.0, 0.0));
         assert_ne!(rect_of(&app, 1), (384.0, 0.0, 128.0, 128.0), "B moved");
+    }
+
+    #[test]
+    fn with_alt_list_children_go_over_widgets_and_lists_not_aside_or_into_them() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        // B two cells wide, so the child can cover half of it.
+        app.layout.tabs[0].grid_layout.containers[1].rect.width = 256.0;
+        let child: WidgetContainer = serde_json::from_value(serde_json::json!({
+            "title": "C", "x": 0, "y": 0, "width": 128, "height": 128,
+            "type": "Text Display", "properties": { "topic": "/C" }
+        }))
+        .unwrap();
+        let mut d = child.clone();
+        d.title = "D".into();
+        app.layout.tabs[0].grid_layout.layouts[0]
+            .children
+            .extend([child, d]);
+        let held = |m| Event::ModifiersChanged(m);
+        let origin = frame(&ctx, &mut app, vec![held(egui::Modifiers::ALT)]);
+        let list = app.layout.tabs[0].grid_layout.layouts[0].clone();
+        let card = Rect::from_min_size(
+            origin + Vec2::new(list.rect.x as f32, list.rect.y as f32),
+            Vec2::new(list.rect.width as f32, list.rect.height as f32),
+        )
+        .shrink(CELL_GAP);
+        let row = list_layout::rows_on_screen(card, &list)[0].row;
+        let start = row.center();
+        let end = start + (origin + Vec2::new(384.0, 0.0) - row.min);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(start)]);
+        frame(&ctx, &mut app, vec![button(start, true)]);
+        for step in 1..=8 {
+            let at = start + (end - start) * (step as f32 / 8.0);
+            frame(&ctx, &mut app, vec![Event::PointerMoved(at)]);
+        }
+        // Nothing drawn pushed aside while it's held over B.
+        assert!(app.grid.child_drag.is_some());
+        frame(&ctx, &mut app, vec![button(end, false)]);
+        frame(&ctx, &mut app, vec![held(egui::Modifiers::NONE)]);
+        let grid = &app.layout.tabs[0].grid_layout;
+        assert_eq!(grid.layouts[0].children.len(), 1, "C out of the list");
+        let c = grid.containers.iter().position(|w| w.title == "C").unwrap();
+        assert_eq!(rect_of(&app, c), (384.0, 0.0, 128.0, 128.0));
+        assert_eq!(rect_of(&app, 1), (384.0, 0.0, 256.0, 128.0), "B stayed");
+        assert!(Item::Widget(c).may_overlap(grid));
+        assert_eq!(grid::draw_order(grid).last().unwrap().0, Item::Widget(c));
+        assert_eq!(grid.overlap_problem(), None);
+        // D, held over its own list with Alt (one cell by two): onto the
+        // grid over the list's top cell, not back into the list.
+        frame(&ctx, &mut app, vec![held(egui::Modifiers::ALT)]);
+        let list = app.layout.tabs[0].grid_layout.layouts[0].clone();
+        let card = Rect::from_min_size(
+            origin + Vec2::new(list.rect.x as f32, list.rect.y as f32),
+            Vec2::new(list.rect.width as f32, list.rect.height as f32),
+        )
+        .shrink(CELL_GAP);
+        let row = list_layout::rows_on_screen(card, &list)[0].row;
+        let start = row.center();
+        let corner = origin + Vec2::new(list.rect.x as f32, list.rect.y as f32);
+        let end = start + (corner - row.min);
+        frame(&ctx, &mut app, vec![Event::PointerMoved(start)]);
+        frame(&ctx, &mut app, vec![button(start, true)]);
+        for step in 1..=8 {
+            let at = start + (end - start) * (step as f32 / 8.0);
+            frame(&ctx, &mut app, vec![Event::PointerMoved(at)]);
+        }
+        frame(&ctx, &mut app, vec![button(end, false)]);
+        frame(&ctx, &mut app, vec![held(egui::Modifiers::NONE)]);
+        let grid = &app.layout.tabs[0].grid_layout;
+        assert!(grid.layouts[0].children.is_empty(), "D out of the list");
+        let d = grid.containers.iter().position(|w| w.title == "D").unwrap();
+        assert_eq!(rect_of(&app, d), (list.rect.x, list.rect.y, 128.0, 128.0));
+        assert_eq!(grid.overlap_problem(), None);
     }
 
     #[test]

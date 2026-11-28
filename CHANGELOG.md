@@ -22,8 +22,9 @@ What changes in each raptaboard release. Newest first.
   everything in it, text too. Turned on in its settings, it sets the update period, text and title
   style for every widget inside, in place of their own; a List Layout can too, with its labels'
   size and style. One widget can opt out to keep its own.
-- **Overlap with Alt:** hold Alt (Option on a Mac) while dragging or resizing a widget to place it
-  partly over others, in front, instead of pushing them aside, such as a label on a camera view.
+- **Overlap with Alt:** hold Alt (Option on a Mac) while dragging or resizing a widget, dropping
+  topics from the tree, or dragging a widget out of a list, to place it partly over others, in
+  front, instead of pushing them aside, such as a label on a camera view.
   No widget can be hidden completely. **Bring to front** and **Send to back** are in the
   right-click menu of a widget that overlaps another.
 - **Fill space, Pack widgets and Pin in place:** right-click a widget for **Fill space** (it grows

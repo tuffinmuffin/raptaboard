@@ -297,3 +297,42 @@ fn a_topic_dropped_on_a_group_goes_into_the_cell_under_the_pointer() {
     assert_eq!(inside[0].topic(), Some("/Test/flag"));
     assert_eq!(inside[0].rect, third);
 }
+
+#[test]
+fn with_alt_topics_go_over_widgets_and_lists_not_into_them() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    // A widget two cells wide, and an empty list two by two below it.
+    let grid: raptaboard_layout::GridLayout = serde_json::from_value(serde_json::json!({
+        "containers": [{"title": "wide", "x": 0.0, "y": 0.0, "width": 256.0, "height": 128.0,
+            "type": "Text Display", "properties": {"topic": "/Test/number"}}],
+        "layouts": [{"title": "list", "x": 0.0, "y": 256.0, "width": 256.0, "height": 256.0,
+            "type": "List Layout", "properties": {}, "children": []}]
+    }))
+    .unwrap();
+    harness.state_mut().layout.tabs[0].grid_layout = grid;
+    settle(&mut harness);
+    open(&mut harness, "Test  (");
+    let area = harness.state().grid.area;
+    harness.event(egui::Event::ModifiersChanged(Modifiers::ALT));
+    // Onto the wide widget's left half: over it, not pushing it.
+    drag_row(&mut harness, "flag", 0, area.min + egui::vec2(64.0, 64.0));
+    // Onto the list: over it, not into it.
+    drag_row(&mut harness, "count", 0, area.min + egui::vec2(64.0, 320.0));
+    harness.event(egui::Event::ModifiersChanged(Modifiers::NONE));
+    settle(&mut harness);
+    let grid = &harness.state().layout.tabs[0].grid_layout;
+    assert!(grid.layouts[0].children.is_empty(), "not into the list");
+    let at = |topic: &str| {
+        let w = grid
+            .containers
+            .iter()
+            .find(|w| w.topic() == Some(topic))
+            .unwrap_or_else(|| panic!("no {topic}"));
+        (w.rect.x, w.rect.y)
+    };
+    assert_eq!(at("/Test/number"), (0.0, 0.0), "the wide one stayed");
+    assert_eq!(at("/Test/flag"), (0.0, 0.0));
+    assert_eq!(at("/Test/count"), (0.0, 256.0));
+    assert_eq!(grid.overlap_problem(), None);
+}

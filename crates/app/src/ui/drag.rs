@@ -282,9 +282,12 @@ impl DashboardApp {
                 .unwrap_or_default();
         }
         // Something new coming onto the grid: a list child dragged out, or
-        // topics from the tree.
+        // topics from the tree. With Alt held it goes over them instead.
+        if overlapping(ctx) {
+            return Vec::new();
+        }
         let new = match self.grid.child_drag {
-            Some(_) => pointer.and_then(|p| self.child_grid_target(view, p)),
+            Some(_) => pointer.and_then(|p| self.child_grid_target(view, p, false)),
             None => pointer.and_then(|p| self.tree_grid_target(ctx, view, p)),
         };
         new.and_then(|rect| grid::make_room(&tab.grid_layout, rect, view.cell, view.room))
@@ -292,8 +295,14 @@ impl DashboardApp {
     }
 
     /// Where the list child being dragged lands on the grid, with the
-    /// pointer at `p`: `None` over a list (it goes in) or off the grid.
-    pub(super) fn child_grid_target(&self, view: GridView, p: Pos2) -> Option<LayoutRect> {
+    /// pointer at `p`: `None` off the grid, or over a list or group (it goes
+    /// in) unless placed `over` what's there (Alt held).
+    pub(super) fn child_grid_target(
+        &self,
+        view: GridView,
+        p: Pos2,
+        over: bool,
+    ) -> Option<LayoutRect> {
         let cd = self.grid.child_drag?;
         let child = self
             .tab()?
@@ -306,7 +315,8 @@ impl DashboardApp {
             .tab()
             .and_then(|t| grid::group_at(&t.grid_layout, view.to_grid(p)))
             .is_some();
-        if self.list_drop(view, p).is_some() || over_group || !view.visible.contains(p) {
+        let into = !over && (self.list_drop(view, p).is_some() || over_group);
+        if into || !view.visible.contains(p) {
             return None;
         }
         let size = grid::snap_resize(child.rect, view.cell);
@@ -320,8 +330,9 @@ impl DashboardApp {
 
     /// Where the first widget for topics dragged from the tree lands on the
     /// grid, with the pointer at `p`: the cell under it. `None` with no
-    /// topics dragged, while locked, off the grid, or over a list or a
-    /// widget that takes topics (they go into it).
+    /// topics dragged, while locked, off the grid, or over a list, group or
+    /// widget that takes topics (they go into it) unless Alt is held (they
+    /// go over it: [`overlapping`]).
     pub(super) fn tree_grid_target(
         &self,
         ctx: &egui::Context,
@@ -338,9 +349,10 @@ impl DashboardApp {
             .tab()
             .and_then(|t| grid::group_at(&t.grid_layout, view.to_grid(p)))
             .is_some();
-        if self.topic_taker_drop(view, p).is_some()
-            || self.list_drop(view, p).is_some()
-            || over_group
+        if !overlapping(ctx)
+            && (self.topic_taker_drop(view, p).is_some()
+                || self.list_drop(view, p).is_some()
+                || over_group)
         {
             return None;
         }
@@ -437,13 +449,20 @@ impl DashboardApp {
                 ok,
                 card: m.to_screen(&rect),
             })
+        } else if overlapping(ui.ctx()) {
+            // Alt held: onto the grid over what's there, never into a list.
+            self.child_grid_target(view, p, true)
+                .map(|rect| DropTarget::Grid {
+                    rect,
+                    free: grid::fits_new_over(&tab.grid_layout, rect),
+                })
         } else {
             // Into a list or group, or onto the grid pushing what's in the
             // way aside if it can.
             self.list_drop(view, p)
                 .or_else(|| self.group_drop(view, p, child.rect, Some((cd.list, cd.child))))
                 .or_else(|| {
-                    self.child_grid_target(view, p)
+                    self.child_grid_target(view, p, false)
                         .map(|rect| DropTarget::Grid {
                             rect,
                             free: grid::make_room(&tab.grid_layout, rect, view.cell, view.room)
@@ -509,10 +528,15 @@ impl DashboardApp {
             width: group::INNER_CELL,
             height: group::INNER_CELL,
         };
-        let into = self
-            .topic_taker_drop(view, p)
-            .or_else(|| self.list_drop(view, p))
-            .or_else(|| self.group_drop(view, p, one, None));
+        // With Alt held they go onto the grid over what's there.
+        let over = overlapping(ui.ctx());
+        let into = if over {
+            None
+        } else {
+            self.topic_taker_drop(view, p)
+                .or_else(|| self.list_drop(view, p))
+                .or_else(|| self.group_drop(view, p, one, None))
+        };
         let Some(target) = self.tree_grid_target(ui.ctx(), view, p).or_else(|| {
             let (x, y) = view.to_grid(p);
             Some(LayoutRect {
@@ -530,7 +554,11 @@ impl DashboardApp {
             // go around it, so only the first must have room.
             None => {
                 let room = self.tab().is_some_and(|t| {
-                    grid::make_room(&t.grid_layout, target, view.cell, view.room).is_some()
+                    if over {
+                        grid::fits_new_over(&t.grid_layout, target)
+                    } else {
+                        grid::make_room(&t.grid_layout, target, view.cell, view.room).is_some()
+                    }
                 });
                 draw_landing(painter, view.to_screen(&target), room);
             }
@@ -606,13 +634,16 @@ impl DashboardApp {
 
     /// Make widgets for topics dropped from the tree: into the list, as
     /// lines on the graph, or on the grid, each in the free spot nearest
-    /// `target`.
+    /// `target`. Placed `over` what's there (Alt held), the first goes at
+    /// `target` in front (if that hides nothing completely); the rest go
+    /// in free spots near it.
     pub(super) fn add_dropped_topics(
         &mut self,
         topics: &DraggedTopics,
         into: Option<DropTarget>,
         target: LayoutRect,
         view: GridView,
+        over: bool,
     ) {
         let Some(tab) = self.layout.tabs.get_mut(self.current_tab) else {
             return;
@@ -657,6 +688,28 @@ impl DashboardApp {
                     self.status = ty.add_topics(widget, &topics.0);
                 }
                 self.selected = Some(Item::Widget(index));
+            }
+            None if over => {
+                if !grid::fits_new_over(grid, target) {
+                    self.status = "It would hide a widget completely there".to_owned();
+                    return;
+                }
+                let mut made = made.into_iter();
+                let Some(mut first) = made.next() else { return };
+                first.rect = target;
+                grid.containers.push(first);
+                let at = grid.containers.len() - 1;
+                grid::place_over(grid, Item::Widget(at), target);
+                let rest = made.collect();
+                let more = grid::place_near(grid, rest, (target.x, target.y), cell, view.room);
+                self.selected = Some(Item::Widget(at));
+                if 1 + more.len() < topics.0.len() {
+                    self.status = format!(
+                        "Added {} of {} widgets; no free space for the rest",
+                        1 + more.len(),
+                        topics.0.len()
+                    );
+                }
             }
             None => {
                 // Room for the first, pushing what's in the way aside.
