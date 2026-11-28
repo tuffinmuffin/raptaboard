@@ -29,7 +29,8 @@ Unlock the layout first (**🔒 Locked** in the settings bar). Then, from the Ne
   below).
 - **Right-click a topic** for **Add to grid** (the same as dragging it), **Add as**, which lists
   every widget that can show it (a number can be a Text Display, a Number Bar, a Graph and more),
-  and **Add to list** to add it to a List Layout.
+  and **Add to list** and **Add to group** to add it to a List Layout or Group, a new one or one
+  already on the tab.
 - **Drop a topic onto a widget** that takes more than one: a Graph adds it as a line, an X/Y or
   Polar Graph as the next value of a pair, a Field as a layer. A Swerve Drive or Chassis Speeds
   takes requested speeds and a heading this way.
@@ -44,7 +45,7 @@ Unlocked (moving, resizing and arranging widgets are in [Layouts](layouts.md)):
 - **Click** it to select it. That also finds its topic in the tree.
 - **Double-click** it, or press **Enter** while it's selected, to open its settings.
 - **Right-click** it for **Edit…**, **Duplicate** (Ctrl+D), **Delete** (Delete), **Put in a
-  new list**, and **Fill space** and **Pin in place** ([Layouts](layouts.md#tidying-up)). A
+  new list**, **Put in a new group**, and **Fill space** and **Pin in place** ([Layouts](layouts.md#tidying-up)). A
   widget that keeps a min and max or a scale from the values it has seen also has **Reset
   min/max** or **Reset scale**.
 
