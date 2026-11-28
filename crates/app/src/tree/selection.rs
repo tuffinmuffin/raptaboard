@@ -49,6 +49,10 @@ pub enum AddTo {
     List(usize),
     /// A new List Layout holding them.
     NewList,
+    /// The free cells of the open tab's Group at this index.
+    Group(usize),
+    /// A new Group holding them.
+    NewGroup,
 }
 
 /// Which tree rows are selected, for adding several topics at once and for
@@ -86,9 +90,12 @@ pub struct TreeSelection {
     /// The widget type "Add as" picked for [`TreeSelection::add`], if not
     /// the one each topic makes by default.
     pub add_as: Option<&'static str>,
-    /// Names of the open tab's List Layouts, for the "Add to list" menu.
-    /// The window sets these before drawing the tree.
-    pub lists: Vec<String>,
+    /// The open tab's List Layouts, for the "Add to list" menu: each one's
+    /// index in the tab's `layouts` and its name. The window sets these
+    /// before drawing the tree.
+    pub lists: Vec<(usize, String)>,
+    /// The same for its Groups, for the "Add to group" menu.
+    pub groups: Vec<(usize, String)>,
     /// A row to open the tree to, scroll to and pick, set by
     /// [`TreeSelection::reveal`].
     reveal: Option<Reveal>,

@@ -134,6 +134,8 @@ pub(super) struct Requests {
     pub edit_child: Option<(usize, usize)>,
     /// "Put in a new list" from a widget's menu.
     pub wrap: Option<usize>,
+    /// "Put in a new group" from a widget's menu.
+    pub wrap_group: Option<usize>,
     /// A widget clicked, to find its topic in the tree.
     pub find_in_tree: Option<WidgetContainer>,
     /// A widget whose click it used itself, to find in the tree without
@@ -673,6 +675,14 @@ impl DashboardApp {
                 {
                     requests.wrap = Some(widget);
                 }
+                if let Item::Widget(widget) = item
+                    && ui
+                        .button("Put in a new group")
+                        .on_hover_text("Make a Group here holding this widget")
+                        .clicked()
+                {
+                    requests.wrap_group = Some(widget);
+                }
                 if ui
                     .button("Fill space")
                     .on_hover_text("Grow into the empty cells around it")
@@ -989,6 +999,7 @@ impl DashboardApp {
             menu_action,
             edit_child,
             wrap,
+            wrap_group,
             find_in_tree,
             find_quietly,
             writes,
@@ -1114,6 +1125,14 @@ impl DashboardApp {
             match made {
                 Some(list) => self.selected = Some(Item::List(list)),
                 None => self.status = "No free space for a new list".to_owned(),
+            }
+        }
+        if let Some(widget) = wrap_group
+            && let Some(tab) = self.layout.tabs.get_mut(self.current_tab)
+        {
+            match grid::wrap_in_group(&mut tab.grid_layout, widget, view.cell, view.room) {
+                Some(g) => self.selected = Some(Item::List(g)),
+                None => self.status = "No free space for a new group".to_owned(),
             }
         }
         if let Some((g, c)) = remove_child

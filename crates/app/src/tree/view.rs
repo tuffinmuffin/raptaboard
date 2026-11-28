@@ -111,10 +111,30 @@ fn selectable_row(
                 if !lists.is_empty() {
                     ui.separator();
                 }
-                for (i, name) in lists.iter().enumerate() {
+                for (i, name) in &lists {
                     if ui.button(name).clicked() {
                         sel.add = group.clone();
-                        sel.add_to = AddTo::List(i);
+                        sel.add_to = AddTo::List(*i);
+                    }
+                }
+            });
+            let groups = sel.groups.clone();
+            ui.menu_button("Add to group", |ui| {
+                if ui
+                    .button("New group")
+                    .on_hover_text("A new Group holding these")
+                    .clicked()
+                {
+                    sel.add = group.clone();
+                    sel.add_to = AddTo::NewGroup;
+                }
+                if !groups.is_empty() {
+                    ui.separator();
+                }
+                for (i, name) in &groups {
+                    if ui.button(name).clicked() {
+                        sel.add = group.clone();
+                        sel.add_to = AddTo::Group(*i);
                     }
                 }
             });

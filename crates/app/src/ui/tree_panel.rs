@@ -87,7 +87,8 @@ impl DashboardApp {
             ui.weak(format!("Showing {shown} of {total} topics ({why})"));
         }
         self.tree.selection.begin_frame();
-        self.tree.selection.lists = self.list_names();
+        self.tree.selection.lists = self.layout_names(false);
+        self.tree.selection.groups = self.layout_names(true);
         let no_structs = StructDatabase::new();
         let structs = self.nt.structs().unwrap_or(&no_structs);
         // Both ways: a wide row scrolls sideways rather than widening the
@@ -192,8 +193,32 @@ impl DashboardApp {
             }
             return;
         }
+        if let AddTo::Group(_) | AddTo::NewGroup = to {
+            let grid = &mut tab.grid_layout;
+            let into = match to {
+                AddTo::Group(i) => Some(i),
+                _ => grid::add_group(grid, (0.0, 0.0), cell, room),
+            };
+            let Some(g) = into else {
+                self.status = "No free space for a new group".to_owned();
+                return;
+            };
+            let added = grid::widgets_into_group_free(grid, g, made);
+            self.selected = Some(Item::List(g));
+            let title = &grid.layouts[g].title;
+            self.status = if added < wanted {
+                format!("Added {added} of {wanted} widgets to \"{title}\"; it's full")
+            } else {
+                format!(
+                    "Added {wanted} widget{} to \"{title}\"",
+                    if wanted == 1 { "" } else { "s" }
+                )
+            };
+            return;
+        }
         if let AddTo::List(i) = to
             && let Some(l) = tab.grid_layout.layouts.get_mut(i)
+            && !crate::widgets::group::is_group(l)
         {
             l.children.extend(made);
             self.selected = Some(Item::List(i));

@@ -38,13 +38,6 @@ fn harness_with(robot: &Robot) -> Harness {
     harness
 }
 
-/// Open widget `index`'s right-click menu.
-fn menu_of(harness: &mut Harness, index: usize) {
-    let at = card_on_screen(harness, index).center();
-    click_at(harness, at, egui::PointerButton::Secondary, Modifiers::NONE);
-    settle(harness);
-}
-
 #[test]
 fn min_max_and_average_count_every_value_and_reset_from_the_menu() {
     let robot = Robot::start();

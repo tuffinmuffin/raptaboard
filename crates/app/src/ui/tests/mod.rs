@@ -674,6 +674,13 @@ fn card_on_screen(harness: &Harness, index: usize) -> Rect {
         .shrink(crate::ui::style::CELL_GAP)
 }
 
+/// Open widget `index`'s right-click menu.
+fn menu_of(harness: &mut Harness, index: usize) {
+    let at = card_on_screen(harness, index).center();
+    click_at(harness, at, egui::PointerButton::Secondary, Modifiers::NONE);
+    settle(harness);
+}
+
 /// Press and let go of `k`.
 fn press(harness: &mut Harness, k: Key) {
     for event in key(k, Modifiers::NONE) {

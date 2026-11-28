@@ -188,6 +188,30 @@ fn the_right_click_menu_adds_the_selection_and_locking_stops_it() {
         lists[1].children[0].struct_meta().unwrap().path,
         ["translation", "y"]
     );
+    // Into a new group the same way, in its top-left cell (on the empty
+    // tab: this one has no room for a group); the list menu doesn't offer
+    // the group.
+    harness.state_mut().current_tab = 1;
+    settle(&mut harness);
+    right_click_row(&mut harness, "y", 0);
+    harness.get_by_label("Add to group").hover();
+    settle(&mut harness);
+    harness.get_by_label("New group").click();
+    settle(&mut harness);
+    let layouts = harness.state().layout.tabs[1].grid_layout.layouts.clone();
+    assert_eq!(layouts.len(), 1, "{}", harness.state().status);
+    assert!(crate::widgets::group::is_group(&layouts[0]));
+    assert_eq!(layouts[0].children.len(), 1);
+    let inside = layouts[0].children[0].rect;
+    assert_eq!((inside.x, inside.y), (0.0, 0.0));
+    right_click_row(&mut harness, "y", 0);
+    harness.get_by_label("Add to list").hover();
+    settle(&mut harness);
+    assert!(harness.query_by_label("Group").is_none(), "not a list");
+    harness.key_press(Key::Escape);
+    settle(&mut harness);
+    harness.state_mut().current_tab = 0;
+    settle(&mut harness);
     // Locked: rows still select, but there's no menu and no dragging.
     harness.state_mut().locked = true;
     settle(&mut harness);
