@@ -800,6 +800,32 @@ pub fn fits_over(grid: &GridLayout, item: Item, rect: Rect) -> bool {
     })
 }
 
+/// Whether a new widget (not on the grid yet: dropped from the tree, or
+/// dragged out of a list) can go at `rect` over others, as [`fits_over`]
+/// says for one already there.
+///
+/// ```
+/// use raptaboard::grid::fits_new_over;
+/// use raptaboard_layout::{GridLayout, Rect};
+/// let grid: GridLayout = serde_json::from_str(r#"{"containers": [
+///     {"title": "a", "x": 0.0, "y": 0.0, "width": 256.0, "height": 128.0, "type": "Text Display"}
+/// ]}"#).unwrap();
+/// let half_of_a = Rect { x: 128.0, y: 0.0, width: 128.0, height: 128.0 };
+/// assert!(fits_new_over(&grid, half_of_a));
+/// assert!(!fits_new_over(&grid, Rect { x: 0.0, width: 256.0, ..half_of_a }));
+/// ```
+pub fn fits_new_over(grid: &GridLayout, rect: Rect) -> bool {
+    let mut with = grid.clone();
+    with.containers.push(raptaboard_layout::WidgetContainer {
+        title: String::new(),
+        rect,
+        widget_type: String::new(),
+        properties: serde_json::Map::new(),
+        extra: serde_json::Map::new(),
+    });
+    fits_over(&with, Item::Widget(with.containers.len() - 1), rect)
+}
+
 /// Put `item` at `rect` over whatever is there, in front of everything:
 /// it's marked as allowed to overlap, so opening the layout keeps it
 /// there. The caller checks [`fits_over`] first.

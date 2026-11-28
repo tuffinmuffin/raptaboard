@@ -812,7 +812,9 @@ raptaboard is meant to rest in, apart from feature requests.
      rules allow and fixes the rest as before. Plain drags still push aside (and say "hold Alt to
      overlap instead"); Pack widgets never piles things up. With Alt held a widget never goes
      into a List Layout (nor will it into a Group): it goes over it (asked for by the user
-     2026-11-27). Not yet: Alt for topics dropped from the tree or list children dragged out.
+     2026-11-27). The same for topics dropped from the tree and list or group children dragged
+     out (`grid::fits_new_over` checks one not on the grid yet; with Alt they never go into a
+     list, group or graph).
    - Boolean Box text (**done**): `text_backing`, a see-through box behind the text so it reads over
      any color, and `true_text_color` / `false_text_color` (automatic black or white if not set; white
      on the backing).

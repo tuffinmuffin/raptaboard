@@ -46,7 +46,8 @@ Unlocked:
   one of them has nowhere to go. **Escape** calls the drag off, leaving everything as it was.
   Hold **Alt** (Option on a Mac) to place it partly *over* others instead, in front, such as a
   label on a corner of a camera view: no widget may be hidden completely, so the outline turns red
-  where it would hide one. With Alt held, a widget goes over a list rather than into it. A widget
+  where it would hide one. With Alt held, a widget goes over a list rather than into it. The same
+  works for topics dragged from the tree and widgets dragged out of a list or Group. A widget
   overlapping another has **Bring to front** and **Send to back**
   in its right-click menu.
 - **Resize** it by dragging its bottom-right corner. Growing over others pushes them aside too.
