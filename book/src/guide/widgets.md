@@ -140,8 +140,8 @@ is drawn as a shrunk copy, text too, so resizing the Group grows or shrinks what
 
 - **Make one** with right-click on empty grid → **New Group**.
 - **Put widgets in** by dragging them onto it, or dropping topics on it from the tree: each goes in
-  the cell under the pointer, pushing what's there aside. Nothing can overlap a Group, even
-  with **Alt**.
+  the cell under the pointer, pushing what's there aside. With **Alt** held they go over the
+  Group instead, as over a list, and a Group can be placed over other widgets the same way.
 - **Arrange them** (unlocked) as on the grid: drag a widget to move it, drag its corner to resize
   it. Drag it out of the Group onto the grid, or into a list or another Group.
 

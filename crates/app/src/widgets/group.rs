@@ -475,15 +475,21 @@ pub fn draw(
 
 /// Show `group` at `card`: its card on `ui`, and its widgets on a layer of
 /// their own, drawn at full size and scaled onto the card, so their text
-/// scales too. `interactive`: whether the widgets take input (locked;
-/// unlocked, the grid moves and resizes them instead). `id` tells groups
-/// apart. Returns the values its widgets want sent, by child.
+/// scales too. That layer is `layer` (an id for its place in the stack of
+/// layers above the grid's), a sublayer of `base` (the grid's), so the
+/// caller can put things in front of it on layers above. `key` tells
+/// groups apart, keeping each widget's state wherever its layer is.
+/// `interactive`: whether the widgets take input (locked; unlocked, the
+/// grid moves and resizes them instead). Returns the values its widgets
+/// want sent, by child.
 #[allow(clippy::too_many_arguments)]
 pub fn show(
     ui: &mut egui::Ui,
     card_rect: Rect,
     group: &LayoutContainer,
-    id: egui::Id,
+    layer: egui::Id,
+    base: egui::LayerId,
+    key: egui::Id,
     interactive: bool,
     value_of: &dyn Fn(&WidgetContainer) -> Option<Value>,
     frame: &crate::widgets::Frame<'_>,
@@ -500,9 +506,9 @@ pub fn show(
     draw_grid_lines(ui.painter(), ui.visuals(), &m, group);
     let clip = body_rect(card_rect).intersect(ui.clip_rect());
     let mut writes = Vec::new();
-    let area = egui::Area::new(id)
+    let area = egui::Area::new(layer)
         // The grid's own order, so it can sit just above the grid.
-        .order(ui.layer_id().order)
+        .order(base.order)
         .fixed_pos(Pos2::ZERO)
         .constrain(false)
         .interactable(interactive)
@@ -527,7 +533,7 @@ pub fn show(
                 let mut child_ui = ui.new_child(
                     egui::UiBuilder::new()
                         .max_rect(at)
-                        .id_salt(("group_child", i)),
+                        .scope_id(key.with(("child", i))),
                 );
                 child_ui.set_clip_rect(at.intersect(ui.clip_rect()));
                 if let Some(v) = card::show(&mut child_ui, at, child, &live) {
@@ -548,7 +554,7 @@ pub fn show(
         });
     let layer = area.response.layer_id;
     ui.ctx().set_transform_layer(layer, m.transform());
-    ui.ctx().set_sublayer(ui.layer_id(), layer);
+    ui.ctx().set_sublayer(base, layer);
     writes
 }
 

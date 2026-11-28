@@ -777,16 +777,6 @@ pub fn fits_over(grid: &GridLayout, item: Item, rect: Rect) -> bool {
     let Some(at) = piece_index(grid, item) else {
         return false;
     };
-    // Groups are drawn on layers of their own, above the grid: nothing may
-    // overlap one, and one may overlap nothing.
-    let a_group = |i: usize| grid.layouts.get(i).is_some_and(group::is_group);
-    if matches!(item, Item::List(i) if a_group(i))
-        || items(grid).into_iter().any(|(other, r)| {
-            other != item && matches!(other, Item::List(i) if a_group(i)) && r.overlaps(&rect)
-        })
-    {
-        return false;
-    }
     let mut pieces = grid.pieces();
     let front = pieces.iter().map(|p| p.z).max().unwrap_or(0) + 1;
     pieces[at] = Piece {
