@@ -6,10 +6,11 @@ a richer set of widget settings, and **widget plugins**: small WebAssembly progr
 without rebuilding the dashboard and draw a NetworkTables table, such as an arm subsystem, or fill
 a whole tab.
 
-Status: **0.4.0**, with widget plugins and content packs (see [CHANGELOG.md](CHANGELOG.md)). It
-opens and saves Elastic layouts, connects to the robot over NetworkTables (by team number, the
-Driver Station, SystemCore or the sim), shows a live tree of every topic, and has most of Elastic's
-widgets, a Field widget with layers, and Alerts with a history.
+Status: **0.5.0**, with Groups, overlapping widgets and text styles (see
+[CHANGELOG.md](CHANGELOG.md)). It opens and saves Elastic layouts, connects to the robot over
+NetworkTables (by team number, the Driver Station, SystemCore or the sim), shows a live tree of
+every topic, and has most of Elastic's widgets and more of its own (X/Y and Polar Graphs, a Field
+widget with layers, Alerts with a history), widget plugins and content packs.
 
 **Documentation: [tuffinmuffin.github.io/raptaboard](https://tuffinmuffin.github.io/raptaboard/)**:
 using raptaboard, developing it, and writing plugins. Its source is in [`book/`](book/src/SUMMARY.md).

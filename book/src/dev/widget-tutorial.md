@@ -97,7 +97,9 @@ these names, as a person would.
 
 `settings` adds the widget's own rows to the settings dialog, after the rows every widget has
 (title, topic, update period). The `props` row helpers save a value only when it isn't the
-default, which keeps layout files short. `setting_keys` lists every key, so **Reset settings**
+default, which keeps layout files short, and name their control by the row's label, so screen
+readers can say what it is. A row written by hand does the same: `let name = ui.label("…").id;`,
+then `.labelled_by(name)` on its control. `setting_keys` lists every key, so **Reset settings**
 knows what to remove.
 
 ```rust,noplayground
@@ -114,7 +116,8 @@ Two lines make raptaboard use it:
 
 Nothing in `ui/` names a widget type: the window only talks to the trait. The registration also
 puts the widget into the tests that cover every widget type: a tab with one of each drawn against
-live values, and every widget's settings dialog opened and cancelled.
+live values, every widget's settings dialog opened and cancelled, and every control in its
+settings having a name.
 
 ## 8. Tests
 

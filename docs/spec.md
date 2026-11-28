@@ -232,6 +232,23 @@ widget's own file in `builtin/`); readers there clamp out-of-range values and ig
 | `label_inside` | `list_layout.rs` | List Layout | `true`: each label drawn over its value (on a see-through backing) instead of beside it | off |
 | `dividers` | `list_layout.rs` | List Layout | `true`: a thin line under the list's title and below each child | off |
 | `hidden` | `list_layout.rs` | a List Layout's child | `true`: kept in the list but not shown or subscribed | shown |
+| `volume` | `builtin/fms_info.rs` | FMSInfo | its state sounds' loudness, 0–1 | 0.8 |
+| `pairs` | `builtin/xy_graph.rs` | X/Y Graph, Polar Graph | the pairs shown: `[{"x": source, "y": source, "color"?, "name"?}]`, each source `{"topic", "data_type", "struct_meta"?}` as a Graph's lines; a Polar Graph's x is the angle and y the distance | the widget's own topic as the first pair |
+| `trail_time` | `builtin/xy_graph.rs` | X/Y Graph, Polar Graph | seconds of trail behind each pair's newest point (0–60; 0: the point only) | 3 |
+| `x_min`, `x_max`, `y_min`, `y_max` | `builtin/xy_graph.rs` | X/Y Graph | an axis' fixed range (both ends set), else it fits the values | fits |
+| `same_scale` | `builtin/xy_graph.rs` | X/Y Graph | one unit as long across as up (positions on the floor) | off |
+| `max_distance` | `builtin/xy_graph.rs` | Polar Graph | the outer ring's distance | fits the values |
+| `angle_unit` | `builtin/xy_graph.rs` | Polar Graph | `"degrees"` or `"radians"` | degrees |
+| `zero_at` | `builtin/xy_graph.rs` | Polar Graph | where angle 0 points: `"right"`, `"up"`, `"left"` or `"down"` | right |
+| `clockwise` | `builtin/xy_graph.rs` | Polar Graph | angles grow clockwise | off (anticlockwise, as WPILib) |
+| `pinned` | `grid.rs` | all, List Layouts and Groups too | `true`: never pushed aside or packed (still dragged by hand) | off |
+| `may_overlap` | `crates/layout/src/overlap.rs` | all, List Layouts and Groups too | `true`: may overlap others (set by an Alt drop over them; removed when it overlaps nothing) | off |
+| `z` | `crates/layout/src/overlap.rs` | all, List Layouts and Groups too | its place front to back, higher in front (Bring to front, Send to back) | 0 |
+| `rows` | `group.rs` | Group | the inner grid's rows, which set its square cells' size (1–24; columns: as many as fit) | 2 |
+| `grid_lines` | `group.rs` | Group | `false`: its cells' faint lines hidden | shown |
+| `shared` | `group.rs` | Group, List Layout | settings for the widgets inside: any of `period`, `font_size`, the value text's style keys and the title's (`group::SHARED_KEYS`; a List Layout's title keys style its labels) | none |
+| `shared_on` | `group.rs` | Group, List Layout | `true`: `shared` replaces those settings of every widget inside (the usual where `shared` leaves one unset) | off |
+| `use_shared` | `group.rs` | a Group's or List Layout's child | `false`: the widget keeps its own settings while `shared_on` is set | uses them |
 
 Adding a setting: a key constant and a reader in the file that owns it, its row in that widget's
 `WidgetType::settings` (shared rows: `props::text_size_row`, `props::color_row`, `format::rows`),
@@ -645,7 +662,8 @@ raptaboard is meant to rest in, apart from feature requests.
     commit, so every step builds and passes its tests. Then tab plugins (Doom as the case study:
     pixel frames, input and focus, audio, storage) and content packs (`pack.toml`, artifacts
     from other repos, the two signed catalogs).
-- **Order**, a pull request each (**the first three done** 2026-11-26: the screenshot recorder second, then First start, Connecting and The window, which found the Driver Station address mode wasn't built (it is now: #115, as Elastic reads the Driver Station; not yet tried with a real one); `book/` with every planned page in
+- **Order**, a pull request each (**all done** for 0.5.0, the Layouts chapter last on 2026-11-28;
+  **the first three done** 2026-11-26: the screenshot recorder second, then First start, Connecting and The window, which found the Driver Station address mode wasn't built (it is now: #115, as Elastic reads the Driver Station; not yet tried with a real one); `book/` with every planned page in
   `SUMMARY.md`, the ones still to write as drafts; the README's sections moved in; its images in
   `book/src/images/`; `scripts/check_book.py` for links, images and chapters; `book.yml` building
   it on pull requests and publishing it from main): the book's scaffold, Pages workflow and README; the screenshot
