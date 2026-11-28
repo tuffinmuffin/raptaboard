@@ -31,6 +31,7 @@ What changes in each raptaboard release. Newest first.
   empty grid for **Pack widgets** (everything slides up and left, closing the gaps).
 - **The book's Widgets chapter:** every widget, how to add and change widgets, the settings dialog
   and text styles, with pictures from the sim robot.
+- **Screen readers:** every control in the settings dialogs is named by its row's label.
 
 ## 0.4.0
 

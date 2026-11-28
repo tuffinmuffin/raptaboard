@@ -560,8 +560,9 @@ pub fn settings(ui: &mut egui::Ui, group: &mut LayoutContainer) {
         .num_columns(2)
         .spacing([12.0, 8.0])
         .show(ui, |ui| {
-            ui.label("Title");
-            ui.add(egui::TextEdit::singleline(&mut group.title).desired_width(180.0));
+            let name = ui.label("Title").id;
+            ui.add(egui::TextEdit::singleline(&mut group.title).desired_width(180.0))
+                .labelled_by(name);
             ui.end_row();
             let text_color = ui.visuals().text_color();
             crate::widgets::shared::text_style::title_style_row(
@@ -630,7 +631,7 @@ fn shared_rows_in(ui: &mut egui::Ui, properties: &mut Map<String, Json>, labels:
                 ui.disable();
             }
             let shared = &mut shared;
-            ui.label("Update period");
+            let name = ui.label("Update period").id;
             ui.horizontal(|ui| {
                 let set = shared.get(props::PERIOD).and_then(Json::as_f64);
                 let mut period = set.unwrap_or(props::DEFAULT_PERIOD_S);
@@ -642,6 +643,7 @@ fn shared_rows_in(ui: &mut egui::Ui, properties: &mut Map<String, Json>, labels:
                             .fixed_decimals(2)
                             .suffix(" s"),
                     )
+                    .labelled_by(name)
                     .on_hover_text(
                         "How often new values are sent to the widgets inside, at most \
                          (those whose own is at their usual).",
@@ -960,8 +962,6 @@ mod tests {
         use egui_kittest::kittest::Queryable;
         let mut harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(600.0, 900.0))
-            // The dialog's title box and Rows have no accessible names yet.
-            .with_accessibility_check(false)
             .build_ui_state(|ui, g: &mut LayoutContainer| settings(ui, g), {
                 let mut g = group_with(&[]);
                 g.properties.insert(SHARED_ON.into(), true.into());

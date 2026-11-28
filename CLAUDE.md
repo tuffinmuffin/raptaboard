@@ -357,6 +357,10 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
 - Readers include students new to programming: every public item gets a doc comment in plain
   language with units, and a short doctest where a student would call it.
 - Mark tests written by Claude with a `// Tests written by Claude.` comment.
+- Settings dialog rows name their control by the row's label, for screen readers and tests:
+  `let name = ui.label("…").id;` then `.labelled_by(name)` on the control (a ComboBox's
+  `.response`), or `props::name_control` for one of several controls in a row. The `props` row
+  helpers do it; `settings::tests::every_settings_dialog_names_its_controls` checks every dialog.
 - NetworkTables is client/server: in code and comments say "server" for the NT side (the robot is
   only the default server; it can be the sim or another host), and keep "robot" for robot code itself.
 - Match Elastic names exactly where robot code depends on them (`.type` strings, `/Elastic/` topics,

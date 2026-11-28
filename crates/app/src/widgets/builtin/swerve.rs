@@ -485,9 +485,9 @@ impl WidgetType for SwerveDrive {
                 "The whole robot's requested motion (ChassisSpeeds), dashed",
             ),
         ] {
-            ui.label(label).on_hover_text(hover);
+            let name = ui.label(label).on_hover_text(hover).id;
             let mut topic = props::text(p, key, "").to_owned();
-            if props::topic_picker(ui, key, &mut topic, value.topics, |t| {
+            if props::topic_picker(ui, name, key, &mut topic, value.topics, |t| {
                 motion::is_motion_type(t) && !t.contains("Translation2d")
             }) {
                 props::set_property(p, key, (!topic.is_empty()).then(|| topic.into()));
@@ -520,9 +520,9 @@ impl WidgetType for SwerveDrive {
                 "Turns the robot the way it faces: a rotation, a pose, or degrees counterclockwise",
             ),
         ] {
-            ui.label(label).on_hover_text(hover);
+            let name = ui.label(label).on_hover_text(hover).id;
             let mut topic = props::text(p, key, "").to_owned();
-            if props::topic_picker(ui, key, &mut topic, value.topics, fits) {
+            if props::topic_picker(ui, name, key, &mut topic, value.topics, fits) {
                 props::set_property(p, key, (!topic.is_empty()).then(|| topic.into()));
             }
             ui.end_row();

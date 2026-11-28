@@ -326,13 +326,14 @@ fn number_edit(
     range: std::ops::RangeInclusive<f64>,
     speed: f64,
 ) -> bool {
-    ui.label(label);
+    let name = ui.label(label).id;
     ui.add(
         egui::DragValue::new(value)
             .range(range)
             .speed(speed)
             .max_decimals(3),
     )
+    .labelled_by(name)
     .changed()
 }
 
@@ -348,7 +349,7 @@ pub fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, topics: &[(St
             Attachment::Camera(c) => ("Camera", &mut c.name),
             Attachment::Part(part) => ("Part", &mut part.name),
         };
-        ui.label(format!("{kind} {}", i + 1));
+        let row_name = ui.label(format!("{kind} {}", i + 1)).id;
         ui.horizontal(|ui| {
             changed |= ui
                 .add(
@@ -356,6 +357,7 @@ pub fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, topics: &[(St
                         .hint_text("name")
                         .desired_width(120.0),
                 )
+                .labelled_by(row_name)
                 .changed();
             if ui.button("✕").on_hover_text("Remove it").clicked() {
                 remove = Some(i);
@@ -381,19 +383,24 @@ pub fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, topics: &[(St
         ui.label("");
         ui.horizontal(|ui| match item {
             Attachment::Camera(c) => {
-                ui.label("Bands to (m)");
+                let name = ui.label("Bands to (m)").id;
                 for band in &mut c.bands {
                     changed |= ui
                         .add(egui::DragValue::new(band).range(0.1..=30.0).speed(0.1))
+                        .labelled_by(name)
                         .changed();
                 }
             }
             Attachment::Part(part) => {
-                ui.label("Shown while");
-                changed |=
-                    props::topic_picker(ui, ("part shown", i), &mut part.shown_by, topics, |t| {
-                        t == "boolean"
-                    });
+                let name = ui.label("Shown while").id;
+                changed |= props::topic_picker(
+                    ui,
+                    name,
+                    ("part shown", i),
+                    &mut part.shown_by,
+                    topics,
+                    |t| t == "boolean",
+                );
                 let mut color = part.color();
                 if egui::color_picker::color_edit_button_srgba(
                     ui,
@@ -415,9 +422,10 @@ pub fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>, topics: &[(St
                 if part.length_topic.is_empty() {
                     changed |= number_edit(ui, "length (m)", &mut part.length, 0.0..=10.0, 0.01);
                 }
-                ui.label("length from");
+                let name = ui.label("length from").id;
                 changed |= props::topic_picker(
                     ui,
+                    name,
                     ("part length", i),
                     &mut part.length_topic,
                     topics,
