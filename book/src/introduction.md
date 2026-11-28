@@ -16,7 +16,7 @@ Chassis Speeds, 3D Pose, Mechanism2d, Struct, Alerts (with an alert history) and
 robot's state and the match, with a sound for each change of state). Content packs add sounds and
 plugins, downloaded only when you choose.
 
-![raptaboard connected to the robot sim, showing Text Display and Boolean Box widgets](images/m1-widgets.png)
+![raptaboard locked as a driver sees it, with the robot sim in teleop: the Field with its cameras, paths and game pieces, a Group of swerve modules, a toggle, a timer and the battery, a Graph, an X/Y Graph of the robot's orbit, and the match state](images/tabs/overview.png)
 
 ## The Field widget
 
