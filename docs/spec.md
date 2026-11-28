@@ -850,7 +850,10 @@ raptaboard is meant to rest in, apart from feature requests.
      2026-11-27): the same `shared` object and "Widgets inside" rows (`group::shared_rows`), with
      the title row styling the list's labels instead ("Labels": `list_layout::labels` takes the
      size, one for the whole list so rows stay even, the label strip growing to fit; each label's
-     font, color, bold and italic are its widget's title style as shown, so its own still wins).
+     font, color, bold and italic are its widget's title style as shown, so its own still wins). Either can be turned off (asked for by the user 2026-11-27, so each
+     widget can be set up on its own): `use_shared: false` on a widget (its dialog's "Use the
+     shared settings"; Reset settings clears it) or `shared_on: false` on the group or list
+     ("Apply to the widgets inside", keeping `shared`).
    - Autoscale for bars and gauges (**done**, after 0.1.0): `autoscale` (and `autoscale_keep_range`)
      in `shared/scale.rs`. The range comes from every value received: an autoscaled widget asks for
      its series through `traced` (keeping no points), and `Traces` keeps each series' lowest and

@@ -6,9 +6,9 @@ use raptaboard_layout::{LayoutContainer, WidgetContainer};
 use crate::grid;
 use crate::tabs::TabAction;
 use crate::types::structs::{self, FieldInfo};
-use crate::widgets::list_layout;
 use crate::widgets::shared::props;
 use crate::widgets::shared::settings as widget_settings;
+use crate::widgets::{group, list_layout};
 
 use super::DashboardApp;
 
@@ -85,8 +85,8 @@ pub(super) fn show_settings(
 pub(super) enum WidgetIn<'a> {
     /// On the grid: it can be pinned in place.
     Grid,
-    /// In a List Layout or Group, with a note above its settings, if any
-    /// (what it takes from its group).
+    /// In a List Layout or Group; with what it takes from the layout's
+    /// shared settings, if it has any: a checkbox to use them, and a note.
     Layout(Option<&'a str>),
 }
 
@@ -107,7 +107,18 @@ pub(super) fn widget_window(
     let mut close = None;
     show_settings(ctx, "widget_settings", heading, |ui| {
         if let WidgetIn::Layout(Some(note)) = within {
-            ui.weak(note);
+            let mut using = props::flag(&widget.properties, group::USE_SHARED, true);
+            if ui
+                .checkbox(&mut using, "Use the shared settings")
+                .on_hover_text(
+                    "Off, this widget uses only its own settings, not its group's or list's",
+                )
+                .changed()
+            {
+                let value = (!using).then_some(false.into());
+                props::set_property(&mut widget.properties, group::USE_SHARED, value);
+            }
+            ui.add_enabled_ui(using, |ui| ui.weak(note));
             ui.add_space(4.0);
         }
         widget_settings::show(ui, widget, nt_type, field, topics);
@@ -310,7 +321,7 @@ impl DashboardApp {
             let topics = self.topic_list();
             let heading = format!("{}: {}", list.title, widget.title);
             let note = crate::widgets::group::shared_note(list, widget)
-                .map(|got| format!("From the group (unless set here): {got}."));
+                .map(|got| format!("Unless set here: {got}."));
             let Some(widget) = self
                 .layout
                 .tabs
@@ -366,6 +377,8 @@ impl DashboardApp {
             } else {
                 action = list_layout::settings(ui, list);
             }
+            // Apart from the rows for the widgets inside: it's the layout's own.
+            ui.separator();
             pin_checkbox(ui, &mut list.properties);
             ui.add_space(4.0);
             ui.separator();

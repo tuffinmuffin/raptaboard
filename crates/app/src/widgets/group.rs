@@ -35,6 +35,12 @@ pub const GRID_LINES: &str = "grid_lines";
 /// settings, each used by every widget inside that doesn't set its own
 /// ([`with_shared`]).
 pub const SHARED: &str = "shared";
+/// Whether a group's or list's [`SHARED`] settings apply (raptaboard's; on
+/// unless set): off keeps them without using them.
+pub const SHARED_ON: &str = "shared_on";
+/// A widget's choice to use its group's or list's [`SHARED`] settings
+/// (raptaboard's; on unless set): off, it has only its own.
+pub const USE_SHARED: &str = "use_shared";
 /// The settings a group can share with its widgets: the update period,
 /// the value text's size and style, and the title's.
 pub const SHARED_KEYS: [&str; 11] = [
@@ -162,6 +168,9 @@ pub fn with_shared<'a>(
     let Some(shared) = shared(layout) else {
         return Cow::Borrowed(child);
     };
+    if !props::flag(&child.properties, USE_SHARED, true) {
+        return Cow::Borrowed(child);
+    }
     let usual_period = || {
         crate::widgets::find(&child.widget_type)
             .map_or(props::DEFAULT_PERIOD_S, |t| t.default_period())
@@ -184,8 +193,12 @@ pub fn with_shared<'a>(
     Cow::Owned(shown)
 }
 
-/// A group's or list's shared settings ([`SHARED`]), if it has any.
+/// A group's or list's shared settings ([`SHARED`]), if it has any and
+/// they're on ([`SHARED_ON`]).
 pub fn shared(layout: &LayoutContainer) -> Option<&Map<String, Json>> {
+    if !props::flag(&layout.properties, SHARED_ON, true) {
+        return None;
+    }
     layout
         .properties
         .get(SHARED)
@@ -195,7 +208,13 @@ pub fn shared(layout: &LayoutContainer) -> Option<&Map<String, Json>> {
 
 /// What `child` gets from `group`'s shared settings, for its settings
 /// dialog: "text size 24 pt, update period 0.50 s", or `None`.
+///
+/// What it would get if it doesn't use them ([`USE_SHARED`] off), so its
+/// dialog can offer them back.
 pub fn shared_note(group: &LayoutContainer, child: &WidgetContainer) -> Option<String> {
+    let mut using = child.clone();
+    using.properties.remove(USE_SHARED);
+    let child = &using;
     let shown = with_shared(group, child);
     let mut got = Vec::new();
     for k in SHARED_KEYS {
@@ -554,10 +573,21 @@ pub fn shared_rows(ui: &mut egui::Ui, properties: &mut Map<String, Json>, labels
         .cloned()
         .unwrap_or_default();
     let before = shared.clone();
+    let mut on = props::flag(properties, SHARED_ON, true);
+    if ui
+        .checkbox(&mut on, "Apply to the widgets inside")
+        .on_hover_text("Off, each widget uses only its own settings; these are kept for later")
+        .changed()
+    {
+        props::set_property(properties, SHARED_ON, (!on).then_some(false.into()));
+    }
     egui::Grid::new("group_shared")
         .num_columns(2)
         .spacing([12.0, 8.0])
         .show(ui, |ui| {
+            if !on {
+                ui.disable();
+            }
             let shared = &mut shared;
             ui.label("Update period");
             ui.horizontal(|ui| {
@@ -828,5 +858,33 @@ mod tests {
         assert_eq!(g, set);
         g.properties.insert(SHARED.into(), Json::Object(Map::new()));
         assert_eq!(super::shared(&g), None);
+    }
+
+    #[test]
+    fn shared_settings_can_be_turned_off_for_one_widget_or_the_whole_group() {
+        let mut g = group_with(&[]);
+        g.properties.insert(
+            SHARED.into(),
+            serde_json::json!({"font_size": 24.0, "period": 0.5}),
+        );
+        let plain = text_display(0.0);
+        assert_eq!(props::font_size(&with_shared(&g, &plain).properties), 24.0);
+        // One widget opts out: only its own settings, though its dialog
+        // still says what it would get.
+        let mut own = plain.clone();
+        own.properties.insert(USE_SHARED.into(), false.into());
+        assert!(matches!(with_shared(&g, &own), Cow::Borrowed(_)));
+        assert_eq!(
+            shared_note(&g, &own).as_deref(),
+            Some("update period 0.50 s, text size 24 pt")
+        );
+        // Reset settings puts it back to using them.
+        crate::widgets::shared::settings::reset_settings(&mut own);
+        assert!(!own.properties.contains_key(USE_SHARED));
+        // The whole group off: nothing shared, the settings kept.
+        g.properties.insert(SHARED_ON.into(), false.into());
+        assert!(matches!(with_shared(&g, &plain), Cow::Borrowed(_)));
+        assert_eq!(shared_note(&g, &plain), None);
+        assert!(g.properties.contains_key(SHARED));
     }
 }

@@ -21,7 +21,7 @@ What changes in each raptaboard release. Newest first.
   its rows set their size, and as many columns as fit go across. Resizing the Group scales
   everything in it, text too. Its settings can set the update period, text and title style for
   every widget inside that doesn't set its own. A List Layout's settings can too, with its labels'
-  size and style.
+  size and style. Either can be turned off for one widget, or for all of them.
 - **Overlap with Alt:** hold Alt (Option on a Mac) while dragging or resizing a widget to place it
   partly over others, in front, instead of pushing them aside, such as a label on a camera view.
   No widget can be hidden completely. **Bring to front** and **Send to back** are in the

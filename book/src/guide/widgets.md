@@ -154,8 +154,8 @@ is drawn as a shrunk copy, text too, so resizing the Group grows or shrinks what
   more columns, and a taller one bigger cells. The cells show as faint lines; **Grid lines** in
   its settings hides them.
 
-  ![The Drive panel's settings: Rows 4, Grid lines on, and "5 columns by 4 rows" below
-  them](../images/window/group-settings.png)
+  ![The Drive panel's settings: Rows 4, Grid lines on, "5 columns by 4 rows" below them, and
+  the Widgets inside rows](../images/window/group-settings.png)
 
   To leave no space at the right, choose Rows to suit the Group's shape: the settings show the
   columns and rows it gives. The Drive panel above is 6 cells by 5 on the tab, and 4 rows gives
@@ -166,5 +166,9 @@ style) and **Title text** for every widget in it, so a panel looks alike without
 one. A widget's own setting wins: one with a text size of its own keeps it, and one whose update
 period was changed from its usual keeps that. A widget's settings say what it takes from its
 Group; **Reset** in the Group's rows goes back to each widget's own.
+
+To set up each widget on its own instead, untick **Use the shared settings** in that widget's
+settings: it then ignores the Group's. **Apply to the widgets inside**, in the Group's settings,
+turns the shared settings off for every widget at once, keeping them for later.
 
 Locked, the widgets inside work as they do on the grid: toggles toggle, sliders slide.
