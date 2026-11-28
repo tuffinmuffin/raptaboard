@@ -14,7 +14,7 @@
   - [Graphs](guide/widgets/graphs.md)
   - [The robot and the field](guide/widgets/robot.md)
   - [Match and alerts](guide/widgets/match-and-alerts.md)
-- [Layouts]()
+- [Layouts](guide/layouts.md)
 - [Content packs and plugins](guide/content-packs.md)
 - [Troubleshooting](guide/troubleshooting.md)
 
