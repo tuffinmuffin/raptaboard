@@ -1,13 +1,16 @@
 # Testing and coverage
 
 ```sh
+(cd plugins && cargo build --release --target wasm32-wasip2)  # the repo's plugins
 cargo test --workspace                                  # everything that runs on its own
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-Run all three before pushing; CI runs the same on Linux, Windows and macOS and fails on any
-warning.
+Run them all before pushing; CI runs the same on Linux, Windows and macOS and fails on any
+warning. Build the plugins first after changing anything in `plugins/`: the tests would build
+them too, but the plugin tests waiting on that build then all start at once, and can fail on their
+time limits.
 
 ## Kinds of tests
 

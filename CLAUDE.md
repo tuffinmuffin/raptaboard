@@ -27,6 +27,7 @@ robot code depends on them.
 
 ```sh
 cargo build --workspace
+(cd plugins && cargo build --release --target wasm32-wasip2)  # first, after plugins/ changes (see below)
 cargo test --workspace            # unit tests, integration tests and doctests
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
@@ -344,6 +345,11 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   together; before 1.0 a plugin runs only on the same 0.x (`api_compatible`), so rebuild the plugins, raptaboard-examples
   (its SDK pin) and the content repo's packs with it.
 - `plugins/arm`: a manifest only (no code); its `plugin.toml` is a test fixture.
+- Build `plugins/` before `cargo test` after changing anything in it (CI does): the tests build it
+  themselves if it's out of date (`dev::repo_plugins`), but the plugin tests waiting on that build then
+  all start together, and their plugins can overrun the first render's time limit and be stopped
+  (seen 2026-11-27: six tab and sandbox tests failing on the first run after a plugin change, none
+  after building first).
 
 ## Conventions
 
