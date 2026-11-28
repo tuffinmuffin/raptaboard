@@ -45,7 +45,8 @@ Unlocked (moving, resizing and arranging widgets are in [Layouts](layouts.md)):
 - **Click** it to select it. That also finds its topic in the tree.
 - **Double-click** it, or press **Enter** while it's selected, to open its settings.
 - **Right-click** it for **Edit…**, **Duplicate** (Ctrl+D), **Delete** (Delete), **Put in a
-  new list**, **Put in a new group**, and **Fill space** and **Pin in place** ([Layouts](layouts.md#tidying-up)). A
+  new list**, **Put in a new group**, and **Fill space** and **Pin in place**
+  ([Layouts](layouts.md#tidying-up)). A
   widget that keeps a min and max or a scale from the values it has seen also has **Reset
   min/max** or **Reset scale**.
 
