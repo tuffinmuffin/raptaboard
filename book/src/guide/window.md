@@ -44,6 +44,8 @@ Unlocked, a tab can be changed:
 - **Close** it with right-click → Close.
 - **Add** one with the **+** after the last tab.
 
+What goes on a tab, and how to arrange it, is in [Layouts](layouts.md).
+
 ## The tree
 
 The tree lists every topic the server has, in folders, with their values for the folders you
