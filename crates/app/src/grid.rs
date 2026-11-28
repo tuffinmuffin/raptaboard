@@ -546,6 +546,95 @@ pub fn wrap_in_list(
     Some(grid.layouts.len() - 1)
 }
 
+/// Put widget `widget` (an index in `containers`) into a new Group of its
+/// own, in its place: at least the usual new group's size
+/// ([`group::NEW_GROUP_CELLS`]), as wide as the widget and a cell taller
+/// (room for the title), with rows enough for it. The widget sits in the
+/// group's top-left cell at its own size in cells. If that place isn't
+/// free, the group goes to the nearest free spot within `area`. Returns the
+/// group's index in `layouts`, or `None` (changing nothing) if there's no
+/// room or no such widget.
+///
+/// Removing the widget shifts later widgets' indexes down by one.
+///
+/// ```
+/// use raptaboard::grid::wrap_in_group;
+/// use raptaboard::widgets::{for_topic, group};
+/// use raptaboard_layout::{GridLayout, Rect};
+/// let at = Rect { x: 256.0, y: 128.0, width: 256.0, height: 128.0 };
+/// let mut grid = GridLayout::default();
+/// grid.containers.push(for_topic("/a", "double", None, at).unwrap());
+/// let g = wrap_in_group(&mut grid, 0, 128.0, (1024.0, 1024.0)).unwrap();
+/// let made = &grid.layouts[g];
+/// assert!(grid.containers.is_empty() && group::is_group(made));
+/// assert_eq!((made.rect.x, made.rect.y, made.rect.width, made.rect.height), (256.0, 128.0, 512.0, 256.0));
+/// assert_eq!(made.children[0].rect.width, 2.0 * group::INNER_CELL);
+/// ```
+pub fn wrap_in_group(
+    grid: &mut GridLayout,
+    widget: usize,
+    cell: f64,
+    area: (f64, f64),
+) -> Option<usize> {
+    let w = grid.containers.get(widget)?.rect;
+    let (new_w, new_h) = group::NEW_GROUP_CELLS;
+    let across = (w.width / cell).round().max(1.0);
+    let down = (w.height / cell).round().max(1.0);
+    let wanted = Rect {
+        width: across.max(new_w) * cell,
+        height: (down + 1.0).max(new_h) * cell,
+        ..w
+    };
+    let mut child = grid.containers.remove(widget);
+    let spot = if is_free(grid, wanted) {
+        Some(wanted)
+    } else {
+        free_spot_near(grid, wanted, cell, area)
+    };
+    let Some(spot) = spot else {
+        grid.containers.insert(widget, child);
+        return None;
+    };
+    let mut made = group::new_group(spot);
+    if down > f64::from(group::DEFAULT_ROWS) {
+        made.properties
+            .insert(group::ROWS.into(), (down as i64).into());
+    }
+    child.rect = Rect {
+        x: 0.0,
+        y: 0.0,
+        width: across * group::INNER_CELL,
+        height: down * group::INNER_CELL,
+    };
+    made.children.push(child);
+    grid.layouts.push(made);
+    Some(grid.layouts.len() - 1)
+}
+
+/// Put new `widgets` into group `group` in its free cells, the first in
+/// the one nearest its top left. Returns how many went in (fewer when it
+/// fills up).
+pub fn widgets_into_group_free(
+    grid: &mut GridLayout,
+    group: usize,
+    widgets: Vec<raptaboard_layout::WidgetContainer>,
+) -> usize {
+    let Some(g) = grid.layouts.get(group).filter(|l| group::is_group(l)) else {
+        return 0;
+    };
+    let one = Rect {
+        x: 0.0,
+        y: 0.0,
+        width: group::INNER_CELL,
+        height: group::INNER_CELL,
+    };
+    let inner = group::inner_grid(g);
+    match free_spot_near(&inner, one, group::INNER_CELL, group::inner_area(g)) {
+        Some(first) => widgets_into_group(grid, group, first, widgets),
+        None => 0,
+    }
+}
+
 /// Put new `widgets` on `grid`, each in the free spot nearest the cell
 /// corner `near` (grid pixels), in order, within `area` (the visible grid's
 /// width and height in pixels). Each keeps its size. Stops when there's no
@@ -1994,5 +2083,42 @@ mod tests {
             // Five one-cell children need more than an empty list's two cells.
             assert!(l.rect.height > 2.0 * g.cell);
         });
+    }
+
+    #[test]
+    fn a_widget_put_in_a_new_group_keeps_its_size_in_cells_and_moves_if_it_must() {
+        let at = |x, y, w, h| Rect {
+            x,
+            y,
+            width: w,
+            height: h,
+        };
+        let widget = |r| crate::widgets::for_topic("/a", "double", None, r).unwrap();
+        // Three cells tall: the group gets three rows and is four tall.
+        let mut grid = GridLayout::default();
+        grid.containers.push(widget(at(0.0, 0.0, 128.0, 384.0)));
+        let g = wrap_in_group(&mut grid, 0, 128.0, (1024.0, 1024.0)).unwrap();
+        let made = &grid.layouts[g];
+        assert_eq!(made.rect, at(0.0, 0.0, 512.0, 512.0));
+        assert_eq!(made.properties[group::ROWS], 3);
+        assert_eq!(group::cells(made).1, 3);
+        assert_eq!(
+            made.children[0].rect,
+            at(0.0, 0.0, group::INNER_CELL, 3.0 * group::INNER_CELL)
+        );
+        // Something beside it: the group goes to the nearest free spot.
+        let mut grid = GridLayout::default();
+        grid.containers.push(widget(at(0.0, 0.0, 128.0, 128.0)));
+        grid.containers.push(widget(at(256.0, 0.0, 128.0, 128.0)));
+        let g = wrap_in_group(&mut grid, 0, 128.0, (1024.0, 1024.0)).unwrap();
+        assert!(!grid.layouts[g].rect.overlaps(&grid.containers[0].rect));
+        // No room anywhere: nothing changes. (A group four cells by two
+        // fits a grid that size only at the corner, where the other is.)
+        let mut grid = GridLayout::default();
+        grid.containers.push(widget(at(0.0, 0.0, 128.0, 128.0)));
+        grid.containers.push(widget(at(384.0, 128.0, 128.0, 128.0)));
+        let before = grid.clone();
+        assert_eq!(wrap_in_group(&mut grid, 0, 128.0, (512.0, 256.0)), None);
+        assert_eq!(grid, before);
     }
 }

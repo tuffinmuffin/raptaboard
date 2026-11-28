@@ -193,6 +193,97 @@ fn topics_from_the_tree_menu_go_to_the_grid_a_list_or_a_new_list() {
 }
 
 #[test]
+fn topics_from_the_tree_menu_go_to_a_group_or_a_new_group_and_lists_list_only_lists() {
+    use crate::widgets::group;
+    let robot = Robot::start();
+    let ctx = egui::Context::default();
+    let mut app = app_for(&robot);
+    run_until(&ctx, &mut app, &robot, connected);
+    let topic = |name: &str, ty: &str| DraggedTopic {
+        name: name.into(),
+        ty: ty.into(),
+        field: None,
+    };
+    let picked = vec![
+        topic("/Test/number", "double"),
+        topic("/Test/flag", "boolean"),
+    ];
+    // The empty tab, with a list on it, so there's room.
+    app.current_tab = 1;
+    app.layout.tabs[1]
+        .grid_layout
+        .layouts
+        .push(list_layout::new_list(
+            LayoutRect {
+                x: 0.0,
+                y: 0.0,
+                width: 256.0,
+                height: 256.0,
+            },
+            vec![],
+        ));
+    frame(&ctx, &mut app, vec![]);
+    let grid = |app: &DashboardApp| app.layout.tabs[1].grid_layout.clone();
+    let lists = grid(&app).layouts.len();
+    // A new group holds both, in different cells.
+    app.add_topics(&picked, AddTo::NewGroup, None);
+    frame(&ctx, &mut app, vec![]);
+    let g = grid(&app).layouts.len() - 1;
+    assert_eq!(g, lists);
+    let made = &grid(&app).layouts[g];
+    assert!(group::is_group(made));
+    assert_eq!(made.children.len(), 2);
+    assert!(!made.children[0].rect.overlaps(&made.children[1].rect));
+    // More go into its free cells, overlapping nothing.
+    app.add_topics(&picked, AddTo::Group(g), None);
+    frame(&ctx, &mut app, vec![]);
+    let made = &grid(&app).layouts[g];
+    assert_eq!(made.children.len(), 4);
+    assert_eq!(group::inner_grid(made).overlap_problem(), None);
+    // The menus' names: lists only in one, groups only in the other, each
+    // with its index in the tab's layouts.
+    let names = app.layout_names(false);
+    assert!(
+        names
+            .iter()
+            .all(|(i, _)| !group::is_group(&grid(&app).layouts[*i]))
+    );
+    assert_eq!(names.len(), lists);
+    assert_eq!(app.layout_names(true), [(g, "Group".to_owned())]);
+    // A group's index as a list adds nothing (it isn't one).
+    app.add_topics(&picked, AddTo::List(g), None);
+    frame(&ctx, &mut app, vec![]);
+    assert_eq!(grid(&app).layouts[g].children.len(), 4);
+}
+
+#[test]
+fn put_in_a_new_group_from_a_widgets_menu() {
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    // One widget on the tab, with room around it.
+    let one: raptaboard_layout::GridLayout = serde_json::from_value(serde_json::json!({
+        "containers": [{"title": "Number", "x": 0.0, "y": 0.0, "width": 128.0, "height": 128.0,
+            "type": "Text Display", "properties": {"topic": "/Test/number"}}]
+    }))
+    .unwrap();
+    harness.state_mut().layout.tabs[0].grid_layout = one;
+    settle(&mut harness);
+    let before = harness.state().layout.tabs[0].grid_layout.clone();
+    menu_of(&mut harness, 0);
+    harness.get_by_label("Put in a new group").click();
+    settle(&mut harness);
+    let grid = &harness.state().layout.tabs[0].grid_layout;
+    assert_eq!(grid.containers.len(), before.containers.len() - 1);
+    let g = grid.layouts.last().unwrap();
+    assert!(crate::widgets::group::is_group(g));
+    assert_eq!(g.children[0].title, before.containers[0].title);
+    assert_eq!(
+        harness.state().selected,
+        Some(Item::List(grid.layouts.len() - 1))
+    );
+}
+
+#[test]
 fn keyboard_shortcuts_edit_and_switch_tabs() {
     let robot = Robot::start();
     let ctx = egui::Context::default();

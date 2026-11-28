@@ -439,13 +439,27 @@ impl DashboardApp {
         }
     }
 
-    /// Names for the open tab's List Layouts, in order: their titles, with
-    /// a number added where two share one ("List Layout (2)").
-    pub(super) fn list_names(&self) -> Vec<String> {
+    /// The open tab's List Layouts (`groups` false) or Groups (true), in
+    /// order, for a menu: each one's index in the tab's `layouts`, and its
+    /// title, with a number added where two share one ("List Layout (2)").
+    pub(super) fn layout_names(&self, groups: bool) -> Vec<(usize, String)> {
         let Some(tab) = self.layout.tabs.get(self.current_tab) else {
             return Vec::new();
         };
-        list_layout::menu_names(&tab.grid_layout.layouts)
+        let picked: Vec<(usize, &str)> = tab
+            .grid_layout
+            .layouts
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| crate::widgets::group::is_group(l) == groups)
+            .map(|(i, l)| (i, l.title.as_str()))
+            .collect();
+        let titles: Vec<&str> = picked.iter().map(|(_, t)| *t).collect();
+        picked
+            .iter()
+            .map(|(i, _)| *i)
+            .zip(list_layout::numbered(&titles))
+            .collect()
     }
 
     /// Leave a child's settings and go back to its list's.

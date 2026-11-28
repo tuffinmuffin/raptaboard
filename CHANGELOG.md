@@ -16,8 +16,8 @@ What changes in each raptaboard release. Newest first.
   list's widget dragged out pushes what's in the way aside to the nearest free spots, shown as you
   drag, instead of being refused. One Undo puts them all back; Escape calls a drag off.
 - **Group widget:** a card with a small grid of its own, so widgets can sit side by side in one
-  card at any size. Make one from the empty grid's right-click menu, then drag widgets or topics
-  into it; move and resize them inside, or drag them back out. Its cells show as faint lines;
+  card at any size. Make one from the empty grid's right-click menu or a widget's (**Put in a new
+  group**), then drag widgets or topics into it, or use **Add to group** in the tree; move and resize them inside, or drag them back out. Its cells show as faint lines;
   its rows set their size, and as many columns as fit go across. Resizing the Group scales
   everything in it, text too. Turned on in its settings, it sets the update period, text and title
   style for every widget inside, in place of their own; a List Layout can too, with its labels'

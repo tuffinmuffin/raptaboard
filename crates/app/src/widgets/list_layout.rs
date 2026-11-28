@@ -666,10 +666,17 @@ pub fn cells_tall_for(children: &[WidgetContainer], labels: Labels, cell: f64) -
 /// assert_eq!(menu_names(&lists), ["List Layout (1)", "Drive", "List Layout (2)"]);
 /// ```
 pub fn menu_names(lists: &[LayoutContainer]) -> Vec<String> {
-    let title = |i: usize| lists[i].title.as_str();
-    (0..lists.len())
+    let titles: Vec<&str> = lists.iter().map(|l| l.title.as_str()).collect();
+    numbered(&titles)
+}
+
+/// `titles` for a menu: each as it is, with a number added where two
+/// share one ("Drive (2)").
+pub fn numbered(titles: &[&str]) -> Vec<String> {
+    let title = |i: usize| titles[i];
+    (0..titles.len())
         .map(|i| {
-            let same = (0..lists.len()).filter(|&j| title(j) == title(i)).count();
+            let same = (0..titles.len()).filter(|&j| title(j) == title(i)).count();
             if same > 1 {
                 let nth = (0..=i).filter(|&j| title(j) == title(i)).count();
                 format!("{} ({nth})", title(i))
