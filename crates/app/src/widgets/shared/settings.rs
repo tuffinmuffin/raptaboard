@@ -93,9 +93,10 @@ pub fn show(
         .num_columns(2)
         .spacing([12.0, 8.0])
         .show(ui, |ui| {
-            ui.label("Title");
+            let name = ui.label("Title").id;
             ui.horizontal(|ui| {
-                ui.add(egui::TextEdit::singleline(&mut widget.title).desired_width(180.0));
+                ui.add(egui::TextEdit::singleline(&mut widget.title).desired_width(180.0))
+                    .labelled_by(name);
                 let reset =
                     ui.add_enabled(widget.title != source_title, egui::Button::new("Reset"));
                 if reset
@@ -197,7 +198,7 @@ pub fn show(
                 ui.end_row();
             }
 
-            ui.label("Update period");
+            let name = ui.label("Update period").id;
             let mut period = props::period_s(widget);
             let changed = ui
                 .add_enabled(
@@ -208,6 +209,7 @@ pub fn show(
                         .fixed_decimals(2)
                         .suffix(" s"),
                 )
+                .labelled_by(name)
                 .on_hover_text(
                     "How often new values are sent, at most. Shorter is smoother \
                      but uses more of the robot's network.",
@@ -421,5 +423,77 @@ mod tests {
         reset_settings(&mut lines);
         assert!(lines.properties.contains_key("series"));
         assert!(!lines.properties.contains_key("line_width"));
+    }
+
+    #[test]
+    fn every_settings_dialog_names_its_controls() {
+        // Each control's name, for screen readers (and these tests): its
+        // row's label. The harness checks every control has one.
+        use raptaboard_layout::{LayoutContainer, Rect};
+        let at = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 256.0,
+            height: 256.0,
+        };
+        let mut unnamed = Vec::new();
+        let mut check = |name: String, draw: &dyn Fn(&mut egui::Ui)| {
+            let drawn = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                egui_kittest::Harness::builder()
+                    .with_size(egui::vec2(900.0, 1600.0))
+                    .allow_missing_glyphs()
+                    .build_ui(draw)
+                    .run();
+            }));
+            if let Err(why) = drawn {
+                let why = why.downcast_ref::<String>().cloned().unwrap_or_default();
+                unnamed.push(format!("{name}: {why}"));
+            }
+        };
+        check("Group".into(), &|ui| {
+            let mut g = crate::widgets::group::new_group(at);
+            g.properties
+                .insert(crate::widgets::group::SHARED_ON.into(), true.into());
+            crate::widgets::group::settings(ui, &mut g);
+        });
+        check("List Layout".into(), &|ui| {
+            let child = for_topic("/a", "double", None, at).unwrap();
+            let mut l: LayoutContainer = crate::widgets::list_layout::new_list(at, vec![child]);
+            crate::widgets::list_layout::settings(ui, &mut l);
+        });
+        // Each type, for each kind of value, as set up new and with the
+        // settings that add rows: a Field's layers and attachments, colors
+        // by value, enum names (listed, or from a topic), a Boolean Box's
+        // text and picture.
+        let more = serde_json::json!({
+            "layers": [{"kind": "objects", "topic": "/x", "data_type": "double[]"}],
+            "attachments": [
+                {"kind": "camera", "name": "Side"},
+                {"kind": "part", "name": "Intake", "shown_by": "/b"}
+            ],
+            "color_by": "thresholds", "enum_values": ["a", "b"],
+            "true_text": "on", "true_icon": "checkmark", "editable": true
+        });
+        let from_topic = serde_json::json!({"enum_source": "topic"});
+        let topics = [
+            ("/b".to_owned(), "boolean".to_owned()),
+            ("/n".to_owned(), "string[]".to_owned()),
+        ];
+        for ty in crate::widgets::TYPES {
+            let name = ty.names()[0];
+            for nt in ["double", "boolean", "string", "int"] {
+                for set in [&serde_json::json!({}), &more, &from_topic] {
+                    check(format!("{name} ({nt}, {set})"), &|ui| {
+                        let mut w = for_topic("/a", nt, None, at).unwrap();
+                        w.widget_type = name.to_owned();
+                        for (k, v) in set.as_object().unwrap() {
+                            w.properties.insert(k.clone(), v.clone());
+                        }
+                        show(ui, &mut w, Some(nt), None, &topics);
+                    });
+                }
+            }
+        }
+        assert!(unnamed.is_empty(), "{}", unnamed.join("\n"));
     }
 }

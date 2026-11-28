@@ -466,7 +466,7 @@ pub fn rows(
         f64::from(default_thickness),
         1.0..=MAX_THICKNESS,
     );
-    ui.label("Unit");
+    let row_name = ui.label("Unit").id;
     let mut unit = props::text(p, UNIT, default_unit).to_owned();
     if ui
         .add(
@@ -474,6 +474,7 @@ pub fn rows(
                 .hint_text("none")
                 .desired_width(80.0),
         )
+        .labelled_by(row_name)
         .changed()
     {
         set_property(p, UNIT, (unit != default_unit).then(|| unit.into()));

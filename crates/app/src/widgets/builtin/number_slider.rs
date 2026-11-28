@@ -533,9 +533,13 @@ impl WidgetType for NumberSlider {
             PUBLISH_ALL,
             false,
         );
-        ui.label("Unit");
+        let row_name = ui.label("Unit").id;
         let mut unit = props::text(p, scale::UNIT, "").to_owned();
-        if ui.text_edit_singleline(&mut unit).changed() {
+        if ui
+            .text_edit_singleline(&mut unit)
+            .labelled_by(row_name)
+            .changed()
+        {
             props::set_property(p, scale::UNIT, (!unit.is_empty()).then(|| unit.into()));
         }
         ui.end_row();
