@@ -6,9 +6,9 @@ use raptaboard_layout::{LayoutContainer, WidgetContainer};
 use crate::grid;
 use crate::tabs::TabAction;
 use crate::types::structs::{self, FieldInfo};
-use crate::widgets::list_layout;
 use crate::widgets::shared::props;
 use crate::widgets::shared::settings as widget_settings;
+use crate::widgets::{group, list_layout};
 
 use super::DashboardApp;
 
@@ -81,9 +81,27 @@ pub(super) fn show_settings(
         });
 }
 
+/// Where a widget whose settings are open is.
+pub(super) enum WidgetIn<'a> {
+    /// On the grid: it can be pinned in place.
+    Grid,
+    /// In a List Layout or Group; with the layout's shared settings, if it
+    /// has any: a checkbox to use them, a note, and the rows they grey out.
+    Layout(Option<&'a Shared>),
+}
+
+/// A List Layout's or Group's shared settings, as a widget inside's dialog
+/// shows them.
+pub(super) struct Shared {
+    /// What they set: "update period 0.50 s, text size 24 pt".
+    pub note: String,
+    /// The settings they set ([`group::controlled_keys`]).
+    pub keys: Vec<&'static str>,
+}
+
 /// One widget's settings in a dialog titled `heading`, with Done, Cancel
-/// and Reset settings, and (for a widget on the grid, `pinnable`) "Pin in
-/// place". Returns `Some(true)` for Done, `Some(false)` for
+/// and Reset settings; `within` adds "Pin in place" (on the grid) or a
+/// note above the settings (in a group). Returns `Some(true)` for Done, `Some(false)` for
 /// Cancel or Esc, `None` while it stays open. Changes are made to `widget`
 /// as they happen; on Cancel the caller puts the original back.
 pub(super) fn widget_window(
@@ -93,12 +111,37 @@ pub(super) fn widget_window(
     nt_type: Option<&str>,
     field: Option<&FieldInfo>,
     topics: &[(String, String)],
-    pinnable: bool,
+    within: WidgetIn<'_>,
 ) -> Option<bool> {
     let mut close = None;
     show_settings(ctx, "widget_settings", heading, |ui| {
+        // What the widget's group or list sets is greyed out while it uses
+        // them.
+        let using = props::flag(&widget.properties, group::USE_SHARED, true);
+        let controlled = match &within {
+            WidgetIn::Layout(Some(shared)) if using => shared.keys.as_slice(),
+            _ => &[],
+        };
+        props::set_controlled(ui.ctx(), controlled);
+        if let WidgetIn::Layout(Some(shared)) = &within {
+            let note = &shared.note;
+            let mut using = props::flag(&widget.properties, group::USE_SHARED, true);
+            if ui
+                .checkbox(&mut using, "Use the shared settings")
+                .on_hover_text(
+                    "Off, this widget uses only its own settings, not its group's or list's",
+                )
+                .changed()
+            {
+                let value = (!using).then_some(false.into());
+                props::set_property(&mut widget.properties, group::USE_SHARED, value);
+            }
+            ui.add_enabled_ui(using, |ui| ui.weak(note));
+            ui.add_space(4.0);
+        }
         widget_settings::show(ui, widget, nt_type, field, topics);
-        if pinnable {
+        props::set_controlled(ui.ctx(), &[]);
+        if matches!(within, WidgetIn::Grid) {
             pin_checkbox(ui, &mut widget.properties);
         }
         ui.add_space(4.0);
@@ -248,7 +291,7 @@ impl DashboardApp {
             nt_type.as_deref(),
             field.as_ref(),
             &topics,
-            true,
+            WidgetIn::Grid,
         );
         match close {
             Some(true) => self.editing = None,
@@ -296,6 +339,17 @@ impl DashboardApp {
             let (nt_type, field) = self.value_facts(widget);
             let topics = self.topic_list();
             let heading = format!("{}: {}", list.title, widget.title);
+            let shared = group::shared_note(list, widget).map(|got| Shared {
+                note: format!(
+                    "Set by the {}: {got}.",
+                    if group::is_group(list) {
+                        "group"
+                    } else {
+                        "list"
+                    }
+                ),
+                keys: group::controlled_keys(list),
+            });
             let Some(widget) = self
                 .layout
                 .tabs
@@ -312,7 +366,7 @@ impl DashboardApp {
                 nt_type.as_deref(),
                 field.as_ref(),
                 &topics,
-                false,
+                WidgetIn::Layout(shared.as_ref()),
             ) {
                 Some(true) => self.close_child(),
                 Some(false) => {
@@ -351,6 +405,8 @@ impl DashboardApp {
             } else {
                 action = list_layout::settings(ui, list);
             }
+            // Apart from the rows for the widgets inside: it's the layout's own.
+            ui.separator();
             pin_checkbox(ui, &mut list.properties);
             ui.add_space(4.0);
             ui.separator();

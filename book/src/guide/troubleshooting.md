@@ -65,7 +65,8 @@ stopping, tell the plugin's author what it says.
 ## Layouts
 
 **"⚠ fixed N problems" after opening a layout.** The file had places or sizes raptaboard couldn't
-use (a widget of zero size, off the grid, or on top of another; a grid size out of range; no tabs),
+use (a widget of zero size, off the grid, or on top of another; a widget in a Group off its cells or
+on top of another there; a grid size out of range; no tabs),
 and it changed them so the layout opens. A layout Elastic saved normally needs no fixes. Hover the note to
 read what changed; right-click it to copy the list. Saving keeps the fixed values.
 

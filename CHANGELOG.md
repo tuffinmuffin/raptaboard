@@ -19,7 +19,9 @@ What changes in each raptaboard release. Newest first.
   card at any size. Make one from the empty grid's right-click menu, then drag widgets or topics
   into it; move and resize them inside, or drag them back out. Its cells show as faint lines;
   its rows set their size, and as many columns as fit go across. Resizing the Group scales
-  everything in it, text too.
+  everything in it, text too. Turned on in its settings, it sets the update period, text and title
+  style for every widget inside, in place of their own; a List Layout can too, with its labels'
+  size and style. One widget can opt out to keep its own.
 - **Overlap with Alt:** hold Alt (Option on a Mac) while dragging or resizing a widget to place it
   partly over others, in front, instead of pushing them aside, such as a label on a camera view.
   No widget can be hidden completely. **Bring to front** and **Send to back** are in the

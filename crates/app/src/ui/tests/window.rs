@@ -544,3 +544,117 @@ fn new_group_from_the_empty_grids_menu() {
     assert_eq!((layouts[0].rect.x, layouts[0].rect.y), (256.0, 128.0));
     assert_eq!(harness.state().selected, Some(crate::grid::Item::List(0)));
 }
+
+#[test]
+fn a_groups_shared_period_reaches_the_widgets_inside_unless_they_opt_out() {
+    use crate::widgets::{for_topic, group};
+    let robot = Robot::start();
+    let mut app = app_for(&robot);
+    let cell = LayoutRect {
+        x: 0.0,
+        y: 0.0,
+        width: group::INNER_CELL,
+        height: group::INNER_CELL,
+    };
+    let mut g = group::new_group(LayoutRect {
+        x: 0.0,
+        y: 2048.0,
+        width: 512.0,
+        height: 256.0,
+    });
+    // One at its type's usual period and one with its own: the group's
+    // applies to both. One not using the shared settings: its own.
+    let usual = for_topic("/Test/count", "int", None, cell).unwrap();
+    let mut own = for_topic(
+        "/Test/number",
+        "double",
+        None,
+        LayoutRect { x: 128.0, ..cell },
+    )
+    .unwrap();
+    own.properties.insert("period".into(), 0.2.into());
+    let mut apart = for_topic(
+        "/Test/flag",
+        "boolean",
+        None,
+        LayoutRect { x: 256.0, ..cell },
+    )
+    .unwrap();
+    apart.properties.insert("period".into(), 0.2.into());
+    apart
+        .properties
+        .insert(group::USE_SHARED.into(), false.into());
+    g.children.extend([usual, own, apart]);
+    g.properties
+        .insert(group::SHARED.into(), serde_json::json!({"period": 0.75}));
+    g.properties.insert(group::SHARED_ON.into(), true.into());
+    app.layout.tabs[0].grid_layout.layouts.push(g);
+    let wanted = app.tab_topics(&[]);
+    let at = |period: f64| {
+        wanted
+            .iter()
+            .find(|(p, _)| *p == period)
+            .map(|(_, names)| names.clone())
+            .unwrap_or_default()
+    };
+    assert!(at(0.75).contains(&"/Test/count".to_owned()), "{wanted:?}");
+    assert!(at(0.75).contains(&"/Test/number".to_owned()), "{wanted:?}");
+    assert!(!at(0.2).contains(&"/Test/number".to_owned()), "{wanted:?}");
+    assert!(at(0.2).contains(&"/Test/flag".to_owned()), "{wanted:?}");
+}
+
+#[test]
+fn a_widget_in_a_group_shows_what_the_group_sets_greyed_until_it_opts_out() {
+    use crate::widgets::{for_topic, group};
+    use egui_kittest::kittest::NodeT;
+    let robot = Robot::start();
+    let mut harness = harness_for(&robot);
+    let cell = LayoutRect {
+        x: 0.0,
+        y: 0.0,
+        width: group::INNER_CELL,
+        height: group::INNER_CELL,
+    };
+    let mut g = group::new_group(LayoutRect {
+        x: 0.0,
+        y: 2048.0,
+        width: 512.0,
+        height: 256.0,
+    });
+    // Its own text size, which the group's replaces.
+    let mut child = for_topic("/Test/number", "double", None, cell).unwrap();
+    child.properties.insert("font_size".into(), 20.0.into());
+    g.children.push(child.clone());
+    g.properties
+        .insert(group::SHARED.into(), serde_json::json!({"font_size": 30.0}));
+    g.properties.insert(group::SHARED_ON.into(), true.into());
+    let app = harness.state_mut();
+    let tab = &mut app.layout.tabs[0].grid_layout.layouts;
+    tab.push(g.clone());
+    let index = tab.len() - 1;
+    app.editing = Some(Editing::List {
+        tab: 0,
+        index,
+        original: Box::new(g),
+        child: Some((0, child)),
+        child_only: true,
+    });
+    settle(&mut harness);
+    // Resets: the title's (it has the topic's name) and the text size's
+    // (its own, but the group sets it): both off.
+    let any_reset_on = |h: &Harness| {
+        h.query_all_by_label("Reset")
+            .any(|r| !r.accesskit_node().is_disabled())
+    };
+    assert!(
+        harness
+            .query_by_label_contains("Set by the group: text size 30 pt")
+            .is_some()
+    );
+    assert!(!any_reset_on(&harness));
+    harness.get_by_label("Use the shared settings").click();
+    settle(&mut harness);
+    assert!(any_reset_on(&harness), "its own text size can be reset");
+    let saved = &harness.state().layout.tabs[0].grid_layout.layouts[index].children[0];
+    assert_eq!(saved.properties[group::USE_SHARED], false);
+}

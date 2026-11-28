@@ -123,6 +123,11 @@ into it or use **Add to list** in the tree. Its settings set where the labels go
 are dividers between rows; double-click a row for that widget's own settings. Graphs in a list
 show their newest value as text.
 
+Like a Group's, a list's settings have **Widgets inside**, off until **Apply to the widgets
+inside** is ticked: an **Update period** and **Text** for every widget in it (see
+[Groups](#groups)), and **Labels**, the size, font, color, bold and italic of the labels. The
+labels' size is the list's, so the rows stay even.
+
 ## Groups
 
 ![Two Groups, locked: a drive panel of nine widgets on a 5 by 4 grid with its grid lines, and four
@@ -149,11 +154,22 @@ is drawn as a shrunk copy, text too, so resizing the Group grows or shrinks what
   more columns, and a taller one bigger cells. The cells show as faint lines; **Grid lines** in
   its settings hides them.
 
-  ![The Drive panel's settings: Rows 4, Grid lines on, and "5 columns by 4 rows" below
-  them](../images/window/group-settings.png)
+  ![The Drive panel's settings: Rows 4, Grid lines on, "5 columns by 4 rows" below them, and
+  the Widgets inside rows](../images/window/group-settings.png)
 
   To leave no space at the right, choose Rows to suit the Group's shape: the settings show the
   columns and rows it gives. The Drive panel above is 6 cells by 5 on the tab, and 4 rows gives
   5 columns that fill it.
+
+Under **Widgets inside**, a Group can set the **Update period**, **Text** (size and style) and
+**Title text** for every widget in it, so a panel looks alike without editing each one. Tick
+**Apply to the widgets inside** to turn this on (it's off for a new Group). While it's on, the
+Group decides all of these for its widgets: what its rows set, and the usual for anything they
+leave alone, in place of each widget's own. A widget's settings say what its Group sets, and
+those rows are greyed out. Untick it and every widget has its own settings again; the Group's
+are kept for later.
+
+To set up one widget on its own while the rest follow the Group, untick **Use the shared
+settings** in that widget's settings: it then uses the settings it had.
 
 Locked, the widgets inside work as they do on the grid: toggles toggle, sliders slide.

@@ -27,7 +27,8 @@ pub fn has_custom_settings(widget: &WidgetContainer) -> bool {
 }
 
 /// Put `widget`'s settings back to their defaults: update period 0.06 s,
-/// the title's style, and its type's settings
+/// the title's style, using its group's or list's shared settings, and its
+/// type's settings
 /// ([`setting_keys`](crate::widgets::WidgetType::setting_keys) removed,
 /// [`reset`](crate::widgets::WidgetType::reset) for the rest). The title and what
 /// the widget shows (`topic`, `struct_meta`, `data_type`) are kept, as are
@@ -57,6 +58,7 @@ pub fn reset_settings(widget: &mut WidgetContainer) {
     for key in crate::widgets::shared::text_style::TITLE_KEYS {
         props.remove(key);
     }
+    props.remove(crate::widgets::group::USE_SHARED);
     if let Some(ty) = find(&widget.widget_type) {
         for key in ty.setting_keys() {
             props.remove(*key);
@@ -198,7 +200,8 @@ pub fn show(
             ui.label("Update period");
             let mut period = props::period_s(widget);
             let changed = ui
-                .add(
+                .add_enabled(
+                    !props::is_controlled(ui, PERIOD),
                     egui::DragValue::new(&mut period)
                         .range(MIN_PERIOD_S..=MAX_PERIOD_S)
                         .speed(0.005)
@@ -209,6 +212,7 @@ pub fn show(
                     "How often new values are sent, at most. Shorter is smoother \
                      but uses more of the robot's network.",
                 )
+                .on_disabled_hover_text(props::SET_BY_SHARED)
                 .changed();
             if changed {
                 set_property(&mut widget.properties, PERIOD, Some(period.into()));
