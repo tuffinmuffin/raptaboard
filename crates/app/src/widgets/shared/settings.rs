@@ -200,7 +200,8 @@ pub fn show(
             ui.label("Update period");
             let mut period = props::period_s(widget);
             let changed = ui
-                .add(
+                .add_enabled(
+                    !props::is_controlled(ui, PERIOD),
                     egui::DragValue::new(&mut period)
                         .range(MIN_PERIOD_S..=MAX_PERIOD_S)
                         .speed(0.005)
@@ -211,6 +212,7 @@ pub fn show(
                     "How often new values are sent, at most. Shorter is smoother \
                      but uses more of the robot's network.",
                 )
+                .on_disabled_hover_text(props::SET_BY_SHARED)
                 .changed();
             if changed {
                 set_property(&mut widget.properties, PERIOD, Some(period.into()));

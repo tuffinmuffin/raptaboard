@@ -124,9 +124,8 @@ are dividers between rows; double-click a row for that widget's own settings. Gr
 show their newest value as text.
 
 Like a Group's, a list's settings have **Widgets inside**: an **Update period** and **Text** for
-every widget in it that doesn't set its own (see [Groups](#groups)), and **Labels**, the size,
-font, color, bold and italic of the labels. A widget's own title style still wins for its label;
-the size is the list's, so the rows stay even.
+every widget in it (see [Groups](#groups)), and **Labels**, the size, font, color, bold and
+italic of the labels. The labels' size is the list's, so the rows stay even.
 
 ## Groups
 
@@ -163,12 +162,12 @@ is drawn as a shrunk copy, text too, so resizing the Group grows or shrinks what
 
 Under **Widgets inside**, a Group's settings set the **Update period**, **Text** (size and
 style) and **Title text** for every widget in it, so a panel looks alike without editing each
-one. A widget's own setting wins: one with a text size of its own keeps it, and one whose update
-period was changed from its usual keeps that. A widget's settings say what it takes from its
-Group; **Reset** in the Group's rows goes back to each widget's own.
+one. What the Group sets replaces each widget's own setting; **Reset** in the Group's rows stops
+setting it, and the widgets go back to their own. A widget's settings say what its Group sets,
+and those rows are greyed out.
 
-To set up each widget on its own instead, untick **Use the shared settings** in that widget's
-settings: it then ignores the Group's. **Apply to the widgets inside**, in the Group's settings,
-turns the shared settings off for every widget at once, keeping them for later.
+To set up a widget on its own instead, untick **Use the shared settings** in its settings: it
+then ignores the Group's, and uses the settings it had. **Apply to the widgets inside**, in the
+Group's settings, turns the shared settings off for every widget at once, keeping them for later.
 
 Locked, the widgets inside work as they do on the grid: toggles toggle, sliders slide.

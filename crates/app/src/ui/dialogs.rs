@@ -85,9 +85,18 @@ pub(super) fn show_settings(
 pub(super) enum WidgetIn<'a> {
     /// On the grid: it can be pinned in place.
     Grid,
-    /// In a List Layout or Group; with what it takes from the layout's
-    /// shared settings, if it has any: a checkbox to use them, and a note.
-    Layout(Option<&'a str>),
+    /// In a List Layout or Group; with the layout's shared settings, if it
+    /// has any: a checkbox to use them, a note, and the rows they grey out.
+    Layout(Option<&'a Shared>),
+}
+
+/// A List Layout's or Group's shared settings, as a widget inside's dialog
+/// shows them.
+pub(super) struct Shared {
+    /// What they set: "update period 0.50 s, text size 24 pt".
+    pub note: String,
+    /// The settings they set ([`group::controlled_keys`]).
+    pub keys: Vec<&'static str>,
 }
 
 /// One widget's settings in a dialog titled `heading`, with Done, Cancel
@@ -106,7 +115,16 @@ pub(super) fn widget_window(
 ) -> Option<bool> {
     let mut close = None;
     show_settings(ctx, "widget_settings", heading, |ui| {
-        if let WidgetIn::Layout(Some(note)) = within {
+        // What the widget's group or list sets is greyed out while it uses
+        // them.
+        let using = props::flag(&widget.properties, group::USE_SHARED, true);
+        let controlled = match &within {
+            WidgetIn::Layout(Some(shared)) if using => shared.keys.as_slice(),
+            _ => &[],
+        };
+        props::set_controlled(ui.ctx(), controlled);
+        if let WidgetIn::Layout(Some(shared)) = &within {
+            let note = &shared.note;
             let mut using = props::flag(&widget.properties, group::USE_SHARED, true);
             if ui
                 .checkbox(&mut using, "Use the shared settings")
@@ -122,6 +140,7 @@ pub(super) fn widget_window(
             ui.add_space(4.0);
         }
         widget_settings::show(ui, widget, nt_type, field, topics);
+        props::set_controlled(ui.ctx(), &[]);
         if matches!(within, WidgetIn::Grid) {
             pin_checkbox(ui, &mut widget.properties);
         }
@@ -320,8 +339,17 @@ impl DashboardApp {
             let (nt_type, field) = self.value_facts(widget);
             let topics = self.topic_list();
             let heading = format!("{}: {}", list.title, widget.title);
-            let note = crate::widgets::group::shared_note(list, widget)
-                .map(|got| format!("Unless set here: {got}."));
+            let shared = group::shared_note(list, widget).map(|got| Shared {
+                note: format!(
+                    "Set by the {}: {got}.",
+                    if group::is_group(list) {
+                        "group"
+                    } else {
+                        "list"
+                    }
+                ),
+                keys: group::controlled_keys(list),
+            });
             let Some(widget) = self
                 .layout
                 .tabs
@@ -338,7 +366,7 @@ impl DashboardApp {
                 nt_type.as_deref(),
                 field.as_ref(),
                 &topics,
-                WidgetIn::Layout(note.as_deref()),
+                WidgetIn::Layout(shared.as_ref()),
             ) {
                 Some(true) => self.close_child(),
                 Some(false) => {

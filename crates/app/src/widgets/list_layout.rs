@@ -858,7 +858,10 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
 
     ui.add_space(8.0);
     ui.strong("Widgets inside");
-    ui.weak("Used by every widget in the list that doesn't set its own; Labels styles each label.");
+    ui.weak(
+        "Set for every widget in the list, in place of its own (unless it opts out); Labels \
+         styles each label.",
+    );
     crate::widgets::group::shared_rows(ui, &mut list.properties, true);
 
     ui.add_space(8.0);
@@ -1397,11 +1400,15 @@ mod tests {
         let top = rows(body(), &l.children, l18, |_| 0.0);
         assert_eq!(top[0].label.unwrap().height(), LABEL_HEIGHT + 5.0);
         assert_eq!(label(&drawn_text(&l), "a"), (18.0, red));
-        // A widget's own title color wins for its label; the size is the
-        // list's.
+        // The list's color wins over a widget's own, unless the widget
+        // doesn't use the shared settings; the size is the list's either way.
         l.children[1]
             .properties
             .insert("title_color".into(), 4278255360u32.into());
+        assert_eq!(label(&drawn_text(&l), "b"), (18.0, red));
+        l.children[1]
+            .properties
+            .insert(group::USE_SHARED.into(), false.into());
         let text = drawn_text(&l);
         assert_eq!(label(&text, "a"), (18.0, red));
         assert_eq!(

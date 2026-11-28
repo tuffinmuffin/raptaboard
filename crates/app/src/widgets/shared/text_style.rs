@@ -425,16 +425,22 @@ fn style_rows(
         egui::RichText::new(text).font(font)
     };
     let mut picked = now;
-    egui::ComboBox::from_id_salt(("text style font", keys.family))
-        .selected_text(label(ui, now))
-        .show_ui(ui, |ui| {
-            for family in Family::ALL {
-                let text = label(ui, family);
-                ui.selectable_value(&mut picked, family, text);
-            }
-        })
-        .response
-        .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::ComboBox, true, "Font"));
+    let font_set_by_shared = props::is_controlled(ui, keys.family);
+    ui.add_enabled_ui(!font_set_by_shared, |ui| {
+        let response = egui::ComboBox::from_id_salt(("text style font", keys.family))
+            .selected_text(label(ui, now))
+            .show_ui(ui, |ui| {
+                for family in Family::ALL {
+                    let text = label(ui, family);
+                    ui.selectable_value(&mut picked, family, text);
+                }
+            })
+            .response;
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::accesskit::Role::ComboBox, true, "Font")
+        });
+        response.on_disabled_hover_text(props::SET_BY_SHARED);
+    });
     if picked != now {
         let value = (picked != default_family).then(|| Json::from(picked.key()));
         set_property(props, keys.family, value);
@@ -444,6 +450,9 @@ fn style_rows(
     if let Some(default_color) = default_color {
         ui.label("    Color");
         ui.horizontal(|ui| {
+            if props::is_controlled(ui, keys.color) {
+                ui.disable();
+            }
             let mut color = color_property(props, keys.color).unwrap_or(default_color);
             if egui::color_picker::color_edit_button_srgba(
                 ui,
@@ -469,7 +478,12 @@ fn style_rows(
     ui.horizontal(|ui| {
         for (key, label) in [(keys.bold, "Bold"), (keys.italic, "Italic")] {
             let mut on = flag(props, key, false);
-            if ui.checkbox(&mut on, label).changed() {
+            let enabled = !props::is_controlled(ui, key);
+            if ui
+                .add_enabled(enabled, egui::Checkbox::new(&mut on, label))
+                .on_disabled_hover_text(props::SET_BY_SHARED)
+                .changed()
+            {
                 set_property(props, key, on.then_some(Json::Bool(true)));
             }
         }
@@ -500,9 +514,11 @@ pub fn text_row(
     let shown = ui
         .horizontal(|ui| {
             if let Some(usual) = size {
+                let set_by_shared = props::is_controlled(ui, VALUE.size);
                 let mut now = props::font_size_set(p).unwrap_or(usual);
                 if ui
-                    .add(
+                    .add_enabled(
+                        !set_by_shared,
                         egui::DragValue::new(&mut now)
                             .range(props::MIN_FONT_SIZE..=props::MAX_FONT_SIZE)
                             .speed(0.5)
@@ -510,13 +526,17 @@ pub fn text_row(
                             .suffix(" pt"),
                     )
                     .on_hover_text("Text size")
+                    .on_disabled_hover_text(props::SET_BY_SHARED)
                     .changed()
                 {
                     let value = (now != usual).then(|| f64::from(now).into());
                     set_property(p, VALUE.size, value);
                 }
                 if ui
-                    .add_enabled(p.contains_key(VALUE.size), egui::Button::new("Reset"))
+                    .add_enabled(
+                        p.contains_key(VALUE.size) && !set_by_shared,
+                        egui::Button::new("Reset"),
+                    )
                     .on_hover_text("The usual size")
                     .clicked()
                 {
@@ -557,7 +577,8 @@ pub fn title_style_row_as(
                 .map_or(usual, |s| s as f32)
                 .clamp(props::MIN_FONT_SIZE, MAX_TITLE_SIZE);
             if ui
-                .add(
+                .add_enabled(
+                    !props::is_controlled(ui, TITLE.size),
                     egui::DragValue::new(&mut size)
                         .range(props::MIN_FONT_SIZE..=MAX_TITLE_SIZE)
                         .speed(0.5)
@@ -565,6 +586,7 @@ pub fn title_style_row_as(
                         .suffix(" pt"),
                 )
                 .on_hover_text("Title size")
+                .on_disabled_hover_text(props::SET_BY_SHARED)
                 .changed()
             {
                 let value = (size != usual).then(|| f64::from(size).into());
@@ -755,6 +777,46 @@ mod tests {
                     .italics
             );
         });
+    }
+
+    #[test]
+    fn settings_a_group_sets_are_greyed_out_and_left_alone() {
+        use egui_kittest::kittest::{NodeT, Queryable};
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(600.0, 400.0))
+            .build_ui_state(
+                |ui, p: &mut Map<String, Json>| {
+                    // As a widget in a group setting bold and the text size.
+                    props::set_controlled(ui.ctx(), &[VALUE.bold, VALUE.size]);
+                    egui::Grid::new("rows").show(ui, |ui| {
+                        text_row(ui, p, Some(16.0), Family::Mono, true);
+                    });
+                    props::set_controlled(ui.ctx(), &[]);
+                },
+                // Its own size, so Reset would be on.
+                serde_json::json!({"font_size": 20.0})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            );
+        harness.get_by_label("Style…").click();
+        harness.run();
+        assert!(harness.get_by_label("Bold").accesskit_node().is_disabled());
+        assert!(
+            !harness
+                .get_by_label("Italic")
+                .accesskit_node()
+                .is_disabled()
+        );
+        harness.get_by_label("Bold").click();
+        harness.run();
+        harness.get_by_label("Italic").click();
+        harness.run();
+        assert_eq!(harness.state().get(VALUE.bold), None);
+        assert_eq!(harness.state().get(VALUE.italic), Some(&Json::Bool(true)));
+        // The text size's Reset too, though it has its own size.
+        assert!(harness.get_by_label("Reset").accesskit_node().is_disabled());
+        assert_eq!(harness.state().get(VALUE.size), Some(&Json::from(20.0)));
     }
 
     #[test]

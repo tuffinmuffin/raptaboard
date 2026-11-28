@@ -112,6 +112,9 @@ pub fn font_size_set(props: &Map<String, Json>) -> Option<f32> {
 pub fn text_size_row(ui: &mut egui::Ui, props: &mut Map<String, Json>) {
     ui.label("Text size");
     ui.horizontal(|ui| {
+        if is_controlled(ui, FONT_SIZE) {
+            ui.disable();
+        }
         let mut size = font_size(props);
         if ui
             .add(
@@ -134,6 +137,31 @@ pub fn text_size_row(ui: &mut egui::Ui, props: &mut Map<String, Json>) {
         }
     });
     ui.end_row();
+}
+
+/// What a greyed-out setting says on hover: a group or list sets it.
+pub const SET_BY_SHARED: &str =
+    "Set by its group or list; untick \"Use the shared settings\" to set it here";
+
+fn controlled_id() -> egui::Id {
+    egui::Id::unique("raptaboard settings set by a group")
+}
+
+/// Say which settings the settings dialog being drawn shows greyed out,
+/// as a group or list sets them ([`is_controlled`]); `&[]` for none. Set
+/// around drawing one widget's settings.
+pub fn set_controlled(ctx: &egui::Context, keys: &[&str]) {
+    let keys: Vec<String> = keys.iter().map(|k| (*k).to_owned()).collect();
+    ctx.data_mut(|d| d.insert_temp(controlled_id(), keys));
+}
+
+/// Whether the settings dialog being drawn shows `key` greyed out
+/// ([`set_controlled`]).
+pub fn is_controlled(ui: &egui::Ui, key: &str) -> bool {
+    ui.ctx().data(|d| {
+        d.get_temp::<Vec<String>>(controlled_id())
+            .is_some_and(|keys| keys.iter().any(|k| k == key))
+    })
 }
 
 /// A number setting, or `default` if it's not set or not a number.

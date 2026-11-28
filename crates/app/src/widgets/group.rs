@@ -142,10 +142,9 @@ pub fn new_group(rect: LayoutRect) -> LayoutContainer {
 }
 
 /// `child` of `layout` (a group or a List Layout) as it's shown: with its
-/// shared settings
-/// ([`SHARED`]) wherever it doesn't set its own. A period counts as its
-/// own only when it isn't its type's usual one (widgets are saved with a
-/// period, chosen or not). The child itself if nothing is shared.
+/// shared settings ([`SHARED`]) in place of its own, unless it doesn't use
+/// them ([`USE_SHARED`] off). Its own are kept in it, for when it doesn't.
+/// The child itself if nothing is shared.
 ///
 /// ```
 /// use raptaboard::widgets::{for_topic, group::{new_group, with_shared}};
@@ -154,43 +153,50 @@ pub fn new_group(rect: LayoutRect) -> LayoutContainer {
 /// let mut g = new_group(Rect { width: 512.0, height: 256.0, ..at });
 /// g.properties.insert("shared".into(), serde_json::json!({"font_size": 24.0, "period": 0.5}));
 /// let mut child = for_topic("/Sine", "double", None, at).unwrap();
+/// child.properties.insert("font_size".into(), 30.0.into());
 /// let shown = with_shared(&g, &child);
+/// // The group's win.
 /// assert_eq!(shown.properties["font_size"], 24.0);
 /// assert_eq!(shown.properties["period"], 0.5);
-/// // Its own size wins.
-/// child.properties.insert("font_size".into(), 30.0.into());
+/// // Unless it doesn't use them.
+/// child.properties.insert("use_shared".into(), false.into());
 /// assert_eq!(with_shared(&g, &child).properties["font_size"], 30.0);
 /// ```
 pub fn with_shared<'a>(
     layout: &LayoutContainer,
     child: &'a WidgetContainer,
 ) -> Cow<'a, WidgetContainer> {
-    let Some(shared) = shared(layout) else {
-        return Cow::Borrowed(child);
-    };
     if !props::flag(&child.properties, USE_SHARED, true) {
         return Cow::Borrowed(child);
     }
-    let usual_period = || {
-        crate::widgets::find(&child.widget_type)
-            .map_or(props::DEFAULT_PERIOD_S, |t| t.default_period())
+    let Some(shared) = shared(layout) else {
+        return Cow::Borrowed(child);
     };
-    let missing: Vec<(&str, &Json)> = SHARED_KEYS
+    let changed: Vec<(&str, &Json)> = SHARED_KEYS
         .iter()
         .filter_map(|k| Some((*k, shared.get(*k)?)))
-        .filter(|(k, _)| match *k {
-            props::PERIOD => child.period().is_none_or(|p| p == usual_period()),
-            _ => !child.properties.contains_key(*k),
-        })
+        .filter(|(k, v)| child.properties.get(*k) != Some(*v))
         .collect();
-    if missing.is_empty() {
+    if changed.is_empty() {
         return Cow::Borrowed(child);
     }
     let mut shown = child.clone();
-    for (k, v) in missing {
+    for (k, v) in changed {
         shown.properties.insert(k.to_owned(), v.clone());
     }
     Cow::Owned(shown)
+}
+
+/// The settings `layout` sets for the widgets inside: its [`SHARED`] ones,
+/// while they're on. A widget's settings dialog greys these out while the
+/// widget uses them.
+pub fn controlled_keys(layout: &LayoutContainer) -> Vec<&'static str> {
+    shared(layout).map_or_else(Vec::new, |shared| {
+        SHARED_KEYS
+            .into_iter()
+            .filter(|k| shared.contains_key(*k))
+            .collect()
+    })
 }
 
 /// A group's or list's shared settings ([`SHARED`]), if it has any and
@@ -206,21 +212,16 @@ pub fn shared(layout: &LayoutContainer) -> Option<&Map<String, Json>> {
         .filter(|m| !m.is_empty())
 }
 
-/// What `child` gets from `group`'s shared settings, for its settings
-/// dialog: "text size 24 pt, update period 0.50 s", or `None`.
-///
-/// What it would get if it doesn't use them ([`USE_SHARED`] off), so its
-/// dialog can offer them back.
+/// What `group`'s shared settings set for `child`, for its settings
+/// dialog: "update period 0.50 s, text size 24 pt", or `None`. Said
+/// whether or not the child uses them ([`USE_SHARED`]), so its dialog can
+/// offer them.
 pub fn shared_note(group: &LayoutContainer, child: &WidgetContainer) -> Option<String> {
     let mut using = child.clone();
     using.properties.remove(USE_SHARED);
-    let child = &using;
-    let shown = with_shared(group, child);
+    let shown = with_shared(group, &using);
     let mut got = Vec::new();
-    for k in SHARED_KEYS {
-        if shown.properties.get(k) == child.properties.get(k) {
-            continue;
-        }
+    for k in controlled_keys(group) {
         let what = match k {
             props::PERIOD => format!("update period {:.2} s", props::period_s(&shown)),
             props::FONT_SIZE => format!("text size {} pt", props::font_size(&shown.properties)),
@@ -559,7 +560,7 @@ pub fn settings(ui: &mut egui::Ui, group: &mut LayoutContainer) {
     ui.add_space(4.0);
     ui.separator();
     ui.strong("Widgets inside");
-    ui.weak("Used by every widget in the group that doesn't set its own.");
+    ui.weak("Set for every widget in the group, in place of its own (unless it opts out).");
     shared_rows(ui, &mut group.properties, false);
 }
 
@@ -787,7 +788,7 @@ mod tests {
     }
 
     #[test]
-    fn widgets_inside_use_the_groups_shared_settings_unless_they_set_their_own() {
+    fn the_groups_shared_settings_win_over_the_widgets_own() {
         let mut g = group_with(&[]);
         let plain = text_display(0.0);
         // Nothing shared: the child itself.
@@ -807,15 +808,19 @@ mod tests {
         assert_eq!(p["title_color"], 4294901760u32);
         // Only the settings a group shares.
         assert!(!p.contains_key("true_color"));
-        // Its own text size and period win; a period at its type's usual
-        // (saved with every widget) doesn't count as its own.
+        // The group's win over the widget's own, which it keeps.
         let mut own = plain.clone();
         own.properties.insert("font_size".into(), 30.0.into());
         own.properties.insert("period".into(), 0.2.into());
         let shown = with_shared(&g, &own);
-        assert_eq!(props::font_size(&shown.properties), 30.0);
-        assert_eq!(props::period_s(&shown), 0.2);
-        assert_eq!(plain.period(), Some(props::DEFAULT_PERIOD_S));
+        assert_eq!(props::font_size(&shown.properties), 24.0);
+        assert_eq!(props::period_s(&shown), 0.5);
+        assert_eq!(own.properties["font_size"], 30.0);
+        // The rows its dialog greys out: what the group sets that it shares.
+        assert_eq!(
+            controlled_keys(&g),
+            ["period", "font_size", "font_bold", "title_color"]
+        );
         // A List Layout shares the same way.
         let mut list = g.clone();
         list.layout_type = "List Layout".into();
@@ -828,10 +833,7 @@ mod tests {
             shared_note(&g, &plain).as_deref(),
             Some("update period 0.50 s, text size 24 pt, text style, title style")
         );
-        assert_eq!(
-            shared_note(&g, &own).as_deref(),
-            Some("text style, title style")
-        );
+        assert_eq!(shared_note(&g, &own), shared_note(&g, &plain));
         assert_eq!(shared_note(&group_with(&[]), &plain), None);
     }
 

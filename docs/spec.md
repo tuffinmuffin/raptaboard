@@ -837,20 +837,22 @@ raptaboard is meant to rest in, apart from feature requests.
      `grid::resize_in_group`) and drag out onto the grid or into a list; their menu has Edit,
      Edit group and Remove from group. Nothing overlaps a group, even with Alt. Drag previews
      are drawn on a layer above the groups'. Part 2 (done): `shared` in the group's properties
-     holds widget settings every child uses unless it sets its own (`group::with_shared`, used
+     holds widget settings every child uses in place of its own (`group::with_shared`, used
      wherever a child is drawn, subscribed or recorded): the update period, the value text's size
      and style, and the title's (`group::SHARED_KEYS`; a separate object, as the group's own title
-     uses the same keys). Widgets are saved with a `period` whether chosen or not, so a child's
-     period counts as its own only when it isn't its type's usual one. Set in the group's settings
-     under "Widgets inside"; a child's own dialog says what it takes from the group
-     (`group::shared_note`). Opening a layout checks a group's children (`ElasticLayout::sanitize`,
+     uses the same keys). The group's win (decided with the user 2026-11-27, after first building
+     it the other way round: a styled widget then seemed to ignore its group); the child's own
+     values are kept, for when it stops using them. Set in the group's settings under "Widgets
+     inside"; a child's own dialog says what the group sets (`group::shared_note`) and greys those
+     rows out (`group::controlled_keys`, passed to the rows by `props::set_controlled` /
+     `is_controlled` while the dialog draws). Opening a layout checks a group's children (`ElasticLayout::sanitize`,
      `LayoutContainer::sanitize_group`): sizes and places fixed as on the tab, rounded to whole
      cells (`GROUP_CELL`, at most `GROUP_MAX_CELLS`), and any overlap moved to the nearest free
      cell, `may_overlap` or not. List Layouts share the same way (asked for by the user
      2026-11-27): the same `shared` object and "Widgets inside" rows (`group::shared_rows`), with
      the title row styling the list's labels instead ("Labels": `list_layout::labels` takes the
      size, one for the whole list so rows stay even, the label strip growing to fit; each label's
-     font, color, bold and italic are its widget's title style as shown, so its own still wins). Either can be turned off (asked for by the user 2026-11-27, so each
+     font, color, bold and italic are its widget's title style as shown). Either can be turned off (asked for by the user 2026-11-27, so each
      widget can be set up on its own): `use_shared: false` on a widget (its dialog's "Use the
      shared settings"; Reset settings clears it) or `shared_on: false` on the group or list
      ("Apply to the widgets inside", keeping `shared`).
