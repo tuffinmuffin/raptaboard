@@ -802,8 +802,9 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
         .num_columns(2)
         .spacing([12.0, 8.0])
         .show(ui, |ui| {
-            ui.label("Title");
-            ui.add(egui::TextEdit::singleline(&mut list.title).desired_width(180.0));
+            let name = ui.label("Title").id;
+            ui.add(egui::TextEdit::singleline(&mut list.title).desired_width(180.0))
+                .labelled_by(name);
             ui.end_row();
             let text_color = ui.visuals().text_color();
             crate::widgets::shared::text_style::title_style_row(
@@ -812,7 +813,7 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
                 text_color,
             );
 
-            ui.label("Labels");
+            let row_name = ui.label("Labels").id;
             let mut position = label_position(&list.properties);
             egui::ComboBox::from_id_salt("label_position")
                 .selected_text(position.label())
@@ -820,7 +821,9 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
                     for choice in LabelPosition::ALL {
                         ui.selectable_value(&mut position, choice, choice.label());
                     }
-                });
+                })
+                .response
+                .labelled_by(row_name);
             if position != label_position(&list.properties) {
                 // Elastic always saves it, so it's always written.
                 set_property(

@@ -681,7 +681,7 @@ impl WidgetType for FieldWidget {
         let found = fields::available(&fields::default_folders());
         // The field shown now, by id (Elastic's game name finds one).
         let key = entry(ui.ctx(), &field_key(p)).map_or_else(|| field_key(p), |f| f.id);
-        ui.label("Field");
+        let row_name = ui.label("Field").id;
         ui.horizontal(|ui| {
             let shown = found
                 .iter()
@@ -695,7 +695,9 @@ impl WidgetType for FieldWidget {
                     for f in &found {
                         ui.selectable_value(&mut picked, f.id.clone(), &f.info.name);
                     }
-                });
+                })
+                .response
+                .labelled_by(row_name);
             if ui
                 .button("Open field file…")
                 .on_hover_text("A WPILib fields JSON, with its image beside it")
@@ -716,7 +718,7 @@ impl WidgetType for FieldWidget {
             }
         });
         ui.end_row();
-        ui.label("Poses' origin");
+        let row_name = ui.label("Poses' origin").id;
         let origin = Origin::from_key(props::text(p, ORIGIN, Origin::Center.key()));
         let mut picked = origin;
         egui::ComboBox::from_id_salt(ORIGIN)
@@ -727,6 +729,7 @@ impl WidgetType for FieldWidget {
                 }
             })
             .response
+            .labelled_by(row_name)
             .on_hover_text(
                 "Where (0, 0) is in the poses robot code sends. WPILib 2027 puts it at the \
                  center of the field; before 2027 it was the blue alliance wall's right corner.",
@@ -739,7 +742,7 @@ impl WidgetType for FieldWidget {
             );
         }
         ui.end_row();
-        ui.label("View");
+        let row_name = ui.label("View").id;
         let turn = Turn::of(p);
         let mut picked = turn;
         egui::ComboBox::from_id_salt(FIELD_ROTATION)
@@ -748,7 +751,9 @@ impl WidgetType for FieldWidget {
                 for t in Turn::ALL {
                     ui.selectable_value(&mut picked, t, t.label());
                 }
-            });
+            })
+            .response
+            .labelled_by(row_name);
         if picked != turn {
             props::set_property(
                 p,

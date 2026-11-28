@@ -510,7 +510,7 @@ pub fn text_row(
     family: Family,
     color: bool,
 ) {
-    ui.label("Text");
+    let name = ui.label("Text").id;
     let shown = ui
         .horizontal(|ui| {
             if let Some(usual) = size {
@@ -525,6 +525,7 @@ pub fn text_row(
                             .fixed_decimals(0)
                             .suffix(" pt"),
                     )
+                    .labelled_by(name)
                     .on_hover_text("Text size")
                     .on_disabled_hover_text(props::SET_BY_SHARED)
                     .changed()
@@ -568,7 +569,7 @@ pub fn title_style_row_as(
     label: &str,
     usual: f32,
 ) {
-    ui.label(label);
+    let name = ui.label(label).id;
     let shown = ui
         .horizontal(|ui| {
             let mut size = props
@@ -585,6 +586,7 @@ pub fn title_style_row_as(
                         .fixed_decimals(0)
                         .suffix(" pt"),
                 )
+                .labelled_by(name)
                 .on_hover_text("Title size")
                 .on_disabled_hover_text(props::SET_BY_SHARED)
                 .changed()

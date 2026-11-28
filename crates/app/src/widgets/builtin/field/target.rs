@@ -271,7 +271,7 @@ pub fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>) {
     if !enabled(p) {
         return;
     }
-    ui.label("Target topic");
+    let row_name = ui.label("Target topic").id;
     let mut text = props::text(p, TARGET_TOPIC, "").to_owned();
     if ui
         .add(
@@ -284,6 +284,7 @@ pub fn settings_rows(ui: &mut egui::Ui, p: &mut Map<String, Json>) {
              <topic>_set beside it. A click sets it, a drag also says which way it faces, a \
              right-click clears it. Robot code reads it, or ignores it.",
         )
+        .labelled_by(row_name)
         .changed()
     {
         let text = text.trim().to_owned();

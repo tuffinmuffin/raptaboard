@@ -368,7 +368,7 @@ pub fn rows(ui: &mut egui::Ui, props: &mut Map<String, Json>, value: ValueInfo<'
         && !(is_enum && enum_display(props) == EnumDisplay::Name);
 
     if is_enum {
-        ui.label("Enum shows");
+        let row_name = ui.label("Enum shows").id;
         let mut display = enum_display(props);
         egui::ComboBox::from_id_salt("enum_display")
             .selected_text(display.label())
@@ -376,7 +376,9 @@ pub fn rows(ui: &mut egui::Ui, props: &mut Map<String, Json>, value: ValueInfo<'
                 for choice in EnumDisplay::ALL {
                     ui.selectable_value(&mut display, choice, choice.label());
                 }
-            });
+            })
+            .response
+            .labelled_by(row_name);
         if display != enum_display(props) {
             let value = (display != EnumDisplay::default()).then(|| display.key().into());
             set_property(props, ENUM_DISPLAY, value);
@@ -385,7 +387,7 @@ pub fn rows(ui: &mut egui::Ui, props: &mut Map<String, Json>, value: ValueInfo<'
     }
 
     if whole {
-        ui.label("Whole numbers");
+        let row_name = ui.label("Whole numbers").id;
         let mut format = int_format(props);
         egui::ComboBox::from_id_salt("int_format")
             .selected_text(format.label())
@@ -393,7 +395,9 @@ pub fn rows(ui: &mut egui::Ui, props: &mut Map<String, Json>, value: ValueInfo<'
                 for choice in IntFormat::ALL {
                     ui.selectable_value(&mut format, choice, choice.label());
                 }
-            });
+            })
+            .response
+            .labelled_by(row_name);
         if format != int_format(props) {
             let value = (format != IntFormat::default()).then(|| format.key().into());
             set_property(props, INT_FORMAT, value);

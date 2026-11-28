@@ -205,7 +205,7 @@ fn list_help(whole: bool) -> (&'static str, &'static str) {
 /// The settings both enum widgets have: where the names come from, the
 /// list or topic, Guess again, Editable and Text size.
 fn enum_settings(ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<'_>) {
-    ui.label("Names from");
+    let row_name = ui.label("Names from").id;
     ui.horizontal(|ui| {
         let mut source = source_of(p);
         egui::ComboBox::from_id_salt("enum_source")
@@ -214,7 +214,9 @@ fn enum_settings(ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<
                 for s in [Source::List, Source::Topic, Source::Chooser] {
                     ui.selectable_value(&mut source, s, source_label(s));
                 }
-            });
+            })
+            .response
+            .labelled_by(row_name);
         if source != source_of(p) {
             props::set_property(p, ENUM_SOURCE, Some(source.key().into()));
         }
@@ -233,7 +235,7 @@ fn enum_settings(ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<
                 || props::text(p, props::DATA_TYPE, "") == "int",
                 |t| t == "int",
             );
-            ui.label("States");
+            let row_name = ui.label("States").id;
             ui.vertical(|ui| {
                 let mut text = value_lines(p).join("\n");
                 let (hint, help) = list_help(whole);
@@ -241,7 +243,7 @@ fn enum_settings(ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<
                     .desired_rows(4)
                     .desired_width(240.0)
                     .hint_text(hint);
-                if ui.add(edit).changed() {
+                if ui.add(edit).labelled_by(row_name).changed() {
                     let lines: Vec<Json> =
                         text.split('\n').map(|l| Json::from(l.to_owned())).collect();
                     props::set_property(p, ENUM_VALUES, Some(Json::Array(lines)));
@@ -252,7 +254,7 @@ fn enum_settings(ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<
             ui.end_row();
         }
         Source::Topic => {
-            ui.label("Names topic");
+            let row_name = ui.label("Names topic").id;
             let mut name = props::text(p, OPTIONS_TOPIC, "").to_owned();
             egui::ComboBox::from_id_salt("options_topic")
                 .selected_text(if name.is_empty() {
@@ -266,7 +268,9 @@ fn enum_settings(ui: &mut egui::Ui, p: &mut Map<String, Json>, value: ValueInfo<
                             ui.selectable_value(&mut name, topic.clone(), topic);
                         }
                     }
-                });
+                })
+                .response
+                .labelled_by(row_name);
             if name != props::text(p, OPTIONS_TOPIC, "") {
                 props::set_property(p, OPTIONS_TOPIC, Some(name.into()));
             }
@@ -635,7 +639,7 @@ fn switches_between_row(ui: &mut egui::Ui, p: &mut Map<String, Json>) {
     let hover = "Two states to switch between, like a Toggle Button's off and on: a click \
                  goes from the first to the second and back (from any other state, to the \
                  first). Empty, a click steps through every state.";
-    ui.label("Switches between").on_hover_text(hover);
+    let row_name = ui.label("Switches between").on_hover_text(hover).id;
     let (mut a, mut b) = pair_names(p).map_or((String::new(), String::new()), |(a, b)| {
         (a.to_owned(), b.to_owned())
     });
@@ -656,7 +660,8 @@ fn switches_between_row(ui: &mut egui::Ui, p: &mut Map<String, Json>) {
                     egui::TextEdit::singleline(name)
                         .hint_text(which)
                         .desired_width(90.0),
-                );
+                )
+                .labelled_by(row_name);
             } else {
                 egui::ComboBox::from_id_salt(("switches_between", which))
                     .selected_text(if name.is_empty() {
@@ -669,7 +674,9 @@ fn switches_between_row(ui: &mut egui::Ui, p: &mut Map<String, Json>) {
                         for state in &known {
                             ui.selectable_value(name, state.clone(), state);
                         }
-                    });
+                    })
+                    .response
+                    .labelled_by(row_name);
             }
             if which == "first" {
                 ui.label("and");
