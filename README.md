@@ -14,7 +14,26 @@ widgets, a Field widget with layers, and Alerts with a history.
 **Documentation: [tuffinmuffin.github.io/raptaboard](https://tuffinmuffin.github.io/raptaboard/)**:
 using raptaboard, developing it, and writing plugins. Its source is in [`book/`](book/src/SUMMARY.md).
 
-![raptaboard connected to the robot sim, showing Text Display and Boolean Box widgets](book/src/images/m1-widgets.png)
+![raptaboard locked as a driver sees it, with the robot sim in teleop: the Field with its cameras, paths and game pieces, a Group of swerve modules, a toggle, a timer and the battery, a Graph, an X/Y Graph of the robot's orbit, and the match state](book/src/images/tabs/overview.png)
+
+## Highlights
+
+- **Elastic layouts open**, and raptaboard saves files Elastic can open again.
+- **The Field** with layers: other robots, paths, the AprilTags your cameras see, game pieces, and
+  cameras' views and parts riding on the robot.
+- **Arranging that keeps out of your way**: widgets slide aside to make room as you drag, hold Alt
+  to overlap them, and **Fill space**, **Pack widgets** and **Pin in place** tidy up.
+- **Groups and List Layouts** hold widgets together, and can set every widget's text and update
+  rate at once.
+- **Graphs that look back**: pause and scroll back up to ten minutes, statistics between
+  cursors, X/Y and Polar Graphs.
+- **Text styles**: Sans, Mono, Serif, Narrow or a seven-segment Digital font, bold, italic, any
+  color.
+- **The robot's state** on the window's border, a sound for each change, and alerts with a history.
+- **Plugins and content packs**: widgets and whole tabs as WebAssembly plugins, sounds and more,
+  downloaded only when you choose.
+
+See [the book](https://tuffinmuffin.github.io/raptaboard/) for all of it.
 
 ## Install
 

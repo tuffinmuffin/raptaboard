@@ -339,7 +339,9 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   layout turns on the window border by state (cyan with no robot, none while disabled) and the red flash after a
   disable (its `"robot_state"` object). "Writing in a list" holds the toggles and a slider as List
   Layout children. Its Groups tab has two Groups (the book's Group pictures): "Drive panel" (6 by 5
-  tab cells, 4 rows: 5 columns that fill it exactly; keep that fit if editing) and "Module CAN (no grid lines)".
+  tab cells, 4 rows: 5 columns that fill it exactly; keep that fit if editing) and "Module CAN (no grid lines)". Its last tab, Overview, is the
+  README's and the book introduction's picture (`tabs/overview.png`, taken with the sim in teleop): the Field, a
+  Group, a Graph, an X/Y Graph and FMSInfo; keep it last, so the widget pictures still come from the other tabs.
 - `wit/dashboard.wit`: plugin ABI (0.3: widgets and tab plugins, shapes including `pixels`, regions, input,
   `play-audio`, the plugin's folder read-only at `/pack`). Bump the package version and `HOST_API` in plugin-host
   together; before 1.0 a plugin runs only on the same 0.x (`api_compatible`), so rebuild the plugins, raptaboard-examples
