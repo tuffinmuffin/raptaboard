@@ -260,7 +260,7 @@ Locally: `cargo llvm-cov --workspace --ignore-filename-regex '(tests|examples|be
   window in the background); writing widgets return the value to send
   from `show`, and `Place::locked` says whether their input covers the whole card; `show_body` is
   the same for a List Layout child, which `list_layout::show` gives a `Ui` of its own); other types
-  draw as placeholders), widget files in `widgets/builtin/`, `widgets/group.rs` (the Group: an inner grid at `INNER_CELL` pixels a cell, drawn on a scaled `Area` layer, `Mapping`, `place`), `widgets/list_layout.rs` (List Layout drawing
+  draw as placeholders), widget files in `widgets/builtin/`, `widgets/group.rs` (the Group: an inner grid at `INNER_CELL` pixels a cell, drawn on a scaled `Area` layer, `Mapping`, `place`; its `shared` settings reach children through `with_shared`, used wherever a child is drawn, subscribed or recorded), `widgets/list_layout.rs` (List Layout drawing
   and its settings dialog), helpers in `widgets/shared/`:
   `card.rs`, `entry.rs` (the box a value is typed into: Number Slider, editable Text Display), `pointer.rs` (where a
   tap really was: a touchscreen on macOS sends a whole tap in one frame and puts the cursor back, so

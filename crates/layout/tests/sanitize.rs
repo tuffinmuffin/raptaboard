@@ -260,3 +260,69 @@ fn allowed_partial_overlaps_are_kept_and_others_moved() {
     let moved = l.tabs[0].grid_layout.containers[1].rect;
     assert!(!moved.overlaps(&rect(0.0, 0.0, 128.0, 128.0)));
 }
+
+fn group(children: &[String]) -> String {
+    format!(
+        r#"{{"title": "g", "x": 0.0, "y": 0.0, "width": 512.0, "height": 256.0,
+            "type": "Group", "properties": {{"rows": 2}}, "children": [{}]}}"#,
+        children.join(", ")
+    )
+}
+
+#[test]
+fn a_groups_widgets_are_kept_on_its_cells() {
+    // A good group is left alone.
+    let good = group(&[
+        widget("a", 0.0, 0.0, 256.0, 128.0),
+        widget("b", 256.0, 0.0, 128.0, 256.0),
+    ]);
+    let original = layout("128", "", &good);
+    let mut l = original.clone();
+    assert_eq!(l.sanitize(), Vec::<String>::new());
+    assert_eq!(l, original);
+    // Unlike a list's, a group's widgets have places, fixed like the tab's,
+    // and on whole cells (the group's 128 pixels, not the tab's 64).
+    let bad = group(&[
+        widget("negative", -128.0, -5.0, 128.0, 128.0),
+        widget("no size", 256.0, 0.0, 0.0, 128.0),
+        widget("between", 400.0, 120.0, 100.0, 140.0),
+        widget("far", 128.0 * 30.0, 0.0, 128.0, 128.0),
+    ]);
+    let mut l = layout("64", "", &bad);
+    let fixes = l.sanitize();
+    assert!(
+        fixes
+            .iter()
+            .all(|f| f.starts_with(r#"tab "T", group "g", widget ""#)),
+        "{fixes:#?}"
+    );
+    let at = |i: usize| l.tabs[0].grid_layout.layouts[0].children[i].rect;
+    assert_eq!(at(0), rect(0.0, 0.0, 128.0, 128.0));
+    assert_eq!(at(1), rect(256.0, 0.0, 128.0, 128.0));
+    assert_eq!(at(2), rect(384.0, 128.0, 128.0, 128.0));
+    // Past the most cells a group has: back at its edge.
+    assert_eq!(at(3), rect(128.0 * 23.0, 0.0, 128.0, 128.0));
+}
+
+#[test]
+fn widgets_overlapping_in_a_group_move_even_if_they_may_overlap() {
+    // "b" may overlap (it was Alt-dropped on the tab once), but nothing
+    // overlaps inside a group: it moves to the nearest free cell.
+    let mut b = widget("b", 128.0, 0.0, 128.0, 128.0);
+    b = b.replace(
+        r#""period": 0.06"#,
+        r#""period": 0.06, "may_overlap": true"#,
+    );
+    let g = group(&[widget("a", 0.0, 0.0, 256.0, 128.0), b]);
+    let mut l = layout("128", "", &g);
+    let fixes = l.sanitize();
+    assert_eq!(fixes.len(), 1, "{fixes:#?}");
+    assert!(
+        fixes[0].starts_with(r#"tab "T", group "g", widget "b": covers widget "a"; moved"#),
+        "{fixes:#?}"
+    );
+    let children = &l.tabs[0].grid_layout.layouts[0].children;
+    assert_eq!(children[0].rect, rect(0.0, 0.0, 256.0, 128.0));
+    assert!(!children[1].rect.overlaps(&children[0].rect));
+    assert_eq!(children[1].rect, rect(256.0, 0.0, 128.0, 128.0));
+}

@@ -544,3 +544,48 @@ fn new_group_from_the_empty_grids_menu() {
     assert_eq!((layouts[0].rect.x, layouts[0].rect.y), (256.0, 128.0));
     assert_eq!(harness.state().selected, Some(crate::grid::Item::List(0)));
 }
+
+#[test]
+fn a_groups_shared_period_reaches_the_widgets_inside_unless_they_chose_their_own() {
+    use crate::widgets::{for_topic, group};
+    let robot = Robot::start();
+    let mut app = app_for(&robot);
+    let cell = LayoutRect {
+        x: 0.0,
+        y: 0.0,
+        width: group::INNER_CELL,
+        height: group::INNER_CELL,
+    };
+    let mut g = group::new_group(LayoutRect {
+        x: 0.0,
+        y: 2048.0,
+        width: 512.0,
+        height: 256.0,
+    });
+    // One at its type's usual period: the group's applies. One with its
+    // own: kept.
+    let usual = for_topic("/Test/count", "int", None, cell).unwrap();
+    let mut own = for_topic(
+        "/Test/number",
+        "double",
+        None,
+        LayoutRect { x: 128.0, ..cell },
+    )
+    .unwrap();
+    own.properties.insert("period".into(), 0.2.into());
+    g.children.extend([usual, own]);
+    g.properties
+        .insert(group::SHARED.into(), serde_json::json!({"period": 0.75}));
+    app.layout.tabs[0].grid_layout.layouts.push(g);
+    let wanted = app.tab_topics(&[]);
+    let at = |period: f64| {
+        wanted
+            .iter()
+            .find(|(p, _)| *p == period)
+            .map(|(_, names)| names.clone())
+            .unwrap_or_default()
+    };
+    assert!(at(0.75).contains(&"/Test/count".to_owned()), "{wanted:?}");
+    assert!(!at(0.75).contains(&"/Test/number".to_owned()), "{wanted:?}");
+    assert!(at(0.2).contains(&"/Test/number".to_owned()), "{wanted:?}");
+}

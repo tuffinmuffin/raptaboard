@@ -35,6 +35,16 @@ pub const MAX_GRID_SIZE: u32 = 1024;
 /// this is moved back by [`ElasticLayout::sanitize`]; no screen is that big.
 pub const MAX_GRID_CELLS: f64 = 100.0;
 
+/// A Group's `type` (raptaboard's): a card with a small grid of its own,
+/// saved in a tab's `layouts` like a List Layout, its widgets placed on its
+/// grid ([`GROUP_CELL`] pixels a cell).
+pub const GROUP_TYPE: &str = "Group";
+/// The size of one cell inside a Group as saved, in pixels, whatever the
+/// tab's grid size.
+pub const GROUP_CELL: f64 = 128.0;
+/// The most columns or rows a Group's grid can have.
+pub const GROUP_MAX_CELLS: u32 = 24;
+
 /// Errors reading a layout file.
 #[derive(Debug, thiserror::Error)]
 pub enum LayoutError {
@@ -214,6 +224,11 @@ impl ElasticLayout {
     ///   where it was, unless the [`overlap`] rules allow it (one of them may
     ///   overlap, and neither is hidden completely).
     ///   With no free spot it stays, and the fix says so.
+    /// - Inside a Group ([`GROUP_TYPE`]), the same for its widgets on its own
+    ///   grid ([`GROUP_CELL`] a cell, at most [`GROUP_MAX_CELLS`] across and
+    ///   down): sizes and places are also rounded to whole cells, and a
+    ///   widget covering one before it at all moves to the nearest free
+    ///   cell (nothing overlaps inside a Group).
     ///
     /// ```
     /// let json = r#"{"version": 1.0, "grid_size": 0, "tabs": []}"#;
@@ -284,6 +299,12 @@ impl GridLayout {
             fix_rect(&mut w.rect, cell, limit, true, &what, fixes);
         }
         for l in &mut self.layouts {
+            if l.layout_type == GROUP_TYPE {
+                let what = format!("tab \"{tab}\", group \"{}\"", l.title);
+                fix_rect(&mut l.rect, cell, limit, true, &what, fixes);
+                l.sanitize_group(&what, fixes);
+                continue;
+            }
             let what = format!("tab \"{tab}\", list \"{}\"", l.title);
             fix_rect(&mut l.rect, cell, limit, true, &what, fixes);
             // Children are stacked by the list, so only their size matters.
@@ -385,6 +406,57 @@ impl GridLayout {
         match self.containers.get(i) {
             Some(w) => format!("widget \"{}\"", w.title),
             None => format!("list \"{}\"", self.layouts[i - self.containers.len()].title),
+        }
+    }
+}
+
+impl LayoutContainer {
+    /// [`ElasticLayout::sanitize`] for a Group's widgets on its own grid;
+    /// `what` names the group in messages.
+    fn sanitize_group(&mut self, what: &str, fixes: &mut Vec<String>) {
+        let cell = GROUP_CELL;
+        let limit = cell * f64::from(GROUP_MAX_CELLS);
+        for c in &mut self.children {
+            let what = format!("{what}, widget \"{}\"", c.title);
+            fix_rect(&mut c.rect, cell, limit, true, &what, fixes);
+            // Whole cells: a size of at least one, a place on a corner.
+            let old = c.rect;
+            let whole = |v: f64| (v / cell).round() * cell;
+            c.rect.width = whole(c.rect.width).max(cell);
+            c.rect.height = whole(c.rect.height).max(cell);
+            c.rect.x = whole(c.rect.x).min(limit - c.rect.width);
+            c.rect.y = whole(c.rect.y).min(limit - c.rect.height);
+            if old != c.rect {
+                fixes.push(format!(
+                    "{what}: {} is not on the group's cells; now {}",
+                    old.describe(),
+                    c.rect.describe()
+                ));
+            }
+        }
+        for i in 0..self.children.len() {
+            let rect = self.children[i].rect;
+            let Some(covered) = (0..i).find(|&j| rect.overlaps(&self.children[j].rect)) else {
+                continue;
+            };
+            let note = format!(
+                "{what}, widget \"{}\": covers widget \"{}\"",
+                self.children[i].title, self.children[covered].title
+            );
+            let others: Vec<Rect> = (0..self.children.len())
+                .filter(|&j| j != i)
+                .map(|j| self.children[j].rect)
+                .collect();
+            match nearest_free_spot(rect, cell, limit, &others) {
+                Some(moved) => {
+                    self.children[i].rect = moved;
+                    fixes.push(format!(
+                        "{note}; moved from ({}, {}) to ({}, {})",
+                        rect.x, rect.y, moved.x, moved.y
+                    ));
+                }
+                None => fixes.push(format!("{note}, and there's no free space; left there")),
+            }
         }
     }
 }

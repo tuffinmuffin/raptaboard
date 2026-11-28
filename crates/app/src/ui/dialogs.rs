@@ -81,9 +81,18 @@ pub(super) fn show_settings(
         });
 }
 
+/// Where a widget whose settings are open is.
+pub(super) enum WidgetIn<'a> {
+    /// On the grid: it can be pinned in place.
+    Grid,
+    /// In a List Layout or Group, with a note above its settings, if any
+    /// (what it takes from its group).
+    Layout(Option<&'a str>),
+}
+
 /// One widget's settings in a dialog titled `heading`, with Done, Cancel
-/// and Reset settings, and (for a widget on the grid, `pinnable`) "Pin in
-/// place". Returns `Some(true)` for Done, `Some(false)` for
+/// and Reset settings; `within` adds "Pin in place" (on the grid) or a
+/// note above the settings (in a group). Returns `Some(true)` for Done, `Some(false)` for
 /// Cancel or Esc, `None` while it stays open. Changes are made to `widget`
 /// as they happen; on Cancel the caller puts the original back.
 pub(super) fn widget_window(
@@ -93,12 +102,16 @@ pub(super) fn widget_window(
     nt_type: Option<&str>,
     field: Option<&FieldInfo>,
     topics: &[(String, String)],
-    pinnable: bool,
+    within: WidgetIn<'_>,
 ) -> Option<bool> {
     let mut close = None;
     show_settings(ctx, "widget_settings", heading, |ui| {
+        if let WidgetIn::Layout(Some(note)) = within {
+            ui.weak(note);
+            ui.add_space(4.0);
+        }
         widget_settings::show(ui, widget, nt_type, field, topics);
-        if pinnable {
+        if matches!(within, WidgetIn::Grid) {
             pin_checkbox(ui, &mut widget.properties);
         }
         ui.add_space(4.0);
@@ -248,7 +261,7 @@ impl DashboardApp {
             nt_type.as_deref(),
             field.as_ref(),
             &topics,
-            true,
+            WidgetIn::Grid,
         );
         match close {
             Some(true) => self.editing = None,
@@ -296,6 +309,8 @@ impl DashboardApp {
             let (nt_type, field) = self.value_facts(widget);
             let topics = self.topic_list();
             let heading = format!("{}: {}", list.title, widget.title);
+            let note = crate::widgets::group::shared_note(list, widget)
+                .map(|got| format!("From the group (unless set here): {got}."));
             let Some(widget) = self
                 .layout
                 .tabs
@@ -312,7 +327,7 @@ impl DashboardApp {
                 nt_type.as_deref(),
                 field.as_ref(),
                 &topics,
-                false,
+                WidgetIn::Layout(note.as_deref()),
             ) {
                 Some(true) => self.close_child(),
                 Some(false) => {

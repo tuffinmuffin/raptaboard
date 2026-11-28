@@ -156,4 +156,10 @@ is drawn as a shrunk copy, text too, so resizing the Group grows or shrinks what
   columns and rows it gives. The Drive panel above is 6 cells by 5 on the tab, and 4 rows gives
   5 columns that fill it.
 
+Under **Widgets inside**, a Group's settings set the **Update period**, **Text** (size and
+style) and **Title text** for every widget in it, so a panel looks alike without editing each
+one. A widget's own setting wins: one with a text size of its own keeps it, and one whose update
+period was changed from its usual keeps that. A widget's settings say what it takes from its
+Group; **Reset** in the Group's rows goes back to each widget's own.
+
 Locked, the widgets inside work as they do on the grid: toggles toggle, sliders slide.

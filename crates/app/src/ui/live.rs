@@ -1,6 +1,7 @@
 //! Which topics the open tab needs, and recording traced values (graphs')
 //! as they arrive.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use eframe::egui;
@@ -9,7 +10,7 @@ use nt4::{Topic, Value};
 use crate::traces::SeriesKey;
 use crate::types::structs;
 use crate::widgets::shared::{format, props};
-use crate::widgets::{self, list_layout};
+use crate::widgets::{self, group, list_layout};
 use raptaboard_layout::WidgetContainer;
 
 use super::DashboardApp;
@@ -23,17 +24,19 @@ const DEFAULT_TRACE_PERIOD_S: f64 = 0.016;
 const BACKGROUND_PERIOD_S: f64 = 0.25;
 
 /// The widgets on `tab` raptaboard can draw: on the grid, and in lists
-/// (unless hidden).
-fn drawn(tab: &raptaboard_layout::Tab) -> impl Iterator<Item = &WidgetContainer> {
+/// (unless hidden) and groups, as they're shown (with a group's shared
+/// settings, [`group::with_shared`]).
+fn drawn(tab: &raptaboard_layout::Tab) -> impl Iterator<Item = Cow<'_, WidgetContainer>> {
     let grid = &tab.grid_layout;
     grid.containers
         .iter()
-        .chain(
-            grid.layouts
+        .map(Cow::Borrowed)
+        .chain(grid.layouts.iter().flat_map(|l| {
+            l.children
                 .iter()
-                .flat_map(|l| &l.children)
-                .filter(|w| !list_layout::is_hidden(w)),
-        )
+                .filter(|w| !list_layout::is_hidden(w))
+                .map(move |w| group::with_shared(l, w))
+        }))
         .filter(|w| widgets::find(&w.widget_type).is_some())
 }
 
@@ -142,7 +145,7 @@ impl DashboardApp {
             if let Some(ty) = widgets::find(&w.widget_type) {
                 wanted.extend(ty.extra_topics(&w.properties, server));
             }
-            add(props::period_s(w), wanted);
+            add(props::period_s(&w), wanted);
         }
         for (i, other) in self.layout.tabs.iter().enumerate() {
             if i == self.current_tab {
@@ -176,17 +179,17 @@ impl DashboardApp {
         let grid = &tab.grid_layout;
         let mut wanted = Vec::new();
         let mut fastest = f64::INFINITY;
-        for w in grid
-            .containers
+        let children = grid
+            .layouts
             .iter()
-            .chain(grid.layouts.iter().flat_map(|l| &l.children))
-        {
+            .flat_map(|l| l.children.iter().map(move |w| group::with_shared(l, w)));
+        for w in grid.containers.iter().map(Cow::Borrowed).chain(children) {
             let Some(ty) = widgets::find(&w.widget_type) else {
                 continue;
             };
-            let traced = ty.traced(w);
+            let traced = ty.traced(&w);
             if !traced.is_empty() {
-                fastest = fastest.min(props::period_s(w));
+                fastest = fastest.min(props::period_s(&w));
                 wanted.extend(traced);
             }
         }

@@ -816,7 +816,7 @@ raptaboard is meant to rest in, apart from feature requests.
    - Boolean Box text (**done**): `text_backing`, a see-through box behind the text so it reads over
      any color, and `true_text_color` / `false_text_color` (automatic black or white if not set; white
      on the backing).
-   - Group widget (**part 1 done** for 0.5.0, 2026-11-27, `widgets/group.rs`): a card holding its
+   - Group widget (**done** for 0.5.0, 2026-11-27, `widgets/group.rs`): a card holding its
      own small grid, so widgets inside can sit side by side and be any size (a List Layout only
      stacks them). Saved in a tab's `layouts` with type `"Group"` (raptaboard-only; Elastic would
      show a placeholder), `rows` (2 unless set) and `grid_lines` (on unless set). Decided with the user
@@ -836,9 +836,17 @@ raptaboard is meant to rest in, apart from feature requests.
      children move and resize inside (the list-child drag with a `resize` mode,
      `grid::resize_in_group`) and drag out onto the grid or into a list; their menu has Edit,
      Edit group and Remove from group. Nothing overlaps a group, even with Alt. Drag previews
-     are drawn on a layer above the groups'. Part 2 (to do): group-level settings (font size,
-     period, colors) that every child uses unless it sets its own. Not yet: a group's children's
-     positions aren't checked when a layout opens.
+     are drawn on a layer above the groups'. Part 2 (done): `shared` in the group's properties
+     holds widget settings every child uses unless it sets its own (`group::with_shared`, used
+     wherever a child is drawn, subscribed or recorded): the update period, the value text's size
+     and style, and the title's (`group::SHARED_KEYS`; a separate object, as the group's own title
+     uses the same keys). Widgets are saved with a `period` whether chosen or not, so a child's
+     period counts as its own only when it isn't its type's usual one. Set in the group's settings
+     under "Widgets inside"; a child's own dialog says what it takes from the group
+     (`group::shared_note`). Opening a layout checks a group's children (`ElasticLayout::sanitize`,
+     `LayoutContainer::sanitize_group`): sizes and places fixed as on the tab, rounded to whole
+     cells (`GROUP_CELL`, at most `GROUP_MAX_CELLS`), and any overlap moved to the nearest free
+     cell, `may_overlap` or not.
    - Autoscale for bars and gauges (**done**, after 0.1.0): `autoscale` (and `autoscale_keep_range`)
      in `shared/scale.rs`. The range comes from every value received: an autoscaled widget asks for
      its series through `traced` (keeping no points), and `Traces` keeps each series' lowest and
