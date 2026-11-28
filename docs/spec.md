@@ -836,13 +836,16 @@ raptaboard is meant to rest in, apart from feature requests.
      children move and resize inside (the list-child drag with a `resize` mode,
      `grid::resize_in_group`) and drag out onto the grid or into a list; their menu has Edit,
      Edit group and Remove from group. Nothing overlaps a group, even with Alt. Drag previews
-     are drawn on a layer above the groups'. Part 2 (done): `shared` in the group's properties
-     holds widget settings every child uses in place of its own (`group::with_shared`, used
-     wherever a child is drawn, subscribed or recorded): the update period, the value text's size
-     and style, and the title's (`group::SHARED_KEYS`; a separate object, as the group's own title
-     uses the same keys). The group's win (decided with the user 2026-11-27, after first building
-     it the other way round: a styled widget then seemed to ignore its group); the child's own
-     values are kept, for when it stops using them. Set in the group's settings under "Widgets
+     are drawn on a layer above the groups'. Part 2 (done): while `shared_on` is set (off unless
+     set, "Apply to the widgets inside"), the group sets every one of `group::SHARED_KEYS` for its
+     children in place of their own (`group::with_shared`, used wherever a child is drawn,
+     subscribed or recorded): the update period, the value text's size and style, and the title's,
+     each from `shared` (a separate object, as the group's own title uses the same keys) or at its
+     usual where `shared` leaves it unset. Decided with the user 2026-11-27, after two other
+     versions: first a child's own setting won (a styled widget then seemed to ignore its group),
+     then the group's won only for what it set (a widget could still change the rest, breaking
+     the group's say). Off by default so opening a layout never takes widgets' own styles away; the
+     child's own values are kept, for when it's off or the child opts out. Set in the group's settings under "Widgets
      inside"; a child's own dialog says what the group sets (`group::shared_note`) and greys those
      rows out (`group::controlled_keys`, passed to the rows by `props::set_controlled` /
      `is_controlled` while the dialog draws). Opening a layout checks a group's children (`ElasticLayout::sanitize`,
@@ -852,10 +855,9 @@ raptaboard is meant to rest in, apart from feature requests.
      2026-11-27): the same `shared` object and "Widgets inside" rows (`group::shared_rows`), with
      the title row styling the list's labels instead ("Labels": `list_layout::labels` takes the
      size, one for the whole list so rows stay even, the label strip growing to fit; each label's
-     font, color, bold and italic are its widget's title style as shown). Either can be turned off (asked for by the user 2026-11-27, so each
-     widget can be set up on its own): `use_shared: false` on a widget (its dialog's "Use the
-     shared settings"; Reset settings clears it) or `shared_on: false` on the group or list
-     ("Apply to the widgets inside", keeping `shared`).
+     font, color, bold and italic are its widget's title style as shown). One widget can opt
+     out (asked for by the user 2026-11-27, so it can be set up on its own): `use_shared: false`
+     (its dialog's "Use the shared settings"; Reset settings clears it).
    - Autoscale for bars and gauges (**done**, after 0.1.0): `autoscale` (and `autoscale_keep_range`)
      in `shared/scale.rs`. The range comes from every value received: an autoscaled widget asks for
      its series through `traced` (keeping no points), and `Traces` keeps each series' lowest and

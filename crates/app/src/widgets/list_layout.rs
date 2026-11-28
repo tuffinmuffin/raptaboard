@@ -192,9 +192,7 @@ pub fn labels(props: &Map<String, Json>) -> Labels {
             .get(LABEL_INSIDE)
             .and_then(Json::as_bool)
             .unwrap_or(false),
-        size: props
-            .get(crate::widgets::group::SHARED)
-            .and_then(Json::as_object)
+        size: crate::widgets::group::shared_in(props)
             .and_then(|shared| shared.get(text_style::TITLE.size))
             .and_then(Json::as_f64)
             .filter(|s| s.is_finite())
@@ -859,8 +857,8 @@ pub fn settings(ui: &mut egui::Ui, list: &mut LayoutContainer) -> Option<ListAct
     ui.add_space(8.0);
     ui.strong("Widgets inside");
     ui.weak(
-        "Set for every widget in the list, in place of its own (unless it opts out); Labels \
-         styles each label.",
+        "Turned on, these replace each widget's own (unless it opts out); Labels styles each \
+         label.",
     );
     crate::widgets::group::shared_rows(ui, &mut list.properties, true);
 
@@ -1394,6 +1392,9 @@ mod tests {
             group::SHARED.into(),
             serde_json::json!({"title_font_size": 18.0, "title_color": 4294901760u32}),
         );
+        // Kept but unused until turned on.
+        assert_eq!(labels(&l.properties).size, LABEL_FONT_SIZE);
+        l.properties.insert(group::SHARED_ON.into(), true.into());
         let l18 = labels(&l.properties);
         assert_eq!(l18.size, 18.0);
         assert_eq!(l18.height(), LABEL_HEIGHT + 5.0);

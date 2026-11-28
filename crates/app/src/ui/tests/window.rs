@@ -587,6 +587,7 @@ fn a_groups_shared_period_reaches_the_widgets_inside_unless_they_opt_out() {
     g.children.extend([usual, own, apart]);
     g.properties
         .insert(group::SHARED.into(), serde_json::json!({"period": 0.75}));
+    g.properties.insert(group::SHARED_ON.into(), true.into());
     app.layout.tabs[0].grid_layout.layouts.push(g);
     let wanted = app.tab_topics(&[]);
     let at = |period: f64| {
@@ -626,6 +627,7 @@ fn a_widget_in_a_group_shows_what_the_group_sets_greyed_until_it_opts_out() {
     g.children.push(child.clone());
     g.properties
         .insert(group::SHARED.into(), serde_json::json!({"font_size": 30.0}));
+    g.properties.insert(group::SHARED_ON.into(), true.into());
     let app = harness.state_mut();
     let tab = &mut app.layout.tabs[0].grid_layout.layouts;
     tab.push(g.clone());
